@@ -20,9 +20,12 @@ const db        = getFirestore(app);
 
 // Admin-E-Mails – hier alle Trainer-E-Mails eintragen
 const ADMIN_EMAILS = [
-  "trainer@ttc-niederzeuzheim.de",
+  "thomas@meilinger.net",
   // weitere Trainer hier hinzufügen:
-  // "trainer2@ttc-niederzeuzheim.de",
+  // "joerg.bonkowski@web.de",
+  // "kira@meilinger.net",
+  // "Dominik.horz@gmx.de",
+
 ];
 
 // ─── AVATARS ─────────────────────────────────────────────────────────────────
