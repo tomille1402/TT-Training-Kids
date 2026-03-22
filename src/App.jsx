@@ -22,9 +22,9 @@ const db        = getFirestore(app);
 const ADMIN_EMAILS = [
   "thomas@meilinger.net",
   // weitere Trainer hier hinzufügen:
-  // "joerg.bonkowski@web.de",
-  // "kira@meilinger.net",
-  // "dominik.horz@gmx.de",
+  "joerg.bonkowski@web.de",
+  "kira@meilinger.net",
+  "dominik.horz@gmx.de",
 ];
 
 // Robuster Admin-Check: vergleicht immer in Kleinbuchstaben
