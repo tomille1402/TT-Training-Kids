@@ -18,15 +18,22 @@ const app       = initializeApp(firebaseConfig);
 const auth      = getAuth(app);
 const db        = getFirestore(app);
 
-// Admin-E-Mails – hier alle Trainer-E-Mails eintragen
+// Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
 const ADMIN_EMAILS = [
   "thomas@meilinger.net",
   // weitere Trainer hier hinzufügen:
   // "joerg.bonkowski@web.de",
   // "kira@meilinger.net",
-  // "Dominik.horz@gmx.de",
-
+  // "dominik.horz@gmx.de",
 ];
+
+// Robuster Admin-Check: vergleicht immer in Kleinbuchstaben
+// UND prüft zusätzlich die Firestore-Rolle
+function checkIsAdminByEmail(email) {
+  if (!email) return false;
+  const emailLower = email.toLowerCase().trim();
+  return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === emailLower);
+}
 
 // ─── AVATARS ─────────────────────────────────────────────────────────────────
 const AVATARS = [
@@ -839,12 +846,32 @@ export default function App() {
   const [players,   setPlayers]   = useState([]);
   const [loginErr,  setLoginErr]  = useState("");
   const [loginLoad, setLoginLoad] = useState(false);
+  const [role,      setRole]      = useState(null); // "admin" | "player" | null
+  const [roleReady, setRoleReady] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Auth listener
   useEffect(()=>{
-    const unsub = onAuthStateChanged(auth, u=>{
+    const unsub = onAuthStateChanged(auth, async u=>{
       setAuthUser(u);
       setAuthReady(true);
+      if (!u) { setRole(null); setRoleReady(true); return; }
+
+      // 1) Check by email list (lowercase, trimmed)
+      if (checkIsAdminByEmail(u.email)) {
+        setRole("admin"); setRoleReady(true); return;
+      }
+
+      // 2) Check Firestore for role field on trainer doc
+      try {
+        const trainerDoc = await getDoc(doc(db, "trainers", u.uid));
+        if (trainerDoc.exists() && trainerDoc.data().role === "admin") {
+          setRole("admin"); setRoleReady(true); return;
+        }
+      } catch(e) { /* ignore, may not exist */ }
+
+      // 3) Default to player
+      setRole("player"); setRoleReady(true);
     });
     return unsub;
   },[]);
@@ -858,36 +885,111 @@ export default function App() {
     return unsub;
   },[authUser]);
 
-  async function handleLogin(email,pass) {
+  async function handleLogin(email, pass) {
     setLoginLoad(true); setLoginErr("");
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      await signInWithEmailAndPassword(auth, email.trim(), pass);
     } catch(e) {
-      if (e.code==="auth/user-not-found"||e.code==="auth/wrong-password"||e.code==="auth/invalid-credential")
+      if (["auth/user-not-found","auth/wrong-password","auth/invalid-credential"].includes(e.code))
         setLoginErr("E-Mail oder Passwort falsch.");
       else if (e.code==="auth/invalid-email")
         setLoginErr("Ungültige E-Mail-Adresse.");
       else
-        setLoginErr("Fehler beim Anmelden: "+e.message);
+        setLoginErr("Fehler beim Anmelden: " + e.message);
     }
     setLoginLoad(false);
   }
 
-  async function handleSignOut() {
-    await signOut(auth);
-    setPlayers([]);
+  async function makeAdminInFirestore() {
+    // Trainer kann sich selbst zum Admin machen über diesen Button
+    if (!authUser) return;
+    try {
+      await setDoc(doc(db, "trainers", authUser.uid), {
+        uid: authUser.uid, email: authUser.email, role: "admin"
+      });
+      setRole("admin");
+    } catch(e) { alert("Fehler: " + e.message); }
   }
 
-  if (!authReady) return (
-    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center"}}>
+  async function handleSignOut() {
+    await signOut(auth);
+    setPlayers([]); setRole(null); setRoleReady(false);
+  }
+
+  // Loading
+  if (!authReady || !roleReady) return (
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:40}}>🏓</div>
       <div style={{fontSize:13,color:"#6b7280"}}>⏳ Laden…</div>
     </div>
   );
 
   if (!authUser) return <LoginScreen onLogin={handleLogin} error={loginErr} loading={loginLoad}/>;
 
-  const isAdmin = ADMIN_EMAILS.includes(authUser.email);
+  // ── Trainer-Hilfe-Bildschirm wenn Rolle nicht erkannt ──
+  if (role !== "admin" && role !== "player") return (
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⚙️</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#e5e7eb",marginBottom:8}}>Rolle wird ermittelt…</div>
+        <button onClick={handleSignOut} style={{padding:"8px 16px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:13,cursor:"pointer",marginTop:16}}>Abmelden</button>
+      </div>
+    </div>
+  );
 
-  if (isAdmin) return <AdminPanel user={authUser} players={players} onSignOut={handleSignOut}/>;
+  // ── Trainer sieht Spieler-Ansicht → Notfall-Hilfe-Bildschirm ──
+  if (role === "player" && !players.find(p=>p.email?.toLowerCase()===authUser.email?.toLowerCase())) {
+    // Prüfe ob das eigentlich ein Trainer sein sollte
+    return (
+      <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+        <div style={{maxWidth:400,width:"100%"}}>
+          <div style={{background:"#111827",border:"1px solid #374151",borderRadius:16,padding:24,textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🔑</div>
+            <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>Bist du ein Trainer?</div>
+            <div style={{fontSize:13,color:"#6b7280",marginBottom:6,lineHeight:1.6}}>
+              Angemeldet als:<br/>
+              <b style={{color:"#10b981"}}>{authUser.email}</b>
+            </div>
+            <div style={{fontSize:12,color:"#6b7280",marginBottom:20,lineHeight:1.6}}>
+              Wenn du ein Trainer bist, klicke auf den Button unten.<br/>
+              Das löst das Problem dauerhaft.
+            </div>
+            <button onClick={makeAdminInFirestore} style={{
+              width:"100%",padding:12,marginBottom:10,
+              background:"linear-gradient(135deg,#10b981,#059669)",
+              border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",
+            }}>✅ Ja, ich bin Trainer — Zugang freischalten</button>
+
+            <button onClick={()=>setShowDebug(!showDebug)} style={{
+              width:"100%",padding:8,background:"transparent",border:"1px solid #374151",
+              borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:10,
+            }}>🔍 Diagnose-Info {showDebug?"ausblenden":"anzeigen"}</button>
+
+            {showDebug&&(
+              <div style={{background:"#0d1117",borderRadius:8,padding:12,textAlign:"left",marginBottom:12}}>
+                <div style={{fontSize:11,color:"#9ca3af",marginBottom:6,fontWeight:700}}>Diagnose:</div>
+                <div style={{fontSize:11,color:"#6b7280",lineHeight:1.8}}>
+                  <div>Firebase E-Mail: <b style={{color:"#f59e0b"}}>{authUser.email}</b></div>
+                  <div>Firebase UID: <b style={{color:"#f59e0b"}}>{authUser.uid}</b></div>
+                  <div>Erkannte Rolle: <b style={{color:"#ef4444"}}>{role}</b></div>
+                  <div style={{marginTop:6,color:"#4b5563"}}>
+                    ADMIN_EMAILS enthält:<br/>
+                    {ADMIN_EMAILS.map(e=><span key={e} style={{display:"block",color:"#6b7280"}}>→ "{e}"</span>)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button onClick={handleSignOut} style={{
+              width:"100%",padding:8,background:"transparent",border:"1px solid #374151",
+              borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",
+            }}>Abmelden</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (role === "admin") return <AdminPanel user={authUser} players={players} onSignOut={handleSignOut}/>;
   return <PlayerView user={authUser} players={players} onSignOut={handleSignOut}/>;
 }
