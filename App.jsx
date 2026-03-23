@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import {
   getAuth, signInWithEmailAndPassword, signOut,
-  onAuthStateChanged, createUserWithEmailAndPassword
+  onAuthStateChanged, createUserWithEmailAndPassword,
+  sendPasswordResetEmail
 } from "firebase/auth";
 import {
   getFirestore, doc, setDoc, getDoc, collection,
@@ -20,11 +21,9 @@ const db        = getFirestore(app);
 
 // Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
 const ADMIN_EMAILS = [
-  "thomas@meilinger.net",
+  "trainer@ttc-niederzeuzheim.de",
   // weitere Trainer hier hinzufügen:
-  "joerg.bonkowski@web.de",
-  "kira@meilinger.net",
-  "dominik.horz@gmx.de",
+  // "trainer2@ttc-niederzeuzheim.de",
 ];
 
 // Robuster Admin-Check: vergleicht immer in Kleinbuchstaben
@@ -235,8 +234,31 @@ function DeleteConfirm({ name, onConfirm, onCancel }) {
 
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin, error, loading }) {
-  const [email, setEmail] = useState("");
-  const [pass,  setPass]  = useState("");
+  const [email,       setEmail]       = useState("");
+  const [pass,        setPass]        = useState("");
+  const [resetMode,   setResetMode]   = useState(false);
+  const [resetEmail,  setResetEmail]  = useState("");
+  const [resetSent,   setResetSent]   = useState(false);
+  const [resetErr,    setResetErr]    = useState("");
+  const [resetLoading,setResetLoading]= useState(false);
+
+  async function handlePasswordReset() {
+    if (!resetEmail.trim()) { setResetErr("Bitte E-Mail eingeben."); return; }
+    setResetLoading(true); setResetErr("");
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim());
+      setResetSent(true);
+    } catch(e) {
+      if (e.code==="auth/user-not-found"||e.code==="auth/invalid-credential")
+        setResetErr("Kein Konto mit dieser E-Mail gefunden.");
+      else if (e.code==="auth/invalid-email")
+        setResetErr("Ungültige E-Mail-Adresse.");
+      else
+        setResetErr("Fehler: " + e.message);
+    }
+    setResetLoading(false);
+  }
+
   return (
     <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{maxWidth:360,width:"100%"}}>
@@ -245,25 +267,91 @@ function LoginScreen({ onLogin, error, loading }) {
           <div style={{fontSize:22,fontWeight:800,color:"#e5e7eb",letterSpacing:"-0.02em"}}>TTC Niederzeuzheim</div>
           <div style={{fontSize:13,color:"#6b7280",marginTop:4}}>Nachwuchs Trainingsheft</div>
         </div>
-        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:24}}>
-          <div style={{fontSize:15,fontWeight:700,color:"#e5e7eb",marginBottom:18}}>Anmelden</div>
-          {error && <div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:14}}>{error}</div>}
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>E-Mail</label>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
-            placeholder="deine@email.de"
-            style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>Passwort</label>
-          <input type="password" value={pass} onChange={e=>setPass(e.target.value)}
-            placeholder="••••••••"
-            onKeyDown={e=>e.key==="Enter"&&onLogin(email,pass)}
-            style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:18}}/>
-          <button onClick={()=>onLogin(email,pass)} disabled={loading||!email||!pass} style={{
-            width:"100%",padding:12,
-            background:(!email||!pass||loading)?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
-            border:"none",borderRadius:9,color:(!email||!pass||loading)?"#6b7280":"#fff",
-            fontSize:15,fontWeight:700,cursor:(!email||!pass||loading)?"not-allowed":"pointer",transition:"all .2s",
-          }}>{loading?"Anmelden…":"Anmelden"}</button>
-        </div>
+
+        {/* ── LOGIN ── */}
+        {!resetMode && (
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:24}}>
+            <div style={{fontSize:15,fontWeight:700,color:"#e5e7eb",marginBottom:18}}>Anmelden</div>
+            {error&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:14}}>{error}</div>}
+            <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>E-Mail</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+              placeholder="deine@email.de"
+              style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
+            <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>Passwort</label>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)}
+              placeholder="••••••••"
+              onKeyDown={e=>e.key==="Enter"&&onLogin(email,pass)}
+              style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:18}}/>
+            <button onClick={()=>onLogin(email,pass)} disabled={loading||!email||!pass} style={{
+              width:"100%",padding:12,
+              background:(!email||!pass||loading)?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
+              border:"none",borderRadius:9,
+              color:(!email||!pass||loading)?"#6b7280":"#fff",
+              fontSize:15,fontWeight:700,
+              cursor:(!email||!pass||loading)?"not-allowed":"pointer",transition:"all .2s",
+            }}>{loading?"Anmelden…":"Anmelden"}</button>
+
+            {/* Passwort vergessen Link */}
+            <button onClick={()=>{ setResetMode(true); setResetEmail(email); }} style={{
+              width:"100%",marginTop:12,padding:"8px",
+              background:"transparent",border:"none",
+              color:"#6b7280",fontSize:13,cursor:"pointer",
+              textDecoration:"underline",
+            }}>🔑 Passwort vergessen?</button>
+          </div>
+        )}
+
+        {/* ── PASSWORT ZURÜCKSETZEN ── */}
+        {resetMode && (
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:24}}>
+            {!resetSent ? (
+              <>
+                <div style={{fontSize:15,fontWeight:700,color:"#e5e7eb",marginBottom:6}}>🔑 Passwort zurücksetzen</div>
+                <div style={{fontSize:13,color:"#6b7280",marginBottom:18,lineHeight:1.5}}>
+                  Gib deine E-Mail-Adresse ein. Du bekommst einen Link zum Zurücksetzen zugeschickt.
+                </div>
+                {resetErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:14}}>{resetErr}</div>}
+                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>E-Mail</label>
+                <input type="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)}
+                  placeholder="deine@email.de"
+                  onKeyDown={e=>e.key==="Enter"&&handlePasswordReset()}
+                  style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:16}}/>
+                <button onClick={handlePasswordReset} disabled={resetLoading||!resetEmail.trim()} style={{
+                  width:"100%",padding:12,
+                  background:(resetLoading||!resetEmail.trim())?"#1f2937":"linear-gradient(135deg,#3b82f6,#2563eb)",
+                  border:"none",borderRadius:9,
+                  color:(resetLoading||!resetEmail.trim())?"#6b7280":"#fff",
+                  fontSize:15,fontWeight:700,
+                  cursor:(resetLoading||!resetEmail.trim())?"not-allowed":"pointer",
+                  marginBottom:10,
+                }}>{resetLoading?"Wird gesendet…":"Reset-E-Mail senden"}</button>
+                <button onClick={()=>{ setResetMode(false); setResetErr(""); }} style={{
+                  width:"100%",padding:10,background:"transparent",border:"1px solid #374151",
+                  borderRadius:9,color:"#6b7280",fontSize:13,cursor:"pointer",
+                }}>← Zurück zur Anmeldung</button>
+              </>
+            ) : (
+              <>
+                <div style={{textAlign:"center",padding:"10px 0"}}>
+                  <div style={{fontSize:48,marginBottom:14}}>📬</div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>E-Mail gesendet!</div>
+                  <div style={{fontSize:13,color:"#9ca3af",marginBottom:20,lineHeight:1.6}}>
+                    Wir haben eine E-Mail an<br/>
+                    <b style={{color:"#10b981"}}>{resetEmail}</b><br/>
+                    gesendet. Bitte prüfe dein Postfach und klicke auf den Link.
+                  </div>
+                  <button onClick={()=>{ setResetMode(false); setResetSent(false); setResetErr(""); }} style={{
+                    width:"100%",padding:12,
+                    background:"linear-gradient(135deg,#10b981,#059669)",
+                    border:"none",borderRadius:9,color:"#fff",
+                    fontSize:14,fontWeight:700,cursor:"pointer",
+                  }}>← Zurück zur Anmeldung</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div style={{textAlign:"center",fontSize:12,color:"#4b5563",marginTop:16}}>
           Noch kein Konto? Wende dich an deinen Trainer.
         </div>
@@ -280,14 +368,15 @@ function AdminPanel({ user, players, onSignOut }) {
   const [expandedEx, setExpandedEx]         = useState(null);
   const [avatarPickerFor, setAvatarPickerFor] = useState(null);
   const [deleteConfirmFor, setDeleteConfirmFor] = useState(null);
-  const [newName, setNewName]               = useState("");
-  const [newAvatar, setNewAvatar]           = useState("🏓");
-  const [newEmail, setNewEmail]             = useState("");
-  const [newPass, setNewPass]               = useState("");
-  const [toast, setToast]                   = useState(null);
-  const [saving, setSaving]                 = useState(false);
-  const [addingUser, setAddingUser]         = useState(false);
-  const [userError, setUserError]           = useState("");
+  const [newName,    setNewName]    = useState("");
+  const [newAvatar,  setNewAvatar]  = useState("🏓");
+  const [newEmail,   setNewEmail]   = useState("");
+  const [newPass,    setNewPass]    = useState("");
+  const [noEmail,    setNoEmail]    = useState(false); // kein eigenes Login
+  const [toast,      setToast]      = useState(null);
+  const [saving,     setSaving]     = useState(false);
+  const [addingUser, setAddingUser] = useState(false);
+  const [userError,  setUserError]  = useState("");
 
   const curPlayer = players.find(p=>p.id===selectedPlayer) || players[0];
   const sortedRanking = [...players].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
@@ -308,24 +397,47 @@ function AdminPanel({ user, players, onSignOut }) {
   }
 
   async function addPlayer() {
-    if (!newName.trim()||!newEmail.trim()||!newPass.trim()) return;
+    if (!newName.trim()) return;
     setAddingUser(true); setUserError("");
+    const color = PLAYER_COLORS[players.length % PLAYER_COLORS.length];
+
     try {
-      // Create Firebase auth account for the player
-      const { user: newUser } = await createUserWithEmailAndPassword(auth, newEmail.trim(), newPass.trim());
-      const id   = newUser.uid;
-      const color = PLAYER_COLORS[players.length % PLAYER_COLORS.length];
-      await setDoc(doc(db,"players",id), {
-        id, name:newName.trim(), email:newEmail.trim(),
-        color, avatar:newAvatar, stars:{}, createdAt: Date.now(),
-      });
-      setNewName(""); setNewEmail(""); setNewPass(""); setNewAvatar("🏓");
-      showToast(`${newName} hinzugefügt!`,"🎉");
+      if (noEmail) {
+        // ── Ohne Login: Dummy-E-Mail + Zufalls-Passwort generieren ──
+        const safeName = newName.trim()
+          .toLowerCase()
+          .replace(/\s+/g, ".")
+          .replace(/[^a-z0-9.]/g, "");
+        const rand = Math.random().toString(36).slice(2, 8);
+        const dummyEmail = `${safeName}.${rand}@ttc-intern.de`;
+        const dummyPass  = Math.random().toString(36).slice(2, 14);
+
+        const { user: newUser } = await createUserWithEmailAndPassword(auth, dummyEmail, dummyPass);
+        await setDoc(doc(db,"players", newUser.uid), {
+          id: newUser.uid, name: newName.trim(),
+          email: dummyEmail, noLogin: true,
+          color, avatar: newAvatar, stars: {}, createdAt: Date.now(),
+        });
+      } else {
+        // ── Mit eigenem Login ──
+        if (!newEmail.trim() || !newPass.trim()) {
+          setUserError("Bitte E-Mail und Passwort eingeben."); setAddingUser(false); return;
+        }
+        const { user: newUser } = await createUserWithEmailAndPassword(auth, newEmail.trim(), newPass.trim());
+        await setDoc(doc(db,"players", newUser.uid), {
+          id: newUser.uid, name: newName.trim(),
+          email: newEmail.trim(), noLogin: false,
+          color, avatar: newAvatar, stars: {}, createdAt: Date.now(),
+        });
+      }
+
+      setNewName(""); setNewEmail(""); setNewPass(""); setNewAvatar("🏓"); setNoEmail(false);
+      showToast(`${newName.trim()} hinzugefügt!`, "🎉");
       setActiveTab("players");
     } catch(e) {
       if (e.code==="auth/email-already-in-use") setUserError("Diese E-Mail wird bereits verwendet.");
       else if (e.code==="auth/weak-password")    setUserError("Passwort muss mindestens 6 Zeichen haben.");
-      else setUserError("Fehler: "+e.message);
+      else setUserError("Fehler: " + e.message);
     }
     setAddingUser(false);
   }
@@ -616,29 +728,89 @@ function AdminPanel({ user, players, onSignOut }) {
                 <button onClick={()=>setAvatarPickerFor("__new__")} style={{padding:"7px 14px",background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer"}}>Wählen ✏️</button>
               </div>
             </div>
-            {[
-              {label:"Name",     val:newName,  set:setNewName,  type:"text",     ph:"Max Mustermann"},
-              {label:"E-Mail",   val:newEmail, set:setNewEmail, type:"email",    ph:"spieler@email.de"},
-              {label:"Passwort", val:newPass,  set:setNewPass,  type:"password", ph:"Mindestens 6 Zeichen"},
-            ].map(f=>(
-              <div key={f.label} style={{marginBottom:12}}>
-                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>{f.label}</label>
-                <input type={f.type} value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
-                  style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+
+            {/* Name */}
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>Name</label>
+              <input type="text" value={newName} onChange={e=>setNewName(e.target.value)}
+                placeholder="Max Mustermann"
+                style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+
+            {/* Toggle: eigener Login oder nicht */}
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:8}}>Login-Typ</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <button onClick={()=>setNoEmail(false)} style={{
+                  padding:"10px 8px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+                  border:`2px solid ${!noEmail?"#10b981":"#374151"}`,
+                  background:!noEmail?"#10b98122":"#1f2937",
+                  color:!noEmail?"#10b981":"#6b7280",
+                }}>
+                  📧 Mit eigenem Login<br/>
+                  <span style={{fontSize:10,fontWeight:400,opacity:.7}}>Spieler kann sich selbst anmelden</span>
+                </button>
+                <button onClick={()=>setNoEmail(true)} style={{
+                  padding:"10px 8px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+                  border:`2px solid ${noEmail?"#f59e0b":"#374151"}`,
+                  background:noEmail?"#f59e0b22":"#1f2937",
+                  color:noEmail?"#f59e0b":"#6b7280",
+                }}>
+                  👤 Ohne Login<br/>
+                  <span style={{fontSize:10,fontWeight:400,opacity:.7}}>Nur Trainer trägt Ergebnisse ein</span>
+                </button>
               </div>
-            ))}
-            <button onClick={addPlayer} disabled={addingUser||!newName.trim()||!newEmail.trim()||!newPass.trim()} style={{
-              width:"100%",padding:11,
-              background:(addingUser||!newName.trim()||!newEmail.trim()||!newPass.trim())?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
-              border:"none",borderRadius:9,
-              color:(addingUser||!newName.trim()||!newEmail.trim()||!newPass.trim())?"#6b7280":"#fff",
-              fontSize:14,fontWeight:700,cursor:(addingUser||!newName.trim()||!newEmail.trim()||!newPass.trim())?"not-allowed":"pointer",
-            }}>{addingUser?"Wird erstellt…":"Spieler-Konto erstellen"}</button>
+            </div>
+
+            {/* E-Mail + Passwort — nur wenn Login gewünscht */}
+            {!noEmail && (
+              <>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>E-Mail</label>
+                  <input type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)}
+                    placeholder="spieler@email.de"
+                    style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>Passwort</label>
+                  <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)}
+                    placeholder="Mindestens 6 Zeichen"
+                    style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+              </>
+            )}
+
+            {/* Hinweis bei kein Login */}
+            {noEmail && (
+              <div style={{background:"#f59e0b11",border:"1px solid #f59e0b33",borderRadius:9,padding:"10px 12px",marginBottom:14,fontSize:12,color:"#f59e0b",lineHeight:1.6}}>
+                👤 Dieser Spieler bekommt keinen Login.<br/>
+                <span style={{color:"#9ca3af"}}>Er erscheint in Rangliste & Battle, kann sich aber nicht selbst anmelden. Nur du als Trainer kannst seine Sterne eintragen.</span>
+              </div>
+            )}
+
+            {userError&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{userError}</div>}
+
+            <button onClick={addPlayer}
+              disabled={addingUser||!newName.trim()||(!noEmail&&(!newEmail.trim()||!newPass.trim()))}
+              style={{
+                width:"100%",padding:11,
+                background:(addingUser||!newName.trim()||(!noEmail&&(!newEmail.trim()||!newPass.trim())))
+                  ?"#1f2937"
+                  :`linear-gradient(135deg,${noEmail?"#f59e0b,#d97706":"#10b981,#059669"})`,
+                border:"none",borderRadius:9,
+                color:(addingUser||!newName.trim()||(!noEmail&&(!newEmail.trim()||!newPass.trim())))?"#6b7280":"#fff",
+                fontSize:14,fontWeight:700,
+                cursor:(addingUser||!newName.trim()||(!noEmail&&(!newEmail.trim()||!newPass.trim())))?"not-allowed":"pointer",
+              }}>
+              {addingUser?"Wird erstellt…": noEmail?"👤 Spieler ohne Login anlegen":"📧 Spieler-Konto erstellen"}
+            </button>
+
             <div style={{fontSize:11,color:"#6b7280",marginTop:10,lineHeight:1.5}}>
-              ℹ️ Der Spieler kann sich mit dieser E-Mail & diesem Passwort anmelden und seine Ergebnisse einsehen.
+              {noEmail
+                ? "ℹ️ Der Spieler wird in der Rangliste angezeigt, kann sich aber nicht einloggen."
+                : "ℹ️ Der Spieler kann sich mit dieser E-Mail & Passwort selbst anmelden."}
             </div>
           </div>
-          {/* existing players list */}
           {players.length>0&&(
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",marginBottom:10}}>Alle Spieler ({players.length})</div>
@@ -646,9 +818,16 @@ function AdminPanel({ user, players, onSignOut }) {
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
                   <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
                   <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
-                  <span style={{flex:1,fontSize:13,fontWeight:600}}>{p.name}</span>
-                  <span style={{fontSize:11,color:"#6b7280"}}>{p.email}</span>
-                  <span style={{fontSize:12,color:"#6b7280"}}>{getAward(p).totalStars} ★</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#e5e7eb"}}>{p.name}</div>
+                    <div style={{fontSize:10,color:"#6b7280",marginTop:1,display:"flex",alignItems:"center",gap:4}}>
+                      {p.noLogin
+                        ? <span style={{color:"#f59e0b"}}>👤 Kein Login</span>
+                        : <span style={{color:"#10b981"}}>📧 {p.email}</span>
+                      }
+                    </div>
+                  </div>
+                  <span style={{fontSize:12,color:"#6b7280",flexShrink:0}}>{getAward(p).totalStars} ★</span>
                   <button onClick={()=>setAvatarPickerFor(p.id)} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✏️</button>
                   <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>🗑️</button>
                 </div>
@@ -841,46 +1020,30 @@ function PlayerView({ user, players, onSignOut }) {
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [authUser,  setAuthUser]  = useState(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [authUser,  setAuthUser]  = useState(undefined); // undefined = noch nicht geprüft
   const [players,   setPlayers]   = useState([]);
   const [loginErr,  setLoginErr]  = useState("");
   const [loginLoad, setLoginLoad] = useState(false);
-  const [role,      setRole]      = useState(null); // "admin" | "player" | null
-  const [roleReady, setRoleReady] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
+  const [isAdmin,   setIsAdmin]   = useState(false);
 
-  // Auth listener
+  // Auth listener — so einfach wie möglich
   useEffect(()=>{
-    const unsub = onAuthStateChanged(auth, async u=>{
-      setAuthUser(u);
-      setAuthReady(true);
-      if (!u) { setRole(null); setRoleReady(true); return; }
-
-      // 1) Check by email list (lowercase, trimmed)
-      if (checkIsAdminByEmail(u.email)) {
-        setRole("admin"); setRoleReady(true); return;
-      }
-
-      // 2) Check Firestore for role field on trainer doc
-      try {
-        const trainerDoc = await getDoc(doc(db, "trainers", u.uid));
-        if (trainerDoc.exists() && trainerDoc.data().role === "admin") {
-          setRole("admin"); setRoleReady(true); return;
-        }
-      } catch(e) { /* ignore, may not exist */ }
-
-      // 3) Default to player
-      setRole("player"); setRoleReady(true);
+    const unsub = onAuthStateChanged(auth, u => {
+      setAuthUser(u || null);
+      if (!u) { setIsAdmin(false); return; }
+      // Admin-Check nur per E-Mail (lowercase)
+      setIsAdmin(checkIsAdminByEmail(u.email));
     });
     return unsub;
   },[]);
 
-  // Firestore real-time listener for players
+  // Spieler in Echtzeit laden
   useEffect(()=>{
     if (!authUser) return;
     const unsub = onSnapshot(collection(db,"players"), snap=>{
       setPlayers(snap.docs.map(d=>d.data()));
+    }, err => {
+      console.error("Firestore Fehler:", err.message);
     });
     return unsub;
   },[authUser]);
@@ -895,101 +1058,30 @@ export default function App() {
       else if (e.code==="auth/invalid-email")
         setLoginErr("Ungültige E-Mail-Adresse.");
       else
-        setLoginErr("Fehler beim Anmelden: " + e.message);
+        setLoginErr("Fehler: " + e.message);
     }
     setLoginLoad(false);
   }
 
-  async function makeAdminInFirestore() {
-    // Trainer kann sich selbst zum Admin machen über diesen Button
-    if (!authUser) return;
-    try {
-      await setDoc(doc(db, "trainers", authUser.uid), {
-        uid: authUser.uid, email: authUser.email, role: "admin"
-      });
-      setRole("admin");
-    } catch(e) { alert("Fehler: " + e.message); }
-  }
-
   async function handleSignOut() {
     await signOut(auth);
-    setPlayers([]); setRole(null); setRoleReady(false);
+    setPlayers([]); setIsAdmin(false);
   }
 
-  // Loading
-  if (!authReady || !roleReady) return (
-    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
-      <div style={{fontSize:40}}>🏓</div>
-      <div style={{fontSize:13,color:"#6b7280"}}>⏳ Laden…</div>
+  // Noch nicht geprüft → Ladebildschirm
+  if (authUser === undefined) return (
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:48}}>🏓</div>
+      <div style={{fontSize:14,color:"#6b7280"}}>TTC Niederzeuzheim wird geladen…</div>
     </div>
   );
 
+  // Nicht angemeldet → Login
   if (!authUser) return <LoginScreen onLogin={handleLogin} error={loginErr} loading={loginLoad}/>;
 
-  // ── Trainer-Hilfe-Bildschirm wenn Rolle nicht erkannt ──
-  if (role !== "admin" && role !== "player") return (
-    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{maxWidth:360,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:40,marginBottom:12}}>⚙️</div>
-        <div style={{fontSize:16,fontWeight:700,color:"#e5e7eb",marginBottom:8}}>Rolle wird ermittelt…</div>
-        <button onClick={handleSignOut} style={{padding:"8px 16px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:13,cursor:"pointer",marginTop:16}}>Abmelden</button>
-      </div>
-    </div>
-  );
+  // Angemeldet als Trainer
+  if (isAdmin) return <AdminPanel user={authUser} players={players} onSignOut={handleSignOut}/>;
 
-  // ── Trainer sieht Spieler-Ansicht → Notfall-Hilfe-Bildschirm ──
-  if (role === "player" && !players.find(p=>p.email?.toLowerCase()===authUser.email?.toLowerCase())) {
-    // Prüfe ob das eigentlich ein Trainer sein sollte
-    return (
-      <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-        <div style={{maxWidth:400,width:"100%"}}>
-          <div style={{background:"#111827",border:"1px solid #374151",borderRadius:16,padding:24,textAlign:"center"}}>
-            <div style={{fontSize:40,marginBottom:12}}>🔑</div>
-            <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>Bist du ein Trainer?</div>
-            <div style={{fontSize:13,color:"#6b7280",marginBottom:6,lineHeight:1.6}}>
-              Angemeldet als:<br/>
-              <b style={{color:"#10b981"}}>{authUser.email}</b>
-            </div>
-            <div style={{fontSize:12,color:"#6b7280",marginBottom:20,lineHeight:1.6}}>
-              Wenn du ein Trainer bist, klicke auf den Button unten.<br/>
-              Das löst das Problem dauerhaft.
-            </div>
-            <button onClick={makeAdminInFirestore} style={{
-              width:"100%",padding:12,marginBottom:10,
-              background:"linear-gradient(135deg,#10b981,#059669)",
-              border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",
-            }}>✅ Ja, ich bin Trainer — Zugang freischalten</button>
-
-            <button onClick={()=>setShowDebug(!showDebug)} style={{
-              width:"100%",padding:8,background:"transparent",border:"1px solid #374151",
-              borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:10,
-            }}>🔍 Diagnose-Info {showDebug?"ausblenden":"anzeigen"}</button>
-
-            {showDebug&&(
-              <div style={{background:"#0d1117",borderRadius:8,padding:12,textAlign:"left",marginBottom:12}}>
-                <div style={{fontSize:11,color:"#9ca3af",marginBottom:6,fontWeight:700}}>Diagnose:</div>
-                <div style={{fontSize:11,color:"#6b7280",lineHeight:1.8}}>
-                  <div>Firebase E-Mail: <b style={{color:"#f59e0b"}}>{authUser.email}</b></div>
-                  <div>Firebase UID: <b style={{color:"#f59e0b"}}>{authUser.uid}</b></div>
-                  <div>Erkannte Rolle: <b style={{color:"#ef4444"}}>{role}</b></div>
-                  <div style={{marginTop:6,color:"#4b5563"}}>
-                    ADMIN_EMAILS enthält:<br/>
-                    {ADMIN_EMAILS.map(e=><span key={e} style={{display:"block",color:"#6b7280"}}>→ "{e}"</span>)}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <button onClick={handleSignOut} style={{
-              width:"100%",padding:8,background:"transparent",border:"1px solid #374151",
-              borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",
-            }}>Abmelden</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (role === "admin") return <AdminPanel user={authUser} players={players} onSignOut={handleSignOut}/>;
+  // Angemeldet als Spieler
   return <PlayerView user={authUser} players={players} onSignOut={handleSignOut}/>;
 }
