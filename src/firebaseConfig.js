@@ -1,11 +1,12 @@
 // firebaseConfig.js
-// ⚠️ Diese Datei mit deinen echten Firebase-Daten befüllen (siehe Anleitung)
+// Liest die Firebase-Zugangsdaten aus Netlify-Umgebungsvariablen
+// → Der API-Key steht damit nicht mehr direkt im Code
 
 export const firebaseConfig = {
-  apiKey:            "AIzaSyCv6t1ehT4h4fSdnAY3SCVdynmy4WwU-OQ",
-  authDomain:        "tt-training-kids.firebaseapp.com",
-  projectId:         "tt-training-kids",
-  storageBucket:     "tt-training-kids.firebasestorage.app",
-  messagingSenderId: "442936541974",
-  appId:             "1:442936541974:web:90e1dd9866d211ee56c637",
+  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             process.env.REACT_APP_FIREBASE_APP_ID,
 };
