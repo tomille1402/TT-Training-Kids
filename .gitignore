@@ -1,0 +1,6 @@
+# Firebase Konfiguration — wird lokal gehalten
+src/firebaseConfig.js
+
+# Build-Ordner
+build/
+node_modules/
