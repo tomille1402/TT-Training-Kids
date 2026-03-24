@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 // ─── FIREBASE CONFIG ─────────────────────────────────────────────────────────
+// Werte kommen aus Netlify-Umgebungsvariablen
 import { firebaseConfig } from "./firebaseConfig";
 
 // Haupt-App (für Trainer-Login)
