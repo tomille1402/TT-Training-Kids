@@ -25,6 +25,7 @@ const ADMIN_EMAILS = [
   "kira@meilinger.net",
   "joerg.bonkowski@web.de",
   "dominik.horz@gmx.de", 
+  "christina@rohschuermann.de", 
   // weitere Trainer hier hinzufügen:
   // "trainer2@ttc-niederzeuzheim.de",
 ];
