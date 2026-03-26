@@ -26,11 +26,9 @@ const authHelper = getAuth(appHelper);
 
 // Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
 const ADMIN_EMAILS = [
- "thomas@meilinger.net",
+  "trainer@ttc-niederzeuzheim.de",
   // weitere Trainer hier hinzufügen:
-  "joerg.bonkowski@web.de",
-  "kira@meilinger.net",
-  "dominik.horz@gmx.de",
+  // "trainer2@ttc-niederzeuzheim.de",
 ];
 
 // Robuster Admin-Check: vergleicht immer in Kleinbuchstaben
