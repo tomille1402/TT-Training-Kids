@@ -17,17 +17,16 @@ const db         = getFirestore(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
-// Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
+// ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
   "thomas@meilinger.net",
   "kira@meilinger.net",
   "joerg.bonkowski@web.de",
-  "dominik.horz@gmx.de", 
-  "christina@rohschuermann.de", 
+  "dominik.horz@gmx.de",
+  "christina@rohschuermann.de",
   // weitere Trainer hier hinzufügen:
   // "trainer2@ttc-niederzeuzheim.de",
 ];
-
 function isAdminEmail(email) {
   if (!email) return false;
   return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
@@ -766,48 +765,65 @@ function TeilnahmeTab({players,attendance}) {
   },[]);
 
   function getStats(player) {
-    const days = getTrainingDaysForGroup(player.group||"Anfänger");
+    const group = player.group||"Anfänger";
+    const days = getTrainingDaysForGroup(group);
     const today = new Date(); today.setHours(0,0,0,0);
-    // Punkt 2: Individuellen Spieler-Zeitraum berücksichtigen (playerStart/playerEnd),
-    // fallback auf globalen Zeitraum
+
+    // Individuellen Zeitraum berücksichtigen, fallback auf globalen
     const pStart = player.trainingStart || trainingRange.start || null;
     const pEnd   = player.trainingEnd   || trainingRange.end   || null;
     const rangeStart = pStart ? new Date(pStart) : null;
     const rangeEnd   = pEnd   ? new Date(pEnd)   : null;
+
+    // Nur vergangene Tage im erlaubten Zeitraum
     const pastDays = days.filter(d=>{
-      const dt=new Date(d);
-      if (dt>today) return false;
-      if (rangeStart && dt<rangeStart) return false;
-      if (rangeEnd   && dt>rangeEnd)   return false;
+      const dt = new Date(d);
+      if (dt > today) return false;
+      if (rangeStart && dt < rangeStart) return false;
+      if (rangeEnd   && dt > rangeEnd)   return false;
       return true;
     });
+
     if (!pastDays.length) return {pct:0,present:0,total:0,excused:0,unexcused:0};
-    let present=0,excused=0,unexcused=0;
+
+    let present=0, excused=0, unexcused=0, total=0;
+
     for (const d of pastDays) {
       const session = attendance[d];
-      // Kein Training an diesem Tag → nicht zählen
-      if (session && session.took_place===false) continue;
-      // Punkt 1: Anwesenheit korrekt auslesen
-      // Wenn session existiert und Anwesenheit erfasst wurde
-      if (session && session.attendances) {
-        const val = session.attendances[player.id];
-        if (val===undefined) continue; // noch nicht erfasst → nicht zählen
-        if (val==="a") present++;
-        else if (val==="e") excused++;
-        else unexcused++;
+
+      // Kein Training an diesem Tag → überspringen
+      if (session && session.took_place === false) continue;
+
+      // Training hat stattgefunden (oder keine Session → Training angenommen)
+      // Nur zählen wenn eine Session existiert (Trainer hat erfasst)
+      if (!session) continue;
+
+      total++;
+
+      // Anwesenheit des Spielers auslesen
+      const att = session.attendances;
+      if (!att) {
+        // Session existiert aber keine attendances → als anwesend werten
+        present++;
+        continue;
       }
-      // Wenn keine Session existiert → noch nicht erfasst → nicht zählen
+
+      const val = att[player.id];
+      if (val === undefined || val === null) {
+        // Spieler nicht in dieser Session → als anwesend werten
+        // (z.B. wenn Spieler später angelegt wurde oder "Alle anwesend" implizit)
+        present++;
+      } else if (val === "a") {
+        present++;
+      } else if (val === "e") {
+        excused++;
+      } else {
+        unexcused++;
+      }
     }
-    // Punkt 1: total = Tage an denen Training stattfand UND Anwesenheit erfasst wurde
-    const total = pastDays.filter(d=>{
-      const s=attendance[d];
-      if (!s) return false;                     // keine Daten → nicht zählen
-      if (s.took_place===false) return false;   // kein Training → nicht zählen
-      if (!s.attendances) return false;         // keine Anwesenheiten → nicht zählen
-      return s.attendances[player.id]!==undefined; // nur wenn Spieler erfasst
-    }).length;
-    const pct = total>0?Math.round((present/total)*100):0;
-    return {pct,present,total,excused,unexcused};
+
+    const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+    return {pct, present, total, excused, unexcused};
   }
 
   const ranked = [...nonTrainers].map(p=>({...p,...getStats(p)})).sort((a,b)=>b.pct-a.pct);
@@ -1281,9 +1297,12 @@ function PlayerView({user,players,attendance,onSignOut}) {
   let present=0,total=0;
   for (const d of pastDays) {
     const s=attendance[d];
-    if (s&&s.took_place===false) continue;
+    if (s&&s.took_place===false) continue; // kein Training
+    if (!s) continue; // noch nicht erfasst → nicht zählen
     total++;
-    if (!s||s.attendances?.[myPlayer.id]==="a") present++;
+    const val = s.attendances?.[myPlayer.id];
+    // undefined/null → implizit anwesend; "a" → anwesend
+    if (val===undefined||val===null||val==="a") present++;
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
@@ -1430,13 +1449,11 @@ function PlayerView({user,players,attendance,onSignOut}) {
     </div>}
 
     {/* ── TEILNAHME (Spielerbereich) ── */}
-    {activeTab==="teilnahme"&&<div style={{padding:14}}>
-      <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
-      <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
-      {groupPeers.map((player,idx)=>{
-        // Anwesenheit berechnen
+    {activeTab==="teilnahme"&&(()=>{
+      // Stats vorab berechnen, dann absteigend nach % sortieren
+      const today2=new Date();today2.setHours(0,0,0,0);
+      const rankedPeers=[...groupPeers].map(player=>{
         const days=getTrainingDaysForGroup(player.group||"Anfänger");
-        const today2=new Date();today2.setHours(0,0,0,0);
         const pStart=player.trainingStart||null;
         const pEnd=player.trainingEnd||null;
         const pastD=days.filter(d=>{
@@ -1450,40 +1467,51 @@ function PlayerView({user,players,attendance,onSignOut}) {
         for(const d of pastD){
           const s=attendance[d];
           if(s&&s.took_place===false)continue;
-          if(s&&s.attendances&&s.attendances[player.id]!==undefined){
-            tot++;
-            if(s.attendances[player.id]==="a")pres++;
-            else if(s.attendances[player.id]==="e")exc++;
-            else unex++;
-          }
+          if(!s)continue;
+          tot++;
+          const att=s.attendances;
+          if(!att){pres++;continue;}
+          const val=att[player.id];
+          if(val===undefined||val===null||val==="a")pres++;
+          else if(val==="e")exc++;
+          else unex++;
         }
         const pct=tot>0?Math.round((pres/tot)*100):0;
-        const isMe=player.id===myPlayer.id;
-        const medal=pct>90?"🥇":pct>80?"🥈":pct>70?"🥉":null;
-        return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-          {isMe&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:2,background:myPlayer.color,borderRadius:2}}/>}
-          <Avatar avatar={player.avatar} color={player.color} size={36}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
-              <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
-              {medal&&<span style={{fontSize:18}}>{medal}</span>}
+        return {...player,pct,pres,tot,exc,unex};
+      }).sort((a,b)=>b.pct-a.pct);
+
+      return <div style={{padding:14}}>
+        <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
+        <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
+        {rankedPeers.map((player,idx)=>{
+          const {pct,pres,tot,exc,unex}=player;
+          const isMe=player.id===myPlayer.id;
+          const medal=pct>90?"🥇":pct>80?"🥈":pct>70?"🥉":null;
+          return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,position:"relative"}}>
+            {isMe&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:myPlayer.color,borderRadius:"12px 12px 0 0"}}/>}
+            <Avatar avatar={player.avatar} color={player.color} size={36}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
+                <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
+                {medal&&<span style={{fontSize:18}}>{medal}</span>}
+              </div>
+              <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
+                <div style={{width:`${pct}%`,height:"100%",background:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",borderRadius:6}}/>
+              </div>
+              <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280"}}>
+                <span>✓ {pres} anwesend</span>
+                <span>{exc} entsch.</span>
+                <span>{unex} unentsch.</span>
+              </div>
             </div>
-            <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
-              <div style={{width:`${pct}%`,height:"100%",background:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",borderRadius:6}}/>
+            <div style={{flexShrink:0,textAlign:"center",background:"#0d1117",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
+              <div style={{fontSize:20,fontWeight:900,color:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{pct}%</div>
+              <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>Beteiligung</div>
             </div>
-            <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280"}}>
-              <span>✓ {pres} anwesend</span>
-              <span>{exc} entsch.</span>
-              <span>{unex} unentsch.</span>
-            </div>
-          </div>
-          <div style={{flexShrink:0,textAlign:"center",background:"#0d1117",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
-            <div style={{fontSize:20,fontWeight:900,color:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{pct}%</div>
-            <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>Beteiligung</div>
-          </div>
-        </div>;
-      })}
-    </div>}
+          </div>;
+        })}
+      </div>;
+    })()}
 
     {/* ── RANGLISTE (Punkt 7: nur eigene Gruppe) ── */}
     {activeTab==="ranking"&&<div style={{padding:14}}>
