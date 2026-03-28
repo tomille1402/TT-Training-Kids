@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, doc, setDoc, collection,
-  onSnapshot, deleteDoc, updateDoc, getDoc
+  onSnapshot, deleteDoc, updateDoc, getDoc, getDocs
 } from "firebase/firestore";
 import { firebaseConfig } from "./firebaseConfig";
 
@@ -17,36 +17,46 @@ const db         = getFirestore(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
-// Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
+// ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
 const ADMIN_EMAILS = [
-  "thomas@meilinger.net",
-  "kira@meilinger.net",
-  "joerg.bonkowski@web.de",
-  "dominik.horz@gmx.de", 
-  "christina@rohschuermann.de", 
-  // weitere Trainer hier hinzufügen:
-  // "trainer2@ttc-niederzeuzheim.de",
+  "trainer@ttc-niederzeuzheim.de",
 ];
-
 function isAdminEmail(email) {
   if (!email) return false;
   return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
 }
 
 // ─── TRAINING DATES 2026 ─────────────────────────────────────────────────────
-// Hessische Schulferien 2026 (vom Nutzer bestätigt)
+// Hessische Schulferien 2026 — exakte Termine laut Kultusministerium
 const FERIEN = [
-  ["2026-04-03","2026-04-06"], // Ostern
-  ["2026-05-22","2026-05-30"], // Pfingsten
-  ["2026-07-20","2026-08-28"], // Sommer
-  ["2026-10-05","2026-10-16"], // Herbst
-  ["2026-12-23","2026-12-31"], // Weihnachten
+  // Weihnachtsferien 2025/26: 22.12.2025–09.01.2026
+  // → Nur der Teil in 2026 ist relevant: 01.01–09.01.2026
+  ["2026-01-01","2026-01-09"],
+
+  // Osterferien: 30.03.–10.04.2026
+  ["2026-03-30","2026-04-10"],
+
+  // Sommerferien: 29.06.–07.08.2026
+  ["2026-06-29","2026-08-07"],
+
+  // Herbstferien: 05.10.–17.10.2026
+  ["2026-10-05","2026-10-17"],
+
+  // Weihnachtsferien 2026/27: 23.12.2026–12.01.2027
+  // → Nur der Teil in 2026: 23.12.–31.12.2026
+  ["2026-12-23","2026-12-31"],
 ];
-// Hessische Feiertage 2026 die auf Di oder Fr fallen
+
+// Hessische Feiertage 2026 die auf Dienstag oder Freitag fallen
+// + bewegliche Schulfreie Tage (Brückentage)
 const FEIERTAGE = new Set([
-  "2026-01-01", // Neujahr (Do) – kein Di/Fr aber sicher
+  // Feiertage auf Di/Fr:
   "2026-05-01", // Tag der Arbeit (Fr)
   "2026-12-25", // 1. Weihnachtstag (Fr)
+
+  // Bewegliche Ferientage Hessen 2026 (schulfreie Brückentage):
+  "2026-05-15", // Fr nach Christi Himmelfahrt (Do 14.05.)
+  "2026-06-05", // Fr nach Fronleichnam (Do 04.06.)
 ]);
 
 function inFerien(dateStr) {
@@ -178,8 +188,11 @@ const AVATARS = [
   "🏓","🐯","🦁","🐻","🦊","🐼","🐸","🦋","🐬","🦄",
   "🐙","🦅","🦈","🐲","🌟","🔥","⚡","🎯","🚀","🏆",
   "💎","🎸","🤖","👾","🦸","🧙","🎃","🌈","🐺","🦝",
-  "🐧","🦜","🦩","🐊","🦋","🐝","🦔","🐴","🦌","🐬",
+  "🐧","🦜","🦩","🐊","🐝","🦔","🐴","🦌","🐿","🦦",
   "🎽","⚽","🏀","🎾","🥊","🎮","🎲","🎪","🎭","🏅",
+  // 20 weitere Tier-Avatare
+  "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
+  "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
 const GROUPS = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
 const ABSENCE_REASONS = [
@@ -521,7 +534,7 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
     })()}
 
     {/* ── TRAINING TAB ── */}
-    {activeTab==="training"&&<AdminTrainingTab players={activePlayers} attendance={attendance} showToast={showToast}/>}
+    {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={groupFilters} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB ── */}
     {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance}/>}
@@ -584,7 +597,7 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
 }
 
 // ─── ADMIN TRAINING TAB ───────────────────────────────────────────────────────
-function AdminTrainingTab({players,attendance,showToast}) {
+function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
   const nearest = getNearestTrainingDay(allDays);
   const [selDate,setSelDate]=useState(nearest);
@@ -617,9 +630,12 @@ function AdminTrainingTab({players,attendance,showToast}) {
   }
 
   const isFriday = selDate ? new Date(selDate).getDay()===5 : false;
+  // Punkt 5: Gruppenfilter anwenden
   const relevantPlayers = players.filter(p=>{
-    if (p.group==="Trainer") return true;
-    if (isFriday) return p.group==="Leistungsgruppe";
+    if (p.group==="Trainer") return true; // Trainer immer anzeigen
+    if (isFriday && p.group!=="Leistungsgruppe") return false; // Freitags nur Leistungsgruppe
+    // Gruppenfilter anwenden (falls übergeben)
+    if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     return true;
   });
   const groupOrder = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
@@ -745,9 +761,12 @@ function TeilnahmeTab({players,attendance}) {
   function getStats(player) {
     const days = getTrainingDaysForGroup(player.group||"Anfänger");
     const today = new Date(); today.setHours(0,0,0,0);
-    // Punkt 4: Zeitraum einschränken
-    const rangeStart = trainingRange.start ? new Date(trainingRange.start) : null;
-    const rangeEnd   = trainingRange.end   ? new Date(trainingRange.end)   : null;
+    // Punkt 2: Individuellen Spieler-Zeitraum berücksichtigen (playerStart/playerEnd),
+    // fallback auf globalen Zeitraum
+    const pStart = player.trainingStart || trainingRange.start || null;
+    const pEnd   = player.trainingEnd   || trainingRange.end   || null;
+    const rangeStart = pStart ? new Date(pStart) : null;
+    const rangeEnd   = pEnd   ? new Date(pEnd)   : null;
     const pastDays = days.filter(d=>{
       const dt=new Date(d);
       if (dt>today) return false;
@@ -759,13 +778,27 @@ function TeilnahmeTab({players,attendance}) {
     let present=0,excused=0,unexcused=0;
     for (const d of pastDays) {
       const session = attendance[d];
-      if (!session||!session.took_place) continue;
-      const val = session.attendances?.[player.id]||"a";
-      if (val==="a") present++;
-      else if (val==="e") excused++;
-      else unexcused++;
+      // Kein Training an diesem Tag → nicht zählen
+      if (session && session.took_place===false) continue;
+      // Punkt 1: Anwesenheit korrekt auslesen
+      // Wenn session existiert und Anwesenheit erfasst wurde
+      if (session && session.attendances) {
+        const val = session.attendances[player.id];
+        if (val===undefined) continue; // noch nicht erfasst → nicht zählen
+        if (val==="a") present++;
+        else if (val==="e") excused++;
+        else unexcused++;
+      }
+      // Wenn keine Session existiert → noch nicht erfasst → nicht zählen
     }
-    const total = pastDays.filter(d=>{ const s=attendance[d]; return !s||s.took_place!==false; }).length;
+    // Punkt 1: total = Tage an denen Training stattfand UND Anwesenheit erfasst wurde
+    const total = pastDays.filter(d=>{
+      const s=attendance[d];
+      if (!s) return false;                     // keine Daten → nicht zählen
+      if (s.took_place===false) return false;   // kein Training → nicht zählen
+      if (!s.attendances) return false;         // keine Anwesenheiten → nicht zählen
+      return s.attendances[player.id]!==undefined; // nur wenn Spieler erfasst
+    }).length;
     const pct = total>0?Math.round((present/total)*100):0;
     return {pct,present,total,excused,unexcused};
   }
@@ -850,10 +883,16 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
     setSaving(true);
     try {
       await updateDoc(doc(db,"players",editPlayer.id),{
-        firstName:editPlayer.firstName||"",lastName:editPlayer.lastName||"",
-        gender:editPlayer.gender||"m",email:editPlayer.email||"",
-        avatar:editPlayer.avatar||"🏓",group:editPlayer.group||"Anfänger",
-        status:editPlayer.status||"aktiv",
+        firstName:    editPlayer.firstName||"",
+        lastName:     editPlayer.lastName||"",
+        gender:       editPlayer.gender||"m",
+        email:        editPlayer.email||"",
+        avatar:       editPlayer.avatar||"🏓",
+        group:        editPlayer.group||"Anfänger",
+        status:       editPlayer.status||"aktiv",
+        birthdate:    editPlayer.birthdate||"",      // Punkt 4
+        trainingStart:editPlayer.trainingStart||"",  // Punkt 2 individuell
+        trainingEnd:  editPlayer.trainingEnd||"",    // Punkt 2 individuell
       });
       showToast("Gespeichert","💾"); setEditPlayer(null);
     } catch(e){showToast("Fehler: "+e.message,"❌");}
@@ -866,23 +905,36 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
     if (upgradePass.length<6){setUpgradeErr("Passwort mind. 6 Zeichen.");return;}
     setUpgrading(true); setUpgradeErr("");
     try {
-      // Neuen Auth-Account über authHelper erstellen (Trainer bleibt eingeloggt)
       const {user:newUser} = await createUserWithEmailAndPassword(authHelper, upgradeEmail.trim(), upgradePass.trim());
       await signOut(authHelper);
+      const oldId = loginUpgradeFor.id;
+      const newId = newUser.uid;
 
-      // Firestore: alten Eintrag löschen, neuen mit echter UID anlegen
-      // (Die UID muss mit dem Auth-Account übereinstimmen für den Login)
-      const oldData = {...loginUpgradeFor};
-      await deleteDoc(doc(db,"players", oldData.id));
-      await setDoc(doc(db,"players", newUser.uid), {
-        ...oldData,
-        id: newUser.uid,
+      // 1) Neues Spieler-Dokument anlegen (alle Daten inkl. Sterne übernehmen)
+      await setDoc(doc(db,"players", newId), {
+        ...loginUpgradeFor,
+        id: newId,
         email: upgradeEmail.trim(),
         noLogin: false,
         updatedAt: Date.now(),
       });
 
-      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login!`,"🎉");
+      // 2) Altes Spieler-Dokument löschen
+      await deleteDoc(doc(db,"players", oldId));
+
+      // 3) Punkt 3: Anwesenheiten migrieren
+      const attSnap = await getDocs(collection(db,"attendance"));
+      for (const attDoc of attSnap.docs) {
+        const data = attDoc.data();
+        if (data.attendances && data.attendances[oldId] !== undefined) {
+          const newAttendances = {...data.attendances};
+          newAttendances[newId] = newAttendances[oldId];
+          delete newAttendances[oldId];
+          await updateDoc(doc(db,"attendance",attDoc.id), {attendances: newAttendances});
+        }
+      }
+
+      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login — Anwesenheiten migriert!`,"🎉");
       setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
     } catch(e) {
       if (e.code==="auth/email-already-in-use") setUpgradeErr("Diese E-Mail wird bereits verwendet.");
@@ -1123,6 +1175,31 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
               </div>
+              {/* Punkt 4: Geburtsdatum */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Geburtsdatum</label>
+                <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
+                  style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              {/* Punkt 2: Individueller Trainingszeitraum */}
+              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
+                <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div>
+                    <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Start Training</label>
+                    <input type="date" value={editPlayer.trainingStart||""} min="2026-01-01" max="2026-12-31"
+                      onChange={e=>setEditPlayer(prev=>({...prev,trainingStart:e.target.value}))}
+                      style={{width:"100%",padding:"8px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Ende Training</label>
+                    <input type="date" value={editPlayer.trainingEnd||""} min="2026-01-01" max="2026-12-31"
+                      onChange={e=>setEditPlayer(prev=>({...prev,trainingEnd:e.target.value}))}
+                      style={{width:"100%",padding:"8px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:10,color:"#4b5563",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
+              </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{saving?"Speichert…":"💾 Speichern"}</button>
                 <button onClick={()=>setEditPlayer(null)} style={{flex:1,padding:10,background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
@@ -1158,11 +1235,19 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
 function PlayerView({user,players,attendance,onSignOut}) {
   const myPlayer=players.find(p=>p.email===user.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
-  const sortedRanking=[...activePlayers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const [activeTab,setActiveTab]=useState("stats");
-  const [expandedEx,setExpandedEx]=useState(null); // Punkt 8
-  const [showAvatarPicker,setShowAvatarPicker]=useState(false); // Punkt 6
-  const TABS=[{key:"stats",label:"Meine Stats",icon:"⭐"},{key:"training",label:"Training",icon:"📅"},{key:"ranking",label:"Rangliste",icon:"🏆"}];
+  const [expandedEx,setExpandedEx]=useState(null);
+  const [showAvatarPicker,setShowAvatarPicker]=useState(false);
+  // Punkt 6+7: Nur Spieler der eigenen Gruppe
+  const myGroup = myPlayer?.group||"Anfänger";
+  const groupPeers = activePlayers.filter(p=>p.group===myGroup);
+  const sortedRanking=groupPeers.sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  const TABS=[
+    {key:"stats",label:"Meine Stats",icon:"⭐"},
+    {key:"training",label:"Training",icon:"📅"},
+    {key:"teilnahme",label:"Teilnahme",icon:"📊"}, // Punkt 6
+    {key:"ranking",label:"Rangliste",icon:"🏆"},
+  ];
 
   // Punkt 6: Avatar selbst ändern
   async function changeMyAvatar(av) {
@@ -1337,9 +1422,66 @@ function PlayerView({user,players,attendance,onSignOut}) {
       </div>
     </div>}
 
-    {/* ── RANGLISTE ── */}
+    {/* ── TEILNAHME (Spielerbereich) ── */}
+    {activeTab==="teilnahme"&&<div style={{padding:14}}>
+      <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
+      <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
+      {groupPeers.map((player,idx)=>{
+        // Anwesenheit berechnen
+        const days=getTrainingDaysForGroup(player.group||"Anfänger");
+        const today2=new Date();today2.setHours(0,0,0,0);
+        const pStart=player.trainingStart||null;
+        const pEnd=player.trainingEnd||null;
+        const pastD=days.filter(d=>{
+          const dt=new Date(d);
+          if(dt>today2)return false;
+          if(pStart&&dt<new Date(pStart))return false;
+          if(pEnd&&dt>new Date(pEnd))return false;
+          return true;
+        });
+        let pres=0,tot=0,exc=0,unex=0;
+        for(const d of pastD){
+          const s=attendance[d];
+          if(s&&s.took_place===false)continue;
+          if(s&&s.attendances&&s.attendances[player.id]!==undefined){
+            tot++;
+            if(s.attendances[player.id]==="a")pres++;
+            else if(s.attendances[player.id]==="e")exc++;
+            else unex++;
+          }
+        }
+        const pct=tot>0?Math.round((pres/tot)*100):0;
+        const isMe=player.id===myPlayer.id;
+        const medal=pct>90?"🥇":pct>80?"🥈":pct>70?"🥉":null;
+        return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+          {isMe&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:2,background:myPlayer.color,borderRadius:2}}/>}
+          <Avatar avatar={player.avatar} color={player.color} size={36}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
+              <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
+              {medal&&<span style={{fontSize:18}}>{medal}</span>}
+            </div>
+            <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
+              <div style={{width:`${pct}%`,height:"100%",background:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",borderRadius:6}}/>
+            </div>
+            <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280"}}>
+              <span>✓ {pres} anwesend</span>
+              <span>{exc} entsch.</span>
+              <span>{unex} unentsch.</span>
+            </div>
+          </div>
+          <div style={{flexShrink:0,textAlign:"center",background:"#0d1117",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
+            <div style={{fontSize:20,fontWeight:900,color:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{pct}%</div>
+            <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>Beteiligung</div>
+          </div>
+        </div>;
+      })}
+    </div>}
+
+    {/* ── RANGLISTE (Punkt 7: nur eigene Gruppe) ── */}
     {activeTab==="ranking"&&<div style={{padding:14}}>
-      <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏆 Rangliste</div>
+      <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Rangliste</div>
+      <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
       {sortedRanking.map((player,idx)=>{
         const {currentAward,totalStars,isAdvanced}=getAward(player);
         const isMe=player.id===myPlayer.id;
