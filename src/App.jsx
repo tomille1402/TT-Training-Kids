@@ -17,10 +17,17 @@ const db         = getFirestore(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
-// ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
+// Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
 const ADMIN_EMAILS = [
-  "trainer@ttc-niederzeuzheim.de",
+  "thomas@meilinger.net",
+  "kira@meilinger.net",
+  "joerg.bonkowski@web.de",
+  "dominik.horz@gmx.de", 
+  "christina@rohschuermann.de", 
+  // weitere Trainer hier hinzufügen:
+  // "trainer2@ttc-niederzeuzheim.de",
 ];
+
 function isAdminEmail(email) {
   if (!email) return false;
   return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
