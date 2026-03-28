@@ -18,19 +18,9 @@ const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
 // ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
-
-// Admin-E-Mails – hier alle Trainer-E-Mails eintragen (Kleinschreibung egal)
 const ADMIN_EMAILS = [
-  "thomas@meilinger.net",
-  "kira@meilinger.net",
-  "joerg.bonkowski@web.de",
-  "dominik.horz@gmx.de", 
-  "christina@rohschuermann.de", 
-  // weitere Trainer hier hinzufügen:
-  // "trainer2@ttc-niederzeuzheim.de",
+  "trainer@ttc-niederzeuzheim.de",
 ];
-
-
 function isAdminEmail(email) {
   if (!email) return false;
   return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
@@ -177,8 +167,22 @@ const ADVANCED_AWARDS = [
   {stars:175,label:"Diamant Fortgeschrittene",emoji:"💠",color:"#00bfff",note:""},
 ];
 const PLAYER_COLORS = ["#10b981","#3b82f6","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316","#a3e635","#e879f9"];
-const AVATARS = ["🏓","🐯","🦁","🐻","🦊","🐼","🐸","🦋","🐬","🦄","🐙","🦅","🦈","🐲","🌟","🔥","⚡","🎯","🚀","🏆","💎","🎸","🤖","👾","🦸","🧙","🎃","🌈","🐺","🦝"];
+const AVATARS = [
+  "🏓","🐯","🦁","🐻","🦊","🐼","🐸","🦋","🐬","🦄",
+  "🐙","🦅","🦈","🐲","🌟","🔥","⚡","🎯","🚀","🏆",
+  "💎","🎸","🤖","👾","🦸","🧙","🎃","🌈","🐺","🦝",
+  "🐧","🦜","🦩","🐊","🦋","🐝","🦔","🐴","🦌","🐬",
+  "🎽","⚽","🏀","🎾","🥊","🎮","🎲","🎪","🎭","🏅",
+];
 const GROUPS = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
+const ABSENCE_REASONS = [
+  "Halle zu",
+  "Punktspiel",
+  "Schlechtes Wetter",
+  "Teilnahme < 50%",
+  "Trainer verhindert",
+  "Sonstiges",
+];
 
 function getAward(player) {
   const bs = EXERCISES_BEGINNER.reduce((s,ex)=>s+(player.stars?.[ex.id]||0),0);
@@ -190,11 +194,27 @@ function getAward(player) {
   else { for (const a of BEGINNER_AWARDS) if (bs>=a.stars) cur=a; }
   return {currentAward:cur,beginnerStars:bs,advancedStars:as,totalStars:ts,isAdvanced:isAdv};
 }
+
+// Punkt 11: Zeigt immer zuerst nächste Anfänger-Urkunde, dann nächste Fortgeschrittenen-Urkunde
+function nextAwards(player) {
+  const {beginnerStars:bs,advancedStars:as}=getAward(player);
+  const results=[];
+  // Nächste Anfänger-Urkunde (solange < 50 Punkte)
+  if (bs<50) {
+    for (const a of BEGINNER_AWARDS) {
+      if (bs<a.stars) { results.push({...a,needed:a.stars-bs,type:"beginner"}); break; }
+    }
+  }
+  // Nächste Fortgeschrittene-Urkunde
+  for (const a of ADVANCED_AWARDS) {
+    if (as<a.stars) { results.push({...a,needed:a.stars-as,type:"advanced"}); break; }
+  }
+  return results;
+}
+// Einzelnes nächstes Ziel (für Kompatibilität)
 function nextAward(player) {
-  const {beginnerStars:bs,advancedStars:as,isAdvanced}=getAward(player);
-  if (isAdvanced) { for (const a of ADVANCED_AWARDS) if (as<a.stars) return {...a,needed:a.stars-as}; }
-  else { for (const a of BEGINNER_AWARDS) if (bs<a.stars) return {...a,needed:a.stars-bs}; }
-  return null;
+  const awards=nextAwards(player);
+  return awards.length>0?awards[0]:null;
 }
 
 // ─── UI HELPERS ──────────────────────────────────────────────────────────────
@@ -335,13 +355,21 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
   const [expandedEx,setExpandedEx]=useState(null);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
+  // Punkt 2: Gruppenfilter
+  const [groupFilters,setGroupFilters]=useState({Leistungsgruppe:true,Fortgeschrittene:true,Anfänger:true});
+
+  function toggleGroupFilter(g){setGroupFilters(f=>({...f,[g]:!f[g]}));}
 
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2200);}
 
   const activePlayers = players.filter(p=>p.status!=="passiv");
-  const curPlayer = activePlayers.find(p=>p.id===selectedPlayer)||activePlayers[0];
+  // Punkt 2+3: Gefiltert und alphabetisch sortiert
+  const visiblePlayers = activePlayers
+    .filter(p=>p.group!=="Trainer" && groupFilters[p.group||"Anfänger"])
+    .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
+  const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
-  const sortedRanking = [...activePlayers].filter(p=>p.group!=="Trainer").sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  const sortedRanking = [...visiblePlayers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
 
   async function setStars(playerId,exId,value) {
     setSaving(true);
@@ -368,13 +396,29 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
           <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
+      {/* Punkt 2: Gruppenfilter-Buttons */}
+      <div style={{display:"flex",gap:5,marginBottom:8}}>
+        {["Leistungsgruppe","Fortgeschrittene","Anfänger"].map(g=>{
+          const colors={Leistungsgruppe:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981"};
+          const c=colors[g];
+          const on=groupFilters[g];
+          return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
+            padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+            border:`2px solid ${on?c:c+"44"}`,
+            background:on?c+"22":"transparent",
+            color:on?c:c+"66",
+            transition:"all .15s",
+          }}>{g}</button>;
+        })}
+      </div>
+      {/* Punkt 3: Spieler alphabetisch sortiert */}
       <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-        {activePlayers.filter(p=>p.group!=="Trainer").map(p=>(
+        {visiblePlayers.map(p=>(
           <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
             flexShrink:0,padding:"3px 9px 3px 5px",borderRadius:20,
-            border:`2px solid ${(curPlayer?.id===p.id)&&activeTab==="uebungen"?p.color:"#374151"}`,
-            background:(curPlayer?.id===p.id)&&activeTab==="uebungen"?p.color+"22":"transparent",
-            color:(curPlayer?.id===p.id)&&activeTab==="uebungen"?p.color:"#9ca3af",
+            border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"#374151"}`,
+            background:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color+"22":"transparent",
+            color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"#9ca3af",
             fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
             <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{p.firstName||p.name}
           </button>
@@ -383,7 +427,7 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:100,zIndex:99,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:118,zIndex:99,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -393,8 +437,8 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
 
     {/* ── ÜBUNGEN TAB ── */}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
-      const {currentAward,beginnerStars,advancedStars,totalStars,isAdvanced}=getAward(curPlayer);
-      const next=nextAward(curPlayer);
+      const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
+      const nexts=nextAwards(curPlayer);
       return <div style={{padding:"13px 13px 0"}}>
         <div style={{background:"linear-gradient(135deg,#111827,#1a2332)",border:`1px solid ${curPlayer.color}44`,borderRadius:14,padding:14,marginBottom:13}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:10}}>
@@ -413,12 +457,19 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Anfänger (1–10)</span><span>{beginnerStars}/50 ★</span></div>
             <ProgressBar value={beginnerStars} max={50} color={curPlayer.color}/>
           </div>
-          <div style={{marginBottom:next?10:0}}>
+          <div style={{marginBottom:nexts.length?10:0}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Fortgeschrittene (11–40)</span><span>{advancedStars}/150 ★</span></div>
             <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
           </div>
-          {next&&<div style={{background:"#0d1117",borderRadius:8,padding:"7px 10px",fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-            Nächste Urkunde: <AwardBadge award={next} small/> — noch <b style={{color:"#e5e7eb"}}>{next.needed} Sterne</b>
+          {/* Punkt 11: Alle nächsten Ziele anzeigen */}
+          {nexts.length>0&&<div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
+            {nexts.map((a,i)=>(
+              <div key={i} style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+                <AwardBadge award={a} small/>
+                <span>— noch <b style={{color:"#e5e7eb"}}>{a.needed} Sterne</b></span>
+              </div>
+            ))}
           </div>}
         </div>
         <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
@@ -466,18 +517,18 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
     {activeTab==="training"&&<AdminTrainingTab players={activePlayers} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB ── */}
-    {activeTab==="teilnahme"&&<TeilnahmeTab players={activePlayers} attendance={attendance}/>}
+    {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance}/>}
 
     {/* ── RANGLISTE TAB ── */}
     {activeTab==="rangliste"&&<div style={{padding:13}}>
       <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏆 Rangliste</div>
       {sortedRanking.map((player,idx)=>{
-        const {currentAward,beginnerStars,advancedStars,totalStars,isAdvanced}=getAward(player);
-        const next=nextAward(player);
+        const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(player);
+        const nexts=nextAwards(player);
         const rankEmoji=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`#${idx+1}`;
         return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b55":"#1f2937"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
           {idx===0&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,#f59e0b,#fbbf24)"}}/>}
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
             <span style={{fontSize:18,minWidth:28}}>{rankEmoji}</span>
             <Avatar avatar={player.avatar} color={player.color} size={38}/>
             <div style={{flex:1}}>
@@ -485,10 +536,15 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
                 <span style={{fontSize:14,fontWeight:800,color:"#e5e7eb"}}>{player.firstName} {player.lastName}</span>
                 {currentAward&&<AwardBadge award={currentAward} small/>}
               </div>
-              <div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{player.group||"Anfänger"} · {totalStars} Sterne</div>
+              <div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{player.group||"Anfänger"}</div>
+            </div>
+            {/* Punkt 10: Gesamtsterne prominent */}
+            <div style={{textAlign:"center",background:"linear-gradient(135deg,#1f2937,#111827)",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 14px",minWidth:60}}>
+              <div style={{fontSize:26,fontWeight:900,color:player.color,lineHeight:1}}>{totalStars}</div>
+              <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>★ Sterne</div>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:9}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:nexts.length?9:0}}>
             <div style={{background:"#0d1117",borderRadius:8,padding:"7px 9px"}}>
               <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Anfänger (1–10)</div>
               <div style={{display:"flex",alignItems:"baseline",gap:3}}><span style={{fontSize:17,fontWeight:800,color:player.color}}>{beginnerStars}</span><span style={{fontSize:10,color:"#6b7280"}}>/ 50 ★</span></div>
@@ -500,7 +556,15 @@ function AdminPanel({user,players,attendance,onSignOut,onPlayerAdded}) {
               <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
             </div>
           </div>
-          {next&&<div style={{fontSize:11,color:"#6b7280",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>Nächstes Ziel: <AwardBadge award={next} small/> — noch {next.needed} Sterne</div>}
+          {nexts.length>0&&<div style={{background:"#0d1117",borderRadius:8,padding:"7px 10px",display:"flex",flexDirection:"column",gap:4}}>
+            {nexts.map((a,i)=>(
+              <div key={i} style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+                <AwardBadge award={a} small/>
+                <span>noch {a.needed} ★</span>
+              </div>
+            ))}
+          </div>}
         </div>;
       })}
     </div>}
@@ -526,7 +590,6 @@ function AdminTrainingTab({players,attendance,showToast}) {
     if (existing) {
       setSessionData(existing);
     } else {
-      // Default: alle anwesend
       const defaults = {};
       players.forEach(p=>{ defaults[p.id]="a"; });
       setSessionData({took_place:true,reason:"",attendances:defaults});
@@ -552,8 +615,14 @@ function AdminTrainingTab({players,attendance,showToast}) {
     if (isFriday) return p.group==="Leistungsgruppe";
     return true;
   });
-
   const groupOrder = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
+
+  // Punkt 9: Spaltenköpfe mit Kreisen
+  const COL_HEADERS = [
+    {key:"a", label:"✓", color:"#10b981", title:"Anwesend"},
+    {key:"e", label:"E", color:"#f59e0b", title:"Entschuldigt"},
+    {key:"u", label:"U", color:"#ef4444", title:"Unentschuldigt"},
+  ];
 
   return <div style={{padding:13}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📅 Training erfassen</div>
@@ -564,7 +633,7 @@ function AdminTrainingTab({players,attendance,showToast}) {
       <select value={selDate} onChange={e=>setSelDate(e.target.value)}>
         {allDays.map(d=>{
           const dow=new Date(d).getDay();
-          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${dow===5?" (Freitag – nur Leistungsgruppe)":""}`;
+          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${dow===5?" (Fr – nur Leistungsgruppe)":""}`;
           return <option key={d} value={d}>{label}</option>;
         })}
       </select>
@@ -583,13 +652,12 @@ function AdminTrainingTab({players,attendance,showToast}) {
               color:sessionData.took_place===opt.v?"#10b981":"#6b7280"}}>{opt.l}</button>
           ))}
         </div>
+        {/* Punkt 5: Alphabetisch sortierte Dropdown-Liste */}
         {!sessionData.took_place&&<div style={{marginTop:12}}>
           <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:6}}>Grund</label>
           <select value={sessionData.reason||""} onChange={e=>setSessionData(p=>({...p,reason:e.target.value}))}>
             <option value="">Bitte wählen…</option>
-            <option value="Halle zu">Halle zu</option>
-            <option value="Trainer verhindert">Trainer verhindert</option>
-            <option value="Sonstiges">Sonstiges</option>
+            {ABSENCE_REASONS.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
         </div>}
       </div>
@@ -598,40 +666,47 @@ function AdminTrainingTab({players,attendance,showToast}) {
       {sessionData.took_place&&<div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>Anwesenheit</div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setAll("a")} style={{padding:"4px 10px",borderRadius:7,background:"#10b98122",border:"1px solid #10b98144",color:"#10b981",fontSize:11,fontWeight:600,cursor:"pointer"}}>Alle ✓ anwesend</button>
-          </div>
+          <button onClick={()=>setAll("a")} style={{padding:"4px 10px",borderRadius:7,background:"#10b98122",border:"1px solid #10b98144",color:"#10b981",fontSize:11,fontWeight:600,cursor:"pointer"}}>Alle ✓ anwesend</button>
         </div>
 
-        {/* Header row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 60px 60px 60px",gap:6,marginBottom:8,padding:"0 4px"}}>
+        {/* Punkt 9: Spaltenköpfe als Kreise */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:8,padding:"0 4px"}}>
           <div style={{fontSize:11,color:"#6b7280",fontWeight:700}}>Name</div>
-          {["a","e","u"].map(l=><div key={l} style={{fontSize:11,color:"#6b7280",fontWeight:700,textAlign:"center"}}>{l}</div>)}
+          {COL_HEADERS.map(h=>(
+            <div key={h.key} style={{display:"flex",justifyContent:"center"}}>
+              <div style={{
+                width:36,height:36,borderRadius:"50%",
+                background:h.color+"22",border:`2px solid ${h.color}88`,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:14,fontWeight:800,color:h.color,
+              }} title={h.title}>{h.label}</div>
+            </div>
+          ))}
         </div>
 
         {groupOrder.map(group=>{
           const groupPlayers = relevantPlayers.filter(p=>(p.group||"Anfänger")===group)
-            .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
+            .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
           return <div key={group} style={{marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
             {groupPlayers.map(p=>{
               const val=sessionData.attendances?.[p.id]||"a";
-              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 60px 60px",gap:6,marginBottom:6,alignItems:"center",background:"#0d1117",borderRadius:8,padding:"8px 10px"}}>
+              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:6,alignItems:"center",background:"#0d1117",borderRadius:8,padding:"8px 10px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:7}}>
                   <span style={{fontSize:16}}>{p.avatar||"🏓"}</span>
                   <span style={{fontSize:13,fontWeight:600,color:"#e5e7eb"}}>{p.firstName} {p.lastName}</span>
                 </div>
-                {["a","e","u"].map(opt=>(
-                  <div key={opt} style={{display:"flex",justifyContent:"center"}}>
-                    <button onClick={()=>setSessionData(prev=>({...prev,attendances:{...prev.attendances,[p.id]:opt}}))} style={{
-                      width:36,height:36,borderRadius:"50%",border:"none",cursor:"pointer",
-                      fontSize:16,fontWeight:800,
-                      background:val===opt?(opt==="a"?"#10b981":opt==="e"?"#f59e0b":"#ef4444"):"#1f2937",
-                      color:val===opt?"#fff":"#6b7280",
-                      boxShadow:val===opt?`0 0 8px ${opt==="a"?"#10b981":opt==="e"?"#f59e0b":"#ef4444"}44`:"none"}}>
-                      {opt==="a"?"✓":opt==="e"?"E":"U"}
-                    </button>
+                {COL_HEADERS.map(opt=>(
+                  <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
+                    <button onClick={()=>setSessionData(prev=>({...prev,attendances:{...prev.attendances,[p.id]:opt.key}}))} style={{
+                      width:36,height:36,borderRadius:"50%",border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,cursor:"pointer",
+                      fontSize:15,fontWeight:800,
+                      background:val===opt.key?opt.color+"33":"transparent",
+                      color:val===opt.key?opt.color:"#4b5563",
+                      boxShadow:val===opt.key?`0 0 8px ${opt.color}44`:"none",
+                      transition:"all .15s",
+                    }}>{opt.label}</button>
                   </div>
                 ))}
               </div>;
@@ -651,10 +726,28 @@ function AdminTrainingTab({players,attendance,showToast}) {
 function TeilnahmeTab({players,attendance}) {
   const nonTrainers = players.filter(p=>p.group!=="Trainer");
 
+  // Punkt 4: Trainingszeitraum aus Firestore lesen
+  const [trainingRange,setTrainingRange]=useState({start:"",end:""});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
+      if (snap.exists()) setTrainingRange(snap.data());
+    });
+    return unsub;
+  },[]);
+
   function getStats(player) {
     const days = getTrainingDaysForGroup(player.group||"Anfänger");
     const today = new Date(); today.setHours(0,0,0,0);
-    const pastDays = days.filter(d=>new Date(d)<=today);
+    // Punkt 4: Zeitraum einschränken
+    const rangeStart = trainingRange.start ? new Date(trainingRange.start) : null;
+    const rangeEnd   = trainingRange.end   ? new Date(trainingRange.end)   : null;
+    const pastDays = days.filter(d=>{
+      const dt=new Date(d);
+      if (dt>today) return false;
+      if (rangeStart && dt<rangeStart) return false;
+      if (rangeEnd   && dt>rangeEnd)   return false;
+      return true;
+    });
     if (!pastDays.length) return {pct:0,present:0,total:0,excused:0,unexcused:0};
     let present=0,excused=0,unexcused=0;
     for (const d of pastDays) {
@@ -665,10 +758,7 @@ function TeilnahmeTab({players,attendance}) {
       else if (val==="e") excused++;
       else unexcused++;
     }
-    const total = pastDays.filter(d=>{
-      const s=attendance[d];
-      return !s||s.took_place!==false;
-    }).length;
+    const total = pastDays.filter(d=>{ const s=attendance[d]; return !s||s.took_place!==false; }).length;
     const pct = total>0?Math.round((present/total)*100):0;
     return {pct,present,total,excused,unexcused};
   }
@@ -676,7 +766,12 @@ function TeilnahmeTab({players,attendance}) {
   const ranked = [...nonTrainers].map(p=>({...p,...getStats(p)})).sort((a,b)=>b.pct-a.pct);
 
   return <div style={{padding:13}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📊 Trainingsbeteiligung 2026</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung 2026</div>
+    {trainingRange.start&&trainingRange.end&&(
+      <div style={{fontSize:11,color:"#6b7280",marginBottom:14}}>
+        Zeitraum: {formatDateDE(trainingRange.start)} – {formatDateDE(trainingRange.end)}
+      </div>
+    )}
     {ranked.map((player,idx)=>{
       const medal = player.pct>90?"🥇":player.pct>80?"🥈":player.pct>70?"🥉":null;
       return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
@@ -690,10 +785,11 @@ function TeilnahmeTab({players,attendance}) {
           <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
             <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
           </div>
+          {/* Punkt 7: Kein E/U Präfix mehr */}
           <div style={{display:"flex",gap:12,fontSize:10,color:"#6b7280"}}>
             <span>✓ {player.present} anwesend</span>
-            <span>E {player.excused} entsch.</span>
-            <span>U {player.unexcused} unentsch.</span>
+            <span>{player.excused} entsch.</span>
+            <span>{player.unexcused} unentsch.</span>
             <span>Gesamt: {player.total}</span>
           </div>
         </div>
@@ -713,10 +809,33 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
+  const [loginUpgradeFor,setLoginUpgradeFor]=useState(null);
+  const [upgradeEmail,setUpgradeEmail]=useState("");
+  const [upgradePass,setUpgradePass]=useState("");
+  const [upgradeErr,setUpgradeErr]=useState("");
+  const [upgrading,setUpgrading]=useState(false);
+  // Punkt 4: Trainingszeitraum
+  const [trainingRange,setTrainingRange]=useState({start:"",end:""});
+  const [rangeSaving,setRangeSaving]=useState(false);
 
-  // New player form
-  const [newData,setNewData]=useState({firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
+      if (snap.exists()) setTrainingRange(snap.data());
+    });
+    return unsub;
+  },[]);
 
+  async function saveTrainingRange() {
+    setRangeSaving(true);
+    try {
+      await setDoc(doc(db,"config","trainingRange"),trainingRange);
+      showToast("Zeitraum gespeichert","📅");
+    } catch(e){showToast("Fehler","❌");}
+    setRangeSaving(false);
+  }
+
+  const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""};
+  const [newData,setNewData]=useState(newData0);
   const groupOrder=["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
 
   async function saveEdit() {
@@ -732,6 +851,38 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
       showToast("Gespeichert","💾"); setEditPlayer(null);
     } catch(e){showToast("Fehler: "+e.message,"❌");}
     setSaving(false);
+  }
+
+  // Login-Upgrade: Spieler ohne Login bekommt einen echten Account
+  async function doUpgradeLogin() {
+    if (!loginUpgradeFor||!upgradeEmail.trim()||!upgradePass.trim()) return;
+    if (upgradePass.length<6){setUpgradeErr("Passwort mind. 6 Zeichen.");return;}
+    setUpgrading(true); setUpgradeErr("");
+    try {
+      // Neuen Auth-Account über authHelper erstellen (Trainer bleibt eingeloggt)
+      const {user:newUser} = await createUserWithEmailAndPassword(authHelper, upgradeEmail.trim(), upgradePass.trim());
+      await signOut(authHelper);
+
+      // Firestore: alten Eintrag löschen, neuen mit echter UID anlegen
+      // (Die UID muss mit dem Auth-Account übereinstimmen für den Login)
+      const oldData = {...loginUpgradeFor};
+      await deleteDoc(doc(db,"players", oldData.id));
+      await setDoc(doc(db,"players", newUser.uid), {
+        ...oldData,
+        id: newUser.uid,
+        email: upgradeEmail.trim(),
+        noLogin: false,
+        updatedAt: Date.now(),
+      });
+
+      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login!`,"🎉");
+      setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
+    } catch(e) {
+      if (e.code==="auth/email-already-in-use") setUpgradeErr("Diese E-Mail wird bereits verwendet.");
+      else if (e.code==="auth/weak-password")    setUpgradeErr("Passwort zu schwach.");
+      else setUpgradeErr("Fehler: "+e.message);
+    }
+    setUpgrading(false);
   }
 
   async function doDelete(id) {
@@ -796,10 +947,69 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
       </div>
     </Modal>}
 
+    {/* Login-Upgrade Modal */}
+    {loginUpgradeFor&&<Modal onClose={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}}>
+      <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:6}}>📧 Login einrichten</div>
+      <div style={{fontSize:13,color:"#6b7280",marginBottom:16,lineHeight:1.5}}>
+        Für <b style={{color:"#e5e7eb"}}>{loginUpgradeFor.firstName} {loginUpgradeFor.lastName}</b> wird ein Login-Account erstellt. Alle bisherigen Ergebnisse bleiben erhalten.
+      </div>
+      {upgradeErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{upgradeErr}</div>}
+      <div style={{marginBottom:10}}>
+        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>E-Mail</label>
+        <input type="email" value={upgradeEmail} onChange={e=>setUpgradeEmail(e.target.value)}
+          placeholder="spieler@email.de"
+          style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
+        <input type="password" value={upgradePass} onChange={e=>setUpgradePass(e.target.value)}
+          placeholder="••••••••"
+          style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={doUpgradeLogin} disabled={upgrading||!upgradeEmail.trim()||!upgradePass.trim()} style={{
+          flex:1,padding:11,
+          background:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
+          border:"none",borderRadius:9,
+          color:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"#6b7280":"#fff",
+          fontSize:14,fontWeight:700,cursor:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"not-allowed":"pointer",
+        }}>{upgrading?"Wird eingerichtet…":"📧 Login erstellen"}</button>
+        <button onClick={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{
+          flex:1,padding:11,background:"#1f2937",border:"1px solid #374151",
+          borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer",
+        }}>Abbrechen</button>
+      </div>
+    </Modal>}
+
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
       <div style={{fontSize:17,fontWeight:800}}>⚙️ Spieler- & Trainerverwaltung</div>
       <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
         {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
+      </button>
+    </div>
+
+    {/* Punkt 4: Trainingszeitraum */}
+    <div style={{background:"#111827",border:"1px solid #374151",borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",marginBottom:12}}>📅 Trainingszeitraum</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div>
+          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Start Training</label>
+          <input type="date" value={trainingRange.start||""} min="2026-01-01" max="2026-12-31"
+            onChange={e=>setTrainingRange(p=>({...p,start:e.target.value}))}
+            style={{width:"100%",padding:"9px 11px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Ende Training</label>
+          <input type="date" value={trainingRange.end||""} min="2026-01-01" max="2026-12-31"
+            onChange={e=>setTrainingRange(p=>({...p,end:e.target.value}))}
+            style={{width:"100%",padding:"9px 11px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      <div style={{fontSize:11,color:"#6b7280",marginBottom:10,lineHeight:1.5}}>
+        Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums. Beide Daten sind inklusiv.
+      </div>
+      <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"#1f2937":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
+        {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
       </button>
     </div>
 
@@ -917,7 +1127,14 @@ function VerwaltungTab({players,onPlayerAdded,showToast}) {
               <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"#e5e7eb"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"#6b7280",marginLeft:6}}>(passiv)</span>}</div>
-                <div style={{fontSize:10,color:"#4b5563"}}>{p.noLogin?"👤 Kein Login":"📧 "+p.email}</div>
+                <div style={{fontSize:10,color:"#4b5563",display:"flex",alignItems:"center",gap:6}}>
+                  {p.noLogin
+                    ? <><span style={{color:"#f59e0b"}}>👤 Kein Login</span>
+                        <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
+                      </>
+                    : <span style={{color:"#10b981"}}>📧 {p.email}</span>
+                  }
+                </div>
               </div>
               <span style={{fontSize:12,color:"#6b7280",flexShrink:0}}>{getAward(p).totalStars} ★</span>
               <button onClick={()=>setEditPlayer({...p})} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✏️</button>
@@ -936,7 +1153,18 @@ function PlayerView({user,players,attendance,onSignOut}) {
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const sortedRanking=[...activePlayers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const [activeTab,setActiveTab]=useState("stats");
+  const [expandedEx,setExpandedEx]=useState(null); // Punkt 8
+  const [showAvatarPicker,setShowAvatarPicker]=useState(false); // Punkt 6
   const TABS=[{key:"stats",label:"Meine Stats",icon:"⭐"},{key:"training",label:"Training",icon:"📅"},{key:"ranking",label:"Rangliste",icon:"🏆"}];
+
+  // Punkt 6: Avatar selbst ändern
+  async function changeMyAvatar(av) {
+    if (!myPlayer) return;
+    try {
+      await updateDoc(doc(db,"players",myPlayer.id),{avatar:av});
+      setShowAvatarPicker(false);
+    } catch(e){}
+  }
 
   if (!myPlayer) return <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20,flexDirection:"column",gap:16}}>
     <div style={{fontSize:40}}>⏳</div>
@@ -945,11 +1173,9 @@ function PlayerView({user,players,attendance,onSignOut}) {
     <button onClick={onSignOut} style={{padding:"8px 16px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:13,cursor:"pointer"}}>Abmelden</button>
   </div>;
 
-  const {currentAward,beginnerStars,advancedStars,totalStars,isAdvanced}=getAward(myPlayer);
-  const next=nextAward(myPlayer);
+  const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
+  const nexts=nextAwards(myPlayer);
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
-
-  // Training stats for player
   const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger");
   const today=new Date();today.setHours(0,0,0,0);
   const pastDays=myDays.filter(d=>new Date(d)<=today);
@@ -963,11 +1189,18 @@ function PlayerView({user,players,attendance,onSignOut}) {
   const pct=total>0?Math.round((present/total)*100):0;
 
   return <div style={{minHeight:"100vh",background:"#0d1117",color:"#e5e7eb",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:680,margin:"0 auto",paddingBottom:80}}>
+    {/* Punkt 6: Avatar Picker Modal */}
+    {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
+
     {/* Header */}
     <div style={{background:"linear-gradient(135deg,#111827,#1a2332)",borderBottom:"1px solid #1f2937",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={42}/>
+          {/* Punkt 6: Avatar klickbar */}
+          <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
+            <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={42}/>
+            <span style={{position:"absolute",bottom:-1,right:-1,fontSize:10,background:"#1f2937",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #374151"}}>✏️</span>
+          </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
             <div style={{fontSize:11,color:"#6b7280"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
@@ -985,7 +1218,11 @@ function PlayerView({user,players,attendance,onSignOut}) {
     {/* ── STATS ── */}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,#111827)`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
-        <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={64}/>
+        {/* Punkt 6: Avatar klickbar im großen Profil */}
+        <div style={{position:"relative",display:"inline-block",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
+          <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={64}/>
+          <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"#1f2937",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #374151"}}>✏️</span>
+        </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
         <div style={{fontSize:13,color:"#6b7280",marginBottom:12}}>{myPlayer.group||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
@@ -1005,19 +1242,43 @@ function PlayerView({user,players,attendance,onSignOut}) {
           <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Fortgeschrittene</span><span>{advancedStars}/150</span></div>
           <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
         </div>
-        {next&&<div style={{marginTop:12,background:"#0d1117",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",justifyContent:"center",gap:6,flexWrap:"wrap"}}>
-          Nächste Urkunde: <AwardBadge award={next} small/> — noch {next.needed} Sterne
+        {/* Punkt 11: Alle nächsten Ziele */}
+        {nexts.length>0&&<div style={{marginTop:12,background:"#0d1117",borderRadius:8,padding:"8px 12px",display:"flex",flexDirection:"column",gap:5,alignItems:"center"}}>
+          {nexts.map((a,i)=>(
+            <div key={i} style={{fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
+              <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+              <AwardBadge award={a} small/>
+              <span>— noch {a.needed} Sterne</span>
+            </div>
+          ))}
         </div>}
       </div>
+
       <div style={{fontSize:14,fontWeight:700,marginBottom:10,color:"#e5e7eb"}}>Meine Übungen</div>
+      {/* Punkt 8: Aufklappbare Übungen für Spieler */}
       <div style={{display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
         {ALL_EXERCISES.map(ex=>{
           const stars=myPlayer.stars?.[ex.id]||0;
           const isBeg=ex.id<=10;
-          return <div key={ex.id} style={{background:"#111827",border:`1px solid ${stars>0?"#2d3748":"#1f2937"}`,borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:26,height:26,borderRadius:6,flexShrink:0,background:isBeg?"#10b98122":"#3b82f622",border:`1px solid ${isBeg?"#10b98144":"#3b82f644"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:isBeg?"#10b981":"#3b82f6"}}>{ex.id}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#e5e7eb",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div></div>
-            <StarRating stars={stars} readonly/>
+          const isExp=expandedEx===ex.id;
+          return <div key={ex.id} style={{background:"#111827",border:`1px solid ${stars>0?"#2d3748":"#1f2937"}`,borderRadius:10,overflow:"hidden"}}>
+            <div onClick={()=>setExpandedEx(isExp?null:ex.id)} style={{padding:"10px 12px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+              <div style={{width:26,height:26,borderRadius:6,flexShrink:0,background:isBeg?"#10b98122":"#3b82f622",border:`1px solid ${isBeg?"#10b98144":"#3b82f644"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:isBeg?"#10b981":"#3b82f6"}}>{ex.id}</div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#e5e7eb",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div></div>
+              <StarRating stars={stars} readonly/>
+              <span style={{color:"#6b7280",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
+            </div>
+            {isExp&&<div style={{borderTop:"1px solid #1f2937",padding:"10px 12px",background:"#0d1117"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                {ex.thresholds.map((t,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 9px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"#1f2937",border:`1px solid ${stars>=i+1?"#f59e0b44":"#374151"}`}}>
+                    <span style={{color:stars>=i+1?"#f59e0b":"#6b7280",fontSize:12}}>{"★".repeat(i+1)}{"☆".repeat(4-i)}</span>
+                    <span style={{fontSize:12,color:stars>=i+1?"#e5e7eb":"#9ca3af",flex:1}}>{t}</span>
+                    {stars>=i+1&&<span style={{color:"#10b981",fontSize:12}}>✓</span>}
+                  </div>
+                ))}
+              </div>
+            </div>}
           </div>;
         })}
       </div>
