@@ -216,31 +216,29 @@ function getAward(player) {
   const ts = bs+as;
   const isAdv = bs>=40;
   let cur = null;
-  if (isAdv) { for (const a of ADVANCED_AWARDS) if (as>=a.stars) cur=a; if (!cur) for (const a of BEGINNER_AWARDS) if (bs>=a.stars) cur=a; }
-  else { for (const a of BEGINNER_AWARDS) if (bs>=a.stars) cur=a; }
+  // Fortgeschrittene-Urkunden basieren auf GESAMTSTERNEN (bs+as)
+  if (isAdv) {
+    for (const a of ADVANCED_AWARDS) if (ts>=a.stars) cur=a;
+    if (!cur) for (const a of BEGINNER_AWARDS) if (bs>=a.stars) cur=a;
+  } else {
+    for (const a of BEGINNER_AWARDS) if (bs>=a.stars) cur=a;
+  }
   return {currentAward:cur,beginnerStars:bs,advancedStars:as,totalStars:ts,isAdvanced:isAdv};
 }
 
-// Punkt 11: Zeigt immer zuerst nächste Anfänger-Urkunde, dann nächste Fortgeschrittenen-Urkunde
 function nextAwards(player) {
-  const {beginnerStars:bs,advancedStars:as}=getAward(player);
+  const {beginnerStars:bs,advancedStars:as,totalStars:ts}=getAward(player);
   const results=[];
-  // Nächste Anfänger-Urkunde (solange < 50 Punkte)
   if (bs<50) {
     for (const a of BEGINNER_AWARDS) {
       if (bs<a.stars) { results.push({...a,needed:a.stars-bs,type:"beginner"}); break; }
     }
   }
-  // Nächste Fortgeschrittene-Urkunde
+  // Nächste Fortgeschrittene-Urkunde basiert auf Gesamtsternen
   for (const a of ADVANCED_AWARDS) {
-    if (as<a.stars) { results.push({...a,needed:a.stars-as,type:"advanced"}); break; }
+    if (ts<a.stars) { results.push({...a,needed:a.stars-ts,type:"advanced"}); break; }
   }
   return results;
-}
-// Einzelnes nächstes Ziel (für Kompatibilität)
-function nextAward(player) {
-  const awards=nextAwards(player);
-  return awards.length>0?awards[0]:null;
 }
 
 // ─── UI HELPERS ──────────────────────────────────────────────────────────────
@@ -505,7 +503,7 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:118,zIndex:99,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -898,18 +896,18 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
       return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
         <Avatar avatar={player.avatar} color={player.color} size={36}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
             <span
               onClick={()=>onPlayerClick&&onPlayerClick(player)}
               style={{fontSize:14,fontWeight:800,color:"#10b981",cursor:"pointer",textDecoration:"underline dotted"}}
             >{player.firstName} {player.lastName}</span>
-            {medal&&<span style={{fontSize:18}}>{medal}</span>}
-            <span style={{fontSize:11,color:"#6b7280"}}>{player.group||"Anfänger"}</span>
+            {medal&&<span style={{fontSize:16}}>{medal}</span>}
           </div>
+          <div style={{fontSize:10,color:"#6b7280",marginBottom:5}}>{player.group||"Anfänger"}</div>
           <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
             <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
           </div>
-          <div style={{display:"flex",gap:12,fontSize:10,color:"#6b7280"}}>
+          <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280",flexWrap:"wrap"}}>
             <span>✓ {player.present} anwesend</span>
             <span>{player.excused} entsch.</span>
             <span>{player.unexcused} unentsch.</span>
@@ -937,9 +935,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
   const [upgradePass,setUpgradePass]=useState("");
   const [upgradeErr,setUpgradeErr]=useState("");
   const [upgrading,setUpgrading]=useState(false);
-  // Punkt 4: Trainingszeitraum
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
   const [rangeSaving,setRangeSaving]=useState(false);
+  // Punkt 9: Scroll-Ref damit nach Speichern Position erhalten bleibt
+  const scrollRef = {};  // playerId → DOM-element ref via data-playerid
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
@@ -994,7 +993,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
           }).catch(()=>{});
         }
       }
-      showToast("Gespeichert","💾"); setEditPlayer(null);
+      showToast("Gespeichert","💾");
+      const savedId = editPlayer.id;
+      setEditPlayer(null);
+      // Kurz warten dann zu gespeichertem Spieler scrollen
+      setTimeout(()=>{
+        const el=document.querySelector(`[data-playerid="${savedId}"]`);
+        if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
+      },200);
     } catch(e){showToast("Fehler: "+e.message,"❌");}
     setSaving(false);
   }
@@ -1275,11 +1281,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
               </div>
-              {/* Geburtsdatum */}
+              {/* Geburtstag */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Geburtstag</label>
-                <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
-                  style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
+                    style={{flex:1,padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                  {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(prev=>({...prev,birthdate:""}))} style={{padding:"9px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",flexShrink:0}}>✕</button>}
+                </div>
               </div>
               {/* Trainingsheft erhalten */}
               <div style={{marginBottom:10}}>
@@ -1349,18 +1358,25 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
               </div>
             </div>
           ) : (
-            <div key={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
+            <div key={p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
               <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
               <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"#e5e7eb"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"#6b7280",marginLeft:6}}>(passiv)</span>}</div>
-                <div style={{fontSize:10,color:"#4b5563",display:"flex",alignItems:"center",gap:6}}>
+                <div style={{fontSize:10,color:"#4b5563",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   {p.noLogin
                     ? <><span style={{color:"#f59e0b"}}>👤 Kein Login</span>
                         <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
                       </>
                     : <span style={{color:"#10b981"}}>📧 {p.email}</span>
                   }
+                  {/* Punkt 11: Schläger-Info anzeigen */}
+                  {p.racketType==="TTC"&&p.racketNr&&(
+                    <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
+                      🏏 Nr.{String(p.racketNr).padStart(3,"0")}
+                      {!p.racketStart&&" ⚠️ Vergabedatum fehlt!"}
+                    </span>
+                  )}
                 </div>
               </div>
               <span style={{fontSize:12,color:"#6b7280",flexShrink:0}}>{getAward(p).totalStars} ★</span>
@@ -1451,10 +1467,15 @@ function SchlaegerTab({rackets,players,showToast}) {
   const [editId,setEditId]=useState(null);
   const [form,setForm]=useState({});
   const [saving,setSaving]=useState(false);
+  // Punkt 10: Filter
+  const [filters,setFilters]=useState({nr:"",status:"",zustand:"",marke:"",art:"",griffform:"",farbeBelaege:"",vergebenAn:""});
+  const [showFilters,setShowFilters]=useState(false);
 
   function sort(col){if(sortCol===col)setSortAsc(a=>!a);else{setSortCol(col);setSortAsc(true);}}
+  function setFilter(col,val){setFilters(f=>({...f,[col]:val}));}
+  function clearFilters(){setFilters({nr:"",status:"",zustand:"",marke:"",art:"",griffform:"",farbeBelaege:"",vergebenAn:""});}
+  const hasFilters=Object.values(filters).some(v=>v!=="");
 
-  // Alle 230 Nummern generieren; fehlende als leere Einträge
   const allNrs = Array.from({length:230},(_,i)=>i+1);
   const rMap = Object.fromEntries((rackets||[]).map(r=>[String(r.nr),r]));
   const rows = allNrs.map(nr=>{
@@ -1462,7 +1483,20 @@ function SchlaegerTab({rackets,players,showToast}) {
     return r || {nr,status:"frei",zustand:"",marke:"",art:"",griffform:"",farbeBelaege:"",vergebenAn:""};
   });
 
-  const sorted = [...rows].sort((a,b)=>{
+  // Filter anwenden
+  const filtered = rows.filter(r=>{
+    if(filters.nr&&!String(r.nr).padStart(3,"0").includes(filters.nr)) return false;
+    if(filters.status&&r.status!==filters.status) return false;
+    if(filters.zustand&&r.zustand!==filters.zustand) return false;
+    if(filters.marke&&!(r.marke||"").toLowerCase().includes(filters.marke.toLowerCase())) return false;
+    if(filters.art&&!(r.art||"").toLowerCase().includes(filters.art.toLowerCase())) return false;
+    if(filters.griffform&&r.griffform!==filters.griffform) return false;
+    if(filters.farbeBelaege&&r.farbeBelaege!==filters.farbeBelaege) return false;
+    if(filters.vergebenAn&&!(r.vergebenAn||"").toLowerCase().includes(filters.vergebenAn.toLowerCase())) return false;
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a,b)=>{
     const va=String(a[sortCol]||""), vb=String(b[sortCol]||"");
     return sortAsc?va.localeCompare(vb,"de",{numeric:true}):vb.localeCompare(va,"de",{numeric:true});
   });
@@ -1477,19 +1511,51 @@ function SchlaegerTab({rackets,players,showToast}) {
     setSaving(false);
   }
 
-  const freeRacketNrs = rows.filter(r=>r.status==="frei").map(r=>r.nr);
-  // Spieler ohne zugewiesenen TTC-Schläger
   const playersWithoutRacket = players.filter(p=>p.group!=="Trainer"&&p.racketType!=="TTC");
-
-  const SH=({col,label})=><th onClick={()=>sort(col)} style={{padding:"7px 8px",fontSize:11,color:"#9ca3af",fontWeight:700,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap",background:"#111827",position:"sticky",top:0,zIndex:2}}>
-    {label}{sortCol===col?(sortAsc?" ▲":" ▼"):""}
-  </th>;
-
   const statColor={frei:"#10b981",vergeben:"#f59e0b",kaputt:"#ef4444",offen:"#6b7280",verkauft:"#8b5cf6"};
 
-  return <div style={{padding:13}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏏 Schlägerverwaltung</div>
-    <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #1f2937"}}>
+  // Punkt 12: Sticky header — table inside scrollable div
+  const SH=({col,label})=><th onClick={()=>sort(col)} style={{
+    padding:"7px 8px",fontSize:11,color:"#9ca3af",fontWeight:700,cursor:"pointer",
+    userSelect:"none",whiteSpace:"nowrap",background:"#111827",
+    position:"sticky",top:0,zIndex:3,borderBottom:"1px solid #374151",
+  }}>{label}{sortCol===col?(sortAsc?" ▲":" ▼"):""}</th>;
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{fontSize:17,fontWeight:800}}>🏏 Schlägerverwaltung</div>
+      <div style={{display:"flex",gap:6}}>
+        {hasFilters&&<button onClick={clearFilters} style={{padding:"5px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕ Filter löschen</button>}
+        <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"#1f2937",border:`1px solid ${showFilters?"#3b82f6":"#374151"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>
+          🔍 Filter {showFilters?"ausblenden":"anzeigen"}
+        </button>
+      </div>
+    </div>
+
+    {/* Filterzeile */}
+    {showFilters&&<div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:12,marginBottom:12,display:"grid",gridTemplateColumns:"60px 80px 80px 1fr 1fr 100px 120px 1fr",gap:6}}>
+      <input placeholder="Nr." value={filters.nr} onChange={e=>setFilter("nr",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+      <select value={filters.status} onChange={e=>setFilter("status",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
+        <option value="">Status</option>{["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={filters.zustand} onChange={e=>setFilter("zustand",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
+        <option value="">Zustand</option>{["neu","gut","mittel","schlecht"].map(s=><option key={s}>{s}</option>)}
+      </select>
+      <input placeholder="Marke" value={filters.marke} onChange={e=>setFilter("marke",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+      <input placeholder="Art" value={filters.art} onChange={e=>setFilter("art",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+      <select value={filters.griffform} onChange={e=>setFilter("griffform",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
+        <option value="">Griffform</option>{["Anatomisch","Gerade","Konisch","Konkav"].map(s=><option key={s}>{s}</option>)}
+      </select>
+      <select value={filters.farbeBelaege} onChange={e=>setFilter("farbeBelaege",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
+        <option value="">Beläge</option>{["Schwarz/rot","Schwarz/blau","Schwarz/grün","Schwarz/pink","Schwarz/violett"].map(s=><option key={s}>{s}</option>)}
+      </select>
+      <input placeholder="Vergabe an" value={filters.vergebenAn} onChange={e=>setFilter("vergebenAn",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+    </div>}
+
+    <div style={{fontSize:11,color:"#6b7280",marginBottom:8}}>{sorted.length} von 230 Schlägern angezeigt</div>
+
+    {/* Punkt 12: Scrollbare Tabelle mit fixiertem Header */}
+    <div style={{maxHeight:"60vh",overflowY:"auto",borderRadius:12,border:"1px solid #1f2937"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead>
           <tr>
@@ -1501,13 +1567,13 @@ function SchlaegerTab({rackets,players,showToast}) {
             <SH col="griffform" label="Griffform"/>
             <SH col="farbeBelaege" label="Beläge"/>
             <SH col="vergebenAn" label="Vergabe an"/>
-            <th style={{padding:"7px 8px",background:"#111827",position:"sticky",top:0,zIndex:2}}></th>
+            <th style={{padding:"7px 8px",background:"#111827",position:"sticky",top:0,zIndex:3,borderBottom:"1px solid #374151"}}></th>
           </tr>
         </thead>
         <tbody>
           {sorted.map(r=>(
             editId===r.nr ? (
-              <tr key={r.nr} style={{background:"#111827"}}>
+              <tr key={r.nr} style={{background:"#1a2332"}}>
                 <td style={{padding:"6px 8px",color:"#e5e7eb",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
                 <td style={{padding:"4px"}}>
                   <select value={form.status||"frei"} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
@@ -1516,27 +1582,24 @@ function SchlaegerTab({rackets,players,showToast}) {
                 </td>
                 <td style={{padding:"4px"}}>
                   <select value={form.zustand||""} onChange={e=>setForm(p=>({...p,zustand:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
-                    <option value="">—</option>
-                    {["neu","gut","mittel","schlecht"].map(s=><option key={s}>{s}</option>)}
+                    <option value="">—</option>{["neu","gut","mittel","schlecht"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
                 <td style={{padding:"4px"}}>
-                  <input list={`marke-${r.nr}`} value={form.marke||""} onChange={e=>setForm(p=>({...p,marke:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:5,color:"#e5e7eb",outline:"none"}}/>
+                  <input list={`marke-${r.nr}`} value={form.marke||""} onChange={e=>setForm(p=>({...p,marke:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:4,color:"#e5e7eb",outline:"none"}}/>
                   <datalist id={`marke-${r.nr}`}><option>Butterfly</option><option>Joola</option><option>GEWO</option></datalist>
                 </td>
                 <td style={{padding:"4px"}}>
-                  <input value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:5,color:"#e5e7eb",outline:"none"}}/>
+                  <input value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:4,color:"#e5e7eb",outline:"none"}}/>
                 </td>
                 <td style={{padding:"4px"}}>
                   <select value={form.griffform||""} onChange={e=>setForm(p=>({...p,griffform:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
-                    <option value="">—</option>
-                    {["Anatomisch","Gerade","Konisch","Konkav"].map(s=><option key={s}>{s}</option>)}
+                    <option value="">—</option>{["Anatomisch","Gerade","Konisch","Konkav"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
                 <td style={{padding:"4px"}}>
                   <select value={form.farbeBelaege||""} onChange={e=>setForm(p=>({...p,farbeBelaege:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
-                    <option value="">—</option>
-                    {["Schwarz/rot","Schwarz/blau","Schwarz/grün","Schwarz/pink","Schwarz/violett"].map(s=><option key={s}>{s}</option>)}
+                    <option value="">—</option>{["Schwarz/rot","Schwarz/blau","Schwarz/grün","Schwarz/pink","Schwarz/violett"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
                 <td style={{padding:"4px"}}>
@@ -1548,21 +1611,21 @@ function SchlaegerTab({rackets,players,showToast}) {
                   </select>
                 </td>
                 <td style={{padding:"4px",whiteSpace:"nowrap"}}>
-                  <button onClick={saveRow} disabled={saving} style={{padding:"3px 8px",background:"#10b981",border:"none",borderRadius:5,color:"#fff",fontSize:11,cursor:"pointer",marginRight:3}}>💾</button>
-                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"#374151",border:"none",borderRadius:5,color:"#9ca3af",fontSize:11,cursor:"pointer"}}>✕</button>
+                  <button onClick={saveRow} disabled={saving} style={{padding:"3px 8px",background:"#10b981",border:"none",borderRadius:4,color:"#fff",fontSize:11,cursor:"pointer",marginRight:3}}>💾</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"#374151",border:"none",borderRadius:4,color:"#9ca3af",fontSize:11,cursor:"pointer"}}>✕</button>
                 </td>
               </tr>
             ) : (
-              <tr key={r.nr} style={{borderTop:"1px solid #1f2937",background:r.vergebenAn?"#111827":"transparent"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>
-                <td style={{padding:"7px 8px",color:"#e5e7eb",fontWeight:700,cursor:"pointer"}}>{String(r.nr).padStart(3,"0")}</td>
-                <td style={{padding:"7px 8px",cursor:"pointer"}}><span style={{color:statColor[r.status]||"#6b7280",fontWeight:600,fontSize:11}}>{r.status||"frei"}</span></td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11,cursor:"pointer"}}>{r.zustand||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11,cursor:"pointer"}}>{r.marke||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11,cursor:"pointer"}}>{r.art||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11,cursor:"pointer"}}>{r.griffform||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11,cursor:"pointer"}}>{r.farbeBelaege||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#e5e7eb",fontSize:11,cursor:"pointer"}}>{r.vergebenAn||""}</td>
-                <td style={{padding:"7px 8px"}}><span style={{color:"#4b5563",fontSize:12,cursor:"pointer"}}>✏️</span></td>
+              <tr key={r.nr} style={{borderTop:"1px solid #1f2937",cursor:"pointer"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>
+                <td style={{padding:"7px 8px",color:"#e5e7eb",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
+                <td style={{padding:"7px 8px"}}><span style={{color:statColor[r.status]||"#6b7280",fontWeight:600,fontSize:11}}>{r.status||"frei"}</span></td>
+                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.zustand||"—"}</td>
+                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.marke||"—"}</td>
+                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.art||"—"}</td>
+                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.griffform||"—"}</td>
+                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.farbeBelaege||"—"}</td>
+                <td style={{padding:"7px 8px",color:"#e5e7eb",fontSize:11}}>{r.vergebenAn||""}</td>
+                <td style={{padding:"7px 8px",color:"#4b5563",fontSize:12}}>✏️</td>
               </tr>
             )
           ))}
@@ -1576,7 +1639,6 @@ function SchlaegerTab({rackets,players,showToast}) {
 function GeburtstageTab({players,showToast}) {
   const [uploading,setUploading]=useState(false);
 
-  // Alle Spieler mit Geburtstag, sortiert nach Monat+Tag (ohne Jahr)
   const withBirthday = players
     .filter(p=>p.birthdate)
     .map(p=>{
@@ -1587,7 +1649,6 @@ function GeburtstageTab({players,showToast}) {
     })
     .sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
 
-  // Letztes Training ermitteln
   const today=new Date();today.setHours(0,0,0,0);
   const allDays=[...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
   const lastTraining=([...allDays].reverse().find(d=>new Date(d)<=today))||null;
@@ -1596,76 +1657,113 @@ function GeburtstageTab({players,showToast}) {
     if (!lastTraining||!p.birthdate) return false;
     const bd=new Date(p.birthdate);
     const since=new Date(lastTraining);
-    // Geburtstag dieses Jahr
     const thisYear=new Date(today.getFullYear(),bd.getMonth(),bd.getDate());
     return thisYear>=since && thisYear<=today;
   }
 
-  // Excel-Upload
+  // Punkt 2: Geburtstag mit Punkt nach Monat anzeigen: DD.MM.
+  function formatBirthdayShort(dateStr) {
+    if (!dateStr) return "—";
+    const [,m,d]=dateStr.split("-");
+    return `${d}.${m}.`;
+  }
+
+  // Punkt 1: Excel-Import mit SheetJS (npm-Paket bereits eingebunden)
   async function handleExcelUpload(e) {
     const file=e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const {read,utils}=await import("https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs");
+      // SheetJS über CDN laden
+      const XLSX = await new Promise((resolve,reject)=>{
+        if (window.XLSX) { resolve(window.XLSX); return; }
+        const s=document.createElement("script");
+        s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        s.onload=()=>resolve(window.XLSX);
+        s.onerror=reject;
+        document.head.appendChild(s);
+      });
       const ab=await file.arrayBuffer();
-      const wb=read(ab);
+      const wb=XLSX.read(ab,{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=utils.sheet_to_json(ws);
-      let count=0;
+      const rows=XLSX.utils.sheet_to_json(ws,{raw:false});
+      let count=0,notFound=[];
       for (const row of rows) {
-        const vorname=row["Vorname"]||row["vorname"]||"";
-        const nachname=row["Nachname"]||row["nachname"]||"";
-        const geburt=row["Geburtsdatum"]||row["geburtsdatum"]||"";
+        const vorname=(row["Vorname"]||row["vorname"]||"").trim();
+        const nachname=(row["Nachname"]||row["nachname"]||"").trim();
+        const geburt=(row["Geburtsdatum"]||row["geburtsdatum"]||"").trim();
         if (!vorname||!geburt) continue;
-        // Spieler finden
-        const p=players.find(pl=>(pl.firstName||"").toLowerCase()===vorname.toLowerCase()&&(pl.lastName||"").toLowerCase()===nachname.toLowerCase());
+        const p=players.find(pl=>
+          (pl.firstName||"").toLowerCase()===vorname.toLowerCase()&&
+          (pl.lastName||"").toLowerCase()===nachname.toLowerCase()
+        );
         if (p) {
-          // Datum parsen (DD.MM.YYYY oder YYYY-MM-DD)
+          // Datum parsen: DD.MM.YYYY → YYYY-MM-DD
           let dateStr=String(geburt);
           if (dateStr.includes(".")) {
-            const [d,m,y]=dateStr.split(".");
+            const parts=dateStr.split(".");
+            if (parts.length===3) {
+              const [d,m,y]=parts;
+              dateStr=`${y.trim()}-${m.trim().padStart(2,"0")}-${d.trim().padStart(2,"0")}`;
+            }
+          } else if (dateStr.includes("/")) {
+            const [m,d,y]=dateStr.split("/");
             dateStr=`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
           }
           await updateDoc(doc(db,"players",p.id),{birthdate:dateStr});
           count++;
+        } else {
+          notFound.push(`${vorname} ${nachname}`);
         }
       }
-      showToast(`${count} Geburtstage importiert!`,"🎂");
-    } catch(err){showToast("Fehler: "+err.message,"❌");}
+      const msg=count>0?`${count} Geburtstage importiert!`:"Keine passenden Spieler gefunden";
+      showToast(msg,"🎂");
+      if (notFound.length) console.log("Nicht gefunden:",notFound);
+    } catch(err){
+      console.error(err);
+      showToast("Fehler: "+err.message,"❌");
+    }
     setUploading(false);
     e.target.value="";
   }
 
-  return <div style={{padding:13}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontSize:17,fontWeight:800}}>🎂 Geburtstage</div>
-      <label style={{padding:"6px 12px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>
-        {uploading?"Wird importiert…":"📥 Excel importieren"}
-        <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleExcelUpload} disabled={uploading}/>
+      <label style={{padding:"6px 12px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:uploading?"#6b7280":"#9ca3af",fontSize:12,cursor:uploading?"not-allowed":"pointer"}}>
+        {uploading?"⏳ Importiert…":"📥 Excel importieren"}
+        <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleExcelUpload} disabled={uploading}/>
       </label>
     </div>
-    <div style={{fontSize:11,color:"#6b7280",marginBottom:10}}>
-      Geburtstage seit letztem Training ({lastTraining?formatDateDE(lastTraining):"—"}) sind hervorgehoben. Auf Namen klicken zum Sortieren.
+    <div style={{fontSize:11,color:"#6b7280",marginBottom:12,lineHeight:1.5}}>
+      Hervorgehoben: Geburtstage seit letztem Training ({lastTraining?formatDateDE(lastTraining):"—"}).<br/>
+      Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
-    <div style={{background:"#111827",borderRadius:12,border:"1px solid #1f2937",overflow:"hidden"}}>
-      <div style={{display:"grid",gridTemplateColumns:"100px 1fr 1fr 60px",gap:0,background:"#1f2937",padding:"8px 12px",position:"sticky",top:0}}>
-        {["Geburtstag","Vorname","Nachname","Alter"].map(h=>(
-          <div key={h} style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>{h}</div>
-        ))}
+
+    {/* Punkt 3+12: Tabelle mit fixiertem Header */}
+    <div style={{border:"1px solid #1f2937",borderRadius:12,overflow:"hidden"}}>
+      {/* Fixierter Header */}
+      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"#1f2937",padding:"8px 12px",position:"sticky",top:0,zIndex:5}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Geburtstag</div>
+        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",paddingLeft:8}}>Vorname</div>
+        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",paddingLeft:8}}>Nachname</div>
+        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textAlign:"right"}}>Alter</div>
       </div>
-      {withBirthday.map(p=>{
-        const highlight=isRecentBirthday(p);
-        return <div key={p.id} style={{display:"grid",gridTemplateColumns:"100px 1fr 1fr 60px",gap:0,padding:"9px 12px",borderTop:"1px solid #1f2937",background:highlight?"#f59e0b11":"transparent"}}>
-          <div style={{fontSize:12,color:highlight?"#f59e0b":"#e5e7eb",fontWeight:highlight?700:400}}>
-            {highlight&&"🎂 "}{formatDateDE(p.birthdate).slice(0,5)}
-          </div>
-          <div style={{fontSize:12,color:"#e5e7eb",fontWeight:highlight?700:400}}>{p.firstName}</div>
-          <div style={{fontSize:12,color:"#e5e7eb"}}>{p.lastName}</div>
-          <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400}}>{p.age}</div>
-        </div>;
-      })}
-      {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
+      {/* Scrollbare Liste */}
+      <div style={{background:"#111827"}}>
+        {withBirthday.map(p=>{
+          const highlight=isRecentBirthday(p);
+          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,padding:"9px 12px",borderTop:"1px solid #1f2937",background:highlight?"#f59e0b11":"transparent"}}>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"#9ca3af",fontWeight:highlight?700:400}}>
+              {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
+            </div>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"#e5e7eb",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
+            <div style={{fontSize:12,color:"#e5e7eb",paddingLeft:8}}>{p.lastName}</div>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400,textAlign:"right"}}>{p.age}</div>
+          </div>;
+        })}
+        {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
+      </div>
     </div>
   </div>;
 }
