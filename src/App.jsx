@@ -262,9 +262,12 @@ function AwardBadge({award,small}) {
   </span>;
 }
 function ProgressBar({value,max,color}) {
+  const pct = max>0 ? Math.min(100, Math.round((value/max)*100)) : 0;
   return <div style={{background:"#1f2937",borderRadius:6,height:7,overflow:"hidden",width:"100%"}}>
-    <div style={{width:`${Math.min(100,Math.round((value/max)*100))}%`,height:"100%",
-      background:`linear-gradient(90deg,${color},${color}bb)`,borderRadius:6,transition:"width .5s"}}/>
+    <div style={{width:`${pct}%`,height:"100%",
+      background:pct>=100?`linear-gradient(90deg,${color},#10b981)`:
+        `linear-gradient(90deg,${color},${color}bb)`,
+      borderRadius:6,transition:"width .5s"}}/>
   </div>;
 }
 function Avatar({avatar,color,size=40}) {
@@ -371,7 +374,7 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
     {key:"training",  label:"Training",   icon:"📅"},
     {key:"teilnahme", label:"Teilnahme",  icon:"📊"},
     {key:"rangliste", label:"Rangliste",  icon:"🏆"},
-    {key:"schlaeger", label:"Schläger",   icon:"🏏"},
+    {key:"schlaeger", label:"Schläger",   icon:"🏓"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
     {key:"verwaltung",label:"Verwaltung", icon:"⚙️"},
   ];
@@ -1369,11 +1372,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
 
               {/* Urkunden-Vergabedaten */}
               {(()=>{
-                const {beginnerStars,totalStars,isAdvanced}=getAward(editPlayer);
+                const {beginnerStars,totalStars}=getAward(editPlayer);
                 const earnedBeg=BEGINNER_AWARDS.filter(a=>beginnerStars>=a.stars);
                 const earnedAdv=ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
                 const allEarned=[...earnedBeg,...earnedAdv];
-                if(!allEarned.length) return null;
+                if(!allEarned.length&&!earnedBeg.length&&!earnedAdv.length) return null;
                 return <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                   <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
                   {allEarned.map(a=>{
@@ -1387,8 +1390,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
                     </div>;
                   })}
                   <div style={{marginTop:8,borderTop:"1px solid #374151",paddingTop:8}}>
-                    <div style={{fontSize:11,color:"#9ca3af",marginBottom:6,fontWeight:600}}>Trainingsbeteiligung-Urkunde</div>
-                    {[{key:"attendBronzeDate",label:"Bronze >70%",emoji:"🥉"},{key:"attendSilverDate",label:"Silber >80%",emoji:"🥈"},{key:"attendGoldDate",label:"Gold >90%",emoji:"🥇"}].map(a=>(
+                    <div style={{fontSize:11,color:"#9ca3af",marginBottom:4,fontWeight:600}}>Trainingsbeteiligung-Urkunde</div>
+                    <div style={{fontSize:10,color:"#4b5563",marginBottom:8,lineHeight:1.4}}>
+                      Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung.
+                      Hier nur das Datum der Urkundenvergabe eintragen.
+                    </div>
+                    {[{key:"attendBronzeDate",label:"Bronze >70%",emoji:"🥉",threshold:70},{key:"attendSilverDate",label:"Silber >80%",emoji:"🥈",threshold:80},{key:"attendGoldDate",label:"Gold >90%",emoji:"🥇",threshold:90}].map(a=>(
                       <div key={a.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                         <span style={{fontSize:16}}>{a.emoji}</span>
                         <div style={{flex:1,fontSize:11,color:"#9ca3af"}}>{a.label}</div>
@@ -1402,35 +1409,103 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
               })()}
 
               {/* Turniere */}
-              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
-                <div style={{fontSize:12,color:"#9ca3af",marginBottom:10,fontWeight:600}}>🏆 Turniererfolge</div>
-                {(editPlayer.tournaments||[]).map((t,i)=>(
-                  <div key={i} style={{background:"#111827",borderRadius:8,padding:"8px 10px",marginBottom:7,position:"relative"}}>
-                    <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:prev.tournaments.filter((_,j)=>j!==i)}))}
-                      style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✕</button>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
-                      <select value={t.type||"vereinsintern"} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],type:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}} style={{fontSize:11,padding:"4px 6px"}}>
-                        <option value="vereinsintern">Vereinsintern</option>
-                        <option value="extern_kreis">Extern – Kreis</option>
-                        <option value="extern_bezirk">Extern – Bezirk</option>
-                        <option value="extern_verband">Extern – Verband (Hessen)</option>
-                      </select>
-                      <input placeholder="Turniername" value={t.name||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],name:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
-                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-                      <input placeholder="Platz (z.B. 1)" value={t.place||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],place:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
-                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
-                      <input placeholder="Teilnehmer" value={t.participants||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],participants:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
-                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
-                      <input type="date" value={t.date||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],date:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
-                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
-                    </div>
-                  </div>
-                ))}
-                <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:[...(prev.tournaments||[]),{type:"vereinsintern",name:"",place:"",participants:"",date:""}]}))}
-                  style={{width:"100%",padding:"7px",background:"#1f2937",border:"1px solid #374151",borderRadius:7,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>+ Turnier hinzufügen</button>
-              </div>
+              {(()=>{
+                const VEREINS_TURNIERE=["Brettchenturnier","Minimeisterschaften","Ranglistenturnier","Vereinsmeisterschaften"];
+                const KREIS_TURNIERE=["Kreisjahrgangsmeisterschaften","Kreismeisterschaften","Kreisrangliste","Kreisentscheid Minimeisterschaften"];
+                const BEZIRK_TURNIERE=["Bezirksjahrgangsmeisterschaften (BJM)","Bezirkseinzelmeisterschaften (BEM)","Bezirksrangliste (BRL)","Bezirksentscheid Minimeisterschaften"];
+                const KONKURRENZ=["Einzel","Doppel","Mixed","Mannschaft"];
+
+                function getTurnierOptions(type) {
+                  if(type==="vereinsintern") return VEREINS_TURNIERE;
+                  if(type==="extern_kreis") return KREIS_TURNIERE;
+                  if(type==="extern_bezirk") return BEZIRK_TURNIERE;
+                  return null; // Verband: Freitext
+                }
+
+                function updateT(i,field,val) {
+                  const tt=[...(editPlayer.tournaments||[])];
+                  tt[i]={...tt[i],[field]:val};
+                  if(field==="date"&&val) tt[i].year=val.slice(0,4);
+                  setEditPlayer(p=>({...p,tournaments:tt}));
+                }
+
+                // Sortiert absteigend nach Datum
+                const sortedT=[...(editPlayer.tournaments||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+
+                return <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
+                  <div style={{fontSize:12,color:"#9ca3af",marginBottom:10,fontWeight:600}}>🏆 Turniererfolge</div>
+                  {sortedT.map((t,sortedIdx)=>{
+                    // Original-Index finden
+                    const origIdx=(editPlayer.tournaments||[]).findIndex((ot,i)=>ot===t||(ot.type===t.type&&ot.name===t.name&&ot.date===t.date&&i===sortedIdx));
+                    const i=(editPlayer.tournaments||[]).indexOf(t);
+                    const opts=getTurnierOptions(t.type);
+                    return <div key={i} style={{background:"#111827",borderRadius:8,padding:"10px 12px",marginBottom:8,position:"relative"}}>
+                      <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:prev.tournaments.filter((_,j)=>j!==i)}))}
+                        style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>
+                      {/* Zeile 1: Typ + Turniername */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Typ</label>
+                          <select value={t.type||"vereinsintern"} onChange={e=>updateT(i,"type",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
+                            <option value="vereinsintern">Vereinsintern</option>
+                            <option value="extern_kreis">Extern – Kreis</option>
+                            <option value="extern_bezirk">Extern – Bezirk</option>
+                            <option value="extern_verband">Extern – Verband (Hessen)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Turniername</label>
+                          {opts ? (
+                            <select value={t.name||""} onChange={e=>updateT(i,"name",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
+                              <option value="">— wählen —</option>
+                              {opts.map(o=><option key={o}>{o}</option>)}
+                            </select>
+                          ) : (
+                            <input value={t.name||""} onChange={e=>updateT(i,"name",e.target.value)} placeholder="Turniername"
+                              style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                          )}
+                        </div>
+                      </div>
+                      {/* Zeile 2: Platz + Konkurrenz + Altersklasse */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Platz</label>
+                          <input value={t.place||""} onChange={e=>updateT(i,"place",e.target.value)} placeholder="z. B. 1"
+                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                        </div>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Konkurrenz</label>
+                          <select value={t.konkurrenz||""} onChange={e=>updateT(i,"konkurrenz",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
+                            <option value="">—</option>
+                            {KONKURRENZ.map(k=><option key={k}>{k}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Altersklasse</label>
+                          <input value={t.altersklasse||""} onChange={e=>updateT(i,"altersklasse",e.target.value)} placeholder="z. B. U13"
+                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                      {/* Zeile 3: Datum + Jahr (auto) */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 80px",gap:6}}>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Datum</label>
+                          <input type="date" value={t.date||""} onChange={e=>updateT(i,"date",e.target.value)}
+                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                        </div>
+                        <div>
+                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Jahr</label>
+                          <div style={{padding:"4px 8px",background:"#1f2937",border:"1px solid #374151",borderRadius:6,color:"#9ca3af",fontSize:11,height:26,display:"flex",alignItems:"center"}}>
+                            {t.year||t.date?.slice(0,4)||"—"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>;
+                  })}
+                  <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:[...(prev.tournaments||[]),{type:"vereinsintern",name:"",place:"",konkurrenz:"",altersklasse:"",date:"",year:""}]}))}
+                    style={{width:"100%",padding:"7px",background:"#1f2937",border:"1px solid #374151",borderRadius:7,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>+ Turnier hinzufügen</button>
+                </div>;
+              })()}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{saving?"Speichert…":"💾 Speichern"}</button>
                 <button onClick={()=>setEditPlayer(null)} style={{flex:1,padding:10,background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
@@ -1752,7 +1827,11 @@ function GeburtstageTab({players,showToast}) {
     .filter(p=>p.birthdate)
     .map(p=>{
       const bd=new Date(p.birthdate);
-      const age=new Date().getFullYear()-bd.getFullYear();
+      const today2=new Date();
+      // Korrektes Alter: berücksichtigt ob Geburtstag dieses Jahr schon war
+      let age=today2.getFullYear()-bd.getFullYear();
+      const hasBirthdayPassed=(today2.getMonth()>bd.getMonth())||(today2.getMonth()===bd.getMonth()&&today2.getDate()>=bd.getDate());
+      if(!hasBirthdayPassed) age--;
       return {...p,age,month:bd.getMonth(),day:bd.getDate(),
         sortKey:`${String(bd.getMonth()+1).padStart(2,"0")}-${String(bd.getDate()).padStart(2,"0")}`};
     })
@@ -2048,42 +2127,41 @@ function PlayerView({user,players,attendance,onSignOut}) {
 
     {/* ── TRAINING ── */}
     {activeTab==="training"&&<div style={{padding:14}}>
-      <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📅 Meine Trainingstage</div>
-      <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>{myPlayer.group||"Anfänger"} · {myDays.length} Trainingstage 2026</div>
+      <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📅 Meine Trainingstage</div>
 
-      {/* Summary */}
-      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14}}>
+      {/* Summary - fixiert beim Scrollen */}
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14,position:"sticky",top:0,zIndex:5}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>
           {[{l:"Beteiligung",v:`${pct}%`,c:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981"},{l:"Anwesend",v:present,c:"#10b981"},{l:"Gesamt",v:total,c:"#6b7280"}].map(s=>(
-            <div key={s.l} style={{background:"#0d1117",borderRadius:10,padding:"10px 6px"}}>
-              <div style={{fontSize:20,fontWeight:900,color:s.c}}>{s.v}</div>
+            <div key={s.l} style={{background:"#0d1117",borderRadius:10,padding:"8px 6px"}}>
+              <div style={{fontSize:18,fontWeight:900,color:s.c}}>{s.v}</div>
               <div style={{fontSize:10,color:"#6b7280"}}>{s.l}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Training days table */}
+      {/* Training days table — nur Vergangenheit, neuestes oben */}
       <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",background:"#1f2937",padding:"8px 12px",gap:8}}>
           <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Datum</div>
           <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Tag</div>
           <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Status</div>
         </div>
-        {myDays.map(d=>{
+        {/* Nur vergangene Tage, umgekehrte Reihenfolge */}
+        {[...myDays].filter(d=>new Date(d)<=today).reverse().map(d=>{
           const s=attendance[d];
           const didNotTakePlace=s&&s.took_place===false;
-          const val=s?.attendances?.[myPlayer.id]||"a";
-          const isPast=new Date(d)<=today;
-          let statusLabel="—";
-          let statusColor="#6b7280";
-          if (didNotTakePlace) {statusLabel=`Kein Training (${s.reason||"—"})`;statusColor="#6b7280";}
-          else if (isPast) {
-            if (val==="a"){statusLabel="✓ Anwesend";statusColor="#10b981";}
-            else if (val==="e"){statusLabel="E Entschuldigt";statusColor="#f59e0b";}
-            else {statusLabel="U Unentschuldigt";statusColor="#ef4444";}
-          } else {statusLabel="Ausstehend";statusColor="#374151";}
-          return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",padding:"9px 12px",gap:8,borderTop:"1px solid #1f2937",background:didNotTakePlace?"#1a1a1a":"transparent",opacity:didNotTakePlace?0.5:1}}>
+          const val=s?.attendances?.[myPlayer.id];
+          let statusLabel="Nicht erfasst";
+          let statusColor="#4b5563";
+          if (didNotTakePlace) {statusLabel=`Kein Training${s.reason?` (${s.reason})`:""}`; statusColor="#6b7280";}
+          else if (s) {
+            if (val===undefined||val===null||val==="a"){statusLabel="✓ Anwesend";statusColor="#10b981";}
+            else if (val==="e"){statusLabel="Entschuldigt";statusColor="#f59e0b";}
+            else {statusLabel="Unentschuldigt";statusColor="#ef4444";}
+          }
+          return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",padding:"9px 12px",gap:8,borderTop:"1px solid #1f2937",background:didNotTakePlace?"#0d0d0d":"transparent",opacity:didNotTakePlace?0.5:1}}>
             <div style={{fontSize:12,color:"#e5e7eb",fontWeight:500}}>{formatDateDE(d)}</div>
             <div style={{fontSize:12,color:"#6b7280"}}>{formatDayDE(d)}</div>
             <div style={{fontSize:12,color:statusColor,fontWeight:500}}>{statusLabel}</div>
@@ -2157,27 +2235,32 @@ function PlayerView({user,players,attendance,onSignOut}) {
       </div>;
     })()}
 
-    {/* ── RANGLISTE (Punkt 7: nur eigene Gruppe) ── */}
+    {/* ── RANGLISTE (nur eigene Gruppe) ── */}
     {activeTab==="ranking"&&<div style={{padding:14}}>
       <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Rangliste</div>
       <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
       {sortedRanking.map((player,idx)=>{
-        const {currentAward,totalStars,isAdvanced}=getAward(player);
+        const {beginnerStars,advancedStars,totalStars,isAdvanced}=getAward(player);
         const isMe=player.id===myPlayer.id;
         const rankEmoji=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`#${idx+1}`;
+        // Punkt 8: Die 2 höchsten erreichten Urkunden ermitteln
+        const earnedBeg=[...BEGINNER_AWARDS].reverse().filter(a=>beginnerStars>=a.stars).slice(0,1);
+        const earnedAdv=[...ADVANCED_AWARDS].reverse().filter(a=>totalStars>=a.stars).slice(0,1);
+        const topAwards=[...earnedAdv,...earnedBeg].slice(0,2);
         return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
           {isMe&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:myPlayer.color}}/>}
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:topAwards.length?8:0}}>
             <span style={{fontSize:18,minWidth:28}}>{rankEmoji}</span>
             <Avatar avatar={player.avatar} color={player.color} size={36}/>
             <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
-                {currentAward&&<AwardBadge award={currentAward} small/>}
-              </div>
-              <div style={{fontSize:11,color:"#6b7280"}}>{isAdvanced?"Fortgeschrittene":"Anfänger"} · {totalStars} Sterne</div>
+              <div style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</div>
+              <div style={{fontSize:11,color:"#6b7280"}}>{isAdvanced?"Fortgeschrittene":"Anfänger"} · {totalStars} ★</div>
             </div>
           </div>
+          {/* Punkt 7: Urkunden unterhalb des Namens */}
+          {topAwards.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",paddingLeft:36}}>
+            {topAwards.map(a=><AwardBadge key={a.label} award={a} small/>)}
+          </div>}
         </div>;
       })}
     </div>}
@@ -2227,11 +2310,12 @@ function ErfolgeTab({player}) {
   const earnedBeg = BEGINNER_AWARDS.filter(a=>beginnerStars>=a.stars);
   const earnedAdv = ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
 
-  // Turniere
-  const vereinsTurniere = (player.tournaments||[]).filter(t=>t.type==="vereinsintern");
-  const externKreis = (player.tournaments||[]).filter(t=>t.type==="extern_kreis");
-  const externBezirk = (player.tournaments||[]).filter(t=>t.type==="extern_bezirk");
-  const externVerband = (player.tournaments||[]).filter(t=>t.type==="extern_verband");
+  // Turniere sortiert absteigend nach Datum
+  const allTournaments=[...(player.tournaments||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const vereinsTurniere = allTournaments.filter(t=>t.type==="vereinsintern");
+  const externKreis = allTournaments.filter(t=>t.type==="extern_kreis");
+  const externBezirk = allTournaments.filter(t=>t.type==="extern_bezirk");
+  const externVerband = allTournaments.filter(t=>t.type==="extern_verband");
 
   function placeEmoji(p) {
     const n=parseInt(p);
@@ -2242,13 +2326,12 @@ function ErfolgeTab({player}) {
     const typeLabel={vereinsintern:"Vereinsintern",extern_kreis:"Kreis",extern_bezirk:"Bezirk",extern_verband:"Verband Hessen"}[t.type]||t.type;
     const placeN=parseInt(t.place||"99");
     const color=placeN===1?"#ffd700":placeN===2?"#b8b8b8":placeN===3?"#cd7f32":"#6b7280";
+    const details=[t.konkurrenz,t.altersklasse,typeLabel,t.date?formatDateDE(t.date):""].filter(Boolean).join(" · ");
     return <div style={{background:"#111827",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{t.name||"Turnier"}</div>
-        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
-          {typeLabel}{t.participants?` · ${t.participants} Teilnehmer`:""}{t.date?` · ${formatDateDE(t.date)}`:""}
-        </div>
+        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{details}</div>
       </div>
       <div style={{fontSize:22,fontWeight:900,color}}>{t.place||"?"}</div>
     </div>;
