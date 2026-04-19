@@ -604,17 +604,15 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
         const rankEmoji=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`#${idx+1}`;
         return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b55":"#1f2937"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
           {idx===0&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,#f59e0b,#fbbf24)"}}/>}
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <span style={{fontSize:18,minWidth:28}}>{rankEmoji}</span>
+          <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:12}}>
+            <span style={{fontSize:18,minWidth:28,marginTop:4}}>{rankEmoji}</span>
             <Avatar avatar={player.avatar} color={player.color} size={38}/>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,fontWeight:800,color:"#e5e7eb"}}>{player.firstName} {player.lastName}</span>
-                {currentAward&&<AwardBadge award={currentAward} small/>}
-              </div>
-              <div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{player.group||"Anfänger"}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:800,color:"#e5e7eb",marginBottom:2}}>{player.firstName} {player.lastName}</div>
+              {currentAward&&<div style={{marginBottom:2}}><AwardBadge award={currentAward} small/></div>}
+              <div style={{fontSize:11,color:"#6b7280"}}>{player.group||"Anfänger"}</div>
             </div>
-            <div style={{textAlign:"center",background:"linear-gradient(135deg,#1f2937,#111827)",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 14px",minWidth:60}}>
+            <div style={{flexShrink:0,textAlign:"center",background:"linear-gradient(135deg,#1f2937,#111827)",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 12px",minWidth:54}}>
               <div style={{fontSize:26,fontWeight:900,color:player.color,lineHeight:1}}>{totalStars}</div>
               <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>★ Sterne</div>
             </div>
@@ -980,17 +978,33 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
         racketNr:      editPlayer.racketNr||"",
         racketStart:   editPlayer.racketStart||"",
         racketEnd:     editPlayer.racketEnd||"",
+        tournaments:   editPlayer.tournaments||[],
       });
+      // Award dates — alle awardDate_* Felder speichern
+      const awardKeys = Object.keys(editPlayer).filter(k=>k.startsWith("awardDate_")||k.startsWith("attendBronzeDate")||k.startsWith("attendSilverDate")||k.startsWith("attendGoldDate"));
+      if (awardKeys.length) {
+        const awardUpdates={};
+        awardKeys.forEach(k=>{ awardUpdates[k]=editPlayer[k]||""; });
+        await updateDoc(doc(db,"players",editPlayer.id),awardUpdates).catch(()=>{});
+      }
       // Schläger-Status synchronisieren
-      if (editPlayer.racketType==="TTC" && editPlayer.racketNr) {
-        const rRef = doc(db,"rackets",String(editPlayer.racketNr));
+      const oldPlayer = editPlayer._originalRacketNr; // wird unten gesetzt
+      const newNr = editPlayer.racketType==="TTC" ? String(editPlayer.racketNr||"") : "";
+      const prevNr = editPlayer._originalRacketNr || "";
+
+      // Alten Schläger ggf. freigeben
+      if (prevNr && prevNr !== newNr) {
+        await setDoc(doc(db,"rackets",prevNr),{status:"frei",vergebenAn:""},{ merge:true }).catch(()=>{});
+      }
+      // Neuen Schläger setzen
+      if (newNr) {
         if (editPlayer.racketEnd) {
-          await updateDoc(rRef,{status:"frei",vergebenAn:""}).catch(()=>{});
+          await setDoc(doc(db,"rackets",newNr),{status:"frei",vergebenAn:""},{ merge:true }).catch(()=>{});
         } else if (editPlayer.racketStart) {
-          await updateDoc(rRef,{
+          await setDoc(doc(db,"rackets",newNr),{
             status:"vergeben",
             vergebenAn:`${editPlayer.firstName} ${editPlayer.lastName}`,
-          }).catch(()=>{});
+          },{ merge:true }).catch(()=>{});
         }
       }
       showToast("Gespeichert","💾");
@@ -1334,7 +1348,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
                 </>}
               </div>
               {/* Individueller Trainingszeitraum */}
-              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
+              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
@@ -1351,6 +1365,71 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
                   </div>
                 </div>
                 <div style={{fontSize:10,color:"#4b5563",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
+              </div>
+
+              {/* Urkunden-Vergabedaten */}
+              {(()=>{
+                const {beginnerStars,totalStars,isAdvanced}=getAward(editPlayer);
+                const earnedBeg=BEGINNER_AWARDS.filter(a=>beginnerStars>=a.stars);
+                const earnedAdv=ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
+                const allEarned=[...earnedBeg,...earnedAdv];
+                if(!allEarned.length) return null;
+                return <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
+                  {allEarned.map(a=>{
+                    const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
+                    return <div key={key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                      <span style={{fontSize:16}}>{a.emoji}</span>
+                      <div style={{flex:1,fontSize:11,color:"#9ca3af"}}>{a.label}</div>
+                      <input type="date" value={editPlayer[key]||""}
+                        onChange={e=>setEditPlayer(prev=>({...prev,[key]:e.target.value}))}
+                        style={{padding:"5px 8px",background:"#111827",border:"1px solid #374151",borderRadius:7,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                    </div>;
+                  })}
+                  <div style={{marginTop:8,borderTop:"1px solid #374151",paddingTop:8}}>
+                    <div style={{fontSize:11,color:"#9ca3af",marginBottom:6,fontWeight:600}}>Trainingsbeteiligung-Urkunde</div>
+                    {[{key:"attendBronzeDate",label:"Bronze >70%",emoji:"🥉"},{key:"attendSilverDate",label:"Silber >80%",emoji:"🥈"},{key:"attendGoldDate",label:"Gold >90%",emoji:"🥇"}].map(a=>(
+                      <div key={a.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                        <span style={{fontSize:16}}>{a.emoji}</span>
+                        <div style={{flex:1,fontSize:11,color:"#9ca3af"}}>{a.label}</div>
+                        <input type="date" value={editPlayer[a.key]||""}
+                          onChange={e=>setEditPlayer(prev=>({...prev,[a.key]:e.target.value}))}
+                          style={{padding:"5px 8px",background:"#111827",border:"1px solid #374151",borderRadius:7,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                      </div>
+                    ))}
+                  </div>
+                </div>;
+              })()}
+
+              {/* Turniere */}
+              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
+                <div style={{fontSize:12,color:"#9ca3af",marginBottom:10,fontWeight:600}}>🏆 Turniererfolge</div>
+                {(editPlayer.tournaments||[]).map((t,i)=>(
+                  <div key={i} style={{background:"#111827",borderRadius:8,padding:"8px 10px",marginBottom:7,position:"relative"}}>
+                    <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:prev.tournaments.filter((_,j)=>j!==i)}))}
+                      style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✕</button>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                      <select value={t.type||"vereinsintern"} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],type:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}} style={{fontSize:11,padding:"4px 6px"}}>
+                        <option value="vereinsintern">Vereinsintern</option>
+                        <option value="extern_kreis">Extern – Kreis</option>
+                        <option value="extern_bezirk">Extern – Bezirk</option>
+                        <option value="extern_verband">Extern – Verband (Hessen)</option>
+                      </select>
+                      <input placeholder="Turniername" value={t.name||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],name:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
+                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                      <input placeholder="Platz (z.B. 1)" value={t.place||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],place:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
+                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                      <input placeholder="Teilnehmer" value={t.participants||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],participants:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
+                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                      <input type="date" value={t.date||""} onChange={e=>{const tt=[...editPlayer.tournaments];tt[i]={...tt[i],date:e.target.value};setEditPlayer(p=>({...p,tournaments:tt}));}}
+                        style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:[...(prev.tournaments||[]),{type:"vereinsintern",name:"",place:"",participants:"",date:""}]}))}
+                  style={{width:"100%",padding:"7px",background:"#1f2937",border:"1px solid #374151",borderRadius:7,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>+ Turnier hinzufügen</button>
               </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{saving?"Speichert…":"💾 Speichern"}</button>
@@ -1380,7 +1459,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
                 </div>
               </div>
               <span style={{fontSize:12,color:"#6b7280",flexShrink:0}}>{getAward(p).totalStars} ★</span>
-              <button onClick={()=>setEditPlayer({...p})} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✏️</button>
+              <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✏️</button>
               <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>🗑️</button>
             </div>
           )
@@ -1504,10 +1583,40 @@ function SchlaegerTab({rackets,players,showToast}) {
   async function saveRow() {
     setSaving(true);
     try {
+      const oldRow = rMap[String(form.nr)] || {};
       await setDoc(doc(db,"rackets",String(form.nr)),{...form,nr:Number(form.nr)});
-      showToast("Gespeichert","💾");
+
+      // Sync zurück zu Spieler wenn vergebenAn geändert wurde
+      const oldName = oldRow.vergebenAn || "";
+      const newName = form.vergebenAn || "";
+
+      // Alten Spieler freigeben
+      if (oldName && oldName !== newName) {
+        const oldP = players.find(p=>`${p.firstName} ${p.lastName}`===oldName);
+        if (oldP) {
+          await updateDoc(doc(db,"players",oldP.id),{racketNr:"",racketType:"",racketStart:"",racketEnd:""}).catch(()=>{});
+        }
+      }
+      // Neuem Spieler zuweisen
+      if (newName && newName !== oldName) {
+        const newP = players.find(p=>`${p.firstName} ${p.lastName}`===newName);
+        if (newP) {
+          await updateDoc(doc(db,"players",newP.id),{
+            racketType:"TTC",
+            racketNr:form.nr,
+            racketStart: newP.racketStart||"",
+          }).catch(()=>{});
+        }
+      }
+      // Status-Sync
+      if (form.status==="frei" && oldName) {
+        const oldP = players.find(p=>`${p.firstName} ${p.lastName}`===oldName);
+        if (oldP) await updateDoc(doc(db,"players",oldP.id),{racketEnd: new Date().toISOString().slice(0,10)}).catch(()=>{});
+      }
+
+      showToast("Gespeichert & synchronisiert","💾");
       setEditId(null);
-    } catch(e){showToast("Fehler","❌");}
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
     setSaving(false);
   }
 
@@ -1668,57 +1777,77 @@ function GeburtstageTab({players,showToast}) {
     return `${d}.${m}.`;
   }
 
-  // Punkt 1: Excel-Import mit SheetJS (npm-Paket bereits eingebunden)
+  function parseDate(raw) {
+    if (!raw) return "";
+    let s = String(raw).trim();
+    // Excel serial number (number)
+    if (/^\d+$/.test(s) && Number(s) > 1000) {
+      // Excel date serial: days since 1900-01-01 (with leap year bug)
+      const d = new Date((Number(s) - 25569) * 86400 * 1000);
+      return d.toISOString().slice(0,10);
+    }
+    // DD.MM.YYYY or DD.MM.YY
+    if (s.includes(".")) {
+      const parts = s.split(".");
+      if (parts.length === 3) {
+        let [d,m,y] = parts;
+        d=d.trim(); m=m.trim(); y=y.trim();
+        if (y.length === 2) y = (parseInt(y) > 30 ? "19" : "20") + y;
+        return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+      }
+    }
+    // MM/DD/YYYY
+    if (s.includes("/")) {
+      const [m,d,y] = s.split("/");
+      return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+    }
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return "";
+  }
+
+  // Excel-Import
   async function handleExcelUpload(e) {
     const file=e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      // SheetJS über CDN laden
       const XLSX = await new Promise((resolve,reject)=>{
         if (window.XLSX) { resolve(window.XLSX); return; }
         const s=document.createElement("script");
         s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
         s.onload=()=>resolve(window.XLSX);
-        s.onerror=reject;
+        s.onerror=()=>reject(new Error("SheetJS konnte nicht geladen werden"));
         document.head.appendChild(s);
       });
       const ab=await file.arrayBuffer();
-      const wb=XLSX.read(ab,{type:"array"});
+      const wb=XLSX.read(ab,{type:"array",cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{raw:false});
-      let count=0,notFound=[];
+      // raw:false damit Daten als Strings, dateNF für Datumsformat
+      const rows=XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:"DD.MM.YYYY"});
+      let count=0, notFound=[];
       for (const row of rows) {
         const vorname=(row["Vorname"]||row["vorname"]||"").trim();
         const nachname=(row["Nachname"]||row["nachname"]||"").trim();
-        const geburt=(row["Geburtsdatum"]||row["geburtsdatum"]||"").trim();
+        const geburt=(row["Geburtsdatum"]||row["geburtsdatum"]||row["Geburtstag"]||"").trim();
         if (!vorname||!geburt) continue;
         const p=players.find(pl=>
           (pl.firstName||"").toLowerCase()===vorname.toLowerCase()&&
           (pl.lastName||"").toLowerCase()===nachname.toLowerCase()
         );
         if (p) {
-          // Datum parsen: DD.MM.YYYY → YYYY-MM-DD
-          let dateStr=String(geburt);
-          if (dateStr.includes(".")) {
-            const parts=dateStr.split(".");
-            if (parts.length===3) {
-              const [d,m,y]=parts;
-              dateStr=`${y.trim()}-${m.trim().padStart(2,"0")}-${d.trim().padStart(2,"0")}`;
-            }
-          } else if (dateStr.includes("/")) {
-            const [m,d,y]=dateStr.split("/");
-            dateStr=`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+          const dateStr = parseDate(geburt);
+          if (dateStr) {
+            await updateDoc(doc(db,"players",p.id),{birthdate:dateStr});
+            count++;
           }
-          await updateDoc(doc(db,"players",p.id),{birthdate:dateStr});
-          count++;
         } else {
           notFound.push(`${vorname} ${nachname}`);
         }
       }
-      const msg=count>0?`${count} Geburtstage importiert!`:"Keine passenden Spieler gefunden";
+      const msg = count>0 ? `${count} Geburtstage importiert!` : "Keine passenden Spieler gefunden";
       showToast(msg,"🎂");
-      if (notFound.length) console.log("Nicht gefunden:",notFound);
+      if (notFound.length) console.log("Nicht gefunden:",notFound.join(", "));
     } catch(err){
       console.error(err);
       showToast("Fehler: "+err.message,"❌");
@@ -1782,8 +1911,9 @@ function PlayerView({user,players,attendance,onSignOut}) {
   const TABS=[
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
-    {key:"teilnahme",label:"Teilnahme",icon:"📊"}, // Punkt 6
+    {key:"teilnahme",label:"Teilnahme",icon:"📊"},
     {key:"ranking",label:"Rangliste",icon:"🏆"},
+    {key:"erfolge",label:"Erfolge",icon:"🏅"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -2052,7 +2182,131 @@ function PlayerView({user,players,attendance,onSignOut}) {
       })}
     </div>}
 
+    {/* ── ERFOLGE ── */}
+    {activeTab==="erfolge"&&<ErfolgeTab player={myPlayer}/>}
+
     <style>{`*{box-sizing:border-box}input::placeholder{color:#4b5563}select{background:#0d1117;color:#e5e7eb;border:1px solid #374151;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}`}</style>
+  </div>;
+}
+
+// ─── ERFOLGE TAB (Spielerbereich) ─────────────────────────────────────────────
+function ErfolgeTab({player}) {
+  const {beginnerStars,totalStars}=getAward(player);
+
+  // Ribbon-Badge Komponente (Option C)
+  function RibbonBadge({emoji,label,color,date,earned}) {
+    if (!earned) return null;
+    return <div style={{
+      display:"flex",alignItems:"center",gap:10,
+      background:`linear-gradient(135deg,${color}22,${color}11)`,
+      border:`2px solid ${color}66`,borderRadius:12,padding:"10px 14px",marginBottom:8,
+      position:"relative",overflow:"hidden",
+    }}>
+      <div style={{
+        position:"absolute",left:0,top:0,bottom:0,width:4,
+        background:color,borderRadius:"12px 0 0 12px",
+      }}/>
+      <div style={{
+        width:44,height:44,borderRadius:"50%",flexShrink:0,
+        background:`linear-gradient(135deg,${color},${color}bb)`,
+        display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,
+        boxShadow:`0 2px 8px ${color}44`,
+      }}>{emoji}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{label}</div>
+        {date&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>🗓️ Vergeben am {formatDateDE(date)}</div>}
+        {!date&&<div style={{fontSize:11,color:"#4b5563",marginTop:2}}>Datum noch nicht eingetragen</div>}
+      </div>
+      <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",background:color+"33",border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{color,fontSize:14,fontWeight:800}}>✓</span>
+      </div>
+    </div>;
+  }
+
+  // Earned awards
+  const earnedBeg = BEGINNER_AWARDS.filter(a=>beginnerStars>=a.stars);
+  const earnedAdv = ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
+
+  // Turniere
+  const vereinsTurniere = (player.tournaments||[]).filter(t=>t.type==="vereinsintern");
+  const externKreis = (player.tournaments||[]).filter(t=>t.type==="extern_kreis");
+  const externBezirk = (player.tournaments||[]).filter(t=>t.type==="extern_bezirk");
+  const externVerband = (player.tournaments||[]).filter(t=>t.type==="extern_verband");
+
+  function placeEmoji(p) {
+    const n=parseInt(p);
+    if(n===1)return "🥇";if(n===2)return "🥈";if(n===3)return "🥉";return `#${p}`;
+  }
+
+  function TournamentBadge({t}) {
+    const typeLabel={vereinsintern:"Vereinsintern",extern_kreis:"Kreis",extern_bezirk:"Bezirk",extern_verband:"Verband Hessen"}[t.type]||t.type;
+    const placeN=parseInt(t.place||"99");
+    const color=placeN===1?"#ffd700":placeN===2?"#b8b8b8":placeN===3?"#cd7f32":"#6b7280";
+    return <div style={{background:"#111827",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{t.name||"Turnier"}</div>
+        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
+          {typeLabel}{t.participants?` · ${t.participants} Teilnehmer`:""}{t.date?` · ${formatDateDE(t.date)}`:""}
+        </div>
+      </div>
+      <div style={{fontSize:22,fontWeight:900,color}}>{t.place||"?"}</div>
+    </div>;
+  }
+
+  return <div style={{padding:14,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:16}}>🏅 Meine Erfolge</div>
+
+    {/* Training */}
+    <div style={{marginBottom:20}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏋️ Training — Urkunden</div>
+      {earnedBeg.length===0&&earnedAdv.length===0&&(
+        <div style={{fontSize:12,color:"#4b5563",textAlign:"center",padding:16}}>Noch keine Urkunden erreicht — weiter trainieren! 💪</div>
+      )}
+      {earnedBeg.map(a=>{
+        const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
+        return <RibbonBadge key={a.label} emoji={a.emoji} label={a.label} color={a.color} date={player[key]} earned/>;
+      })}
+      {earnedAdv.map(a=>{
+        const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
+        return <RibbonBadge key={a.label} emoji={a.emoji} label={a.label} color={a.color} date={player[key]} earned/>;
+      })}
+
+      {/* Trainingsbeteiligung */}
+      {player.attendGoldDate&&<RibbonBadge emoji="🥇" label="Trainingsbeteiligung Gold >90%" color="#ffd700" date={player.attendGoldDate} earned/>}
+      {player.attendSilverDate&&<RibbonBadge emoji="🥈" label="Trainingsbeteiligung Silber >80%" color="#b8b8b8" date={player.attendSilverDate} earned/>}
+      {player.attendBronzeDate&&<RibbonBadge emoji="🥉" label="Trainingsbeteiligung Bronze >70%" color="#cd7f32" date={player.attendBronzeDate} earned/>}
+    </div>
+
+    {/* Vereinsturniere */}
+    {vereinsTurniere.length>0&&<div style={{marginBottom:20}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏓 Turniere Verein</div>
+      {vereinsTurniere.map((t,i)=><TournamentBadge key={i} t={t}/>)}
+    </div>}
+
+    {/* Externe Turniere */}
+    {(externKreis.length>0||externBezirk.length>0||externVerband.length>0)&&<div style={{marginBottom:20}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🌍 Turniere Extern</div>
+      {externKreis.length>0&&<>
+        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2}}>Kreis</div>
+        {externKreis.map((t,i)=><TournamentBadge key={i} t={t}/>)}
+      </>}
+      {externBezirk.length>0&&<>
+        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2,marginTop:8}}>Bezirk</div>
+        {externBezirk.map((t,i)=><TournamentBadge key={i} t={t}/>)}
+      </>}
+      {externVerband.length>0&&<>
+        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2,marginTop:8}}>Verband Hessen</div>
+        {externVerband.map((t,i)=><TournamentBadge key={i} t={t}/>)}
+      </>}
+    </div>}
+
+    {vereinsTurniere.length===0&&externKreis.length===0&&externBezirk.length===0&&externVerband.length===0&&earnedBeg.length===0&&earnedAdv.length===0&&!player.attendGoldDate&&!player.attendSilverDate&&!player.attendBronzeDate&&(
+      <div style={{textAlign:"center",padding:30,color:"#4b5563",fontSize:13}}>
+        <div style={{fontSize:40,marginBottom:12}}>🏅</div>
+        Noch keine Erfolge erfasst.<br/>Weiter trainieren und an Turnieren teilnehmen!
+      </div>
+    )}
   </div>;
 }
 
