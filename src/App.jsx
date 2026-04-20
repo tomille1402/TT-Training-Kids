@@ -18,6 +18,7 @@ const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
 // ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
+// Alle Trainer-E-Mails (sehen Trainer-Bereich, aber NICHT Verwaltung)
 const ADMIN_EMAILS = [
   "thomas@meilinger.net",
   "kira@meilinger.net",
@@ -27,9 +28,18 @@ const ADMIN_EMAILS = [
   // weitere Trainer hier hinzufügen:
   // "trainer2@ttc-niederzeuzheim.de",
 ];
+// Super-Admin E-Mails (sehen zusätzlich den Verwaltungsbereich)
+const SUPER_ADMIN_EMAILS = [
+  "thomas@meilinger.net",
+  // weitere Admins hier hinzufügen:
+];
 function isAdminEmail(email) {
   if (!email) return false;
   return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
+}
+function isSuperAdminEmail(email) {
+  if (!email) return false;
+  return SUPER_ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
 }
 
 // ─── TRAINING DATES 2026 ─────────────────────────────────────────────────────
@@ -367,17 +377,36 @@ function LoginScreen({onLogin,error,loading,successMessage}) {
   </div>;
 }
 
-// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
-function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
-  const TABS=[
+// ─── THEME TOGGLE ─────────────────────────────────────────────────────────────
+function ThemeToggle({isDark,userTheme,onSetUserTheme,small}) {
+  return <button
+    onClick={()=>onSetUserTheme(isDark?"light":"dark")}
+    title={isDark?"Zu Light Mode wechseln":"Zu Dark Mode wechseln"}
+    style={{
+      padding:small?"4px 8px":"5px 10px",
+      background:isDark?"#1f2937":"#f3f4f6",
+      border:`1px solid ${isDark?"#374151":"#d1d5db"}`,
+      borderRadius:20,
+      color:isDark?"#f59e0b":"#6b7280",
+      fontSize:small?14:16,
+      cursor:"pointer",
+      display:"flex",alignItems:"center",gap:4,
+      lineHeight:1,
+    }}
+  >{isDark?"☀️":"🌙"}{!small&&<span style={{fontSize:10,fontWeight:600}}>{isDark?"Light":"Dark"}</span>}</button>;
+}
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,onSignOut,onPlayerAdded}) {
+  const ALL_TABS=[
     {key:"uebungen",  label:"Übungen",    icon:"🏋️"},
     {key:"training",  label:"Training",   icon:"📅"},
     {key:"teilnahme", label:"Teilnahme",  icon:"📊"},
     {key:"rangliste", label:"Rangliste",  icon:"🏆"},
     {key:"schlaeger", label:"Schläger",   icon:"🏓"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
-    {key:"verwaltung",label:"Verwaltung", icon:"⚙️"},
+    {key:"verwaltung",label:"Verwaltung", icon:"⚙️", superAdminOnly:true},
   ];
+  // Nur Super-Admins sehen Verwaltung
+  const TABS = ALL_TABS.filter(t=>!t.superAdminOnly || isSuperAdmin);
   const [activeTab,setActiveTab]=useState("uebungen");
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
@@ -447,7 +476,7 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
           <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,color:"#e5e7eb"}}>{p.firstName} {p.lastName}</div>
-            <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {formatDateDE(p.birthdate)} — {p.age} Jahre</div>
+            <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {formatDateDE(p.birthdate)} — {p.birthdate?new Date().getFullYear()-new Date(p.birthdate).getFullYear():""} Jahre</div>
           </div>
         </div>
       ))}
@@ -476,6 +505,7 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {recentBirthdays.length>0&&<button onClick={()=>setBirthdayPopupDismissed(false)} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer"}}>🎂 {recentBirthdays.length}</button>}
           {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
+          <ThemeToggle isDark={isDark||true} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
           <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
@@ -652,7 +682,7 @@ function AdminPanel({user,players,attendance,rackets,onSignOut,onPlayerAdded}) {
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme}/>}
 
     <style>{`@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#0d1117}::-webkit-scrollbar-thumb{background:#374151;border-radius:4px}input::placeholder{color:#4b5563}select{background:#0d1117;color:#e5e7eb;border:1px solid #374151;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}`}</style>
   </div>;
@@ -925,7 +955,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 }
 
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme}) {
   const [editPlayer,setEditPlayer]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
@@ -1193,6 +1223,50 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast}) {
       <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"#1f2937":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
         {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
       </button>
+    </div>
+
+    {/* Punkt 4: App-Design Grundeinstellung */}
+    <div style={{background:"#111827",border:"1px solid #374151",borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",marginBottom:10}}>🎨 App-Design (Grundeinstellung für alle)</div>
+      <div style={{fontSize:11,color:"#6b7280",marginBottom:12,lineHeight:1.5}}>
+        Die Grundeinstellung gilt für alle Nutzer. Wer selbst eine andere Variante wählt, hat Vorrang.
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        {[{mode:"dark",label:"🌙 Dark Mode",desc:"Dunkler Hintergrund"},{mode:"light",label:"☀️ Light Mode",desc:"Heller Hintergrund"}].map(opt=>{
+          const snap=doc(db,"config","theme");
+          const [globalT,setGlobalT]=useState("dark");
+          return null; // Placeholder — actual stored in Root
+        })}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {["dark","light"].map(mode=>(
+          <button key={mode} onClick={async()=>{
+            await setDoc(doc(db,"config","theme"),{mode}).catch(()=>{});
+            showToast(`Grundeinstellung: ${mode==="dark"?"Dark":"Light"} Mode`,"🎨");
+          }} style={{
+            flex:1,padding:"8px",borderRadius:9,border:"1px solid #374151",
+            background:mode==="dark"?"#111827":"#f9fafb",
+            color:mode==="dark"?"#e5e7eb":"#1f2937",
+            fontSize:13,fontWeight:600,cursor:"pointer",
+          }}>{mode==="dark"?"🌙 Dark Mode":"☀️ Light Mode"}</button>
+        ))}
+      </div>
+      <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
+        <div style={{fontSize:11,color:"#9ca3af",marginBottom:6}}>Deine persönliche Einstellung:</div>
+        <div style={{display:"flex",gap:8}}>
+          {["dark","light",null].map((mode,i)=>(
+            <button key={i} onClick={()=>{
+              if(mode===null){localStorage.removeItem("ttc_theme");onSetUserTheme&&onSetUserTheme("");}
+              else{localStorage.setItem("ttc_theme",mode);onSetUserTheme&&onSetUserTheme(mode);}
+            }} style={{
+              flex:1,padding:"6px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+              border:`1px solid ${(userTheme===mode||(mode===null&&!userTheme))?"#10b981":"#374151"}`,
+              background:(userTheme===mode||(mode===null&&!userTheme))?"#10b98122":"transparent",
+              color:(userTheme===mode||(mode===null&&!userTheme))?"#10b981":"#6b7280",
+            }}>{mode==="dark"?"🌙 Dark":mode==="light"?"☀️ Light":"🔄 Standard"}</button>
+          ))}
+        </div>
+      </div>
     </div>
 
     {/* Add form */}
@@ -1824,15 +1898,13 @@ function GeburtstageTab({players,showToast}) {
   const [uploading,setUploading]=useState(false);
 
   const withBirthday = players
-    .filter(p=>p.birthdate)
+    .filter(p=>p.birthdate && typeof p.birthdate==="string" && p.birthdate.trim()!=="")
     .map(p=>{
       const bd=new Date(p.birthdate);
-      const today2=new Date();
-      // Korrektes Alter: berücksichtigt ob Geburtstag dieses Jahr schon war
-      let age=today2.getFullYear()-bd.getFullYear();
-      const hasBirthdayPassed=(today2.getMonth()>bd.getMonth())||(today2.getMonth()===bd.getMonth()&&today2.getDate()>=bd.getDate());
-      if(!hasBirthdayPassed) age--;
-      return {...p,age,month:bd.getMonth(),day:bd.getDate(),
+      const now=new Date();
+      let age=now.getFullYear()-bd.getFullYear();
+      if(now.getMonth()<bd.getMonth()||(now.getMonth()===bd.getMonth()&&now.getDate()<bd.getDate())) age--;
+      return {...p,age,
         sortKey:`${String(bd.getMonth()+1).padStart(2,"0")}-${String(bd.getDate()).padStart(2,"0")}`};
     })
     .sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
@@ -1849,43 +1921,46 @@ function GeburtstageTab({players,showToast}) {
     return thisYear>=since && thisYear<=today;
   }
 
-  // Punkt 2: Geburtstag mit Punkt nach Monat anzeigen: DD.MM.
-  function formatBirthdayShort(dateStr) {
-    if (!dateStr) return "—";
-    const [,m,d]=dateStr.split("-");
-    return `${d}.${m}.`;
+  // 2b: Alter korrekt berechnen
+  function calcAge(birthdateStr) {
+    if (!birthdateStr) return "—";
+    const bd = new Date(birthdateStr);
+    if (isNaN(bd.getTime())) return "—";
+    const now = new Date();
+    let age = now.getFullYear() - bd.getFullYear();
+    if (now.getMonth() < bd.getMonth() || (now.getMonth()===bd.getMonth() && now.getDate()<bd.getDate())) age--;
+    return age;
   }
 
   function parseDate(raw) {
-    if (!raw) return "";
-    let s = String(raw).trim();
-    // Excel serial number (number)
-    if (/^\d+$/.test(s) && Number(s) > 1000) {
-      // Excel date serial: days since 1900-01-01 (with leap year bug)
-      const d = new Date((Number(s) - 25569) * 86400 * 1000);
-      return d.toISOString().slice(0,10);
+    if (raw===null||raw===undefined||raw==="") return "";
+    // Zahl: Excel-Seriennummer
+    if (typeof raw === "number" || (/^\d{5}$/.test(String(raw).trim()))) {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      // Excel epoch: 1900-01-01 = 1, mit Leap-Year-Bug (1900 gilt als Schaltjahr)
+      const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
     }
-    // DD.MM.YYYY or DD.MM.YY
+    let s = String(raw).trim();
+    // DD.MM.YYYY oder DD.MM.YY
     if (s.includes(".")) {
       const parts = s.split(".");
-      if (parts.length === 3) {
-        let [d,m,y] = parts;
-        d=d.trim(); m=m.trim(); y=y.trim();
-        if (y.length === 2) y = (parseInt(y) > 30 ? "19" : "20") + y;
-        return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+      if (parts.length >= 3) {
+        let d=parts[0].trim(), m=parts[1].trim(), y=parts[2].trim();
+        if (y.length===2) y = (parseInt(y)>30?"19":"20")+y;
+        if (d.length&&m.length&&y.length===4) return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
       }
     }
     // MM/DD/YYYY
     if (s.includes("/")) {
       const [m,d,y] = s.split("/");
-      return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+      if (y&&y.length===4) return `${y}-${m.trim().padStart(2,"0")}-${d.trim().padStart(2,"0")}`;
     }
-    // Already YYYY-MM-DD
+    // YYYY-MM-DD bereits korrekt
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     return "";
   }
 
-  // Excel-Import
   async function handleExcelUpload(e) {
     const file=e.target.files?.[0];
     if (!file) return;
@@ -1900,39 +1975,47 @@ function GeburtstageTab({players,showToast}) {
         document.head.appendChild(s);
       });
       const ab=await file.arrayBuffer();
-      const wb=XLSX.read(ab,{type:"array",cellDates:true});
+      // raw:true damit Zahlen als Zahlen ankommen (Excel-Datum-Seriennummern)
+      const wb=XLSX.read(ab,{type:"array",cellDates:false});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      // raw:false damit Daten als Strings, dateNF für Datumsformat
-      const rows=XLSX.utils.sheet_to_json(ws,{raw:false,dateNF:"DD.MM.YYYY"});
-      let count=0, notFound=[];
+      const rows=XLSX.utils.sheet_to_json(ws,{raw:true});
+      let count=0, notFound=[], failed=[];
       for (const row of rows) {
-        const vorname=(row["Vorname"]||row["vorname"]||"").trim();
-        const nachname=(row["Nachname"]||row["nachname"]||"").trim();
-        const geburt=(row["Geburtsdatum"]||row["geburtsdatum"]||row["Geburtstag"]||"").trim();
-        if (!vorname||!geburt) continue;
+        const vorname=String(row["Vorname"]||row["vorname"]||"").trim();
+        const nachname=String(row["Nachname"]||row["nachname"]||"").trim();
+        const rawDate=row["Geburtsdatum"]||row["geburtsdatum"]||row["Geburtstag"]||row["geburtstag"]||"";
+        if (!vorname) continue;
+        // 3: Nur vorhandene Spieler
         const p=players.find(pl=>
-          (pl.firstName||"").toLowerCase()===vorname.toLowerCase()&&
-          (pl.lastName||"").toLowerCase()===nachname.toLowerCase()
+          (pl.firstName||"").toLowerCase().trim()===vorname.toLowerCase()&&
+          (pl.lastName||"").toLowerCase().trim()===nachname.toLowerCase()
         );
-        if (p) {
-          const dateStr = parseDate(geburt);
-          if (dateStr) {
-            await updateDoc(doc(db,"players",p.id),{birthdate:dateStr});
-            count++;
-          }
-        } else {
-          notFound.push(`${vorname} ${nachname}`);
-        }
+        if (!p) { notFound.push(`${vorname} ${nachname}`); continue; }
+        if (!rawDate && rawDate!==0) { failed.push(`${vorname} (kein Datum)`); continue; }
+        const dateStr=parseDate(rawDate);
+        if (!dateStr) { failed.push(`${vorname} (Datum unparsebar: ${rawDate})`); continue; }
+        // 2a: Direkt in players-Collection schreiben = sofort in Verwaltung sichtbar
+        await setDoc(doc(db,"players",p.id),{birthdate:dateStr},{merge:true});
+        count++;
       }
-      const msg = count>0 ? `${count} Geburtstage importiert!` : "Keine passenden Spieler gefunden";
+      let msg=count>0?`${count} Geburtstage importiert`:"Keine Geburtstage importiert";
+      if(notFound.length) msg+=` · ${notFound.length} nicht gefunden`;
+      if(failed.length) msg+=` · ${failed.length} Fehler`;
       showToast(msg,"🎂");
-      if (notFound.length) console.log("Nicht gefunden:",notFound.join(", "));
+      if(notFound.length||failed.length) console.log("Import:",{notFound,failed});
     } catch(err){
-      console.error(err);
+      console.error("Import-Fehler:",err);
       showToast("Fehler: "+err.message,"❌");
     }
     setUploading(false);
     e.target.value="";
+  }
+
+  function formatBirthdayShort(dateStr) {
+    if (!dateStr) return "—";
+    const parts = dateStr.split("-");
+    if (parts.length!==3) return dateStr;
+    return `${parts[2]}.${parts[1]}.`;
   }
 
   return <div style={{padding:13,paddingBottom:40}}>
@@ -1967,7 +2050,7 @@ function GeburtstageTab({players,showToast}) {
             </div>
             <div style={{fontSize:12,color:highlight?"#f59e0b":"#e5e7eb",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
             <div style={{fontSize:12,color:"#e5e7eb",paddingLeft:8}}>{p.lastName}</div>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400,textAlign:"right"}}>{p.age}</div>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
           </div>;
         })}
         {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
@@ -1977,7 +2060,7 @@ function GeburtstageTab({players,showToast}) {
 }
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,onSignOut}) {
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut}) {
   const myPlayer=players.find(p=>p.email===user.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
@@ -2047,7 +2130,10 @@ function PlayerView({user,players,attendance,onSignOut}) {
             <div style={{fontSize:11,color:"#6b7280"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
           </div>
         </div>
-        <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <ThemeToggle isDark={isDark||true} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
+          <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+        </div>
       </div>
     </div>
 
@@ -2323,17 +2409,20 @@ function ErfolgeTab({player}) {
   }
 
   function TournamentBadge({t}) {
-    const typeLabel={vereinsintern:"Vereinsintern",extern_kreis:"Kreis",extern_bezirk:"Bezirk",extern_verband:"Verband Hessen"}[t.type]||t.type;
     const placeN=parseInt(t.place||"99");
     const color=placeN===1?"#ffd700":placeN===2?"#b8b8b8":placeN===3?"#cd7f32":"#6b7280";
-    const details=[t.konkurrenz,t.altersklasse,typeLabel,t.date?formatDateDE(t.date):""].filter(Boolean).join(" · ");
+    const year=t.year||t.date?.slice(0,4)||"";
+    const line1=[t.name,year].filter(Boolean).join(" ");
+    const line2=[t.altersklasse,t.konkurrenz].filter(Boolean).join(" – ");
+    const line3=t.date?formatDateDE(t.date):"";
     return <div style={{background:"#111827",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{t.name||"Turnier"}</div>
-        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{details}</div>
+        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{line1||"Turnier"}</div>
+        {line2&&<div style={{fontSize:11,color:"#9ca3af",marginTop:1}}>{line2}</div>}
+        {line3&&<div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{line3}</div>}
       </div>
-      <div style={{fontSize:22,fontWeight:900,color}}>{t.place||"?"}</div>
+      <div style={{fontSize:22,fontWeight:900,color,flexShrink:0}}>{t.place||"?"}</div>
     </div>;
   }
 
@@ -2395,37 +2484,67 @@ function ErfolgeTab({player}) {
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [authUser,     setAuthUser]     = useState(undefined); // undefined = noch nicht geprüft
+  const [authUser,     setAuthUser]     = useState(undefined);
   const [players,      setPlayers]      = useState([]);
   const [attendance,   setAttendance]   = useState({});
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
   const [loginLoad,    setLoginLoad]    = useState(false);
   const [isAdmin,      setIsAdmin]      = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [adminReady,   setAdminReady]   = useState(false);
   const [loginSuccess, setLoginSuccess] = useState("");
+  // Punkt 4: Theme (dark/light)
+  const [globalTheme,  setGlobalTheme]  = useState("dark"); // Admin-Grundeinstellung aus Firestore
+  const [userTheme,    setUserTheme]    = useState(()=>localStorage.getItem("ttc_theme")||""); // Nutzer-Präferenz
+
+  // Effektives Theme: Nutzer-Präferenz hat Vorrang
+  const theme = userTheme || globalTheme;
+  const isDark = theme==="dark";
+
+  // Globale Theme-Einstellung aus Firestore laden
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
+      if(snap.exists()) setGlobalTheme(snap.data().mode||"dark");
+    },()=>{});
+    return unsub;
+  },[]);
+
+  function handleSetUserTheme(mode) {
+    setUserTheme(mode);
+    if(mode) localStorage.setItem("ttc_theme",mode);
+    else localStorage.removeItem("ttc_theme");
+  }
+
+  async function handleSetGlobalTheme(mode) {
+    setGlobalTheme(mode);
+    await setDoc(doc(db,"config","theme"),{mode}).catch(()=>{});
+  }
 
   // ── Auth listener mit robustem Admin-Check ──
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async u => {
       setAuthUser(u || null);
-      if (!u) { setIsAdmin(false); setAdminReady(true); return; }
+      if (!u) { setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); return; }
 
-      // 1) E-Mail-Vergleich (lowercase, getrimmt)
+      // 1) E-Mail-Vergleich
       if (isAdminEmail(u.email)) {
-        setIsAdmin(true); setAdminReady(true); return;
+        setIsAdmin(true);
+        setIsSuperAdmin(isSuperAdminEmail(u.email));
+        setAdminReady(true); return;
       }
 
-      // 2) Firestore-Check (trainers-Collection)
+      // 2) Firestore-Check
       try {
         const snap = await getDoc(doc(db, "trainers", u.uid));
         if (snap.exists() && snap.data().role === "admin") {
-          setIsAdmin(true); setAdminReady(true); return;
+          setIsAdmin(true);
+          setIsSuperAdmin(snap.data().superAdmin===true || isSuperAdminEmail(u.email));
+          setAdminReady(true); return;
         }
-      } catch(e) { /* ignorieren */ }
+      } catch(e) {}
 
-      // 3) Kein Admin
-      setIsAdmin(false); setAdminReady(true);
+      setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true);
     });
     return unsub;
   },[]);
@@ -2467,9 +2586,10 @@ export default function App() {
   }
 
   async function handleSignOut() {
-    await signOut(auth);
-    setPlayers([]); setAttendance({}); setRackets([]); setIsAdmin(false);
-    setAdminReady(false); setLoginSuccess("");
+    // Erst state löschen, dann ausloggen
+    // adminReady NICHT auf false setzen — onAuthStateChanged(null) setzt es korrekt auf true
+    setPlayers([]); setAttendance({}); setRackets([]); setIsAdmin(false); setLoginSuccess("");
+    try { await signOut(auth); } catch(e) {}
   }
 
   // Trainer-Freischalt-Funktion (Notfall)
@@ -2483,8 +2603,8 @@ export default function App() {
     } catch(e) { alert("Fehler: " + e.message); }
   }
 
-  // ── Ladezustand ──
-  if (authUser === undefined || !adminReady) return (
+  // ── Ladezustand: nur beim allerersten Start (authUser noch unbekannt) ──
+  if (authUser === undefined) return (
     <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div style={{fontSize:48}}>🏓</div>
       <div style={{fontSize:14,color:"#6b7280"}}>TTC Niederzeuzheim wird geladen…</div>
@@ -2508,6 +2628,12 @@ export default function App() {
       players={players}
       attendance={attendance}
       rackets={rackets}
+      isSuperAdmin={isSuperAdmin}
+      isDark={isDark}
+      onSetUserTheme={handleSetUserTheme}
+      onSetGlobalTheme={handleSetGlobalTheme}
+      globalTheme={globalTheme}
+      userTheme={userTheme}
       onSignOut={handleSignOut}
       onPlayerAdded={name => setLoginSuccess(`${name} wurde angelegt! Bitte melde dich neu an.`)}
     />
@@ -2548,6 +2674,9 @@ export default function App() {
       user={authUser}
       players={players}
       attendance={attendance}
+      isDark={isDark}
+      onSetUserTheme={handleSetUserTheme}
+      userTheme={userTheme}
       onSignOut={handleSignOut}
     />
   );
