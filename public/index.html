@@ -9,8 +9,16 @@
     <meta name="apple-mobile-web-app-title" content="TTC NZ" />
     <title>TTC Niederzeuzheim – Trainingsheft</title>
     <style>
+      :root {
+        --bg: #0d1117; --bg2: #111827; --bg3: #1f2937;
+        --border: #1f2937; --border2: #374151;
+        --text: #e5e7eb; --text2: #9ca3af; --text3: #6b7280; --text4: #4b5563;
+        --input-bg: #0d1117; --sel-bg: #0d1117;
+      }
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #0d1117; font-family: 'Segoe UI', system-ui, sans-serif; }
+      body { background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text); }
+      /* Light mode card backgrounds */
+      .light-card { background: #ffffff; border-color: #e5e7eb; }
     </style>
   </head>
   <body>
