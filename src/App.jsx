@@ -258,7 +258,7 @@ function StarRating({stars,onRate,readonly=false}) {
   return <div style={{display:"flex",gap:3}}>{[1,2,3,4,5].map(v=>(
     <span key={v} onClick={()=>!readonly&&onRate&&onRate(v===stars?0:v)}
       onMouseEnter={()=>!readonly&&setHov(v)} onMouseLeave={()=>!readonly&&setHov(null)}
-      style={{fontSize:readonly?17:22,cursor:readonly?"default":"pointer",color:v<=disp?"#f59e0b":"#374151",
+      style={{fontSize:readonly?17:22,cursor:readonly?"default":"pointer",color:v<=disp?"#f59e0b":"var(--border2)",
         transition:"color .12s,transform .1s",transform:(!readonly&&hov===v)?"scale(1.3)":"scale(1)",
         userSelect:"none",display:"inline-block"}}>★</span>
   ))}</div>;
@@ -273,7 +273,7 @@ function AwardBadge({award,small}) {
 }
 function ProgressBar({value,max,color}) {
   const pct = max>0 ? Math.min(100, Math.round((value/max)*100)) : 0;
-  return <div style={{background:"#1f2937",borderRadius:6,height:7,overflow:"hidden",width:"100%"}}>
+  return <div style={{background:"var(--bg3)",borderRadius:6,height:7,overflow:"hidden",width:"100%"}}>
     <div style={{width:`${pct}%`,height:"100%",
       background:pct>=100?`linear-gradient(90deg,${color},#10b981)`:
         `linear-gradient(90deg,${color},${color}bb)`,
@@ -288,7 +288,7 @@ function Avatar({avatar,color,size=40}) {
 function Modal({children,onClose}) {
   return <div style={{position:"fixed",inset:0,background:"#000b",zIndex:500,display:"flex",
     alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-    <div style={{background:"#111827",border:"1px solid #374151",borderRadius:18,padding:22,
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:18,padding:22,
       maxWidth:400,width:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
       {children}
     </div>
@@ -296,15 +296,15 @@ function Modal({children,onClose}) {
 }
 function AvatarPicker({current,onSelect,onClose}) {
   return <Modal onClose={onClose}>
-    <div style={{fontSize:16,fontWeight:800,marginBottom:14,color:"#e5e7eb"}}>Avatar wählen</div>
+    <div style={{fontSize:16,fontWeight:800,marginBottom:14,color:"var(--text)"}}>Avatar wählen</div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8,marginBottom:16}}>
       {AVATARS.map(av=><button key={av} onClick={()=>onSelect(av)} style={{
-        background:av===current?"#10b98133":"#1f2937",border:`2px solid ${av===current?"#10b981":"#374151"}`,
+        background:av===current?"#10b98133":"var(--border)",border:`2px solid ${av===current?"#10b981":"var(--border2)"}`,
         borderRadius:10,padding:"7px 3px",fontSize:24,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center"}}>{av}</button>)}
     </div>
-    <button onClick={onClose} style={{width:"100%",padding:10,background:"#1f2937",border:"1px solid #374151",
-      borderRadius:9,color:"#9ca3af",fontSize:14,fontWeight:600,cursor:"pointer"}}>Schließen</button>
+    <button onClick={onClose} style={{width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",
+      borderRadius:9,color:"var(--text2)",fontSize:14,fontWeight:600,cursor:"pointer"}}>Schließen</button>
   </Modal>;
 }
 
@@ -326,53 +326,53 @@ function LoginScreen({onLogin,error,loading,successMessage}) {
     setResetLoad(false);
   }
 
-  return <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
     <div style={{maxWidth:360,width:"100%"}}>
       <div style={{textAlign:"center",marginBottom:32}}>
         <div style={{fontSize:56,marginBottom:12}}>🏓</div>
-        <div style={{fontSize:22,fontWeight:800,color:"#e5e7eb"}}>TTC Niederzeuzheim</div>
-        <div style={{fontSize:13,color:"#6b7280",marginTop:4}}>Nachwuchs Trainingsheft</div>
+        <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>TTC Niederzeuzheim</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginTop:4}}>Nachwuchs Trainingsheft</div>
       </div>
       {!resetMode ? (
-        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:24}}>
-          <div style={{fontSize:15,fontWeight:700,color:"#e5e7eb",marginBottom:18}}>Anmelden</div>
+        <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:24}}>
+          <div style={{fontSize:15,fontWeight:700,color:"var(--text)",marginBottom:18}}>Anmelden</div>
           {successMessage&&<div style={{background:"#10b98122",border:"1px solid #10b98166",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#10b981",marginBottom:14}}>✅ {successMessage}</div>}
           {error&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:14}}>{error}</div>}
           {[{l:"E-Mail",v:email,s:setEmail,t:"email",p:"deine@email.de"},{l:"Passwort",v:pass,s:setPass,t:"password",p:"••••••••"}].map(f=>(
             <div key={f.l} style={{marginBottom:12}}>
-              <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:5}}>{f.l}</label>
+              <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5}}>{f.l}</label>
               <input type={f.t} value={f.v} onChange={e=>f.s(e.target.value)} placeholder={f.p}
                 onKeyDown={e=>e.key==="Enter"&&onLogin(email,pass)}
-                style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:15,outline:"none",boxSizing:"border-box"}}/>
             </div>
           ))}
           <button onClick={()=>onLogin(email,pass)} disabled={loading||!email||!pass} style={{
-            width:"100%",padding:12,background:(!email||!pass||loading)?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
+            width:"100%",padding:12,background:(!email||!pass||loading)?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
             border:"none",borderRadius:9,color:(!email||!pass||loading)?"#6b7280":"#fff",
             fontSize:15,fontWeight:700,cursor:(!email||!pass||loading)?"not-allowed":"pointer"}}>{loading?"Anmelden…":"Anmelden"}</button>
-          <button onClick={()=>{setResetMode(true);setResetEmail(email);}} style={{width:"100%",marginTop:12,padding:8,background:"transparent",border:"none",color:"#6b7280",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>🔑 Passwort vergessen?</button>
+          <button onClick={()=>{setResetMode(true);setResetEmail(email);}} style={{width:"100%",marginTop:12,padding:8,background:"transparent",border:"none",color:"var(--text3)",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>🔑 Passwort vergessen?</button>
         </div>
       ) : (
-        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:24}}>
+        <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:24}}>
           {!resetSent ? <>
-            <div style={{fontSize:15,fontWeight:700,color:"#e5e7eb",marginBottom:8}}>🔑 Passwort zurücksetzen</div>
-            <div style={{fontSize:13,color:"#6b7280",marginBottom:16,lineHeight:1.5}}>Gib deine E-Mail ein. Du bekommst einen Reset-Link.</div>
+            <div style={{fontSize:15,fontWeight:700,color:"var(--text)",marginBottom:8}}>🔑 Passwort zurücksetzen</div>
+            <div style={{fontSize:13,color:"var(--text3)",marginBottom:16,lineHeight:1.5}}>Gib deine E-Mail ein. Du bekommst einen Reset-Link.</div>
             {resetErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{resetErr}</div>}
             <input type="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="deine@email.de"
-              style={{width:"100%",padding:"11px 13px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
-            <button onClick={doReset} disabled={resetLoad||!resetEmail.trim()} style={{width:"100%",padding:12,background:(resetLoad||!resetEmail.trim())?"#1f2937":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:(resetLoad||!resetEmail.trim())?"#6b7280":"#fff",fontSize:15,fontWeight:700,cursor:(resetLoad||!resetEmail.trim())?"not-allowed":"pointer",marginBottom:10}}>{resetLoad?"Wird gesendet…":"Reset-E-Mail senden"}</button>
-            <button onClick={()=>{setResetMode(false);setResetErr("");}} style={{width:"100%",padding:10,background:"transparent",border:"1px solid #374151",borderRadius:9,color:"#6b7280",fontSize:13,cursor:"pointer"}}>← Zurück</button>
+              style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
+            <button onClick={doReset} disabled={resetLoad||!resetEmail.trim()} style={{width:"100%",padding:12,background:(resetLoad||!resetEmail.trim())?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:(resetLoad||!resetEmail.trim())?"#6b7280":"#fff",fontSize:15,fontWeight:700,cursor:(resetLoad||!resetEmail.trim())?"not-allowed":"pointer",marginBottom:10}}>{resetLoad?"Wird gesendet…":"Reset-E-Mail senden"}</button>
+            <button onClick={()=>{setResetMode(false);setResetErr("");}} style={{width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>← Zurück</button>
           </> : (
             <div style={{textAlign:"center",padding:"10px 0"}}>
               <div style={{fontSize:48,marginBottom:14}}>📬</div>
-              <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>E-Mail gesendet!</div>
-              <div style={{fontSize:13,color:"#9ca3af",marginBottom:20,lineHeight:1.6}}>Bitte prüfe dein Postfach und klicke auf den Link.</div>
+              <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>E-Mail gesendet!</div>
+              <div style={{fontSize:13,color:"var(--text2)",marginBottom:20,lineHeight:1.6}}>Bitte prüfe dein Postfach und klicke auf den Link.</div>
               <button onClick={()=>{setResetMode(false);setResetSent(false);}} style={{width:"100%",padding:12,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>← Zur Anmeldung</button>
             </div>
           )}
         </div>
       )}
-      <div style={{textAlign:"center",fontSize:12,color:"#4b5563",marginTop:16}}>Noch kein Konto? Wende dich an deinen Trainer.</div>
+      <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>Noch kein Konto? Wende dich an deinen Trainer.</div>
     </div>
   </div>;
 }
@@ -384,8 +384,8 @@ function ThemeToggle({isDark,userTheme,onSetUserTheme,small}) {
     title={isDark?"Zu Light Mode wechseln":"Zu Dark Mode wechseln"}
     style={{
       padding:small?"4px 8px":"5px 10px",
-      background:isDark?"#1f2937":"#f3f4f6",
-      border:`1px solid ${isDark?"#374151":"#d1d5db"}`,
+      background:isDark?"var(--border)":"#f3f4f6",
+      border:`1px solid ${isDark?"var(--border2)":"#d1d5db"}`,
       borderRadius:20,
       color:isDark?"#f59e0b":"#6b7280",
       fontSize:small?14:16,
@@ -395,7 +395,7 @@ function ThemeToggle({isDark,userTheme,onSetUserTheme,small}) {
     }}
   >{isDark?"☀️":"🌙"}{!small&&<span style={{fontSize:10,fontWeight:600}}>{isDark?"Light":"Dark"}</span>}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,onSignOut,onPlayerAdded}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded}) {
   const ALL_TABS=[
     {key:"uebungen",  label:"Übungen",    icon:"🏋️"},
     {key:"training",  label:"Training",   icon:"📅"},
@@ -461,21 +461,21 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{minHeight:"100vh",background:"#0d1117",color:"#e5e7eb",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",paddingBottom:80}}>
-    {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"#1f2937",border:"1px solid #374151",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",paddingBottom:80}}>
+    {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
     {showBirthdayPopup&&<Modal onClose={()=>setBirthdayPopupDismissed(true)}>
       <div style={{textAlign:"center",marginBottom:16}}>
         <div style={{fontSize:40,marginBottom:8}}>🎂</div>
-        <div style={{fontSize:17,fontWeight:800,color:"#e5e7eb",marginBottom:4}}>Geburtstage seit letztem Training</div>
-        <div style={{fontSize:12,color:"#6b7280"}}>seit {lastTraining?formatDateDE(lastTraining):"heute"}</div>
+        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>Geburtstage seit letztem Training</div>
+        <div style={{fontSize:12,color:"var(--text3)"}}>seit {lastTraining?formatDateDE(lastTraining):"heute"}</div>
       </div>
       {recentBirthdays.map(p=>(
-        <div key={p.id} style={{background:"#1f2937",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#e5e7eb"}}>{p.firstName} {p.lastName}</div>
+            <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
             <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {formatDateDE(p.birthdate)} — {p.birthdate?new Date().getFullYear()-new Date(p.birthdate).getFullYear():""} Jahre</div>
           </div>
         </div>
@@ -485,15 +485,15 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
     {teilnahmePlayer&&<Modal onClose={()=>setTeilnahmePlayer(null)}>
-      <div style={{fontSize:15,fontWeight:800,color:"#e5e7eb",marginBottom:14}}>
+      <div style={{fontSize:15,fontWeight:800,color:"var(--text)",marginBottom:14}}>
         📅 {teilnahmePlayer.firstName} {teilnahmePlayer.lastName}
       </div>
       <PlayerTrainingDetail player={teilnahmePlayer} attendance={attendance} showToast={showToast}/>
-      <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:13,cursor:"pointer"}}>Schließen</button>
+      <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
     {/* Header */}
-    <div style={{background:"linear-gradient(135deg,#111827,#1a2332)",borderBottom:"1px solid #1f2937",padding:"14px 14px 10px",position:"sticky",top:0,zIndex:100}}>
+    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
@@ -505,8 +505,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {recentBirthdays.length>0&&<button onClick={()=>setBirthdayPopupDismissed(false)} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer"}}>🎂 {recentBirthdays.length}</button>}
           {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
-          <ThemeToggle isDark={isDark||true} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
-          <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+          <ThemeToggle isDark={isDark} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
+          <button onClick={onSignOut} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
       {/* Gruppenfilter-Buttons */}
@@ -525,9 +525,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         {visiblePlayers.map(p=>(
           <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
             flexShrink:0,padding:"3px 9px 3px 5px",borderRadius:20,
-            border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"#374151"}`,
+            border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--border2)"}`,
             background:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color+"22":"transparent",
-            color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"#9ca3af",
+            color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--text2)",
             fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
             <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{p.firstName||p.name}
           </button>
@@ -536,7 +536,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -549,41 +549,41 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
       const nexts=nextAwards(curPlayer);
       return <div style={{padding:"13px 13px 0"}}>
-        <div style={{background:"linear-gradient(135deg,#111827,#1a2332)",border:`1px solid ${curPlayer.color}44`,borderRadius:14,padding:14,marginBottom:13}}>
+        <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",border:`1px solid ${curPlayer.color}44`,borderRadius:14,padding:14,marginBottom:13}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:10}}>
             <Avatar avatar={curPlayer.avatar} color={curPlayer.color} size={50}/>
             <div style={{flex:1}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                 <div>
                   <div style={{fontSize:17,fontWeight:800,color:curPlayer.color}}>{curPlayer.firstName} {curPlayer.lastName}</div>
-                  <div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{curPlayer.group||"Anfänger"} · {totalStars} Sterne</div>
+                  <div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{curPlayer.group||"Anfänger"} · {totalStars} Sterne</div>
                 </div>
-                {currentAward?<AwardBadge award={currentAward} small/>:<span style={{fontSize:11,color:"#6b7280"}}>Noch keine Urkunde</span>}
+                {currentAward?<AwardBadge award={currentAward} small/>:<span style={{fontSize:11,color:"var(--text3)"}}>Noch keine Urkunde</span>}
               </div>
             </div>
           </div>
           <div style={{marginBottom:7}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Anfänger (1–10)</span><span>{beginnerStars}/50 ★</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text2)",marginBottom:3}}><span>Anfänger (1–10)</span><span>{beginnerStars}/50 ★</span></div>
             <ProgressBar value={beginnerStars} max={50} color={curPlayer.color}/>
           </div>
           <div style={{marginBottom:nexts.length?10:0}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Fortgeschrittene (11–40)</span><span>{advancedStars}/150 ★</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text2)",marginBottom:3}}><span>Fortgeschrittene (11–40)</span><span>{advancedStars}/150 ★</span></div>
             <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
           </div>
           {/* Punkt 11: Alle nächsten Ziele anzeigen */}
-          {nexts.length>0&&<div style={{background:"#0d1117",borderRadius:8,padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
+          {nexts.length>0&&<div style={{background:"var(--bg)",borderRadius:8,padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
             {nexts.map((a,i)=>(
-              <div key={i} style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+              <div key={i} style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"var(--text4)"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
                 <AwardBadge award={a} small/>
-                <span>— noch <b style={{color:"#e5e7eb"}}>{a.needed} Sterne</b></span>
+                <span>— noch <b style={{color:"var(--text)"}}>{a.needed} Sterne</b></span>
               </div>
             ))}
           </div>}
         </div>
         <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
           {[{key:"all",label:"Alle"},{key:"beginner",label:"Anfänger"},{key:"advanced",label:"Fortgeschrittene"}].map(f=>(
-            <button key={f.key} onClick={()=>setExerciseFilter(f.key)} style={{padding:"4px 11px",borderRadius:20,border:`1px solid ${exerciseFilter===f.key?"#10b981":"#374151"}`,background:exerciseFilter===f.key?"#10b98122":"transparent",color:exerciseFilter===f.key?"#10b981":"#6b7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>{f.label}</button>
+            <button key={f.key} onClick={()=>setExerciseFilter(f.key)} style={{padding:"4px 11px",borderRadius:20,border:`1px solid ${exerciseFilter===f.key?"#10b981":"var(--border2)"}`,background:exerciseFilter===f.key?"#10b98122":"transparent",color:exerciseFilter===f.key?"#10b981":"#6b7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>{f.label}</button>
           ))}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:7,paddingBottom:20}}>
@@ -591,26 +591,26 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             const stars=curPlayer.stars?.[ex.id]||0;
             const isExp=expandedEx===ex.id;
             const isBeg=ex.id<=10;
-            return <div key={ex.id} style={{background:"#111827",border:`1px solid ${stars>0?"#2d3748":"#1f2937"}`,borderRadius:11,overflow:"hidden"}}>
+            return <div key={ex.id} style={{background:"var(--bg2)",border:`1px solid ${stars>0?"#2d3748":"var(--border)"}`,borderRadius:11,overflow:"hidden"}}>
               <div onClick={()=>setExpandedEx(isExp?null:ex.id)} style={{padding:"11px 13px",display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
                 <div style={{width:28,height:28,borderRadius:7,flexShrink:0,marginTop:2,background:isBeg?"#10b98122":"#3b82f622",border:`1px solid ${isBeg?"#10b98144":"#3b82f644"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:isBeg?"#10b981":"#3b82f6"}}>{ex.id}</div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div>
-                  <div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{ex.description}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--text)",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{ex.description}</div>
                 </div>
                 <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
                   <StarRating stars={stars} readonly/>
-                  <span style={{color:"#6b7280",fontSize:12}}>{isExp?"▲":"▼"}</span>
+                  <span style={{color:"var(--text3)",fontSize:12}}>{isExp?"▲":"▼"}</span>
                 </div>
               </div>
-              {isExp&&<div style={{borderTop:"1px solid #1f2937",padding:13,background:"#0d1117"}}>
-                <div style={{marginBottom:11,fontSize:12,color:"#9ca3af"}}>⚙️ Sterne vergeben:</div>
+              {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:13,background:"var(--bg)"}}>
+                <div style={{marginBottom:11,fontSize:12,color:"var(--text2)"}}>⚙️ Sterne vergeben:</div>
                 <div style={{marginBottom:13}}><StarRating stars={stars} onRate={v=>setStars(curPlayer.id,ex.id,v)}/></div>
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
                   {ex.thresholds.map((t,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"#1f2937",border:`1px solid ${stars>=i+1?"#f59e0b44":"#374151"}`}}>
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"var(--border)",border:`1px solid ${stars>=i+1?"#f59e0b44":"var(--border2)"}`}}>
                       <span style={{color:stars>=i+1?"#f59e0b":"#6b7280",fontSize:13}}>{"★".repeat(i+1)}{"☆".repeat(4-i)}</span>
-                      <span style={{fontSize:13,color:stars>=i+1?"#e5e7eb":"#9ca3af",flex:1}}>{t}</span>
+                      <span style={{fontSize:13,color:stars>=i+1?"var(--text)":"#9ca3af",flex:1}}>{t}</span>
                       {stars>=i+1&&<span style={{color:"#10b981"}}>✓</span>}
                     </div>
                   ))}
@@ -635,37 +635,37 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(player);
         const nexts=nextAwards(player);
         const rankEmoji=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`#${idx+1}`;
-        return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b55":"#1f2937"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
+        return <div key={player.id} style={{background:"var(--bg2)",border:`1px solid ${idx===0?"#f59e0b55":"var(--border)"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
           {idx===0&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,#f59e0b,#fbbf24)"}}/>}
           <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:12}}>
             <span style={{fontSize:18,minWidth:28,marginTop:4}}>{rankEmoji}</span>
             <Avatar avatar={player.avatar} color={player.color} size={38}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:800,color:"#e5e7eb",marginBottom:2}}>{player.firstName} {player.lastName}</div>
+              <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:2}}>{player.firstName} {player.lastName}</div>
               {currentAward&&<div style={{marginBottom:2}}><AwardBadge award={currentAward} small/></div>}
-              <div style={{fontSize:11,color:"#6b7280"}}>{player.group||"Anfänger"}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{player.group||"Anfänger"}</div>
             </div>
-            <div style={{flexShrink:0,textAlign:"center",background:"linear-gradient(135deg,#1f2937,#111827)",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 12px",minWidth:54}}>
+            <div style={{flexShrink:0,textAlign:"center",background:"linear-gradient(135deg,var(--bg3),var(--bg2))",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 12px",minWidth:54}}>
               <div style={{fontSize:26,fontWeight:900,color:player.color,lineHeight:1}}>{totalStars}</div>
-              <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>★ Sterne</div>
+              <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>★ Sterne</div>
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:nexts.length?9:0}}>
-            <div style={{background:"#0d1117",borderRadius:8,padding:"7px 9px"}}>
-              <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Anfänger (1–10)</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:3}}><span style={{fontSize:17,fontWeight:800,color:player.color}}>{beginnerStars}</span><span style={{fontSize:10,color:"#6b7280"}}>/ 50 ★</span></div>
+            <div style={{background:"var(--bg)",borderRadius:8,padding:"7px 9px"}}>
+              <div style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Anfänger (1–10)</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:3}}><span style={{fontSize:17,fontWeight:800,color:player.color}}>{beginnerStars}</span><span style={{fontSize:10,color:"var(--text3)"}}>/ 50 ★</span></div>
               <ProgressBar value={beginnerStars} max={50} color={player.color}/>
             </div>
-            <div style={{background:"#0d1117",borderRadius:8,padding:"7px 9px"}}>
-              <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Fortgeschr. (11–40)</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:3}}><span style={{fontSize:17,fontWeight:800,color:"#3b82f6"}}>{advancedStars}</span><span style={{fontSize:10,color:"#6b7280"}}>/ 150 ★</span></div>
+            <div style={{background:"var(--bg)",borderRadius:8,padding:"7px 9px"}}>
+              <div style={{fontSize:10,color:"var(--text3)",marginBottom:3}}>Fortgeschr. (11–40)</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:3}}><span style={{fontSize:17,fontWeight:800,color:"#3b82f6"}}>{advancedStars}</span><span style={{fontSize:10,color:"var(--text3)"}}>/ 150 ★</span></div>
               <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
             </div>
           </div>
-          {nexts.length>0&&<div style={{background:"#0d1117",borderRadius:8,padding:"7px 10px",display:"flex",flexDirection:"column",gap:4}}>
+          {nexts.length>0&&<div style={{background:"var(--bg)",borderRadius:8,padding:"7px 10px",display:"flex",flexDirection:"column",gap:4}}>
             {nexts.map((a,i)=>(
-              <div key={i} style={{fontSize:11,color:"#9ca3af",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+              <div key={i} style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                <span style={{fontSize:10,color:"var(--text4)"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
                 <AwardBadge award={a} small/>
                 <span>noch {a.needed} ★</span>
               </div>
@@ -682,9 +682,21 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme}/>}
 
-    <style>{`@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#0d1117}::-webkit-scrollbar-thumb{background:#374151;border-radius:4px}input::placeholder{color:#4b5563}select{background:#0d1117;color:#e5e7eb;border:1px solid #374151;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}`}</style>
+    <style>{`
+      @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+      *{box-sizing:border-box}
+      ::-webkit-scrollbar{width:4px;height:4px}
+      ::-webkit-scrollbar-track{background:var(--bg)}
+      ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+      input::placeholder{color:var(--text4)!important}
+      input[type="text"],input[type="email"],input[type="password"],input[type="date"]{background:var(--input-bg)!important;color:var(--text)!important;border-color:var(--border2)!important}
+      select{background:var(--sel-bg)!important;color:var(--text)!important;border:1px solid var(--border2)!important;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}
+      table{background:var(--bg2)}
+      table td,table th{color:var(--text)}
+      tbody tr:hover{background:var(--bg3)!important}
+    `}</style>
   </div>;
 }
 
@@ -744,8 +756,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📅 Training erfassen</div>
 
     {/* Date selector */}
-    <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14}}>
-      <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:6}}>Trainingstag auswählen</label>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:14}}>
+      <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6}}>Trainingstag auswählen</label>
       <select value={selDate} onChange={e=>setSelDate(e.target.value)}>
         {allDays.map(d=>{
           const dow=new Date(d).getDay();
@@ -757,20 +769,20 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
     {sessionData&&<>
       {/* Training stattgefunden? */}
-      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",marginBottom:12}}>Training stattgefunden?</div>
+      <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>Training stattgefunden?</div>
         <div style={{display:"flex",gap:8,marginBottom:sessionData.took_place?0:12}}>
           {[{v:true,l:"✅ Ja"},{v:false,l:"❌ Nein"}].map(opt=>(
             <button key={String(opt.v)} onClick={()=>setSessionData(p=>({...p,took_place:opt.v}))} style={{
               flex:1,padding:"9px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",
-              border:`2px solid ${sessionData.took_place===opt.v?"#10b981":"#374151"}`,
-              background:sessionData.took_place===opt.v?"#10b98122":"#1f2937",
+              border:`2px solid ${sessionData.took_place===opt.v?"#10b981":"var(--border2)"}`,
+              background:sessionData.took_place===opt.v?"#10b98122":"var(--border)",
               color:sessionData.took_place===opt.v?"#10b981":"#6b7280"}}>{opt.l}</button>
           ))}
         </div>
         {/* Punkt 5: Alphabetisch sortierte Dropdown-Liste */}
         {!sessionData.took_place&&<div style={{marginTop:12}}>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:6}}>Grund</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6}}>Grund</label>
           <select value={sessionData.reason||""} onChange={e=>setSessionData(p=>({...p,reason:e.target.value}))}>
             <option value="">Bitte wählen…</option>
             {ABSENCE_REASONS.map(r=><option key={r} value={r}>{r}</option>)}
@@ -779,15 +791,15 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       </div>
 
       {/* Anwesenheit */}
-      {sessionData.took_place&&<div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14}}>
+      {sessionData.took_place&&<div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>Anwesenheit</div>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>Anwesenheit</div>
           <button onClick={()=>setAll("a")} style={{padding:"4px 10px",borderRadius:7,background:"#10b98122",border:"1px solid #10b98144",color:"#10b981",fontSize:11,fontWeight:600,cursor:"pointer"}}>Alle ✓ anwesend</button>
         </div>
 
         {/* Punkt 9: Spaltenköpfe als Kreise */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:8,padding:"0 4px"}}>
-          <div style={{fontSize:11,color:"#6b7280",fontWeight:700}}>Name</div>
+          <div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>Name</div>
           {COL_HEADERS.map(h=>(
             <div key={h.key} style={{display:"flex",justifyContent:"center"}}>
               <div style={{
@@ -805,13 +817,13 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
           return <div key={group} style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
             {groupPlayers.map(p=>{
               const val=sessionData.attendances?.[p.id]||"a";
-              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:6,alignItems:"center",background:"#0d1117",borderRadius:8,padding:"8px 10px"}}>
+              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:6,alignItems:"center",background:"var(--bg)",borderRadius:8,padding:"8px 10px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:7}}>
                   <span style={{fontSize:16}}>{p.avatar||"🏓"}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:"#e5e7eb"}}>{p.firstName} {p.lastName}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{p.firstName} {p.lastName}</span>
                 </div>
                 {COL_HEADERS.map(opt=>(
                   <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
@@ -819,7 +831,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
                       width:36,height:36,borderRadius:"50%",border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,cursor:"pointer",
                       fontSize:15,fontWeight:800,
                       background:val===opt.key?opt.color+"33":"transparent",
-                      color:val===opt.key?opt.color:"#4b5563",
+                      color:val===opt.key?opt.color:"var(--text4)",
                       boxShadow:val===opt.key?`0 0 8px ${opt.color}44`:"none",
                       transition:"all .15s",
                     }}>{opt.label}</button>
@@ -831,7 +843,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
         })}
       </div>}
 
-      <button onClick={save} disabled={loading} style={{width:"100%",padding:12,background:loading?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:loading?"#6b7280":"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>
+      <button onClick={save} disabled={loading} style={{width:"100%",padding:12,background:loading?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:loading?"#6b7280":"#fff",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>
         {loading?"Wird gespeichert…":"💾 Speichern"}
       </button>
     </>}
@@ -918,13 +930,13 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
   return <div style={{padding:13}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung 2026</div>
     {trainingRange.start&&trainingRange.end&&(
-      <div style={{fontSize:11,color:"#6b7280",marginBottom:14}}>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
         Zeitraum: {formatDateDE(trainingRange.start)} – {formatDateDE(trainingRange.end)}
       </div>
     )}
     {ranked.map((player,idx)=>{
       const medal = player.pct>90?"🥇":player.pct>80?"🥈":player.pct>70?"🥉":null;
-      return <div key={player.id} style={{background:"#111827",border:`1px solid ${idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+      return <div key={player.id} style={{background:"var(--bg2)",border:`1px solid ${idx===0?"#f59e0b44":"var(--border)"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
         <Avatar avatar={player.avatar} color={player.color} size={36}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
@@ -934,20 +946,20 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
             >{player.firstName} {player.lastName}</span>
             {medal&&<span style={{fontSize:16}}>{medal}</span>}
           </div>
-          <div style={{fontSize:10,color:"#6b7280",marginBottom:5}}>{player.group||"Anfänger"}</div>
-          <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
+          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{player.group||"Anfänger"}</div>
+          <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
             <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
           </div>
-          <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280",flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)",flexWrap:"wrap"}}>
             <span>✓ {player.present} anwesend</span>
             <span>{player.excused} entsch.</span>
             <span>{player.unexcused} unentsch.</span>
             <span>Gesamt: {player.total}</span>
           </div>
         </div>
-        <div style={{flexShrink:0,textAlign:"center",background:"#0d1117",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:52}}>
+        <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:52}}>
           <div style={{fontSize:20,fontWeight:900,color:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{player.pct}%</div>
-          <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>Beteiligung</div>
+          <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>Beteiligung</div>
         </div>
       </div>;
     })}
@@ -955,7 +967,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 }
 
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme}) {
   const [editPlayer,setEditPlayer]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
@@ -1150,10 +1162,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {deleteConfirmFor&&<Modal onClose={()=>setDeleteConfirmFor(null)}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
-        <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>Wirklich löschen?</div>
-        <div style={{fontSize:13,color:"#9ca3af",marginBottom:20}}><b style={{color:"#e5e7eb"}}>{deleteConfirmFor.firstName} {deleteConfirmFor.lastName}</b> und alle Daten werden dauerhaft gelöscht.</div>
+        <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Wirklich löschen?</div>
+        <div style={{fontSize:13,color:"var(--text2)",marginBottom:20}}><b style={{color:"var(--text)"}}>{deleteConfirmFor.firstName} {deleteConfirmFor.lastName}</b> und alle Daten werden dauerhaft gelöscht.</div>
         <div style={{display:"flex",gap:10}}>
-          <button onClick={()=>setDeleteConfirmFor(null)} style={{flex:1,padding:10,background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:14,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
+          <button onClick={()=>setDeleteConfirmFor(null)} style={{flex:1,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:14,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
           <button onClick={()=>doDelete(deleteConfirmFor.id)} style={{flex:1,padding:10,background:"linear-gradient(135deg,#ef4444,#dc2626)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Löschen</button>
         </div>
       </div>
@@ -1161,34 +1173,34 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     {/* Login-Upgrade Modal */}
     {loginUpgradeFor&&<Modal onClose={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}}>
-      <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:6}}>📧 Login einrichten</div>
-      <div style={{fontSize:13,color:"#6b7280",marginBottom:16,lineHeight:1.5}}>
-        Für <b style={{color:"#e5e7eb"}}>{loginUpgradeFor.firstName} {loginUpgradeFor.lastName}</b> wird ein Login-Account erstellt. Alle bisherigen Ergebnisse bleiben erhalten.
+      <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:6}}>📧 Login einrichten</div>
+      <div style={{fontSize:13,color:"var(--text3)",marginBottom:16,lineHeight:1.5}}>
+        Für <b style={{color:"var(--text)"}}>{loginUpgradeFor.firstName} {loginUpgradeFor.lastName}</b> wird ein Login-Account erstellt. Alle bisherigen Ergebnisse bleiben erhalten.
       </div>
       {upgradeErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{upgradeErr}</div>}
       <div style={{marginBottom:10}}>
-        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>E-Mail</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
         <input type="email" value={upgradeEmail} onChange={e=>setUpgradeEmail(e.target.value)}
           placeholder="spieler@email.de"
-          style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+          style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
       </div>
       <div style={{marginBottom:16}}>
-        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
         <input type="password" value={upgradePass} onChange={e=>setUpgradePass(e.target.value)}
           placeholder="••••••••"
-          style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+          style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={doUpgradeLogin} disabled={upgrading||!upgradeEmail.trim()||!upgradePass.trim()} style={{
           flex:1,padding:11,
-          background:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",
+          background:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
           border:"none",borderRadius:9,
           color:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"#6b7280":"#fff",
           fontSize:14,fontWeight:700,cursor:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"not-allowed":"pointer",
         }}>{upgrading?"Wird eingerichtet…":"📧 Login erstellen"}</button>
         <button onClick={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{
-          flex:1,padding:11,background:"#1f2937",border:"1px solid #374151",
-          borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer",
+          flex:1,padding:11,background:"var(--bg3)",border:"1px solid var(--border2)",
+          borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",
         }}>Abbrechen</button>
       </div>
     </Modal>}
@@ -1201,129 +1213,126 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>
 
     {/* Punkt 4: Trainingszeitraum */}
-    <div style={{background:"#111827",border:"1px solid #374151",borderRadius:14,padding:14,marginBottom:16}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",marginBottom:12}}>📅 Trainingszeitraum</div>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📅 Trainingszeitraum</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <div>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Start Training</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Start Training</label>
           <input type="date" value={trainingRange.start||""} min="2026-01-01" max="2026-12-31"
             onChange={e=>setTrainingRange(p=>({...p,start:e.target.value}))}
-            style={{width:"100%",padding:"9px 11px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
         </div>
         <div>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Ende Training</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Ende Training</label>
           <input type="date" value={trainingRange.end||""} min="2026-01-01" max="2026-12-31"
             onChange={e=>setTrainingRange(p=>({...p,end:e.target.value}))}
-            style={{width:"100%",padding:"9px 11px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
         </div>
       </div>
-      <div style={{fontSize:11,color:"#6b7280",marginBottom:10,lineHeight:1.5}}>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
         Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums. Beide Daten sind inklusiv.
       </div>
-      <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"#1f2937":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
+      <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
         {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
       </button>
     </div>
 
-    {/* Punkt 4: App-Design Grundeinstellung */}
-    <div style={{background:"#111827",border:"1px solid #374151",borderRadius:14,padding:14,marginBottom:16}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb",marginBottom:10}}>🎨 App-Design (Grundeinstellung für alle)</div>
-      <div style={{fontSize:11,color:"#6b7280",marginBottom:12,lineHeight:1.5}}>
+    {/* App-Design Grundeinstellung */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:6}}>🎨 App-Design</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
         Die Grundeinstellung gilt für alle Nutzer. Wer selbst eine andere Variante wählt, hat Vorrang.
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-        {[{mode:"dark",label:"🌙 Dark Mode",desc:"Dunkler Hintergrund"},{mode:"light",label:"☀️ Light Mode",desc:"Heller Hintergrund"}].map(opt=>{
-          const snap=doc(db,"config","theme");
-          const [globalT,setGlobalT]=useState("dark");
-          return null; // Placeholder — actual stored in Root
+
+      {/* Grundeinstellung für alle */}
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:600}}>Grundeinstellung für alle Nutzer:</div>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        {[{mode:"dark",label:"🌙 Dark Mode"},{mode:"light",label:"☀️ Light Mode"}].map(opt=>{
+          const isActive = globalTheme===opt.mode;
+          return <button key={opt.mode} onClick={async()=>{
+            await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
+            showToast(`Grundeinstellung: ${opt.mode==="dark"?"Dark":"Light"} Mode`,"🎨");
+          }} style={{
+            flex:1,padding:"9px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:12,
+            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+            background:isActive?"#10b98122":"var(--bg3)",
+            color:isActive?"#10b981":"var(--text2)",
+          }}>{opt.label}{isActive&&" ✓"}</button>;
         })}
       </div>
+
+      {/* Persönliche Einstellung */}
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:600}}>Deine persönliche Einstellung (hat Vorrang):</div>
       <div style={{display:"flex",gap:8}}>
-        {["dark","light"].map(mode=>(
-          <button key={mode} onClick={async()=>{
-            await setDoc(doc(db,"config","theme"),{mode}).catch(()=>{});
-            showToast(`Grundeinstellung: ${mode==="dark"?"Dark":"Light"} Mode`,"🎨");
+        {[{mode:"dark",label:"🌙 Dark"},{mode:"light",label:"☀️ Light"},{mode:"",label:"🔄 Standard"}].map(opt=>{
+          const isActive = userTheme===opt.mode || (!userTheme&&opt.mode==="");
+          return <button key={opt.mode||"std"} onClick={()=>{
+            onSetUserTheme&&onSetUserTheme(opt.mode);
           }} style={{
-            flex:1,padding:"8px",borderRadius:9,border:"1px solid #374151",
-            background:mode==="dark"?"#111827":"#f9fafb",
-            color:mode==="dark"?"#e5e7eb":"#1f2937",
-            fontSize:13,fontWeight:600,cursor:"pointer",
-          }}>{mode==="dark"?"🌙 Dark Mode":"☀️ Light Mode"}</button>
-        ))}
-      </div>
-      <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #374151"}}>
-        <div style={{fontSize:11,color:"#9ca3af",marginBottom:6}}>Deine persönliche Einstellung:</div>
-        <div style={{display:"flex",gap:8}}>
-          {["dark","light",null].map((mode,i)=>(
-            <button key={i} onClick={()=>{
-              if(mode===null){localStorage.removeItem("ttc_theme");onSetUserTheme&&onSetUserTheme("");}
-              else{localStorage.setItem("ttc_theme",mode);onSetUserTheme&&onSetUserTheme(mode);}
-            }} style={{
-              flex:1,padding:"6px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
-              border:`1px solid ${(userTheme===mode||(mode===null&&!userTheme))?"#10b981":"#374151"}`,
-              background:(userTheme===mode||(mode===null&&!userTheme))?"#10b98122":"transparent",
-              color:(userTheme===mode||(mode===null&&!userTheme))?"#10b981":"#6b7280",
-            }}>{mode==="dark"?"🌙 Dark":mode==="light"?"☀️ Light":"🔄 Standard"}</button>
-          ))}
-        </div>
+            flex:1,padding:"7px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+            background:isActive?"#10b98122":"transparent",
+            color:isActive?"#10b981":"var(--text3)",
+          }}>{opt.label}{isActive&&" ✓"}</button>;
+        })}
       </div>
     </div>
 
     {/* Add form */}
-    {showAdd&&<div style={{background:"#111827",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
+    {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
       <div style={{fontSize:14,fontWeight:700,color:"#10b981",marginBottom:14}}>Neue Person anlegen</div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
         <div style={{width:52,height:52,borderRadius:"50%",background:"#10b98122",border:"2px solid #10b98166",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{newData.avatar}</div>
-        <button onClick={()=>setAvatarPickerFor("new")} style={{padding:"7px 12px",background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:12,fontWeight:600,cursor:"pointer"}}>Avatar ✏️</button>
+        <button onClick={()=>setAvatarPickerFor("new")} style={{padding:"7px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Avatar ✏️</button>
       </div>
       {[
         {l:"Vorname *",k:"firstName",t:"text",p:"Max"},
         {l:"Nachname",k:"lastName",t:"text",p:"Mustermann"},
       ].map(f=><div key={f.k} style={{marginBottom:10}}>
-        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>{f.l}</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>{f.l}</label>
         <input type={f.t} value={newData[f.k]} onChange={e=>setNewData(p=>({...p,[f.k]:e.target.value}))} placeholder={f.p}
-          style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+          style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
       </div>)}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         <div>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Geschlecht</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geschlecht</label>
           <select value={newData.gender} onChange={e=>setNewData(p=>({...p,gender:e.target.value}))}>
             <option value="m">Männlich</option><option value="w">Weiblich</option><option value="d">Divers</option>
           </select>
         </div>
         <div>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Gruppe</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Gruppe</label>
           <select value={newData.group} onChange={e=>setNewData(p=>({...p,group:e.target.value}))}>
             {GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
           </select>
         </div>
       </div>
       <div style={{marginBottom:10}}>
-        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Status</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Status</label>
         <select value={newData.status} onChange={e=>setNewData(p=>({...p,status:e.target.value}))}>
           <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
         </select>
       </div>
       <div style={{marginBottom:10}}>
-        <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:6}}>Login-Typ</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6}}>Login-Typ</label>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <button onClick={()=>setNewData(p=>({...p,noLogin:false}))} style={{padding:"8px",borderRadius:9,fontSize:11,fontWeight:700,cursor:"pointer",border:`2px solid ${!newData.noLogin?"#10b981":"#374151"}`,background:!newData.noLogin?"#10b98122":"#1f2937",color:!newData.noLogin?"#10b981":"#6b7280"}}>📧 Mit Login</button>
-          <button onClick={()=>setNewData(p=>({...p,noLogin:true}))} style={{padding:"8px",borderRadius:9,fontSize:11,fontWeight:700,cursor:"pointer",border:`2px solid ${newData.noLogin?"#f59e0b":"#374151"}`,background:newData.noLogin?"#f59e0b22":"#1f2937",color:newData.noLogin?"#f59e0b":"#6b7280"}}>👤 Ohne Login</button>
+          <button onClick={()=>setNewData(p=>({...p,noLogin:false}))} style={{padding:"8px",borderRadius:9,fontSize:11,fontWeight:700,cursor:"pointer",border:`2px solid ${!newData.noLogin?"#10b981":"var(--border2)"}`,background:!newData.noLogin?"#10b98122":"var(--border)",color:!newData.noLogin?"#10b981":"#6b7280"}}>📧 Mit Login</button>
+          <button onClick={()=>setNewData(p=>({...p,noLogin:true}))} style={{padding:"8px",borderRadius:9,fontSize:11,fontWeight:700,cursor:"pointer",border:`2px solid ${newData.noLogin?"#f59e0b":"var(--border2)"}`,background:newData.noLogin?"#f59e0b22":"var(--border)",color:newData.noLogin?"#f59e0b":"#6b7280"}}>👤 Ohne Login</button>
         </div>
       </div>
       {!newData.noLogin&&<>
         <div style={{marginBottom:10}}>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>E-Mail</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
           <input type="email" value={newData.email} onChange={e=>setNewData(p=>({...p,email:e.target.value}))} placeholder="spieler@email.de"
-            style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
         </div>
         <div style={{marginBottom:14}}>
-          <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
           <input type="password" value={newData.pass} onChange={e=>setNewData(p=>({...p,pass:e.target.value}))} placeholder="••••••••"
-            style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
         </div>
       </>}
-      <button onClick={addPlayer} disabled={saving||!newData.firstName.trim()} style={{width:"100%",padding:11,background:(saving||!newData.firstName.trim())?"#1f2937":"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:(saving||!newData.firstName.trim())?"#6b7280":"#fff",fontSize:14,fontWeight:700,cursor:(saving||!newData.firstName.trim())?"not-allowed":"pointer"}}>
+      <button onClick={addPlayer} disabled={saving||!newData.firstName.trim()} style={{width:"100%",padding:11,background:(saving||!newData.firstName.trim())?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:(saving||!newData.firstName.trim())?"#6b7280":"#fff",fontSize:14,fontWeight:700,cursor:(saving||!newData.firstName.trim())?"not-allowed":"pointer"}}>
         {saving?"Wird erstellt…":"Person anlegen"}
       </button>
     </div>}
@@ -1334,66 +1343,66 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
       if (!groupPlayers.length) return null;
       return <div key={group} style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8,paddingLeft:2}}>{group} ({groupPlayers.length})</div>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8,paddingLeft:2}}>{group} ({groupPlayers.length})</div>
         {groupPlayers.map(p=>(
           editPlayer?.id===p.id ? (
-            <div key={p.id} style={{background:"#111827",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
+            <div key={p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                 <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setAvatarPickerFor("edit")}>
                   <Avatar avatar={editPlayer.avatar} color={p.color} size={44}/>
-                  <span style={{position:"absolute",bottom:-2,right:-2,fontSize:12,background:"#1f2937",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #374151"}}>✏️</span>
+                  <span style={{position:"absolute",bottom:-2,right:-2,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
                 </div>
-                <div style={{fontSize:14,fontWeight:700,color:"#e5e7eb"}}>{editPlayer.firstName} {editPlayer.lastName} bearbeiten</div>
+                <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{editPlayer.firstName} {editPlayer.lastName} bearbeiten</div>
               </div>
               {[{l:"Vorname",k:"firstName"},{l:"Nachname",k:"lastName"},{l:"E-Mail",k:"email"}].map(f=>(
                 <div key={f.k} style={{marginBottom:10}}>
-                  <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>{f.l}</label>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>{f.l}</label>
                   <input type="text" value={editPlayer[f.k]||""} onChange={e=>setEditPlayer(prev=>({...prev,[f.k]:e.target.value}))}
-                    style={{width:"100%",padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
                 </div>
               ))}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div>
-                  <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Geschlecht</label>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geschlecht</label>
                   <select value={editPlayer.gender||"m"} onChange={e=>setEditPlayer(prev=>({...prev,gender:e.target.value}))}>
                     <option value="m">Männlich</option><option value="w">Weiblich</option><option value="d">Divers</option>
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Gruppe</label>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Gruppe</label>
                   <select value={editPlayer.group||"Anfänger"} onChange={e=>setEditPlayer(prev=>({...prev,group:e.target.value}))}>
                     {GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
               </div>
               <div style={{marginBottom:14}}>
-                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Status</label>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Status</label>
                 <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))}>
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
               </div>
               {/* Geburtstag */}
               <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Geburtstag</label>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geburtstag</label>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
                   <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
-                    style={{flex:1,padding:"10px 12px",background:"#0d1117",border:"1px solid #374151",borderRadius:9,color:"#e5e7eb",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-                  {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(prev=>({...prev,birthdate:""}))} style={{padding:"9px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#6b7280",fontSize:12,cursor:"pointer",flexShrink:0}}>✕</button>}
+                    style={{flex:1,padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                  {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(prev=>({...prev,birthdate:""}))} style={{padding:"9px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:12,cursor:"pointer",flexShrink:0}}>✕</button>}
                 </div>
               </div>
               {/* Trainingsheft erhalten */}
               <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"#9ca3af",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
                 <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
                   <option value="ja">Ja</option>
                   <option value="nein">Nein</option>
                 </select>
               </div>
               {/* Schläger */}
-              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>🏏 Schläger</div>
+              <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏏 Schläger</div>
                 <div style={{marginBottom:8}}>
-                  <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Typ</label>
+                  <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Typ</label>
                   <select value={editPlayer.racketType||""} onChange={e=>setEditPlayer(prev=>({...prev,racketType:e.target.value,racketNr:""}))}>
                     <option value="">— kein —</option>
                     <option value="eigener">Eigener</option>
@@ -1402,7 +1411,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </div>
                 {editPlayer.racketType==="TTC"&&<>
                   <div style={{marginBottom:8}}>
-                    <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Schläger-Nr.</label>
+                    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Schläger-Nr.</label>
                     <select value={editPlayer.racketNr||""} onChange={e=>setEditPlayer(prev=>({...prev,racketNr:e.target.value}))}>
                       <option value="">— wählen —</option>
                       {(rackets||[]).filter(r=>r.status==="frei"||r.nr===editPlayer.racketNr).sort((a,b)=>a.nr-b.nr).map(r=>(
@@ -1412,36 +1421,36 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                     <div>
-                      <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Start (Vergabe)</label>
+                      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Start (Vergabe)</label>
                       <input type="date" value={editPlayer.racketStart||""} onChange={e=>setEditPlayer(prev=>({...prev,racketStart:e.target.value}))}
-                        style={{width:"100%",padding:"7px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                        style={{width:"100%",padding:"7px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
                     </div>
                     <div>
-                      <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Ende (Rückgabe)</label>
+                      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Ende (Rückgabe)</label>
                       <input type="date" value={editPlayer.racketEnd||""} onChange={e=>setEditPlayer(prev=>({...prev,racketEnd:e.target.value}))}
-                        style={{width:"100%",padding:"7px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                        style={{width:"100%",padding:"7px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
                     </div>
                   </div>
                 </>}
               </div>
               {/* Individueller Trainingszeitraum */}
-              <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
+              <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
-                    <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Start Training</label>
+                    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Start Training</label>
                     <input type="date" value={editPlayer.trainingStart||""} min="2026-01-01" max="2026-12-31"
                       onChange={e=>setEditPlayer(prev=>({...prev,trainingStart:e.target.value}))}
-                      style={{width:"100%",padding:"8px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                      style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
                   </div>
                   <div>
-                    <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:3}}>Ende Training</label>
+                    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Ende Training</label>
                     <input type="date" value={editPlayer.trainingEnd||""} min="2026-01-01" max="2026-12-31"
                       onChange={e=>setEditPlayer(prev=>({...prev,trainingEnd:e.target.value}))}
-                      style={{width:"100%",padding:"8px 10px",background:"#111827",border:"1px solid #374151",borderRadius:8,color:"#e5e7eb",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                      style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
                   </div>
                 </div>
-                <div style={{fontSize:10,color:"#4b5563",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
+                <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
               </div>
 
               {/* Urkunden-Vergabedaten */}
@@ -1451,31 +1460,31 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 const earnedAdv=ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
                 const allEarned=[...earnedBeg,...earnedAdv];
                 if(!allEarned.length&&!earnedBeg.length&&!earnedAdv.length) return null;
-                return <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                  <div style={{fontSize:12,color:"#9ca3af",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
+                return <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                  <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
                   {allEarned.map(a=>{
                     const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
                     return <div key={key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                       <span style={{fontSize:16}}>{a.emoji}</span>
-                      <div style={{flex:1,fontSize:11,color:"#9ca3af"}}>{a.label}</div>
+                      <div style={{flex:1,fontSize:11,color:"var(--text2)"}}>{a.label}</div>
                       <input type="date" value={editPlayer[key]||""}
                         onChange={e=>setEditPlayer(prev=>({...prev,[key]:e.target.value}))}
-                        style={{padding:"5px 8px",background:"#111827",border:"1px solid #374151",borderRadius:7,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                        style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
                     </div>;
                   })}
-                  <div style={{marginTop:8,borderTop:"1px solid #374151",paddingTop:8}}>
-                    <div style={{fontSize:11,color:"#9ca3af",marginBottom:4,fontWeight:600}}>Trainingsbeteiligung-Urkunde</div>
-                    <div style={{fontSize:10,color:"#4b5563",marginBottom:8,lineHeight:1.4}}>
+                  <div style={{marginTop:8,borderTop:"1px solid var(--border2)",paddingTop:8}}>
+                    <div style={{fontSize:11,color:"var(--text2)",marginBottom:4,fontWeight:600}}>Trainingsbeteiligung-Urkunde</div>
+                    <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.4}}>
                       Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung.
                       Hier nur das Datum der Urkundenvergabe eintragen.
                     </div>
                     {[{key:"attendBronzeDate",label:"Bronze >70%",emoji:"🥉",threshold:70},{key:"attendSilverDate",label:"Silber >80%",emoji:"🥈",threshold:80},{key:"attendGoldDate",label:"Gold >90%",emoji:"🥇",threshold:90}].map(a=>(
                       <div key={a.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                         <span style={{fontSize:16}}>{a.emoji}</span>
-                        <div style={{flex:1,fontSize:11,color:"#9ca3af"}}>{a.label}</div>
+                        <div style={{flex:1,fontSize:11,color:"var(--text2)"}}>{a.label}</div>
                         <input type="date" value={editPlayer[a.key]||""}
                           onChange={e=>setEditPlayer(prev=>({...prev,[a.key]:e.target.value}))}
-                          style={{padding:"5px 8px",background:"#111827",border:"1px solid #374151",borderRadius:7,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+                          style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
                       </div>
                     ))}
                   </div>
@@ -1506,20 +1515,20 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 // Sortiert absteigend nach Datum
                 const sortedT=[...(editPlayer.tournaments||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
 
-                return <div style={{background:"#0d1117",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
-                  <div style={{fontSize:12,color:"#9ca3af",marginBottom:10,fontWeight:600}}>🏆 Turniererfolge</div>
+                return <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
+                  <div style={{fontSize:12,color:"var(--text2)",marginBottom:10,fontWeight:600}}>🏆 Turniererfolge</div>
                   {sortedT.map((t,sortedIdx)=>{
                     // Original-Index finden
                     const origIdx=(editPlayer.tournaments||[]).findIndex((ot,i)=>ot===t||(ot.type===t.type&&ot.name===t.name&&ot.date===t.date&&i===sortedIdx));
                     const i=(editPlayer.tournaments||[]).indexOf(t);
                     const opts=getTurnierOptions(t.type);
-                    return <div key={i} style={{background:"#111827",borderRadius:8,padding:"10px 12px",marginBottom:8,position:"relative"}}>
+                    return <div key={i} style={{background:"var(--bg2)",borderRadius:8,padding:"10px 12px",marginBottom:8,position:"relative"}}>
                       <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:prev.tournaments.filter((_,j)=>j!==i)}))}
-                        style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>
+                        style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>
                       {/* Zeile 1: Typ + Turniername */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Typ</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Typ</label>
                           <select value={t.type||"vereinsintern"} onChange={e=>updateT(i,"type",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
                             <option value="vereinsintern">Vereinsintern</option>
                             <option value="extern_kreis">Extern – Kreis</option>
@@ -1528,7 +1537,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                           </select>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Turniername</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Turniername</label>
                           {opts ? (
                             <select value={t.name||""} onChange={e=>updateT(i,"name",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
                               <option value="">— wählen —</option>
@@ -1536,40 +1545,40 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                             </select>
                           ) : (
                             <input value={t.name||""} onChange={e=>updateT(i,"name",e.target.value)} placeholder="Turniername"
-                              style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                              style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                           )}
                         </div>
                       </div>
                       {/* Zeile 2: Platz + Konkurrenz + Altersklasse */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Platz</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Platz</label>
                           <input value={t.place||""} onChange={e=>updateT(i,"place",e.target.value)} placeholder="z. B. 1"
-                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                            style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Konkurrenz</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Konkurrenz</label>
                           <select value={t.konkurrenz||""} onChange={e=>updateT(i,"konkurrenz",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
                             <option value="">—</option>
                             {KONKURRENZ.map(k=><option key={k}>{k}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Altersklasse</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Altersklasse</label>
                           <input value={t.altersklasse||""} onChange={e=>updateT(i,"altersklasse",e.target.value)} placeholder="z. B. U13"
-                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                            style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                       </div>
                       {/* Zeile 3: Datum + Jahr (auto) */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 80px",gap:6}}>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Datum</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Datum</label>
                           <input type="date" value={t.date||""} onChange={e=>updateT(i,"date",e.target.value)}
-                            style={{padding:"4px 8px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                            style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"#6b7280",display:"block",marginBottom:2}}>Jahr</label>
-                          <div style={{padding:"4px 8px",background:"#1f2937",border:"1px solid #374151",borderRadius:6,color:"#9ca3af",fontSize:11,height:26,display:"flex",alignItems:"center"}}>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Jahr</label>
+                          <div style={{padding:"4px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text2)",fontSize:11,height:26,display:"flex",alignItems:"center"}}>
                             {t.year||t.date?.slice(0,4)||"—"}
                           </div>
                         </div>
@@ -1577,21 +1586,21 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     </div>;
                   })}
                   <button onClick={()=>setEditPlayer(prev=>({...prev,tournaments:[...(prev.tournaments||[]),{type:"vereinsintern",name:"",place:"",konkurrenz:"",altersklasse:"",date:"",year:""}]}))}
-                    style={{width:"100%",padding:"7px",background:"#1f2937",border:"1px solid #374151",borderRadius:7,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>+ Turnier hinzufügen</button>
+                    style={{width:"100%",padding:"7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>+ Turnier hinzufügen</button>
                 </div>;
               })()}
               <div style={{display:"flex",gap:8}}>
                 <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>{saving?"Speichert…":"💾 Speichern"}</button>
-                <button onClick={()=>setEditPlayer(null)} style={{flex:1,padding:10,background:"#1f2937",border:"1px solid #374151",borderRadius:9,color:"#9ca3af",fontSize:13,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
+                <button onClick={()=>setEditPlayer(null)} style={{flex:1,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
               </div>
             </div>
           ) : (
-            <div key={p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
+            <div key={p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
               <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
               <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"#e5e7eb"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"#6b7280",marginLeft:6}}>(passiv)</span>}</div>
-                <div style={{fontSize:10,color:"#4b5563",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"var(--text)"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>(passiv)</span>}</div>
+                <div style={{fontSize:10,color:"var(--text4)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   {p.noLogin
                     ? <><span style={{color:"#f59e0b"}}>👤 Kein Login</span>
                         <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
@@ -1607,9 +1616,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   )}
                 </div>
               </div>
-              <span style={{fontSize:12,color:"#6b7280",flexShrink:0}}>{getAward(p).totalStars} ★</span>
-              <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>✏️</button>
-              <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:14}}>🗑️</button>
+              <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>{getAward(p).totalStars} ★</span>
+              <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>✏️</button>
+              <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>🗑️</button>
             </div>
           )
         ))}
@@ -1652,8 +1661,8 @@ function PlayerTrainingDetail({player,attendance,showToast}) {
 
   return <div style={{maxHeight:"60vh",overflowY:"auto"}}>
     <div style={{display:"grid",gridTemplateColumns:"90px 32px 1fr 44px 44px 44px",gap:4,marginBottom:6,padding:"0 2px"}}>
-      <div style={{fontSize:10,fontWeight:700,color:"#6b7280"}}>Datum</div>
-      <div style={{fontSize:10,fontWeight:700,color:"#6b7280"}}>Tag</div>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)"}}>Datum</div>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)"}}>Tag</div>
       <div/>
       {COL.map(c=><div key={c.key} style={{display:"flex",justifyContent:"center"}}>
         <div style={{width:32,height:32,borderRadius:"50%",background:c.color+"22",border:`2px solid ${c.color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:c.color}}>{c.label}</div>
@@ -1664,10 +1673,10 @@ function PlayerTrainingDetail({player,attendance,showToast}) {
       const noTraining=s&&s.took_place===false;
       const val=s?.attendances?.[player.id]||(s?"a":null);
       const isPast=new Date(d)<=today;
-      return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 32px 1fr 44px 44px 44px",gap:4,marginBottom:4,alignItems:"center",background:noTraining?"#1a1a1a":"#0d1117",borderRadius:7,padding:"5px 6px",opacity:noTraining?0.5:1}}>
-        <div style={{fontSize:11,color:"#e5e7eb"}}>{formatDateDE(d)}</div>
-        <div style={{fontSize:11,color:"#6b7280"}}>{formatDayDE(d)}</div>
-        <div style={{fontSize:10,color:"#4b5563"}}>{noTraining?`❌ ${s.reason||""}`:""}</div>
+      return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 32px 1fr 44px 44px 44px",gap:4,marginBottom:4,alignItems:"center",background:noTraining?"#1a1a1a":"var(--bg)",borderRadius:7,padding:"5px 6px",opacity:noTraining?0.5:1}}>
+        <div style={{fontSize:11,color:"var(--text)"}}>{formatDateDE(d)}</div>
+        <div style={{fontSize:11,color:"var(--text3)"}}>{formatDayDE(d)}</div>
+        <div style={{fontSize:10,color:"var(--text4)"}}>{noTraining?`❌ ${s.reason||""}`:""}</div>
         {COL.map(opt=>(
           <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
             <button
@@ -1678,7 +1687,7 @@ function PlayerTrainingDetail({player,attendance,showToast}) {
                 border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,
                 cursor:(noTraining||!isPast||saving)?"not-allowed":"pointer",
                 background:val===opt.key?opt.color+"33":"transparent",
-                color:val===opt.key?opt.color:"#4b5563",
+                color:val===opt.key?opt.color:"var(--text4)",
                 fontSize:13,fontWeight:800,
               }}>{opt.label}</button>
           </div>
@@ -1774,9 +1783,9 @@ function SchlaegerTab({rackets,players,showToast}) {
 
   // Punkt 12: Sticky header — table inside scrollable div
   const SH=({col,label})=><th onClick={()=>sort(col)} style={{
-    padding:"7px 8px",fontSize:11,color:"#9ca3af",fontWeight:700,cursor:"pointer",
-    userSelect:"none",whiteSpace:"nowrap",background:"#111827",
-    position:"sticky",top:0,zIndex:3,borderBottom:"1px solid #374151",
+    padding:"7px 8px",fontSize:11,color:"var(--text2)",fontWeight:700,cursor:"pointer",
+    userSelect:"none",whiteSpace:"nowrap",background:"var(--bg2)",
+    position:"sticky",top:0,zIndex:3,borderBottom:"1px solid var(--border2)",
   }}>{label}{sortCol===col?(sortAsc?" ▲":" ▼"):""}</th>;
 
   return <div style={{padding:13,paddingBottom:40}}>
@@ -1784,36 +1793,36 @@ function SchlaegerTab({rackets,players,showToast}) {
       <div style={{fontSize:17,fontWeight:800}}>🏏 Schlägerverwaltung</div>
       <div style={{display:"flex",gap:6}}>
         {hasFilters&&<button onClick={clearFilters} style={{padding:"5px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕ Filter löschen</button>}
-        <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"#1f2937",border:`1px solid ${showFilters?"#3b82f6":"#374151"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>
+        <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"var(--border)",border:`1px solid ${showFilters?"#3b82f6":"var(--border2)"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>
           🔍 Filter {showFilters?"ausblenden":"anzeigen"}
         </button>
       </div>
     </div>
 
     {/* Filterzeile */}
-    {showFilters&&<div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:12,marginBottom:12,display:"grid",gridTemplateColumns:"60px 80px 80px 1fr 1fr 100px 120px 1fr",gap:6}}>
-      <input placeholder="Nr." value={filters.nr} onChange={e=>setFilter("nr",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+    {showFilters&&<div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:12,display:"grid",gridTemplateColumns:"60px 80px 80px 1fr 1fr 100px 120px 1fr",gap:6}}>
+      <input placeholder="Nr." value={filters.nr} onChange={e=>setFilter("nr",e.target.value)} style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
       <select value={filters.status} onChange={e=>setFilter("status",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
         <option value="">Status</option>{["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
       </select>
       <select value={filters.zustand} onChange={e=>setFilter("zustand",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
         <option value="">Zustand</option>{["neu","gut","mittel","schlecht"].map(s=><option key={s}>{s}</option>)}
       </select>
-      <input placeholder="Marke" value={filters.marke} onChange={e=>setFilter("marke",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
-      <input placeholder="Art" value={filters.art} onChange={e=>setFilter("art",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+      <input placeholder="Marke" value={filters.marke} onChange={e=>setFilter("marke",e.target.value)} style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
+      <input placeholder="Art" value={filters.art} onChange={e=>setFilter("art",e.target.value)} style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
       <select value={filters.griffform} onChange={e=>setFilter("griffform",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
         <option value="">Griffform</option>{["Anatomisch","Gerade","Konisch","Konkav"].map(s=><option key={s}>{s}</option>)}
       </select>
       <select value={filters.farbeBelaege} onChange={e=>setFilter("farbeBelaege",e.target.value)} style={{padding:"5px 7px",fontSize:11}}>
         <option value="">Beläge</option>{["Schwarz/rot","Schwarz/blau","Schwarz/grün","Schwarz/pink","Schwarz/violett"].map(s=><option key={s}>{s}</option>)}
       </select>
-      <input placeholder="Vergabe an" value={filters.vergebenAn} onChange={e=>setFilter("vergebenAn",e.target.value)} style={{padding:"5px 7px",background:"#0d1117",border:"1px solid #374151",borderRadius:6,color:"#e5e7eb",fontSize:11,outline:"none"}}/>
+      <input placeholder="Vergabe an" value={filters.vergebenAn} onChange={e=>setFilter("vergebenAn",e.target.value)} style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
     </div>}
 
-    <div style={{fontSize:11,color:"#6b7280",marginBottom:8}}>{sorted.length} von 230 Schlägern angezeigt</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>{sorted.length} von 230 Schlägern angezeigt</div>
 
     {/* Punkt 12: Scrollbare Tabelle mit fixiertem Header */}
-    <div style={{maxHeight:"60vh",overflowY:"auto",borderRadius:12,border:"1px solid #1f2937"}}>
+    <div style={{maxHeight:"60vh",overflowY:"auto",borderRadius:12,border:"1px solid var(--border)"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead>
           <tr>
@@ -1825,14 +1834,14 @@ function SchlaegerTab({rackets,players,showToast}) {
             <SH col="griffform" label="Griffform"/>
             <SH col="farbeBelaege" label="Beläge"/>
             <SH col="vergebenAn" label="Vergabe an"/>
-            <th style={{padding:"7px 8px",background:"#111827",position:"sticky",top:0,zIndex:3,borderBottom:"1px solid #374151"}}></th>
+            <th style={{padding:"7px 8px",background:"var(--bg2)",position:"sticky",top:0,zIndex:3,borderBottom:"1px solid var(--border2)"}}></th>
           </tr>
         </thead>
         <tbody>
           {sorted.map(r=>(
             editId===r.nr ? (
               <tr key={r.nr} style={{background:"#1a2332"}}>
-                <td style={{padding:"6px 8px",color:"#e5e7eb",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
+                <td style={{padding:"6px 8px",color:"var(--text)",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
                 <td style={{padding:"4px"}}>
                   <select value={form.status||"frei"} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
                     {["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
@@ -1844,11 +1853,11 @@ function SchlaegerTab({rackets,players,showToast}) {
                   </select>
                 </td>
                 <td style={{padding:"4px"}}>
-                  <input list={`marke-${r.nr}`} value={form.marke||""} onChange={e=>setForm(p=>({...p,marke:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:4,color:"#e5e7eb",outline:"none"}}/>
+                  <input list={`marke-${r.nr}`} value={form.marke||""} onChange={e=>setForm(p=>({...p,marke:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
                   <datalist id={`marke-${r.nr}`}><option>Butterfly</option><option>Joola</option><option>GEWO</option></datalist>
                 </td>
                 <td style={{padding:"4px"}}>
-                  <input value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"#0d1117",border:"1px solid #374151",borderRadius:4,color:"#e5e7eb",outline:"none"}}/>
+                  <input value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
                 </td>
                 <td style={{padding:"4px"}}>
                   <select value={form.griffform||""} onChange={e=>setForm(p=>({...p,griffform:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
@@ -1870,20 +1879,20 @@ function SchlaegerTab({rackets,players,showToast}) {
                 </td>
                 <td style={{padding:"4px",whiteSpace:"nowrap"}}>
                   <button onClick={saveRow} disabled={saving} style={{padding:"3px 8px",background:"#10b981",border:"none",borderRadius:4,color:"#fff",fontSize:11,cursor:"pointer",marginRight:3}}>💾</button>
-                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"#374151",border:"none",borderRadius:4,color:"#9ca3af",fontSize:11,cursor:"pointer"}}>✕</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"var(--border2)",border:"none",borderRadius:4,color:"var(--text2)",fontSize:11,cursor:"pointer"}}>✕</button>
                 </td>
               </tr>
             ) : (
-              <tr key={r.nr} style={{borderTop:"1px solid #1f2937",cursor:"pointer"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>
-                <td style={{padding:"7px 8px",color:"#e5e7eb",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
+              <tr key={r.nr} style={{borderTop:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>
+                <td style={{padding:"7px 8px",color:"var(--text)",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
                 <td style={{padding:"7px 8px"}}><span style={{color:statColor[r.status]||"#6b7280",fontWeight:600,fontSize:11}}>{r.status||"frei"}</span></td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.zustand||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.marke||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.art||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.griffform||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#9ca3af",fontSize:11}}>{r.farbeBelaege||"—"}</td>
-                <td style={{padding:"7px 8px",color:"#e5e7eb",fontSize:11}}>{r.vergebenAn||""}</td>
-                <td style={{padding:"7px 8px",color:"#4b5563",fontSize:12}}>✏️</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.zustand||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.marke||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.art||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.griffform||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.farbeBelaege||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text)",fontSize:11}}>{r.vergebenAn||""}</td>
+                <td style={{padding:"7px 8px",color:"var(--text4)",fontSize:12}}>✏️</td>
               </tr>
             )
           ))}
@@ -2021,39 +2030,39 @@ function GeburtstageTab({players,showToast}) {
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontSize:17,fontWeight:800}}>🎂 Geburtstage</div>
-      <label style={{padding:"6px 12px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:uploading?"#6b7280":"#9ca3af",fontSize:12,cursor:uploading?"not-allowed":"pointer"}}>
+      <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:uploading?"#6b7280":"#9ca3af",fontSize:12,cursor:uploading?"not-allowed":"pointer"}}>
         {uploading?"⏳ Importiert…":"📥 Excel importieren"}
         <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleExcelUpload} disabled={uploading}/>
       </label>
     </div>
-    <div style={{fontSize:11,color:"#6b7280",marginBottom:12,lineHeight:1.5}}>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
       Hervorgehoben: Geburtstage seit letztem Training ({lastTraining?formatDateDE(lastTraining):"—"}).<br/>
       Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
 
     {/* Punkt 3+12: Tabelle mit fixiertem Header */}
-    <div style={{border:"1px solid #1f2937",borderRadius:12,overflow:"hidden"}}>
+    <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
       {/* Fixierter Header */}
-      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"#1f2937",padding:"8px 12px",position:"sticky",top:0,zIndex:5}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Geburtstag</div>
-        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",paddingLeft:8}}>Vorname</div>
-        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",paddingLeft:8}}>Nachname</div>
-        <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textAlign:"right"}}>Alter</div>
+      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"var(--bg3)",padding:"8px 12px",position:"sticky",top:0,zIndex:5}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Geburtstag</div>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Vorname</div>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Nachname</div>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",textAlign:"right"}}>Alter</div>
       </div>
       {/* Scrollbare Liste */}
-      <div style={{background:"#111827"}}>
+      <div style={{background:"var(--bg2)"}}>
         {withBirthday.map(p=>{
           const highlight=isRecentBirthday(p);
-          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,padding:"9px 12px",borderTop:"1px solid #1f2937",background:highlight?"#f59e0b11":"transparent"}}>
+          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,padding:"9px 12px",borderTop:"1px solid var(--border)",background:highlight?"#f59e0b11":"transparent"}}>
             <div style={{fontSize:12,color:highlight?"#f59e0b":"#9ca3af",fontWeight:highlight?700:400}}>
               {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
             </div>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"#e5e7eb",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
-            <div style={{fontSize:12,color:"#e5e7eb",paddingLeft:8}}>{p.lastName}</div>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
+            <div style={{fontSize:12,color:"var(--text)",paddingLeft:8}}>{p.lastName}</div>
             <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
           </div>;
         })}
-        {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"#6b7280",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
+        {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
       </div>
     </div>
   </div>;
@@ -2087,11 +2096,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     } catch(e){}
   }
 
-  if (!myPlayer) return <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20,flexDirection:"column",gap:16}}>
+  if (!myPlayer) return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,flexDirection:"column",gap:16}}>
     <div style={{fontSize:40}}>⏳</div>
-    <div style={{fontSize:16,fontWeight:700,color:"#e5e7eb",textAlign:"center"}}>Dein Profil wird noch eingerichtet.</div>
-    <div style={{fontSize:13,color:"#6b7280",textAlign:"center"}}>Bitte wende dich an deinen Trainer.</div>
-    <button onClick={onSignOut} style={{padding:"8px 16px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:13,cursor:"pointer"}}>Abmelden</button>
+    <div style={{fontSize:16,fontWeight:700,color:"var(--text)",textAlign:"center"}}>Dein Profil wird noch eingerichtet.</div>
+    <div style={{fontSize:13,color:"var(--text3)",textAlign:"center"}}>Bitte wende dich an deinen Trainer.</div>
+    <button onClick={onSignOut} style={{padding:"8px 16px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Abmelden</button>
   </div>;
 
   const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
@@ -2112,68 +2121,67 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
-  return <div style={{minHeight:"100vh",background:"#0d1117",color:"#e5e7eb",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:680,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:680,margin:"0 auto",paddingBottom:80}}>
     {/* Punkt 6: Avatar Picker Modal */}
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header */}
-    <div style={{background:"linear-gradient(135deg,#111827,#1a2332)",borderBottom:"1px solid #1f2937",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
+    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {/* Punkt 6: Avatar klickbar */}
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
             <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={42}/>
-            <span style={{position:"absolute",bottom:-1,right:-1,fontSize:10,background:"#1f2937",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #374151"}}>✏️</span>
+            <span style={{position:"absolute",bottom:-1,right:-1,fontSize:10,background:"var(--bg3)",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"#6b7280"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <ThemeToggle isDark={isDark||true} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
-          <button onClick={onSignOut} style={{padding:"5px 10px",background:"#1f2937",border:"1px solid #374151",borderRadius:8,color:"#9ca3af",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+          <ThemeToggle isDark={isDark} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
+          <button onClick={onSignOut} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid #1f2937",background:"#0d1117",position:"sticky",top:70,zIndex:99}}>
-      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 0",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"#6b7280",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{t.icon} {t.label}</button>)}
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:70,zIndex:99}}>
+      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 0",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
     {activeTab==="stats"&&<div style={{padding:14}}>
-      <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,#111827)`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
+      <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
         <div style={{position:"relative",display:"inline-block",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
           <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={64}/>
-          <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"#1f2937",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #374151"}}>✏️</span>
+          <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
         </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-        <div style={{fontSize:13,color:"#6b7280",marginBottom:12}}>{myPlayer.group||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{myPlayer.group||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           {[{label:"Gesamt",val:totalStars,color:myPlayer.color},{label:"Anfänger",val:beginnerStars,color:"#10b981"},{label:"Fortgeschr.",val:advancedStars,color:"#3b82f6"}].map(s=>(
-            <div key={s.label} style={{background:"#0d1117",borderRadius:10,padding:"10px 6px"}}>
+            <div key={s.label} style={{background:"var(--bg)",borderRadius:10,padding:"10px 6px"}}>
               <div style={{fontSize:22,fontWeight:900,color:s.color}}>{s.val}</div>
-              <div style={{fontSize:10,color:"#6b7280"}}>★ {s.label}</div>
+              <div style={{fontSize:10,color:"var(--text3)"}}>★ {s.label}</div>
             </div>
           ))}
         </div>
         <div style={{marginBottom:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Anfänger</span><span>{beginnerStars}/50</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text2)",marginBottom:3}}><span>Anfänger</span><span>{beginnerStars}/50</span></div>
           <ProgressBar value={beginnerStars} max={50} color={myPlayer.color}/>
         </div>
         <div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9ca3af",marginBottom:3}}><span>Fortgeschrittene</span><span>{advancedStars}/150</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text2)",marginBottom:3}}><span>Fortgeschrittene</span><span>{advancedStars}/150</span></div>
           <ProgressBar value={advancedStars} max={150} color="#3b82f6"/>
         </div>
         {/* Punkt 11: Alle nächsten Ziele */}
-        {nexts.length>0&&<div style={{marginTop:12,background:"#0d1117",borderRadius:8,padding:"8px 12px",display:"flex",flexDirection:"column",gap:5,alignItems:"center"}}>
+        {nexts.length>0&&<div style={{marginTop:12,background:"var(--bg)",borderRadius:8,padding:"8px 12px",display:"flex",flexDirection:"column",gap:5,alignItems:"center"}}>
           {nexts.map((a,i)=>(
-            <div key={i} style={{fontSize:12,color:"#9ca3af",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
-              <span style={{fontSize:10,color:"#4b5563"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
+            <div key={i} style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
+              <span style={{fontSize:10,color:"var(--text4)"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
               <AwardBadge award={a} small/>
               <span>— noch {a.needed} Sterne</span>
             </div>
@@ -2181,26 +2189,26 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         </div>}
       </div>
 
-      <div style={{fontSize:14,fontWeight:700,marginBottom:10,color:"#e5e7eb"}}>Meine Übungen</div>
+      <div style={{fontSize:14,fontWeight:700,marginBottom:10,color:"var(--text)"}}>Meine Übungen</div>
       {/* Punkt 8: Aufklappbare Übungen für Spieler */}
       <div style={{display:"flex",flexDirection:"column",gap:6,paddingBottom:20}}>
         {ALL_EXERCISES.map(ex=>{
           const stars=myPlayer.stars?.[ex.id]||0;
           const isBeg=ex.id<=10;
           const isExp=expandedEx===ex.id;
-          return <div key={ex.id} style={{background:"#111827",border:`1px solid ${stars>0?"#2d3748":"#1f2937"}`,borderRadius:10,overflow:"hidden"}}>
+          return <div key={ex.id} style={{background:"var(--bg2)",border:`1px solid ${stars>0?"#2d3748":"var(--border)"}`,borderRadius:10,overflow:"hidden"}}>
             <div onClick={()=>setExpandedEx(isExp?null:ex.id)} style={{padding:"10px 12px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
               <div style={{width:26,height:26,borderRadius:6,flexShrink:0,background:isBeg?"#10b98122":"#3b82f622",border:`1px solid ${isBeg?"#10b98144":"#3b82f644"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:isBeg?"#10b981":"#3b82f6"}}>{ex.id}</div>
-              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#e5e7eb",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div></div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"var(--text)",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div></div>
               <StarRating stars={stars} readonly/>
-              <span style={{color:"#6b7280",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
+              <span style={{color:"var(--text3)",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
             </div>
-            {isExp&&<div style={{borderTop:"1px solid #1f2937",padding:"10px 12px",background:"#0d1117"}}>
+            {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"10px 12px",background:"var(--bg)"}}>
               <div style={{display:"flex",flexDirection:"column",gap:5}}>
                 {ex.thresholds.map((t,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 9px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"#1f2937",border:`1px solid ${stars>=i+1?"#f59e0b44":"#374151"}`}}>
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 9px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"var(--border)",border:`1px solid ${stars>=i+1?"#f59e0b44":"var(--border2)"}`}}>
                     <span style={{color:stars>=i+1?"#f59e0b":"#6b7280",fontSize:12}}>{"★".repeat(i+1)}{"☆".repeat(4-i)}</span>
-                    <span style={{fontSize:12,color:stars>=i+1?"#e5e7eb":"#9ca3af",flex:1}}>{t}</span>
+                    <span style={{fontSize:12,color:stars>=i+1?"var(--text)":"#9ca3af",flex:1}}>{t}</span>
                     {stars>=i+1&&<span style={{color:"#10b981",fontSize:12}}>✓</span>}
                   </div>
                 ))}
@@ -2216,23 +2224,23 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📅 Meine Trainingstage</div>
 
       {/* Summary - fixiert beim Scrollen */}
-      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,padding:14,marginBottom:14,position:"sticky",top:0,zIndex:5}}>
+      <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:14,position:"sticky",top:0,zIndex:5}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>
           {[{l:"Beteiligung",v:`${pct}%`,c:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981"},{l:"Anwesend",v:present,c:"#10b981"},{l:"Gesamt",v:total,c:"#6b7280"}].map(s=>(
-            <div key={s.l} style={{background:"#0d1117",borderRadius:10,padding:"8px 6px"}}>
+            <div key={s.l} style={{background:"var(--bg)",borderRadius:10,padding:"8px 6px"}}>
               <div style={{fontSize:18,fontWeight:900,color:s.c}}>{s.v}</div>
-              <div style={{fontSize:10,color:"#6b7280"}}>{s.l}</div>
+              <div style={{fontSize:10,color:"var(--text3)"}}>{s.l}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Training days table — nur Vergangenheit, neuestes oben */}
-      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:14,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",background:"#1f2937",padding:"8px 12px",gap:8}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Datum</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Tag</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#9ca3af"}}>Status</div>
+      <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,overflow:"hidden"}}>
+        <div style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",background:"var(--bg3)",padding:"8px 12px",gap:8}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Datum</div>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Tag</div>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Status</div>
         </div>
         {/* Nur vergangene Tage, umgekehrte Reihenfolge */}
         {[...myDays].filter(d=>new Date(d)<=today).reverse().map(d=>{
@@ -2247,9 +2255,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
             else if (val==="e"){statusLabel="Entschuldigt";statusColor="#f59e0b";}
             else {statusLabel="Unentschuldigt";statusColor="#ef4444";}
           }
-          return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",padding:"9px 12px",gap:8,borderTop:"1px solid #1f2937",background:didNotTakePlace?"#0d0d0d":"transparent",opacity:didNotTakePlace?0.5:1}}>
-            <div style={{fontSize:12,color:"#e5e7eb",fontWeight:500}}>{formatDateDE(d)}</div>
-            <div style={{fontSize:12,color:"#6b7280"}}>{formatDayDE(d)}</div>
+          return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",padding:"9px 12px",gap:8,borderTop:"1px solid var(--border)",background:didNotTakePlace?"#0d0d0d":"transparent",opacity:didNotTakePlace?0.5:1}}>
+            <div style={{fontSize:12,color:"var(--text)",fontWeight:500}}>{formatDateDE(d)}</div>
+            <div style={{fontSize:12,color:"var(--text3)"}}>{formatDayDE(d)}</div>
             <div style={{fontSize:12,color:statusColor,fontWeight:500}}>{statusLabel}</div>
           </div>;
         })}
@@ -2290,31 +2298,31 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
       return <div style={{padding:14}}>
         <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
-        <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
+        <div style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>Gruppe: {myGroup}</div>
         {rankedPeers.map((player,idx)=>{
           const {pct,pres,tot,exc,unex}=player;
           const isMe=player.id===myPlayer.id;
           const medal=pct>90?"🥇":pct>80?"🥈":pct>70?"🥉":null;
-          return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,position:"relative"}}>
+          return <div key={player.id} style={{background:isMe?"#10b98111":"var(--bg2)",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"var(--border)"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,position:"relative"}}>
             {isMe&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:myPlayer.color,borderRadius:"12px 12px 0 0"}}/>}
             <Avatar avatar={player.avatar} color={player.color} size={36}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
-                <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
+                <span style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"var(--text)"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</span>
                 {medal&&<span style={{fontSize:18}}>{medal}</span>}
               </div>
-              <div style={{background:"#1f2937",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
+              <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
                 <div style={{width:`${pct}%`,height:"100%",background:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",borderRadius:6}}/>
               </div>
-              <div style={{display:"flex",gap:10,fontSize:10,color:"#6b7280"}}>
+              <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)"}}>
                 <span>✓ {pres} anwesend</span>
                 <span>{exc} entsch.</span>
                 <span>{unex} unentsch.</span>
               </div>
             </div>
-            <div style={{flexShrink:0,textAlign:"center",background:"#0d1117",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
+            <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
               <div style={{fontSize:20,fontWeight:900,color:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{pct}%</div>
-              <div style={{fontSize:9,color:"#6b7280",marginTop:1}}>Beteiligung</div>
+              <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>Beteiligung</div>
             </div>
           </div>;
         })}
@@ -2324,7 +2332,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* ── RANGLISTE (nur eigene Gruppe) ── */}
     {activeTab==="ranking"&&<div style={{padding:14}}>
       <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Rangliste</div>
-      <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>Gruppe: {myGroup}</div>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>Gruppe: {myGroup}</div>
       {sortedRanking.map((player,idx)=>{
         const {beginnerStars,advancedStars,totalStars,isAdvanced}=getAward(player);
         const isMe=player.id===myPlayer.id;
@@ -2333,14 +2341,14 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         const earnedBeg=[...BEGINNER_AWARDS].reverse().filter(a=>beginnerStars>=a.stars).slice(0,1);
         const earnedAdv=[...ADVANCED_AWARDS].reverse().filter(a=>totalStars>=a.stars).slice(0,1);
         const topAwards=[...earnedAdv,...earnedBeg].slice(0,2);
-        return <div key={player.id} style={{background:isMe?"#10b98111":"#111827",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"#1f2937"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
+        return <div key={player.id} style={{background:isMe?"#10b98111":"var(--bg2)",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"var(--border)"}`,borderRadius:14,padding:14,marginBottom:9,position:"relative",overflow:"hidden"}}>
           {isMe&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:myPlayer.color}}/>}
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:topAwards.length?8:0}}>
             <span style={{fontSize:18,minWidth:28}}>{rankEmoji}</span>
             <Avatar avatar={player.avatar} color={player.color} size={36}/>
             <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"#e5e7eb"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</div>
-              <div style={{fontSize:11,color:"#6b7280"}}>{isAdvanced?"Fortgeschrittene":"Anfänger"} · {totalStars} ★</div>
+              <div style={{fontSize:14,fontWeight:800,color:isMe?myPlayer.color:"var(--text)"}}>{player.firstName} {player.lastName}{isMe&&" (Du)"}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{isAdvanced?"Fortgeschrittene":"Anfänger"} · {totalStars} ★</div>
             </div>
           </div>
           {/* Punkt 7: Urkunden unterhalb des Namens */}
@@ -2354,7 +2362,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* ── ERFOLGE ── */}
     {activeTab==="erfolge"&&<ErfolgeTab player={myPlayer}/>}
 
-    <style>{`*{box-sizing:border-box}input::placeholder{color:#4b5563}select{background:#0d1117;color:#e5e7eb;border:1px solid #374151;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}`}</style>
+    <style>{`
+      *{box-sizing:border-box}
+      input::placeholder{color:var(--text4)}
+      input,textarea{background:var(--input-bg)!important;color:var(--text)!important;border-color:var(--border2)!important}
+      select{background:var(--sel-bg)!important;color:var(--text)!important;border:1px solid var(--border2)!important;border-radius:9px;padding:10px 13px;font-size:14px;width:100%;outline:none}
+    `}</style>
   </div>;
 }
 
@@ -2382,9 +2395,9 @@ function ErfolgeTab({player}) {
         boxShadow:`0 2px 8px ${color}44`,
       }}>{emoji}</div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{label}</div>
-        {date&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>🗓️ Vergeben am {formatDateDE(date)}</div>}
-        {!date&&<div style={{fontSize:11,color:"#4b5563",marginTop:2}}>Datum noch nicht eingetragen</div>}
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{label}</div>
+        {date&&<div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>🗓️ Vergeben am {formatDateDE(date)}</div>}
+        {!date&&<div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>Datum noch nicht eingetragen</div>}
       </div>
       <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",background:color+"33",border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center"}}>
         <span style={{color,fontSize:14,fontWeight:800}}>✓</span>
@@ -2415,12 +2428,12 @@ function ErfolgeTab({player}) {
     const line1=[t.name,year].filter(Boolean).join(" ");
     const line2=[t.altersklasse,t.konkurrenz].filter(Boolean).join(" – ");
     const line3=t.date?formatDateDE(t.date):"";
-    return <div style={{background:"#111827",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
+    return <div style={{background:"var(--bg2)",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#e5e7eb"}}>{line1||"Turnier"}</div>
-        {line2&&<div style={{fontSize:11,color:"#9ca3af",marginTop:1}}>{line2}</div>}
-        {line3&&<div style={{fontSize:11,color:"#6b7280",marginTop:1}}>{line3}</div>}
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{line1||"Turnier"}</div>
+        {line2&&<div style={{fontSize:11,color:"var(--text2)",marginTop:1}}>{line2}</div>}
+        {line3&&<div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{line3}</div>}
       </div>
       <div style={{fontSize:22,fontWeight:900,color,flexShrink:0}}>{t.place||"?"}</div>
     </div>;
@@ -2431,9 +2444,9 @@ function ErfolgeTab({player}) {
 
     {/* Training */}
     <div style={{marginBottom:20}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏋️ Training — Urkunden</div>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏋️ Training — Urkunden</div>
       {earnedBeg.length===0&&earnedAdv.length===0&&(
-        <div style={{fontSize:12,color:"#4b5563",textAlign:"center",padding:16}}>Noch keine Urkunden erreicht — weiter trainieren! 💪</div>
+        <div style={{fontSize:12,color:"var(--text4)",textAlign:"center",padding:16}}>Noch keine Urkunden erreicht — weiter trainieren! 💪</div>
       )}
       {earnedBeg.map(a=>{
         const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
@@ -2452,29 +2465,29 @@ function ErfolgeTab({player}) {
 
     {/* Vereinsturniere */}
     {vereinsTurniere.length>0&&<div style={{marginBottom:20}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏓 Turniere Verein</div>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏓 Turniere Verein</div>
       {vereinsTurniere.map((t,i)=><TournamentBadge key={i} t={t}/>)}
     </div>}
 
     {/* Externe Turniere */}
     {(externKreis.length>0||externBezirk.length>0||externVerband.length>0)&&<div style={{marginBottom:20}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🌍 Turniere Extern</div>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🌍 Turniere Extern</div>
       {externKreis.length>0&&<>
-        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2}}>Kreis</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,paddingLeft:2}}>Kreis</div>
         {externKreis.map((t,i)=><TournamentBadge key={i} t={t}/>)}
       </>}
       {externBezirk.length>0&&<>
-        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2,marginTop:8}}>Bezirk</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,paddingLeft:2,marginTop:8}}>Bezirk</div>
         {externBezirk.map((t,i)=><TournamentBadge key={i} t={t}/>)}
       </>}
       {externVerband.length>0&&<>
-        <div style={{fontSize:11,color:"#6b7280",marginBottom:6,paddingLeft:2,marginTop:8}}>Verband Hessen</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,paddingLeft:2,marginTop:8}}>Verband Hessen</div>
         {externVerband.map((t,i)=><TournamentBadge key={i} t={t}/>)}
       </>}
     </div>}
 
     {vereinsTurniere.length===0&&externKreis.length===0&&externBezirk.length===0&&externVerband.length===0&&earnedBeg.length===0&&earnedAdv.length===0&&!player.attendGoldDate&&!player.attendSilverDate&&!player.attendBronzeDate&&(
-      <div style={{textAlign:"center",padding:30,color:"#4b5563",fontSize:13}}>
+      <div style={{textAlign:"center",padding:30,color:"var(--text4)",fontSize:13}}>
         <div style={{fontSize:40,marginBottom:12}}>🏅</div>
         Noch keine Erfolge erfasst.<br/>Weiter trainieren und an Turnieren teilnehmen!
       </div>
@@ -2495,12 +2508,44 @@ export default function App() {
   const [adminReady,   setAdminReady]   = useState(false);
   const [loginSuccess, setLoginSuccess] = useState("");
   // Punkt 4: Theme (dark/light)
-  const [globalTheme,  setGlobalTheme]  = useState("dark"); // Admin-Grundeinstellung aus Firestore
-  const [userTheme,    setUserTheme]    = useState(()=>localStorage.getItem("ttc_theme")||""); // Nutzer-Präferenz
+  const [globalTheme,  setGlobalTheme]  = useState("dark");
+  const [userTheme,    setUserTheme]    = useState(()=>localStorage.getItem("ttc_theme")||"");
 
   // Effektives Theme: Nutzer-Präferenz hat Vorrang
   const theme = userTheme || globalTheme;
   const isDark = theme==="dark";
+
+  // CSS-Variablen injizieren — steuert ALLE Farben zentral
+  useEffect(()=>{
+    const root = document.documentElement;
+    if (isDark) {
+      root.style.setProperty("--bg",       "var(--bg)");
+      root.style.setProperty("--bg2",      "var(--bg2)");
+      root.style.setProperty("--bg3",      "var(--border)");
+      root.style.setProperty("--border",   "var(--border)");
+      root.style.setProperty("--border2",  "var(--border2)");
+      root.style.setProperty("--text",     "var(--text)");
+      root.style.setProperty("--text2",    "#9ca3af");
+      root.style.setProperty("--text3",    "#6b7280");
+      root.style.setProperty("--text4",    "#4b5563");
+      root.style.setProperty("--input-bg", "var(--bg)");
+      root.style.setProperty("--sel-bg",   "var(--bg)");
+      document.body.style.background = "var(--bg)";
+    } else {
+      root.style.setProperty("--bg",       "#f3f4f6");
+      root.style.setProperty("--bg2",      "#ffffff");
+      root.style.setProperty("--bg3",      "var(--text)");
+      root.style.setProperty("--border",   "var(--text)");
+      root.style.setProperty("--border2",  "#d1d5db");
+      root.style.setProperty("--text",     "var(--bg2)");
+      root.style.setProperty("--text2",    "var(--border2)");
+      root.style.setProperty("--text3",    "#6b7280");
+      root.style.setProperty("--text4",    "#9ca3af");
+      root.style.setProperty("--input-bg", "#ffffff");
+      root.style.setProperty("--sel-bg",   "#f9fafb");
+      document.body.style.background = "#f3f4f6";
+    }
+  },[isDark]);
 
   // Globale Theme-Einstellung aus Firestore laden
   useEffect(()=>{
@@ -2605,9 +2650,9 @@ export default function App() {
 
   // ── Ladezustand: nur beim allerersten Start (authUser noch unbekannt) ──
   if (authUser === undefined) return (
-    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div style={{fontSize:48}}>🏓</div>
-      <div style={{fontSize:14,color:"#6b7280"}}>TTC Niederzeuzheim wird geladen…</div>
+      <div style={{fontSize:14,color:"var(--text3)"}}>TTC Niederzeuzheim wird geladen…</div>
     </div>
   );
 
@@ -2642,16 +2687,16 @@ export default function App() {
   // ── Angemeldet, aber kein Spieler-Profil gefunden → Notfall-Bildschirm ──
   const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
   if (!myPlayer) return (
-    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{maxWidth:400,width:"100%"}}>
-        <div style={{background:"#111827",border:"1px solid #374151",borderRadius:16,padding:24,textAlign:"center"}}>
+        <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:24,textAlign:"center"}}>
           <div style={{fontSize:40,marginBottom:12}}>🔑</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#e5e7eb",marginBottom:8}}>Bist du ein Trainer?</div>
-          <div style={{fontSize:13,color:"#6b7280",marginBottom:6,lineHeight:1.6}}>
+          <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Bist du ein Trainer?</div>
+          <div style={{fontSize:13,color:"var(--text3)",marginBottom:6,lineHeight:1.6}}>
             Angemeldet als:<br/>
             <b style={{color:"#10b981"}}>{authUser.email}</b>
           </div>
-          <div style={{fontSize:12,color:"#6b7280",marginBottom:20,lineHeight:1.6}}>
+          <div style={{fontSize:12,color:"var(--text3)",marginBottom:20,lineHeight:1.6}}>
             Klicke auf den Button um den Trainer-Zugang dauerhaft freizuschalten.
           </div>
           <button onClick={makeAdminInFirestore} style={{
@@ -2660,8 +2705,8 @@ export default function App() {
             border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",
           }}>✅ Ja, ich bin Trainer — Zugang freischalten</button>
           <button onClick={handleSignOut} style={{
-            width:"100%",padding:10,background:"transparent",border:"1px solid #374151",
-            borderRadius:9,color:"#6b7280",fontSize:13,cursor:"pointer",
+            width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",
+            borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer",
           }}>Abmelden</button>
         </div>
       </div>
