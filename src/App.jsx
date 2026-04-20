@@ -2039,31 +2039,38 @@ function GeburtstageTab({players,showToast}) {
       Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
 
-    {/* Tabelle mit fixiertem Header */}
-    <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
-      {/* Fixierter Header — sticky funktioniert nur wenn kein overflow:hidden auf dem Parent */}
-      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"var(--bg3)",padding:"8px 12px",
-        position:"sticky",top:0,zIndex:10,
-        borderBottom:"1px solid var(--border2)"}}>
-        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Geburtstag</div>
-        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Vorname</div>
-        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Nachname</div>
-        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",textAlign:"right"}}>Alter</div>
-      </div>
-      <div style={{background:"var(--bg2)"}}>
-        {withBirthday.map(p=>{
-          const highlight=isRecentBirthday(p);
-          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,padding:"9px 12px",borderTop:"1px solid var(--border)",background:highlight?"#f59e0b11":"transparent"}}>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400}}>
-              {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
-            </div>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
-            <div style={{fontSize:12,color:"var(--text)",paddingLeft:8}}>{p.lastName}</div>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
-          </div>;
-        })}
-        {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
-      </div>
+    {/* Tabelle — gleiche Technik wie Schlägerverwaltung: scroll-Container + sticky thead */}
+    <div style={{maxHeight:"65vh",overflowY:"auto",borderRadius:12,border:"1px solid var(--border)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead>
+          <tr>
+            {["Geburtstag","Vorname","Nachname","Alter"].map((h,i)=>(
+              <th key={h} style={{
+                padding:"8px 12px",fontSize:11,fontWeight:700,color:"var(--text2)",
+                background:"var(--bg3)",
+                position:"sticky",top:0,zIndex:3,
+                borderBottom:"1px solid var(--border2)",
+                textAlign:i===3?"right":"left",
+                whiteSpace:"nowrap",
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {withBirthday.map(p=>{
+            const highlight=isRecentBirthday(p);
+            return <tr key={p.id} style={{background:highlight?"#f59e0b11":"transparent",borderTop:"1px solid var(--border)"}}>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400,whiteSpace:"nowrap"}}>
+                {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
+              </td>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500}}>{p.firstName}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:"var(--text)"}}>{p.lastName}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</td>
+            </tr>;
+          })}
+          {withBirthday.length===0&&<tr><td colSpan={4} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Noch keine Geburtstage erfasst</td></tr>}
+        </tbody>
+      </table>
     </div>
   </div>;
 }
