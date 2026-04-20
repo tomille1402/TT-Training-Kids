@@ -493,7 +493,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* Header */}
-    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",position:"sticky",top:0,zIndex:100}}>
+    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
