@@ -104,7 +104,7 @@ function generateTrainingDays() {
 const { tuesdays: ALL_TUESDAYS, fridays: ALL_FRIDAYS } = generateTrainingDays();
 
 function getTrainingDaysForGroup(group) {
-  if (group === "Leistungsgruppe") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
+  if (group === "Profis") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
   return ALL_TUESDAYS;
 }
 
@@ -112,7 +112,7 @@ function getTrainingTime(group, dateStr) {
   const dow = new Date(dateStr).getDay();
   if (group === "Anfänger") return "17:00–18:00";
   if (group === "Fortgeschrittene") return "17:00–18:30";
-  if (group === "Leistungsgruppe") return dow === 5 ? "16:00–18:00" : "17:00–19:00";
+  if (group === "Profis") return dow === 5 ? "16:00–18:00" : "17:00–19:00";
   return "";
 }
 
@@ -210,7 +210,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -383,17 +383,17 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     onClick={()=>onSetUserTheme(isDark?"light":"dark")}
     title={isDark?"Zu Light Mode wechseln":"Zu Dark Mode wechseln"}
     style={{
-      padding:"5px 11px",
+      padding:"6px 9px",
       background:isDark?"#1f2937":"#e5e7eb",
-      border:"2px solid " + (isDark?"#f59e0b":"#374151"),
+      border:"2px solid "+(isDark?"#f59e0b":"#374151"),
       borderRadius:20,
       color:isDark?"#f59e0b":"#374151",
-      fontSize:12,fontWeight:700,
+      fontSize:17,
       cursor:"pointer",
-      display:"flex",alignItems:"center",gap:5,
-      lineHeight:1,whiteSpace:"nowrap",
+      lineHeight:1,
+      flexShrink:0,
     }}
-  >{isDark?"☀️ Light Mode":"🌙 Dark Mode"}</button>;
+  >{isDark?"☀️":"🌙"}</button>;
 }
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded}) {
   const ALL_TABS=[
@@ -413,7 +413,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [expandedEx,setExpandedEx]=useState(null);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
-  const [groupFilters,setGroupFilters]=useState({Leistungsgruppe:true,Fortgeschrittene:true,Anfänger:true});
+  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true});
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
@@ -511,8 +511,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       </div>
       {/* Gruppenfilter-Buttons */}
       <div style={{display:"flex",gap:5,marginBottom:8}}>
-        {["Leistungsgruppe","Fortgeschrittene","Anfänger"].map(g=>{
-          const colors={Leistungsgruppe:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981"};
+        {["Profis","Fortgeschrittene","Anfänger"].map(g=>{
+          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981"};
           const c=colors[g]; const on=groupFilters[g];
           return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
             padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
@@ -742,13 +742,13 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   // Punkt 8: Nur Spieler anzeigen deren trainingStart <= selDate
   const relevantPlayers = players.filter(p=>{
     if (p.group==="Trainer") return true;
-    if (isFriday && p.group!=="Leistungsgruppe") return false;
+    if (isFriday && p.group!=="Profis") return false;
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     // Punkt 8: trainingStart-Filter
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
   });
-  const groupOrder = ["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
+  const groupOrder = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
 
   // Punkt 9: Spaltenköpfe mit Kreisen
   const COL_HEADERS = [
@@ -766,7 +766,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       <select value={selDate} onChange={e=>setSelDate(e.target.value)}>
         {allDays.map(d=>{
           const dow=new Date(d).getDay();
-          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${dow===5?" (Fr – nur Leistungsgruppe)":""}`;
+          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${dow===5?" (Fr – nur Profis)":""}`;
           return <option key={d} value={d}>{label}</option>;
         })}
       </select>
@@ -985,8 +985,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [upgrading,setUpgrading]=useState(false);
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
   const [rangeSaving,setRangeSaving]=useState(false);
-  // Punkt 9: Scroll-Ref damit nach Speichern Position erhalten bleibt
-  const scrollRef = {};  // playerId → DOM-element ref via data-playerid
+  // Punkt 1: Lokaler State für sofortige UI-Aktualisierung
+  const [localGlobalTheme,setLocalGlobalTheme]=useState(null);
+  const effectiveGlobalTheme = localGlobalTheme || globalTheme || "dark";
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
@@ -1006,7 +1007,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
   const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""};
   const [newData,setNewData]=useState(newData0);
-  const groupOrder=["Leistungsgruppe","Fortgeschrittene","Anfänger","Trainer"];
+  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer"];
 
   async function saveEdit() {
     if (!editPlayer) return;
@@ -1252,8 +1253,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
       <div style={{display:"flex",gap:8,marginBottom:16}}>
         {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
-          const isActive = globalTheme===opt.mode;
+          const isActive = effectiveGlobalTheme===opt.mode;
           return <button key={opt.mode} onClick={async()=>{
+            setLocalGlobalTheme(opt.mode); // sofort anzeigen
             await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
             showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
           }} style={{
@@ -1404,7 +1406,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               </div>
               {/* Schläger */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏏 Schläger</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏓 Schläger</div>
                 <div style={{marginBottom:8}}>
                   <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Typ</label>
                   <select value={editPlayer.racketType||""} onChange={e=>setEditPlayer(prev=>({...prev,racketType:e.target.value,racketNr:""}))}>
@@ -1614,7 +1616,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {/* Punkt 11: Schläger-Info anzeigen */}
                   {p.racketType==="TTC"&&p.racketNr&&(
                     <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
-                      🏏 Nr.{String(p.racketNr).padStart(3,"0")}
+                      🏓 Nr.{String(p.racketNr).padStart(3,"0")}
                       {!p.racketStart&&" ⚠️ Vergabedatum fehlt!"}
                     </span>
                   )}
@@ -1794,7 +1796,7 @@ function SchlaegerTab({rackets,players,showToast}) {
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontSize:17,fontWeight:800}}>🏏 Schlägerverwaltung</div>
+      <div style={{fontSize:17,fontWeight:800}}>🏓 Schlägerverwaltung</div>
       <div style={{display:"flex",gap:6}}>
         {hasFilters&&<button onClick={clearFilters} style={{padding:"5px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕ Filter löschen</button>}
         <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"var(--border)",border:`1px solid ${showFilters?"#3b82f6":"var(--border2)"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>
@@ -1887,16 +1889,31 @@ function SchlaegerTab({rackets,players,showToast}) {
                 </td>
               </tr>
             ) : (
-              <tr key={r.nr} style={{borderTop:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>
-                <td style={{padding:"7px 8px",color:"var(--text)",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
-                <td style={{padding:"7px 8px"}}><span style={{color:statColor[r.status]||"#6b7280",fontWeight:600,fontSize:11}}>{r.status||"frei"}</span></td>
-                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.zustand||"—"}</td>
-                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.marke||"—"}</td>
-                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.art||"—"}</td>
-                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.griffform||"—"}</td>
-                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}}>{r.farbeBelaege||"—"}</td>
-                <td style={{padding:"7px 8px",color:"var(--text)",fontSize:11}}>{r.vergebenAn||""}</td>
-                <td style={{padding:"7px 8px",color:"var(--text4)",fontSize:12}}>✏️</td>
+              <tr key={r.nr} style={{borderTop:"1px solid var(--border)",cursor:"pointer"}}>
+                <td style={{padding:"7px 8px",color:"var(--text)",fontWeight:700}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{String(r.nr).padStart(3,"0")}</td>
+                <td style={{padding:"7px 8px"}} onClick={()=>{setEditId(r.nr);setForm({...r});}}><span style={{color:statColor[r.status||"frei"]||"#10b981",fontWeight:600,fontSize:11}}>{r.vergebenAn?"vergeben":r.status||"frei"}</span></td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{r.zustand||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{r.marke||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{r.art||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{r.griffform||"—"}</td>
+                <td style={{padding:"7px 8px",color:"var(--text2)",fontSize:11}} onClick={()=>{setEditId(r.nr);setForm({...r});}}>{r.farbeBelaege||"—"}</td>
+                <td style={{padding:"7px 8px",fontSize:11}}>
+                  {r.vergebenAn ? (
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{color:"var(--text)"}}>{r.vergebenAn}</span>
+                      <button onClick={async(e)=>{
+                        e.stopPropagation();
+                        // Punkt 6: Vergabe löschen — Schläger freigeben + Spieler aktualisieren
+                        const oldName=r.vergebenAn;
+                        await setDoc(doc(db,"rackets",String(r.nr)),{...r,status:"frei",vergebenAn:""}).catch(()=>{});
+                        const oldP=players.find(pl=>`${pl.firstName} ${pl.lastName}`===oldName);
+                        if(oldP) await updateDoc(doc(db,"players",oldP.id),{racketType:"",racketNr:"",racketStart:"",racketEnd:""}).catch(()=>{});
+                        showToast("Vergabe gelöscht","🏓");
+                      }} style={{padding:"1px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer",flexShrink:0}}>✕</button>
+                    </div>
+                  ) : <span style={{color:"var(--text4)",fontSize:11}}>—</span>}
+                </td>
+                <td style={{padding:"7px 8px",color:"var(--text4)",fontSize:12}} onClick={()=>{setEditId(r.nr);setForm({...r});}} >✏️</td>
               </tr>
             )
           ))}
@@ -2049,8 +2066,8 @@ function GeburtstageTab({players,showToast}) {
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead>
           <tr>
-            {["Geburtstag","Vorname","Nachname","Alter"].map((h,i)=>(
-              <th key={h} style={{
+            {["Geburtstag","Vorname","Nachname","Alter",""].map((h,i)=>(
+              <th key={i} style={{
                 padding:"8px 12px",fontSize:11,fontWeight:700,color:"var(--text2)",
                 background:"var(--bg3)",
                 position:"sticky",top:0,zIndex:3,
@@ -2071,9 +2088,16 @@ function GeburtstageTab({players,showToast}) {
               <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,borderTop:"1px solid var(--border)"}}>{p.firstName}</td>
               <td style={{padding:"9px 12px",fontSize:12,color:"var(--text)",borderTop:"1px solid var(--border)"}}>{p.lastName}</td>
               <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right",borderTop:"1px solid var(--border)"}}>{calcAge(p.birthdate)}</td>
+              <td style={{padding:"6px 8px",borderTop:"1px solid var(--border)",textAlign:"center"}}>
+                <button onClick={async()=>{
+                  if(!window.confirm(`Geburtstag von ${p.firstName} ${p.lastName} löschen?`)) return;
+                  await updateDoc(doc(db,"players",p.id),{birthdate:""}).catch(()=>{});
+                  showToast(`Geburtstag von ${p.firstName} gelöscht`,"🗑️");
+                }} style={{padding:"2px 6px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
+              </td>
             </tr>;
           })}
-          {withBirthday.length===0&&<tr><td colSpan={4} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Noch keine Geburtstage erfasst</td></tr>}
+          {withBirthday.length===0&&<tr><td colSpan={5} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Noch keine Geburtstage erfasst</td></tr>}
         </tbody>
       </table>
     </div>
