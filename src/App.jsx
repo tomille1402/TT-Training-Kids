@@ -461,7 +461,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto"}}>
+  return <div style={{height:"100dvh",display:"flex",flexDirection:"column",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",position:"relative"}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
