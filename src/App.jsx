@@ -461,7 +461,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto"}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
@@ -536,13 +536,16 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",flexShrink:0,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
+
+    {/* Tab-Inhalt: eigener Scroll-Container damit sticky headers funktionieren */}
+    <div style={{flex:1,overflowY:"auto",paddingBottom:20}}>
 
     {/* ── ÜBUNGEN TAB ── */}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -683,6 +686,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme}/>}
+
+    </div>{/* Ende Tab-Inhalt scroll container */}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -2039,8 +2044,8 @@ function GeburtstageTab({players,showToast}) {
       Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
 
-    {/* Tabelle — gleiche Technik wie Schlägerverwaltung: scroll-Container + sticky thead */}
-    <div style={{maxHeight:"65vh",overflowY:"auto",borderRadius:12,border:"1px solid var(--border)"}}>
+    {/* Tabelle mit sticky Header — scrollt mit dem Tab-Container */}
+    <div style={{borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
         <thead>
           <tr>
@@ -2049,7 +2054,7 @@ function GeburtstageTab({players,showToast}) {
                 padding:"8px 12px",fontSize:11,fontWeight:700,color:"var(--text2)",
                 background:"var(--bg3)",
                 position:"sticky",top:0,zIndex:3,
-                borderBottom:"1px solid var(--border2)",
+                borderBottom:"2px solid var(--border2)",
                 textAlign:i===3?"right":"left",
                 whiteSpace:"nowrap",
               }}>{h}</th>
@@ -2059,13 +2064,13 @@ function GeburtstageTab({players,showToast}) {
         <tbody>
           {withBirthday.map(p=>{
             const highlight=isRecentBirthday(p);
-            return <tr key={p.id} style={{background:highlight?"#f59e0b11":"transparent",borderTop:"1px solid var(--border)"}}>
-              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400,whiteSpace:"nowrap"}}>
+            return <tr key={p.id} style={{background:highlight?"#f59e0b11":"transparent"}}>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400,whiteSpace:"nowrap",borderTop:"1px solid var(--border)"}}>
                 {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
               </td>
-              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500}}>{p.firstName}</td>
-              <td style={{padding:"9px 12px",fontSize:12,color:"var(--text)"}}>{p.lastName}</td>
-              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,borderTop:"1px solid var(--border)"}}>{p.firstName}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:"var(--text)",borderTop:"1px solid var(--border)"}}>{p.lastName}</td>
+              <td style={{padding:"9px 12px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right",borderTop:"1px solid var(--border)"}}>{calcAge(p.birthdate)}</td>
             </tr>;
           })}
           {withBirthday.length===0&&<tr><td colSpan={4} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Noch keine Geburtstage erfasst</td></tr>}
