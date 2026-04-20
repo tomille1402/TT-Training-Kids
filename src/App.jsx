@@ -2039,26 +2039,27 @@ function GeburtstageTab({players,showToast}) {
       Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
 
-    {/* Punkt 3+12: Tabelle mit fixiertem Header */}
+    {/* Tabelle mit fixiertem Header */}
     <div style={{border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
-      {/* Fixierter Header */}
-      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"var(--bg3)",padding:"8px 12px",position:"sticky",top:0,zIndex:5}}>
+      {/* Fixierter Header — sticky funktioniert nur wenn kein overflow:hidden auf dem Parent */}
+      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,background:"var(--bg3)",padding:"8px 12px",
+        position:"sticky",top:0,zIndex:10,
+        borderBottom:"1px solid var(--border2)"}}>
         <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Geburtstag</div>
         <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Vorname</div>
         <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",paddingLeft:8}}>Nachname</div>
         <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",textAlign:"right"}}>Alter</div>
       </div>
-      {/* Scrollbare Liste */}
       <div style={{background:"var(--bg2)"}}>
         {withBirthday.map(p=>{
           const highlight=isRecentBirthday(p);
           return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 50px",gap:0,padding:"9px 12px",borderTop:"1px solid var(--border)",background:highlight?"#f59e0b11":"transparent"}}>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"#9ca3af",fontWeight:highlight?700:400}}>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400}}>
               {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
             </div>
             <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,paddingLeft:8}}>{p.firstName}</div>
             <div style={{fontSize:12,color:"var(--text)",paddingLeft:8}}>{p.lastName}</div>
-            <div style={{fontSize:12,color:highlight?"#f59e0b":"#6b7280",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
+            <div style={{fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
           </div>;
         })}
         {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
