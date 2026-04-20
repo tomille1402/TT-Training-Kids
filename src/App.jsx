@@ -378,22 +378,22 @@ function LoginScreen({onLogin,error,loading,successMessage}) {
 }
 
 // ─── THEME TOGGLE ─────────────────────────────────────────────────────────────
-function ThemeToggle({isDark,userTheme,onSetUserTheme,small}) {
+function ThemeToggle({isDark,onSetUserTheme}) {
   return <button
     onClick={()=>onSetUserTheme(isDark?"light":"dark")}
     title={isDark?"Zu Light Mode wechseln":"Zu Dark Mode wechseln"}
     style={{
-      padding:small?"4px 8px":"5px 10px",
-      background:isDark?"var(--border)":"#f3f4f6",
-      border:`1px solid ${isDark?"var(--border2)":"#d1d5db"}`,
+      padding:"5px 11px",
+      background:isDark?"#1f2937":"#e5e7eb",
+      border:"2px solid " + (isDark?"#f59e0b":"#374151"),
       borderRadius:20,
-      color:isDark?"#f59e0b":"#6b7280",
-      fontSize:small?14:16,
+      color:isDark?"#f59e0b":"#374151",
+      fontSize:12,fontWeight:700,
       cursor:"pointer",
-      display:"flex",alignItems:"center",gap:4,
-      lineHeight:1,
+      display:"flex",alignItems:"center",gap:5,
+      lineHeight:1,whiteSpace:"nowrap",
     }}
-  >{isDark?"☀️":"🌙"}{!small&&<span style={{fontSize:10,fontWeight:600}}>{isDark?"Light":"Dark"}</span>}</button>;
+  >{isDark?"☀️ Light Mode":"🌙 Dark Mode"}</button>;
 }
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded}) {
   const ALL_TABS=[
@@ -505,7 +505,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {recentBirthdays.length>0&&<button onClick={()=>setBirthdayPopupDismissed(false)} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer"}}>🎂 {recentBirthdays.length}</button>}
           {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
-          <ThemeToggle isDark={isDark} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
+          <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
           <button onClick={onSignOut} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
@@ -1237,45 +1237,44 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </button>
     </div>
 
-    {/* App-Design Grundeinstellung */}
+    {/* App-Design */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
       <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:6}}>🎨 App-Design</div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
-        Die Grundeinstellung gilt für alle Nutzer. Wer selbst eine andere Variante wählt, hat Vorrang.
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+        Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
       </div>
 
-      {/* Grundeinstellung für alle */}
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:600}}>Grundeinstellung für alle Nutzer:</div>
-      <div style={{display:"flex",gap:8,marginBottom:14}}>
-        {[{mode:"dark",label:"🌙 Dark Mode"},{mode:"light",label:"☀️ Light Mode"}].map(opt=>{
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
           const isActive = globalTheme===opt.mode;
           return <button key={opt.mode} onClick={async()=>{
             await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
-            showToast(`Grundeinstellung: ${opt.mode==="dark"?"Dark":"Light"} Mode`,"🎨");
+            showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
           }} style={{
-            flex:1,padding:"9px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:12,
+            flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
             border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
             background:isActive?"#10b98122":"var(--bg3)",
             color:isActive?"#10b981":"var(--text2)",
-          }}>{opt.label}{isActive&&" ✓"}</button>;
+          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
         })}
       </div>
 
-      {/* Persönliche Einstellung */}
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:600}}>Deine persönliche Einstellung (hat Vorrang):</div>
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
       <div style={{display:"flex",gap:8}}>
-        {[{mode:"dark",label:"🌙 Dark"},{mode:"light",label:"☀️ Light"},{mode:"",label:"🔄 Standard"}].map(opt=>{
-          const isActive = userTheme===opt.mode || (!userTheme&&opt.mode==="");
-          return <button key={opt.mode||"std"} onClick={()=>{
-            onSetUserTheme&&onSetUserTheme(opt.mode);
-          }} style={{
-            flex:1,padding:"7px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+        {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
+          const isActive = userTheme===opt.mode;
+          return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
+            flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
             border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-            background:isActive?"#10b98122":"transparent",
-            color:isActive?"#10b981":"var(--text3)",
-          }}>{opt.label}{isActive&&" ✓"}</button>;
+            background:isActive?"#10b98122":"var(--bg3)",
+            color:isActive?"#10b981":"var(--text2)",
+          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
         })}
       </div>
+      {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
+        Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
+      </div>}
     </div>
 
     {/* Add form */}
@@ -2139,7 +2138,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <ThemeToggle isDark={isDark} userTheme={userTheme} onSetUserTheme={onSetUserTheme} small/>
+          <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
           <button onClick={onSignOut} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
@@ -2515,36 +2514,36 @@ export default function App() {
   const theme = userTheme || globalTheme;
   const isDark = theme==="dark";
 
-  // CSS-Variablen injizieren — steuert ALLE Farben zentral
+  // CSS-Variablen mit konkreten Hex-Werten setzen (KEIN var() hier!)
   useEffect(()=>{
-    const root = document.documentElement;
+    const r = document.documentElement;
     if (isDark) {
-      root.style.setProperty("--bg",       "var(--bg)");
-      root.style.setProperty("--bg2",      "var(--bg2)");
-      root.style.setProperty("--bg3",      "var(--border)");
-      root.style.setProperty("--border",   "var(--border)");
-      root.style.setProperty("--border2",  "var(--border2)");
-      root.style.setProperty("--text",     "var(--text)");
-      root.style.setProperty("--text2",    "#9ca3af");
-      root.style.setProperty("--text3",    "#6b7280");
-      root.style.setProperty("--text4",    "#4b5563");
-      root.style.setProperty("--input-bg", "var(--bg)");
-      root.style.setProperty("--sel-bg",   "var(--bg)");
-      document.body.style.background = "var(--bg)";
+      r.style.setProperty("--bg",       "#0d1117");
+      r.style.setProperty("--bg2",      "#111827");
+      r.style.setProperty("--bg3",      "#1f2937");
+      r.style.setProperty("--border",   "#1f2937");
+      r.style.setProperty("--border2",  "#374151");
+      r.style.setProperty("--text",     "#e5e7eb");
+      r.style.setProperty("--text2",    "#9ca3af");
+      r.style.setProperty("--text3",    "#6b7280");
+      r.style.setProperty("--text4",    "#4b5563");
+      r.style.setProperty("--input-bg", "#0d1117");
+      r.style.setProperty("--sel-bg",   "#0d1117");
     } else {
-      root.style.setProperty("--bg",       "#f3f4f6");
-      root.style.setProperty("--bg2",      "#ffffff");
-      root.style.setProperty("--bg3",      "var(--text)");
-      root.style.setProperty("--border",   "var(--text)");
-      root.style.setProperty("--border2",  "#d1d5db");
-      root.style.setProperty("--text",     "var(--bg2)");
-      root.style.setProperty("--text2",    "var(--border2)");
-      root.style.setProperty("--text3",    "#6b7280");
-      root.style.setProperty("--text4",    "#9ca3af");
-      root.style.setProperty("--input-bg", "#ffffff");
-      root.style.setProperty("--sel-bg",   "#f9fafb");
-      document.body.style.background = "#f3f4f6";
+      r.style.setProperty("--bg",       "#f3f4f6");
+      r.style.setProperty("--bg2",      "#ffffff");
+      r.style.setProperty("--bg3",      "#e5e7eb");
+      r.style.setProperty("--border",   "#e5e7eb");
+      r.style.setProperty("--border2",  "#d1d5db");
+      r.style.setProperty("--text",     "#111827");
+      r.style.setProperty("--text2",    "#374151");
+      r.style.setProperty("--text3",    "#6b7280");
+      r.style.setProperty("--text4",    "#9ca3af");
+      r.style.setProperty("--input-bg", "#ffffff");
+      r.style.setProperty("--sel-bg",   "#f9fafb");
     }
+    document.body.style.background = isDark ? "#0d1117" : "#f3f4f6";
+    document.body.style.color = isDark ? "#e5e7eb" : "#111827";
   },[isDark]);
 
   // Globale Theme-Einstellung aus Firestore laden
