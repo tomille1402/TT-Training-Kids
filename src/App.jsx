@@ -885,7 +885,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
     const rangeStart = pStart ? new Date(pStart) : null;
     const rangeEnd   = pEnd   ? new Date(pEnd)   : null;
 
-    // Nur vergangene Tage im erlaubten Zeitraum
+    // Nur vergangene Tage im erlaubten Zeitraum (heute einschließen)
     const pastDays = days.filter(d=>{
       const dt = new Date(d);
       if (dt > today) return false;
@@ -904,32 +904,22 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
       // Kein Training an diesem Tag → überspringen
       if (session && session.took_place === false) continue;
 
-      // Training hat stattgefunden (oder keine Session → Training angenommen)
-      // Nur zählen wenn eine Session existiert (Trainer hat erfasst)
+      // Keine Session gespeichert → nicht zählen
       if (!session) continue;
 
-      total++;
-
-      // Anwesenheit des Spielers auslesen
       const att = session.attendances;
-      if (!att) {
-        // Session existiert aber keine attendances → als anwesend werten
-        present++;
-        continue;
-      }
+      // Session ohne attendances-Objekt → nicht zählen
+      if (!att) continue;
 
       const val = att[player.id];
-      if (val === undefined || val === null) {
-        // Spieler nicht in dieser Session → als anwesend werten
-        // (z.B. wenn Spieler später angelegt wurde oder "Alle anwesend" implizit)
-        present++;
-      } else if (val === "a") {
-        present++;
-      } else if (val === "e") {
-        excused++;
-      } else {
-        unexcused++;
-      }
+      // Spieler nicht explizit in dieser Session erfasst → nicht zählen
+      if (val === undefined || val === null) continue;
+
+      // Nur explizit gespeicherte Werte zählen
+      total++;
+      if (val === "a") present++;
+      else if (val === "e") excused++;
+      else unexcused++;
     }
 
     const pct = total > 0 ? Math.round((present / total) * 100) : 0;
@@ -1656,13 +1646,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
 // ─── PLAYER TRAINING DETAIL (Punkt 7: editierbare Trainingsübersicht im Drilldown) ──
 function PlayerTrainingDetail({player,attendance,showToast}) {
-  const days = getTrainingDaysForGroup(player.group||"Anfänger");
+  const days = getTrainingDaysForGroup(normalizeGroup(player.group)||"Anfänger");
   const today = new Date(); today.setHours(0,0,0,0);
   const pStart = player.trainingStart||null;
-  const filteredDays = days.filter(d=>{
-    if(pStart && d < pStart) return false;
-    return true;
-  });
+  // Punkt 2: Nur vergangene Trainings (inkl. heute), neuestes oben
+  const filteredDays = days
+    .filter(d=>{
+      if(new Date(d) > today) return false; // keine Zukunft
+      if(pStart && d < pStart) return false;
+      return true;
+    })
+    .reverse(); // neuestes oben
   const [saving,setSaving]=useState(false);
 
   async function setVal(d, val) {
@@ -1698,7 +1692,7 @@ function PlayerTrainingDetail({player,attendance,showToast}) {
     {filteredDays.map(d=>{
       const s=attendance[d];
       const noTraining=s&&s.took_place===false;
-      const val=s?.attendances?.[player.id]||(s?"a":null);
+      const val=s?.attendances?.[player.id]??null;
       const isPast=new Date(d)<=today;
       return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 32px 1fr 44px 44px 44px",gap:4,marginBottom:4,alignItems:"center",background:noTraining?"#1a1a1a":"var(--bg)",borderRadius:7,padding:"5px 6px",opacity:noTraining?0.5:1}}>
         <div style={{fontSize:11,color:"var(--text)"}}>{formatDateDE(d)}</div>
@@ -2211,12 +2205,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   let present=0,total=0;
   for (const d of pastDays) {
     const s=attendance[d];
-    if (s&&s.took_place===false) continue; // kein Training
-    if (!s) continue; // noch nicht erfasst → nicht zählen
-    total++;
+    if (s&&s.took_place===false) continue;
+    if (!s) continue;
     const val = s.attendances?.[myPlayer.id];
-    // undefined/null → implizit anwesend; "a" → anwesend
-    if (val===undefined||val===null||val==="a") present++;
+    if (val===undefined||val===null) continue; // nicht explizit erfasst → nicht zählen
+    total++;
+    if (val==="a") present++;
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
@@ -2383,11 +2377,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           const s=attendance[d];
           if(s&&s.took_place===false)continue;
           if(!s)continue;
-          tot++;
           const att=s.attendances;
-          if(!att){pres++;continue;}
+          if(!att)continue; // keine attendances → nicht zählen
           const val=att[player.id];
-          if(val===undefined||val===null||val==="a")pres++;
+          if(val===undefined||val===null)continue; // nicht explizit erfasst → nicht zählen
+          tot++;
+          if(val==="a")pres++;
           else if(val==="e")exc++;
           else unex++;
         }
