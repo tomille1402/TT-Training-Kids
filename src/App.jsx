@@ -832,20 +832,19 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
             {groupPlayers.map(p=>{
               const val=sessionData.attendances?.[p.id]||"a";
-              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:6,alignItems:"center",background:"var(--bg)",borderRadius:8,padding:"8px 10px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:7}}>
-                  <span style={{fontSize:16}}>{p.avatar||"🏓"}</span>
-                  <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{p.firstName} {p.lastName}</span>
+              return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 44px 44px 44px",gap:4,marginBottom:5,alignItems:"center",background:"var(--bg)",borderRadius:8,padding:"7px 8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden"}}>
+                  <span style={{fontSize:15,flexShrink:0}}>{p.avatar||"🏓"}</span>
+                  <span style={{fontSize:12,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.firstName} {p.lastName}</span>
                 </div>
                 {COL_HEADERS.map(opt=>(
                   <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
                     <button onClick={()=>setSessionData(prev=>({...prev,attendances:{...prev.attendances,[p.id]:opt.key}}))} style={{
-                      width:36,height:36,borderRadius:"50%",border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,cursor:"pointer",
-                      fontSize:15,fontWeight:800,
+                      width:34,height:34,borderRadius:"50%",border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,cursor:"pointer",
+                      fontSize:13,fontWeight:800,
                       background:val===opt.key?opt.color+"33":"transparent",
                       color:val===opt.key?opt.color:"var(--text4)",
-                      boxShadow:val===opt.key?`0 0 8px ${opt.color}44`:"none",
-                      transition:"all .15s",
+                      transition:"all .15s",flexShrink:0,
                     }}>{opt.label}</button>
                   </div>
                 ))}
@@ -1871,7 +1870,10 @@ function SchlaegerTab({rackets,players,showToast}) {
               <tr key={r.nr} style={{background:"#1a2332"}}>
                 <td style={{padding:"6px 8px",color:"var(--text)",fontWeight:700}}>{String(r.nr).padStart(3,"0")}</td>
                 <td style={{padding:"4px"}}>
-                  <select value={form.status||"frei"} onChange={e=>setForm(p=>({...p,status:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
+                  <select value={form.status||"frei"} onChange={e=>{
+                    const ns=e.target.value;
+                    setForm(p=>({...p,status:ns,...(ns==="vergeben"&&!p.griffform?{griffform:"Konkav"}:{}), ...(ns==="vergeben"&&!p.farbeBelaege?{farbeBelaege:"Schwarz/rot"}:{})}));
+                  }} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
                     {["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
@@ -1885,7 +1887,12 @@ function SchlaegerTab({rackets,players,showToast}) {
                   <datalist id={`marke-${r.nr}`}><option>Butterfly</option><option>Joola</option><option>GEWO</option></datalist>
                 </td>
                 <td style={{padding:"4px"}}>
-                  <input value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
+                  <input list={`art-${form.nr}`} value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
+                  <datalist id={`art-${form.nr}`}>
+                    {form.marke==="GEWO"&&["Blast Junior","Raver","School Junior","Standard Pro"].map(a=><option key={a}>{a}</option>)}
+                    {form.marke==="Butterfly"&&["Comfort","Easy Bat"].map(a=><option key={a}>{a}</option>)}
+                    {form.marke==="Joola"&&["Champ","Team","Classic"].map(a=><option key={a}>{a}</option>)}
+                  </datalist>
                 </td>
                 <td style={{padding:"4px"}}>
                   <select value={form.griffform||""} onChange={e=>setForm(p=>({...p,griffform:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
@@ -1900,7 +1907,9 @@ function SchlaegerTab({rackets,players,showToast}) {
                 <td style={{padding:"4px"}}>
                   <select value={form.vergebenAn||""} onChange={e=>setForm(p=>({...p,vergebenAn:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
                     <option value="">— frei —</option>
-                    {playersWithoutRacket.sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")).map(p=>(
+                    {[...playersWithoutRacket,
+                      ...players.filter(p=>p.racketNr===form.nr&&p.racketType==="TTC"&&!playersWithoutRacket.find(x=>x.id===p.id))
+                    ].sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")).map(p=>(
                       <option key={p.id} value={`${p.firstName} ${p.lastName}`}>{p.firstName} {p.lastName}</option>
                     ))}
                   </select>
@@ -1948,18 +1957,42 @@ function SchlaegerTab({rackets,players,showToast}) {
 // ─── GEBURTSTAGE TAB ─────────────────────────────────────────────────────────
 function GeburtstageTab({players,showToast}) {
   const [uploading,setUploading]=useState(false);
+  const [notFoundList,setNotFoundList]=useState([]);
+  const [sortCol,setSortCol]=useState("birthday");
+  const [sortAsc,setSortAsc]=useState(true);
 
+  function toggleSort(col){if(sortCol===col)setSortAsc(a=>!a);else{setSortCol(col);setSortAsc(true);}}
+
+  // Punkt 1: Nur aktive Spieler mit Geburtstag
   const withBirthday = players
-    .filter(p=>p.birthdate && typeof p.birthdate==="string" && p.birthdate.trim()!=="")
+    .filter(p=>p.status!=="passiv" && p.birthdate && typeof p.birthdate==="string" && p.birthdate.trim()!=="")
     .map(p=>{
       const bd=new Date(p.birthdate);
       const now=new Date();
       let age=now.getFullYear()-bd.getFullYear();
       if(now.getMonth()<bd.getMonth()||(now.getMonth()===bd.getMonth()&&now.getDate()<bd.getDate())) age--;
-      return {...p,age,
-        sortKey:`${String(bd.getMonth()+1).padStart(2,"0")}-${String(bd.getDate()).padStart(2,"0")}`};
-    })
-    .sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+      const mm=String(bd.getMonth()+1).padStart(2,"0");
+      const dd=String(bd.getDate()).padStart(2,"0");
+      return {...p,age,bdMonth:bd.getMonth(),bdDay:bd.getDate(),
+        sortKeyBirthday:`${mm}-${dd}`,
+        sortKeyFirstName:(p.firstName||"").toLowerCase(),
+        sortKeyLastName:(p.lastName||"").toLowerCase(),
+        sortKeyAge:age,
+        sortKeyGender:(p.gender||"").toLowerCase(),
+      };
+    });
+
+  // Punkt 3: Sortierung nach gewählter Spalte
+  const sorted=[...withBirthday].sort((a,b)=>{
+    let va,vb;
+    if(sortCol==="birthday"){va=a.sortKeyBirthday;vb=b.sortKeyBirthday;}
+    else if(sortCol==="firstName"){va=a.sortKeyFirstName;vb=b.sortKeyFirstName;}
+    else if(sortCol==="lastName"){va=a.sortKeyLastName;vb=b.sortKeyLastName;}
+    else if(sortCol==="age"){va=a.sortKeyAge;vb=b.sortKeyAge;return sortAsc?va-vb:vb-va;}
+    else if(sortCol==="gender"){va=a.sortKeyGender;vb=b.sortKeyGender;}
+    else{va=a.sortKeyBirthday;vb=b.sortKeyBirthday;}
+    return sortAsc?va.localeCompare(vb,"de"):vb.localeCompare(va,"de");
+  });
 
   const today=new Date();today.setHours(0,0,0,0);
   const allDays=[...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
@@ -1973,7 +2006,6 @@ function GeburtstageTab({players,showToast}) {
     return thisYear>=since && thisYear<=today;
   }
 
-  // 2b: Alter korrekt berechnen
   function calcAge(birthdateStr) {
     if (!birthdateStr) return "—";
     const bd = new Date(birthdateStr);
@@ -1984,17 +2016,30 @@ function GeburtstageTab({players,showToast}) {
     return age;
   }
 
+  function formatBirthdayShort(dateStr) {
+    if (!dateStr) return "—";
+    const parts = dateStr.split("-");
+    if (parts.length!==3) return dateStr;
+    return `${parts[2]}.${parts[1]}.`;
+  }
+
+  // Punkt 4: Geschlecht ableiten
+  function genderLabel(g) {
+    if (!g) return "—";
+    const gl=g.toLowerCase();
+    if(gl==="w"||gl==="weiblich"||gl==="mädchen"||gl==="f") return "w";
+    if(gl==="m"||gl==="männlich"||gl==="junge") return "m";
+    return "—";
+  }
+
   function parseDate(raw) {
     if (raw===null||raw===undefined||raw==="") return "";
-    // Zahl: Excel-Seriennummer
     if (typeof raw === "number" || (/^\d{5}$/.test(String(raw).trim()))) {
       const n = typeof raw === "number" ? raw : Number(raw);
-      // Excel epoch: 1900-01-01 = 1, mit Leap-Year-Bug (1900 gilt als Schaltjahr)
       const d = new Date(Math.round((n - 25569) * 86400 * 1000));
       if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
     }
     let s = String(raw).trim();
-    // DD.MM.YYYY oder DD.MM.YY
     if (s.includes(".")) {
       const parts = s.split(".");
       if (parts.length >= 3) {
@@ -2003,12 +2048,10 @@ function GeburtstageTab({players,showToast}) {
         if (d.length&&m.length&&y.length===4) return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
       }
     }
-    // MM/DD/YYYY
     if (s.includes("/")) {
       const [m,d,y] = s.split("/");
       if (y&&y.length===4) return `${y}-${m.trim().padStart(2,"0")}-${d.trim().padStart(2,"0")}`;
     }
-    // YYYY-MM-DD bereits korrekt
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     return "";
   }
@@ -2017,6 +2060,7 @@ function GeburtstageTab({players,showToast}) {
     const file=e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setNotFoundList([]);
     try {
       const XLSX = await new Promise((resolve,reject)=>{
         if (window.XLSX) { resolve(window.XLSX); return; }
@@ -2027,7 +2071,6 @@ function GeburtstageTab({players,showToast}) {
         document.head.appendChild(s);
       });
       const ab=await file.arrayBuffer();
-      // raw:true damit Zahlen als Zahlen ankommen (Excel-Datum-Seriennummern)
       const wb=XLSX.read(ab,{type:"array",cellDates:false});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{raw:true});
@@ -2037,7 +2080,6 @@ function GeburtstageTab({players,showToast}) {
         const nachname=String(row["Nachname"]||row["nachname"]||"").trim();
         const rawDate=row["Geburtsdatum"]||row["geburtsdatum"]||row["Geburtstag"]||row["geburtstag"]||"";
         if (!vorname) continue;
-        // 3: Nur vorhandene Spieler
         const p=players.find(pl=>
           (pl.firstName||"").toLowerCase().trim()===vorname.toLowerCase()&&
           (pl.lastName||"").toLowerCase().trim()===nachname.toLowerCase()
@@ -2045,77 +2087,85 @@ function GeburtstageTab({players,showToast}) {
         if (!p) { notFound.push(`${vorname} ${nachname}`); continue; }
         if (!rawDate && rawDate!==0) { failed.push(`${vorname} (kein Datum)`); continue; }
         const dateStr=parseDate(rawDate);
-        if (!dateStr) { failed.push(`${vorname} (Datum unparsebar: ${rawDate})`); continue; }
-        // 2a: Direkt in players-Collection schreiben = sofort in Verwaltung sichtbar
+        if (!dateStr) { failed.push(`${vorname} ${nachname} (Datum: ${rawDate})`); continue; }
         await setDoc(doc(db,"players",p.id),{birthdate:dateStr},{merge:true});
         count++;
       }
-      let msg=count>0?`${count} Geburtstage importiert`:"Keine Geburtstage importiert";
-      if(notFound.length) msg+=` · ${notFound.length} nicht gefunden`;
-      if(failed.length) msg+=` · ${failed.length} Fehler`;
-      showToast(msg,"🎂");
-      if(notFound.length||failed.length) console.log("Import:",{notFound,failed});
+      // Punkt 2: Nicht-importierte anzeigen
+      if(notFound.length||failed.length) setNotFoundList([...notFound,...failed]);
+      showToast(count>0?`${count} Geburtstage importiert`:"Keine importiert","🎂");
     } catch(err){
-      console.error("Import-Fehler:",err);
       showToast("Fehler: "+err.message,"❌");
     }
     setUploading(false);
     e.target.value="";
   }
 
-  function formatBirthdayShort(dateStr) {
-    if (!dateStr) return "—";
-    const parts = dateStr.split("-");
-    if (parts.length!==3) return dateStr;
-    return `${parts[2]}.${parts[1]}.`;
-  }
+  const SH=({col,label,align})=><div onClick={()=>toggleSort(col)} style={{
+    padding:"8px 8px",fontSize:11,fontWeight:700,color:sortCol===col?"#10b981":"var(--text2)",
+    cursor:"pointer",userSelect:"none",textAlign:align||"left",whiteSpace:"nowrap",
+    background:"var(--bg3)",borderBottom:"2px solid var(--border2)",
+  }}>{label}{sortCol===col?(sortAsc?" ▲":" ▼"):""}</div>;
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontSize:17,fontWeight:800}}>🎂 Geburtstage</div>
-      <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:uploading?"#6b7280":"#9ca3af",fontSize:12,cursor:uploading?"not-allowed":"pointer"}}>
+      <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:uploading?"#6b7280":"var(--text2)",fontSize:12,cursor:uploading?"not-allowed":"pointer"}}>
         {uploading?"⏳ Importiert…":"📥 Excel importieren"}
         <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleExcelUpload} disabled={uploading}/>
       </label>
     </div>
+
+    {/* Punkt 2: Nicht-gefundene anzeigen */}
+    {notFoundList.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {notFoundList.length} Einträge konnten nicht importiert werden:</div>
+      {notFoundList.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
+      <button onClick={()=>setNotFoundList([])} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid #ef444466",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>Schließen</button>
+    </div>}
+
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
-      Hervorgehoben: Geburtstage seit letztem Training ({lastTraining?formatDateDE(lastTraining):"—"}).<br/>
-      Excel-Format: Spalten „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
+      Hervorgehoben: Geburtstage seit letztem Training ({lastTraining?formatDateDE(lastTraining):"—"}).
+      Nur aktive Personen. Excel: „Vorname", „Nachname", „Geburtsdatum" (TT.MM.JJJJ).
     </div>
 
-    {/* Tabelle: Header außerhalb des Scroll-Containers, Daten darin */}
+    {/* Tabelle: Header fixiert, Daten scrollbar */}
     <div style={{borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
-      {/* Header-Zeile — NICHT im overflow:hidden Container → sticky funktioniert */}
-      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 44px 36px",background:"var(--bg3)",borderBottom:"2px solid var(--border2)"}}>
-        {["Geburtstag","Vorname","Nachname","Alter",""].map((h,i)=>(
-          <div key={i} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"var(--text2)",textAlign:i===3?"right":"left"}}>{h}</div>
-        ))}
+      {/* Fixierter Header */}
+      <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 30px 38px 32px",background:"var(--bg3)"}}>
+        <SH col="birthday" label="Datum"/>
+        <SH col="firstName" label="Vorname"/>
+        <SH col="lastName" label="Nachname"/>
+        <SH col="gender" label="w/m"/>
+        <SH col="age" label="Alter" align="right"/>
+        <div style={{padding:"8px 4px",background:"var(--bg3)",borderBottom:"2px solid var(--border2)"}}/>
       </div>
-      {/* Daten-Bereich: scrollt eigenständig */}
-      <div style={{overflowY:"auto",maxHeight:"calc(100vh - 280px)"}}>
-        {withBirthday.map(p=>{
+      {/* Scrollbarer Inhalt */}
+      <div style={{maxHeight:"calc(100vh - 300px)",overflowY:"auto"}}>
+        {sorted.map(p=>{
           const highlight=isRecentBirthday(p);
-          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 1fr 44px 36px",borderTop:"1px solid var(--border)",background:highlight?"#f59e0b11":"var(--bg2)",alignItems:"center"}}>
-            <div style={{padding:"8px 10px",fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400,whiteSpace:"nowrap"}}>
-              {highlight&&"🎂 "}{formatBirthdayShort(p.birthdate)}
+          return <div key={p.id} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 30px 38px 32px",borderTop:"1px solid var(--border)",background:highlight?"#f59e0b11":"var(--bg2)",alignItems:"center"}}>
+            <div style={{padding:"8px 8px",fontSize:12,color:highlight?"#f59e0b":"var(--text2)",fontWeight:highlight?700:400,whiteSpace:"nowrap"}}>
+              {highlight?"🎂":""}{formatBirthdayShort(p.birthdate)}
             </div>
-            <div style={{padding:"8px 10px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500}}>{p.firstName}</div>
-            <div style={{padding:"8px 10px",fontSize:12,color:"var(--text)"}}>{p.lastName}</div>
-            <div style={{padding:"8px 10px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
+            <div style={{padding:"8px 6px",fontSize:12,color:highlight?"#f59e0b":"var(--text)",fontWeight:highlight?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.firstName}</div>
+            <div style={{padding:"8px 6px",fontSize:12,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.lastName}</div>
+            <div style={{padding:"8px 4px",fontSize:11,color:"var(--text3)",textAlign:"center"}}>{genderLabel(p.gender)}</div>
+            <div style={{padding:"8px 6px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
             <div style={{padding:"6px 4px",textAlign:"center"}}>
               <button onClick={async()=>{
                 if(!window.confirm(`Geburtstag von ${p.firstName} ${p.lastName} löschen?`)) return;
                 await updateDoc(doc(db,"players",p.id),{birthdate:""}).catch(()=>{});
-                showToast(`Geburtstag gelöscht`,"🗑️");
+                showToast("Geburtstag gelöscht","🗑️");
               }} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
             </div>
           </div>;
         })}
-        {withBirthday.length===0&&<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
+        {sorted.length===0&&<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Geburtstage erfasst</div>}
       </div>
     </div>
   </div>;
 }
+
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut}) {
