@@ -904,22 +904,18 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
       // Kein Training an diesem Tag → überspringen
       if (session && session.took_place === false) continue;
 
-      // Keine Session gespeichert → nicht zählen
+      // Keine gespeicherte Session → nicht zählen
       if (!session) continue;
 
-      const att = session.attendances;
-      // Session ohne attendances-Objekt → nicht zählen
-      if (!att) continue;
-
-      const val = att[player.id];
-      // Spieler nicht explizit in dieser Session erfasst → nicht zählen
-      if (val === undefined || val === null) continue;
-
-      // Nur explizit gespeicherte Werte zählen
+      // Session existiert → Training hat stattgefunden → zählen
       total++;
-      if (val === "a") present++;
-      else if (val === "e") excused++;
-      else unexcused++;
+
+      const att = session.attendances;
+      const val = att ? att[player.id] : undefined;
+
+      if (val === "e") excused++;
+      else if (val === "u") unexcused++;
+      else present++; // "a", undefined, null → anwesend (Standardfall)
     }
 
     const pct = total > 0 ? Math.round((present / total) * 100) : 0;
@@ -2207,10 +2203,10 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     const s=attendance[d];
     if (s&&s.took_place===false) continue;
     if (!s) continue;
-    const val = s.attendances?.[myPlayer.id];
-    if (val===undefined||val===null) continue; // nicht explizit erfasst → nicht zählen
     total++;
-    if (val==="a") present++;
+    const val = s.attendances?.[myPlayer.id];
+    if (val==="e"||val==="u") { /* nicht anwesend */ }
+    else present++; // "a", undefined, null → anwesend
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
@@ -2377,14 +2373,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           const s=attendance[d];
           if(s&&s.took_place===false)continue;
           if(!s)continue;
-          const att=s.attendances;
-          if(!att)continue; // keine attendances → nicht zählen
-          const val=att[player.id];
-          if(val===undefined||val===null)continue; // nicht explizit erfasst → nicht zählen
           tot++;
-          if(val==="a")pres++;
-          else if(val==="e")exc++;
-          else unex++;
+          const val=s.attendances?.[player.id];
+          if(val==="e")exc++;
+          else if(val==="u")unex++;
+          else pres++; // "a", undefined, null → anwesend
         }
         const pct=tot>0?Math.round((pres/tot)*100):0;
         return {...player,pct,pres,tot,exc,unex};
