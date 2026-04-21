@@ -875,22 +875,20 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
   },[]);
 
   function getStats(player) {
-    const group = player.group||"Anfänger";
+    const group = normalizeGroup(player.group||"Anfänger");
     const days = getTrainingDaysForGroup(group);
-    const today = new Date(); today.setHours(0,0,0,0);
+    // Heute als String YYYY-MM-DD (kein Timezone-Problem)
+    const todayStr = new Date().toLocaleDateString("sv"); // sv-locale gibt YYYY-MM-DD
 
     // Individuellen Zeitraum berücksichtigen, fallback auf globalen
     const pStart = player.trainingStart || trainingRange.start || null;
     const pEnd   = player.trainingEnd   || trainingRange.end   || null;
-    const rangeStart = pStart ? new Date(pStart) : null;
-    const rangeEnd   = pEnd   ? new Date(pEnd)   : null;
 
-    // Nur vergangene Tage im erlaubten Zeitraum (heute einschließen)
+    // String-Vergleich statt Date-Objekte → kein Timezone-Problem
     const pastDays = days.filter(d=>{
-      const dt = new Date(d);
-      if (dt > today) return false;
-      if (rangeStart && dt < rangeStart) return false;
-      if (rangeEnd   && dt > rangeEnd)   return false;
+      if (d > todayStr) return false;
+      if (pStart && d < pStart) return false;
+      if (pEnd   && d > pEnd)   return false;
       return true;
     });
 
@@ -900,22 +898,14 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 
     for (const d of pastDays) {
       const session = attendance[d];
-
-      // Kein Training an diesem Tag → überspringen
       if (session && session.took_place === false) continue;
-
-      // Keine gespeicherte Session → nicht zählen
       if (!session) continue;
 
-      // Session existiert → Training hat stattgefunden → zählen
       total++;
-
-      const att = session.attendances;
-      const val = att ? att[player.id] : undefined;
-
+      const val = session.attendances?.[player.id];
       if (val === "e") excused++;
       else if (val === "u") unexcused++;
-      else present++; // "a", undefined, null → anwesend (Standardfall)
+      else present++;
     }
 
     const pct = total > 0 ? Math.round((present / total) * 100) : 0;
@@ -1688,8 +1678,11 @@ function PlayerTrainingDetail({player,attendance,showToast}) {
     {filteredDays.map(d=>{
       const s=attendance[d];
       const noTraining=s&&s.took_place===false;
-      const val=s?.attendances?.[player.id]??null;
-      const isPast=new Date(d)<=today;
+      const rawVal = s?.attendances?.[player.id] ?? null;
+      // Wenn Session existiert und kein expliziter Eintrag → Standard "a" (anwesend)
+      const val = (s && s.took_place !== false && rawVal === null) ? "a" : rawVal;
+      const todayS2=new Date().toLocaleDateString("sv");
+      const isPast=d<=todayS2;
       return <div key={d} style={{display:"grid",gridTemplateColumns:"90px 32px 1fr 44px 44px 44px",gap:4,marginBottom:4,alignItems:"center",background:noTraining?"#1a1a1a":"var(--bg)",borderRadius:7,padding:"5px 6px",opacity:noTraining?0.5:1}}>
         <div style={{fontSize:11,color:"var(--text)"}}>{formatDateDE(d)}</div>
         <div style={{fontSize:11,color:"var(--text3)"}}>{formatDayDE(d)}</div>
@@ -2195,18 +2188,17 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
   const nexts=nextAwards(myPlayer);
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
-  const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger");
-  const today=new Date();today.setHours(0,0,0,0);
-  const pastDays=myDays.filter(d=>new Date(d)<=today);
+  const myDays=getTrainingDaysForGroup(normalizeGroup(myPlayer.group)||"Anfänger");
+  const todayStr=new Date().toLocaleDateString("sv");
+  const pastDays=myDays.filter(d=>d<=todayStr);
   let present=0,total=0;
   for (const d of pastDays) {
     const s=attendance[d];
     if (s&&s.took_place===false) continue;
     if (!s) continue;
     total++;
-    const val = s.attendances?.[myPlayer.id];
-    if (val==="e"||val==="u") { /* nicht anwesend */ }
-    else present++; // "a", undefined, null → anwesend
+    const val=s.attendances?.[myPlayer.id];
+    if(val==="e"||val==="u"){/* nicht anwesend */}else present++;
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
@@ -2332,7 +2324,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <div style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}>Status</div>
         </div>
         {/* Nur vergangene Tage, umgekehrte Reihenfolge */}
-        {[...myDays].filter(d=>new Date(d)<=today).reverse().map(d=>{
+        {[...myDays].filter(d=>d<=new Date().toLocaleDateString("sv")).reverse().map(d=>{
           const s=attendance[d];
           const didNotTakePlace=s&&s.took_place===false;
           const val=s?.attendances?.[myPlayer.id];
@@ -2361,11 +2353,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         const days=getTrainingDaysForGroup(player.group||"Anfänger");
         const pStart=player.trainingStart||null;
         const pEnd=player.trainingEnd||null;
+        const todayS=new Date().toLocaleDateString("sv");
         const pastD=days.filter(d=>{
-          const dt=new Date(d);
-          if(dt>today2)return false;
-          if(pStart&&dt<new Date(pStart))return false;
-          if(pEnd&&dt>new Date(pEnd))return false;
+          if(d>todayS)return false;
+          if(pStart&&d<pStart)return false;
+          if(pEnd&&d>pEnd)return false;
           return true;
         });
         let pres=0,tot=0,exc=0,unex=0;
