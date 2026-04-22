@@ -2674,7 +2674,6 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       padding:"8px 14px",display:"flex",alignItems:"center",gap:8,
       position:"sticky",top:0,zIndex:500,
     }}>
-      <span style={{fontSize:11,color:"var(--text3)",fontWeight:600,flexShrink:0}}>Ansicht:</span>
       {availableViews.map(v=>{
         const cfg=VIEW_CONFIG[v];
         const isActive=activeView===v;
