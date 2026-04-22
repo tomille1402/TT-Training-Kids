@@ -499,9 +499,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* Header — wird ausgeblendet wenn RoleSwitchWrapper den Header übernimmt */}
-    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+    {/* Header-Titel — wird ausgeblendet wenn RoleSwitchWrapper den Header übernimmt */}
+    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
           <div>
@@ -516,8 +516,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
       </div>
-      {/* Gruppenfilter-Buttons */}
-      <div style={{display:"flex",gap:5,marginBottom:8}}>
+    </div>}
+
+    {/* Gruppenfilter + Spieler-Chips — IMMER sichtbar, sticky */}
+    <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",
+      position:"sticky",top:hideHeader?44:0,zIndex:97,flexShrink:0}}>
+      <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
         {["Profis","Fortgeschrittene","Anfänger"].map(g=>{
           const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981"};
           const c=colors[g]; const on=groupFilters[g];
@@ -527,7 +531,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           }}>{g}</button>;
         })}
       </div>
-      {/* Spieler-Chips */}
       <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
         {visiblePlayers.map(p=>(
           <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
@@ -539,11 +542,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{p.firstName||p.name}
           </button>
         ))}
+        {visiblePlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler sichtbar</span>}
       </div>
-    </div>}
+    </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?44+62:62,zIndex:96,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -689,7 +693,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -949,7 +953,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 }
 
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user}) {
   const [editPlayer,setEditPlayer]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
@@ -1206,6 +1210,23 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
       </button>
     </div>
+
+    {/* Hinweis wenn eingeloggter Admin kein Spielerprofil hat */}
+    {user&&!players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase())&&(
+      <div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>⚠️ Du bist nicht in der Spielerliste</div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:8}}>Dein Konto ({user.email}) hat kein Spielerprofil. Bitte lege dich als Person an oder passe deine E-Mail in einem bestehenden Eintrag an.</div>
+      </div>
+    )}
+
+    {/* Hinweis für Trainer-Gruppe ohne Funktionen */}
+    {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player).map(p=>(
+      <div key={p.id} style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:16}}>ℹ️</span>
+        <div style={{flex:1,fontSize:12,color:"#93c5fd"}}><b>{p.firstName} {p.lastName}</b> — Gruppe „Trainer" aber keine Funktionen gesetzt.</div>
+        <button onClick={()=>setEditPlayer({...p,_originalRacketNr:p.racketType==="TTC"?String(p.racketNr||""):""})} style={{padding:"5px 10px",background:"#3b82f6",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>✏️ Bearbeiten</button>
+      </div>
+    ))}
 
     {/* Punkt 4: Trainingszeitraum */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
@@ -2637,12 +2658,18 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       }}>⏻</button>
     </div>
 
-    {/* Aktive View — normal scrollend, kein overflow:hidden */}
+    {/* Aktive View */}
     {activeView==="player"&&<PlayerView user={user} players={players} attendance={attendance}
       hideHeader {...sharedProps}/>}
-    {(activeView==="trainer"||activeView==="admin")&&<AdminPanel
+    {activeView==="trainer"&&<AdminPanel
       user={user} players={players} attendance={attendance} rackets={rackets}
-      isSuperAdmin={activeView==="admin"||hasAdminRole}
+      isSuperAdmin={false}
+      globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+      onPlayerAdded={onPlayerAdded}
+      hideHeader {...sharedProps}/>}
+    {activeView==="admin"&&<AdminPanel
+      user={user} players={players} attendance={attendance} rackets={rackets}
+      isSuperAdmin={true}
       globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded}
       hideHeader {...sharedProps}/>}
