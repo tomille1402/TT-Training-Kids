@@ -425,7 +425,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
   const activePlayers = players.filter(p=>p.status!=="passiv");
   const visiblePlayers = activePlayers
-    .filter(p=>p.group!=="Trainer" && groupFilters[p.group||"Anfänger"])
+    .filter(p=>{
+      const g = p.group||"Anfänger";
+      // Trainer-Gruppe nur anzeigen wenn person Spieler-Rolle hat
+      if (g === "Trainer") return p.roles?.player === true;
+      // Gruppenfilter (Profis/Fortgeschrittene/Anfänger)
+      return groupFilters[g] !== false;
+    })
     .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
@@ -852,7 +858,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
-  const nonTrainers = players.filter(p=>p.group!=="Trainer");
+  const nonTrainers = players.filter(p=>p.group!=="Trainer" && p.status!=="passiv");
 
   // Punkt 4: Trainingszeitraum aus Firestore lesen
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
@@ -1137,9 +1143,18 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       setAvatarPickerFor(null);
     }} onClose={()=>setAvatarPickerFor(null)}/>}
 
-
-
-    {deleteConfirmFor&&<Modal onClose={()=>setDeleteConfirmFor(null)}>
+    {/* Hinweis für Trainer/Admins mit group:"Trainer" ohne Spieler-Rolle */}
+    {players.filter(p=>p.group==="Trainer"&&!p.roles?.player).map(p=>(
+      <div key={p.id} style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:16}}>ℹ️</span>
+        <div style={{flex:1,fontSize:12,color:"#93c5fd"}}>
+          <b>{p.firstName} {p.lastName}</b> hat Gruppe „Trainer" aber noch keine Funktionen gesetzt. Bitte Funktionen zuweisen damit die Person in der richtigen Ansicht erscheint.
+        </div>
+        <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{padding:"5px 10px",background:"#3b82f6",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+          ✏️ Bearbeiten
+        </button>
+      </div>
+    ))}    {deleteConfirmFor&&<Modal onClose={()=>setDeleteConfirmFor(null)}>
       <div style={{textAlign:"center"}}>
         <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
         <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Wirklich löschen?</div>
