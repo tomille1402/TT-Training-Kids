@@ -103,20 +103,14 @@ function generateTrainingDays() {
 
 const { tuesdays: ALL_TUESDAYS, fridays: ALL_FRIDAYS } = generateTrainingDays();
 
-// Normalisiert Gruppen-Name: "Leistungsgruppe" (alt) → "Profis" (neu)
-function normalizeGroup(g) {
-  if (!g) return "Anfänger";
-  return g === "Leistungsgruppe" ? "Profis" : g;
-}
-
 function getTrainingDaysForGroup(group) {
-  if (normalizeGroup(group) === "Profis") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
+  if (group === "Profis") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
   return ALL_TUESDAYS;
 }
 
 function getTrainingTime(group, dateStr) {
   const dow = new Date(dateStr).getDay();
-  const g = normalizeGroup(group);
+  const g = group;
   if (g === "Anfänger") return "17:00–18:00";
   if (g === "Fortgeschrittene") return "17:00–18:30";
   if (g === "Profis") return dow === 5 ? "16:00–18:00" : "17:00–19:00";
@@ -431,7 +425,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
   const activePlayers = players.filter(p=>p.status!=="passiv");
   const visiblePlayers = activePlayers
-    .filter(p=>p.group!=="Trainer" && groupFilters[normalizeGroup(p.group)||"Anfänger"])
+    .filter(p=>p.group!=="Trainer" && groupFilters[p.group||"Anfänger"])
     .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
@@ -468,7 +462,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{...(hideHeader?{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}:{height:"100dvh",display:"flex",flexDirection:"column"}),background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",position:"relative"}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",paddingBottom:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
@@ -543,16 +537,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",flexShrink:0,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:0,zIndex:98,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
-
-    {/* Tab-Inhalt: eigener Scroll-Container damit sticky headers funktionieren */}
-    <div style={{flex:1,overflowY:"auto",paddingBottom:20}}>
 
     {/* ── ÜBUNGEN TAB ── */}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -653,7 +644,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:2}}>{player.firstName} {player.lastName}</div>
               {currentAward&&<div style={{marginBottom:2}}><AwardBadge award={currentAward} small/></div>}
-              <div style={{fontSize:11,color:"var(--text3)"}}>{normalizeGroup(player.group)||"Anfänger"}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{player.group||"Anfänger"}</div>
             </div>
             <div style={{flexShrink:0,textAlign:"center",background:"linear-gradient(135deg,var(--bg3),var(--bg2))",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 12px",minWidth:54}}>
               <div style={{fontSize:26,fontWeight:900,color:player.color,lineHeight:1}}>{totalStars}</div>
@@ -693,8 +684,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme}/>}
-
-    </div>{/* Ende Tab-Inhalt scroll container */}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -749,8 +738,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   // Punkt 8: Nur Spieler anzeigen deren trainingStart <= selDate
   const relevantPlayers = players.filter(p=>{
     if (p.group==="Trainer") return true;
-    if (isFriday && normalizeGroup(p.group)!=="Profis") return false;
-    if (groupFilters && !groupFilters[normalizeGroup(p.group)||"Anfänger"]) return false;
+    if (isFriday && p.group!=="Profis") return false;
+    if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     // Punkt 8: trainingStart-Filter
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
@@ -825,7 +814,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
         </div>
 
         {groupOrder.map(group=>{
-          const groupPlayers = relevantPlayers.filter(p=>(normalizeGroup(p.group)||"Anfänger")===group)
+          const groupPlayers = relevantPlayers.filter(p=>(p.group||"Anfänger")===group)
             .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
           return <div key={group} style={{marginBottom:12}}>
@@ -875,7 +864,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
   },[]);
 
   function getStats(player) {
-    const group = normalizeGroup(player.group||"Anfänger");
+    const group = player.group||"Anfänger";
     const days = getTrainingDaysForGroup(group);
     // Heute als String YYYY-MM-DD (kein Timezone-Problem)
     const todayStr = new Date().toLocaleDateString("sv"); // sv-locale gibt YYYY-MM-DD
@@ -933,7 +922,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
             >{player.firstName} {player.lastName}</span>
             {medal&&<span style={{fontSize:16}}>{medal}</span>}
           </div>
-          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{normalizeGroup(player.group)||"Anfänger"}</div>
+          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{player.group||"Anfänger"}</div>
           <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
             <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
           </div>
@@ -1148,20 +1137,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       setAvatarPickerFor(null);
     }} onClose={()=>setAvatarPickerFor(null)}/>}
 
-    {/* Migration: Leistungsgruppe → Profis */}
-    {players.some(p=>p.group==="Leistungsgruppe")&&<div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:16}}>⚠️</span>
-      <div style={{flex:1,fontSize:12,color:"#f59e0b"}}>
-        {players.filter(p=>p.group==="Leistungsgruppe").length} Spieler haben noch die alte Gruppe „Leistungsgruppe". Bitte auf „Profis" migrieren.
-      </div>
-      <button onClick={async()=>{
-        const toMigrate=players.filter(p=>p.group==="Leistungsgruppe");
-        for(const p of toMigrate) await updateDoc(doc(db,"players",p.id),{group:"Profis"}).catch(()=>{});
-        showToast(`${toMigrate.length} Spieler auf „Profis" migriert`,"✅");
-      }} style={{padding:"6px 12px",background:"#f59e0b",border:"none",borderRadius:7,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
-        Jetzt migrieren
-      </button>
-    </div>}
+
 
     {deleteConfirmFor&&<Modal onClose={()=>setDeleteConfirmFor(null)}>
       <div style={{textAlign:"center"}}>
@@ -1343,7 +1319,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     {/* Players by group */}
     {groupOrder.map(group=>{
-      const groupPlayers=[...players.filter(p=>(normalizeGroup(p.group)||"Anfänger")===group)]
+      const groupPlayers=[...players.filter(p=>(p.group||"Anfänger")===group)]
         .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
       if (!groupPlayers.length) return null;
       return <div key={group} style={{marginBottom:16}}>
@@ -1663,7 +1639,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
 // ─── PLAYER TRAINING DETAIL (Punkt 7: editierbare Trainingsübersicht im Drilldown) ──
 function PlayerTrainingDetail({player,attendance,showToast}) {
-  const days = getTrainingDaysForGroup(normalizeGroup(player.group)||"Anfänger");
+  const days = getTrainingDaysForGroup(player.group||"Anfänger");
   const today = new Date(); today.setHours(0,0,0,0);
   const pStart = player.trainingStart||null;
   // Punkt 2: Nur vergangene Trainings (inkl. heute), neuestes oben
@@ -2219,7 +2195,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
   const nexts=nextAwards(myPlayer);
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
-  const myDays=getTrainingDaysForGroup(normalizeGroup(myPlayer.group)||"Anfänger");
+  const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger");
   const todayStr=new Date().toLocaleDateString("sv");
   const pastDays=myDays.filter(d=>d<=todayStr);
   let present=0,total=0;
@@ -2270,7 +2246,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
         </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{normalizeGroup(myPlayer.group)||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{myPlayer.group||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           {[{label:"Gesamt",val:totalStars,color:myPlayer.color},{label:"Anfänger",val:beginnerStars,color:"#10b981"},{label:"Fortgeschr.",val:advancedStars,color:"#3b82f6"}].map(s=>(
@@ -2609,10 +2585,8 @@ function ErfolgeTab({player}) {
 function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,
   globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut}) {
 
-  // Standard-View: erstes verfügbares View
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
 
-  // View-Config: Icon, Label, Farbe
   const VIEW_CONFIG = {
     player:  {icon:"🏓", label:"Spieler",  color:"#10b981"},
     trainer: {icon:"🛡️", label:"Trainer",  color:"#3b82f6"},
@@ -2621,13 +2595,14 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
 
-  return <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"var(--bg)"}}>
-    {/* Role Switch Bar */}
+  return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
+    {/* Role Switch Bar — sticky oben */}
     <div style={{
-      background:"var(--bg2)",borderBottom:"1px solid var(--border2)",
-      padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexShrink:0,zIndex:200,
+      background:"var(--bg2)",borderBottom:"2px solid var(--border2)",
+      padding:"8px 14px",display:"flex",alignItems:"center",gap:8,
+      position:"sticky",top:0,zIndex:500,
     }}>
-      <span style={{fontSize:11,color:"var(--text3)",fontWeight:600,marginRight:4}}>Ansicht:</span>
+      <span style={{fontSize:11,color:"var(--text3)",fontWeight:600,flexShrink:0}}>Ansicht:</span>
       {availableViews.map(v=>{
         const cfg=VIEW_CONFIG[v];
         const isActive=activeView===v;
@@ -2636,7 +2611,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           background:isActive?cfg.color+"22":"transparent",
           color:isActive?cfg.color:"var(--text3)",
           fontSize:12,fontWeight:700,cursor:"pointer",
-          display:"flex",alignItems:"center",gap:5,
+          display:"flex",alignItems:"center",gap:4,flexShrink:0,
         }}>{cfg.icon} {cfg.label}</button>;
       })}
       <div style={{flex:1}}/>
@@ -2647,17 +2622,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       }}>⏻</button>
     </div>
 
-    {/* Active View — fills remaining space */}
-    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-      {activeView==="player"&&<PlayerView user={user} players={players} attendance={attendance}
-        hideHeader {...sharedProps}/>}
-      {(activeView==="trainer"||activeView==="admin")&&<AdminPanel
-        user={user} players={players} attendance={attendance} rackets={rackets}
-        isSuperAdmin={activeView==="admin"||hasAdminRole}
-        globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
-        onPlayerAdded={onPlayerAdded}
-        hideHeader {...sharedProps}/>}
-    </div>
+    {/* Aktive View — normal scrollend, kein overflow:hidden */}
+    {activeView==="player"&&<PlayerView user={user} players={players} attendance={attendance}
+      hideHeader {...sharedProps}/>}
+    {(activeView==="trainer"||activeView==="admin")&&<AdminPanel
+      user={user} players={players} attendance={attendance} rackets={rackets}
+      isSuperAdmin={activeView==="admin"||hasAdminRole}
+      globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+      onPlayerAdded={onPlayerAdded}
+      hideHeader {...sharedProps}/>}
   </div>;
 }
 
