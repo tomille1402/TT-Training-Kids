@@ -1212,12 +1212,48 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>
 
     {/* Hinweis wenn eingeloggter Admin kein Spielerprofil hat */}
-    {user&&!players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase())&&(
-      <div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>⚠️ Du bist nicht in der Spielerliste</div>
-        <div style={{fontSize:11,color:"var(--text2)",marginBottom:8}}>Dein Konto ({user.email}) hat kein Spielerprofil. Bitte lege dich als Person an oder passe deine E-Mail in einem bestehenden Eintrag an.</div>
-      </div>
-    )}
+    {(()=>{
+      if (!user) return null;
+      const myP = players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase());
+      if (myP) return null; // Profil gefunden — alles ok
+
+      // Gibt es einen Eintrag mit ähnlichem Namen aber falscher E-Mail?
+      const trainerEntry = players.find(p=>p.group==="Trainer"&&!p.email);
+
+      return <div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>⚠️ Kein Spielerprofil für {user.email}</div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:8}}>
+          Dein Login-Konto hat kein verknüpftes Profil. Du kannst hier direkt ein Profil erstellen — ohne neuen Auth-Account.
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={async()=>{
+            const id = "admin_"+Date.now();
+            await setDoc(doc(db,"players",id),{
+              id, email:user.email,
+              firstName:"Thomas", lastName:"Meilinger",
+              group:"Trainer", status:"aktiv",
+              avatar:"🏓", color:"#10b981",
+              noLogin:false,
+              roles:{player:true, trainer:true, admin:true},
+            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            showToast("Profil angelegt! Seite neu laden.","✅");
+            setTimeout(()=>window.location.reload(),1500);
+          }} style={{padding:"7px 14px",background:"#f59e0b",border:"none",borderRadius:8,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            ✅ Neues Profil anlegen
+          </button>
+          {trainerEntry&&<button onClick={async()=>{
+            await updateDoc(doc(db,"players",trainerEntry.id),{
+              email:user.email,
+              roles:{player:true,trainer:true,admin:true},
+            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            showToast("E-Mail verknüpft! Seite neu laden.","✅");
+            setTimeout(()=>window.location.reload(),1500);
+          }} style={{padding:"7px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            🔗 Mit {trainerEntry.firstName} {trainerEntry.lastName} verknüpfen
+          </button>}
+        </div>
+      </div>;
+    })()}
 
     {/* Hinweis für Trainer-Gruppe ohne Funktionen */}
     {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player).map(p=>(
