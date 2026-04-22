@@ -217,7 +217,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger"]; // Trainer wird über Funktionen gesteuert
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -402,7 +402,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader}) {
   const ALL_TABS=[
     {key:"uebungen",  label:"Übungen",    icon:"🏋️"},
     {key:"training",  label:"Training",   icon:"📅"},
@@ -468,7 +468,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{height:"100dvh",display:"flex",flexDirection:"column",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",position:"relative"}}>
+  return <div style={{...(hideHeader?{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}:{height:"100dvh",display:"flex",flexDirection:"column"}),background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",position:"relative"}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
@@ -499,8 +499,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* Header */}
-    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",flexShrink:0}}>
+    {/* Header — wird ausgeblendet wenn RoleSwitchWrapper den Header übernimmt */}
+    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 10px",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
@@ -540,7 +540,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           </button>
         ))}
       </div>
-    </div>
+    </div>}
 
     {/* Tabs */}
     <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",flexShrink:0,overflowX:"auto"}}>
@@ -1007,6 +1007,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
         trainingsheft: editPlayer.trainingsheft||"ja",
+        roles:         editPlayer.roles||{},
         racketType:    editPlayer.racketType||"",
         racketNr:      editPlayer.racketNr||"",
         racketStart:   editPlayer.racketStart||"",
@@ -1401,6 +1402,33 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <option value="nein">Nein</option>
                 </select>
               </div>
+
+              {/* Funktionen */}
+              <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {[
+                    {key:"player",  icon:"🏓", label:"Spieler"},
+                    {key:"trainer", icon:"🛡️", label:"Trainer"},
+                    {key:"admin",   icon:"⚙️", label:"Admin"},
+                  ].map(role=>{
+                    const isOn=(editPlayer.roles||{})[role.key]===true;
+                    return <button key={role.key} onClick={()=>setEditPlayer(prev=>({
+                      ...prev,
+                      roles:{...(prev.roles||{}), [role.key]:!isOn}
+                    }))} style={{
+                      padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+                      border:`2px solid ${isOn?"#10b981":"var(--border2)"}`,
+                      background:isOn?"#10b98122":"transparent",
+                      color:isOn?"#10b981":"var(--text3)",
+                      display:"flex",alignItems:"center",gap:5,
+                    }}>{role.icon} {role.label} {isOn?"✓":""}</button>;
+                  })}
+                </div>
+                <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.4}}>
+                  Trainer/Admin: Person kann zwischen Ansichten wechseln. Admin: Verwaltung sichtbar.
+                </div>
+              </div>
               {/* Schläger */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏓 Schläger</div>
@@ -1610,7 +1638,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                       </>
                     : <span style={{color:"#10b981"}}>📧 {p.email}</span>
                   }
-                  {/* Punkt 11: Schläger-Info anzeigen */}
+                  {/* Rollen-Badges */}
+                  {p.roles&&Object.entries({player:"🏓",trainer:"🛡️",admin:"⚙️"}).map(([k,icon])=>
+                    p.roles[k]&&<span key={k} style={{fontSize:10,background:"var(--border)",borderRadius:4,padding:"1px 4px"}}>{icon}</span>
+                  )}
                   {p.racketType==="TTC"&&p.racketNr&&(
                     <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
                       🏓 Nr.{String(p.racketNr).padStart(3,"0")}
@@ -2151,7 +2182,7 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut}) {
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader}) {
   const myPlayer=players.find(p=>p.email===user.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
@@ -2203,11 +2234,10 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const pct=total>0?Math.round((present/total)*100):0;
 
   return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:680,margin:"0 auto",paddingBottom:80}}>
-    {/* Punkt 6: Avatar Picker Modal */}
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
-    {/* Header */}
-    <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
+    {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
+    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
@@ -2224,10 +2254,10 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
       </div>
-    </div>
+    </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:70,zIndex:99}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?0:70,zIndex:99}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 0",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{t.icon} {t.label}</button>)}
     </div>
 
@@ -2574,6 +2604,63 @@ function ErfolgeTab({player}) {
   </div>;
 }
 
+// ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
+// Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
+function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,
+  globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut}) {
+
+  // Standard-View: erstes verfügbares View
+  const [activeView,setActiveView] = useState(availableViews[0]||"player");
+
+  // View-Config: Icon, Label, Farbe
+  const VIEW_CONFIG = {
+    player:  {icon:"🏓", label:"Spieler",  color:"#10b981"},
+    trainer: {icon:"🛡️", label:"Trainer",  color:"#3b82f6"},
+    admin:   {icon:"⚙️", label:"Admin",    color:"#f59e0b"},
+  };
+
+  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
+
+  return <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"var(--bg)"}}>
+    {/* Role Switch Bar */}
+    <div style={{
+      background:"var(--bg2)",borderBottom:"1px solid var(--border2)",
+      padding:"8px 14px",display:"flex",alignItems:"center",gap:8,flexShrink:0,zIndex:200,
+    }}>
+      <span style={{fontSize:11,color:"var(--text3)",fontWeight:600,marginRight:4}}>Ansicht:</span>
+      {availableViews.map(v=>{
+        const cfg=VIEW_CONFIG[v];
+        const isActive=activeView===v;
+        return <button key={v} onClick={()=>setActiveView(v)} style={{
+          padding:"6px 12px",borderRadius:20,border:`2px solid ${isActive?cfg.color:cfg.color+"44"}`,
+          background:isActive?cfg.color+"22":"transparent",
+          color:isActive?cfg.color:"var(--text3)",
+          fontSize:12,fontWeight:700,cursor:"pointer",
+          display:"flex",alignItems:"center",gap:5,
+        }}>{cfg.icon} {cfg.label}</button>;
+      })}
+      <div style={{flex:1}}/>
+      <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+      <button onClick={onSignOut} title="Abmelden" style={{
+        padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
+        borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
+      }}>⏻</button>
+    </div>
+
+    {/* Active View — fills remaining space */}
+    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      {activeView==="player"&&<PlayerView user={user} players={players} attendance={attendance}
+        hideHeader {...sharedProps}/>}
+      {(activeView==="trainer"||activeView==="admin")&&<AdminPanel
+        user={user} players={players} attendance={attendance} rackets={rackets}
+        isSuperAdmin={activeView==="admin"||hasAdminRole}
+        globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+        onPlayerAdded={onPlayerAdded}
+        hideHeader {...sharedProps}/>}
+    </div>
+  </div>;
+}
+
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
@@ -2651,14 +2738,14 @@ export default function App() {
       setAuthUser(u || null);
       if (!u) { setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); return; }
 
-      // 1) E-Mail-Vergleich
+      // 1) E-Mail-Vergleich (ADMIN_EMAILS → immer Trainer+Admin)
       if (isAdminEmail(u.email)) {
         setIsAdmin(true);
         setIsSuperAdmin(isSuperAdminEmail(u.email));
         setAdminReady(true); return;
       }
 
-      // 2) Firestore-Check
+      // 2) Firestore trainers-Collection (Legacy)
       try {
         const snap = await getDoc(doc(db, "trainers", u.uid));
         if (snap.exists() && snap.data().role === "admin") {
@@ -2668,6 +2755,8 @@ export default function App() {
         }
       } catch(e) {}
 
+      // 3) Rollen werden jetzt über players-Collection gesteuert (roles.trainer/admin)
+      // Wird in Root render ausgewertet sobald players geladen sind
       setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true);
     });
     return unsub;
@@ -2745,63 +2834,71 @@ export default function App() {
     />
   );
 
-  // ── Angemeldet als Trainer ──
-  if (isAdmin) return (
-    <AdminPanel
-      user={authUser}
-      players={players}
-      attendance={attendance}
-      rackets={rackets}
-      isSuperAdmin={isSuperAdmin}
-      isDark={isDark}
-      onSetUserTheme={handleSetUserTheme}
-      onSetGlobalTheme={handleSetGlobalTheme}
-      globalTheme={globalTheme}
-      userTheme={userTheme}
-      onSignOut={handleSignOut}
-      onPlayerAdded={name => setLoginSuccess(`${name} wurde angelegt! Bitte melde dich neu an.`)}
-    />
-  );
-
-  // ── Angemeldet, aber kein Spieler-Profil gefunden → Notfall-Bildschirm ──
+  // ── Spieler-Profil suchen ──
   const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
-  if (!myPlayer) return (
+
+  // Rollen aus Spieler-Profil ermitteln
+  const playerRoles = myPlayer?.roles || {};
+  const hasTrainerRole = isAdmin || playerRoles.trainer === true;
+  const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
+  const hasPlayerRole  = !isAdmin || playerRoles.player === true || !!myPlayer;
+
+  // Verfügbare Views für diese Person
+  const availableViews = [];
+  if (hasPlayerRole && myPlayer) availableViews.push("player");
+  if (hasTrainerRole)             availableViews.push("trainer");
+  if (hasAdminRole)               availableViews.push("admin");
+  if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
+
+  // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
+  if (!myPlayer && !isAdmin) return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{maxWidth:400,width:"100%"}}>
         <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:24,textAlign:"center"}}>
           <div style={{fontSize:40,marginBottom:12}}>🔑</div>
           <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Bist du ein Trainer?</div>
-          <div style={{fontSize:13,color:"var(--text3)",marginBottom:6,lineHeight:1.6}}>
-            Angemeldet als:<br/>
-            <b style={{color:"#10b981"}}>{authUser.email}</b>
+          <div style={{fontSize:13,color:"var(--text3)",marginBottom:20,lineHeight:1.6}}>
+            Angemeldet als: <b style={{color:"#10b981"}}>{authUser.email}</b>
           </div>
-          <div style={{fontSize:12,color:"var(--text3)",marginBottom:20,lineHeight:1.6}}>
-            Klicke auf den Button um den Trainer-Zugang dauerhaft freizuschalten.
-          </div>
-          <button onClick={makeAdminInFirestore} style={{
-            width:"100%",padding:12,marginBottom:10,
-            background:"linear-gradient(135deg,#10b981,#059669)",
-            border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",
-          }}>✅ Ja, ich bin Trainer — Zugang freischalten</button>
-          <button onClick={handleSignOut} style={{
-            width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",
-            borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer",
-          }}>Abmelden</button>
+          <button onClick={makeAdminInFirestore} style={{width:"100%",padding:12,marginBottom:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+            ✅ Trainer-Zugang freischalten
+          </button>
+          <button onClick={handleSignOut} style={{width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
     </div>
   );
 
-  // ── Angemeldet als Spieler ──
+  // Gemeinsame Props
+  const sharedProps = {
+    isDark, onSetUserTheme:handleSetUserTheme, userTheme,
+    onSignOut:handleSignOut,
+  };
+
+  // Wenn nur eine View verfügbar → direkt rendern ohne Switch
+  if (availableViews.length <= 1) {
+    if (isAdmin || hasTrainerRole) return (
+      <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
+        isSuperAdmin={hasAdminRole} globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}
+        onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)} {...sharedProps}/>
+    );
+    return <PlayerView user={authUser} players={players} attendance={attendance} {...sharedProps}/>;
+  }
+
+  // Mehrere Views → RoleSwitch wrapper
   return (
-    <PlayerView
+    <RoleSwitchWrapper
       user={authUser}
       players={players}
       attendance={attendance}
-      isDark={isDark}
-      onSetUserTheme={handleSetUserTheme}
-      userTheme={userTheme}
-      onSignOut={handleSignOut}
+      rackets={rackets}
+      myPlayer={myPlayer}
+      availableViews={availableViews}
+      hasAdminRole={hasAdminRole}
+      globalTheme={globalTheme}
+      onSetGlobalTheme={handleSetGlobalTheme}
+      onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)}
+      {...sharedProps}
     />
   );
 }
