@@ -6,7 +6,7 @@ import {
   sendPasswordResetEmail
 } from "firebase/auth";
 import {
-  getFirestore, doc, setDoc, collection,
+  getFirestore, doc, setDoc, collection, addDoc,
   onSnapshot, deleteDoc, updateDoc, getDoc, getDocs
 } from "firebase/firestore";
 import { firebaseConfig } from "./firebaseConfig";
@@ -398,13 +398,14 @@ function ThemeToggle({isDark,onSetUserTheme}) {
 }
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader}) {
   const ALL_TABS=[
-    {key:"uebungen",  label:"Übungen",    icon:"🏋️"},
-    {key:"training",  label:"Training",   icon:"📅"},
-    {key:"teilnahme", label:"Teilnahme",  icon:"📊"},
-    {key:"rangliste", label:"Rangliste",  icon:"🏆"},
-    {key:"schlaeger", label:"Schläger",   icon:"🏓"},
-    {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
-    {key:"verwaltung",label:"Verwaltung", icon:"⚙️", superAdminOnly:true},
+    {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
+    {key:"training",     label:"Training",      icon:"📅"},
+    {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
+    {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
+    {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
+    {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
+    {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
+    {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
   // Nur Super-Admins sehen Verwaltung
   const TABS = ALL_TABS.filter(t=>!t.superAdminOnly || isSuperAdmin);
@@ -693,6 +694,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
+    {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
 
     <style>{`
@@ -2246,6 +2248,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"teilnahme",label:"Teilnahme",icon:"📊"},
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
+    {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -2519,6 +2522,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* ── ERFOLGE ── */}
     {activeTab==="erfolge"&&<ErfolgeTab player={myPlayer}/>}
 
+    {/* ── BEOBACHTUNGEN ── */}
+    {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
+
     <style>{`
       *{box-sizing:border-box}
       input::placeholder{color:var(--text4)}
@@ -2649,6 +2655,256 @@ function ErfolgeTab({player}) {
         Noch keine Erfolge erfasst.<br/>Weiter trainieren und an Turnieren teilnehmen!
       </div>
     )}
+  </div>;
+}
+
+// ─── BEOBACHTUNGEN TAB (Trainerbereich) ───────────────────────────────────────
+function BeobachtungenAdminTab({players,user,showToast}) {
+  const [selPlayerId,setSelPlayerId] = useState(players[0]?.id||null);
+  const [observations,setObservations] = useState([]);
+  const [loading,setLoading] = useState(false);
+  const [showForm,setShowForm] = useState(false);
+  const [form,setForm] = useState({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
+  const [expandedId,setExpandedId] = useState(null);
+
+  const selPlayer = players.find(p=>p.id===selPlayerId)||players[0];
+
+  // Beobachtungen laden wenn Spieler wechselt
+  useEffect(()=>{
+    if (!selPlayer) return;
+    setLoading(true);
+    const unsub = onSnapshot(
+      collection(db,"observations",selPlayer.id,"entries"),
+      snap=>{
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}))
+          .sort((a,b)=>b.date.localeCompare(a.date));
+        setObservations(data);
+        setLoading(false);
+      },
+      ()=>setLoading(false)
+    );
+    return unsub;
+  },[selPlayer?.id]);
+
+  async function saveObs() {
+    if (!selPlayer||(!form.strengths&&!form.weaknesses&&!form.focus)) return;
+    const entry = {
+      ...form,
+      trainerId: user?.uid||"",
+      trainerName: user?.displayName||user?.email||"Trainer",
+      createdAt: Date.now(),
+    };
+    await addDoc(collection(db,"observations",selPlayer.id,"entries"),entry).catch(e=>showToast("Fehler: "+e.message,"❌"));
+    showToast("Beobachtung gespeichert","🔍");
+    setShowForm(false);
+    setForm({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
+  }
+
+  async function deleteObs(id) {
+    if (!window.confirm("Beobachtung löschen?")) return;
+    await deleteDoc(doc(db,"observations",selPlayer.id,"entries",id)).catch(()=>{});
+    showToast("Gelöscht","🗑️");
+  }
+
+  const CONTEXT_COLORS = {Training:"#3b82f6",Punktspiel:"#f59e0b",Turnier:"#10b981"};
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:12}}>🔍 Beobachtungen</div>
+
+    {/* Spieler-Auswahl */}
+    <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:14,paddingBottom:4}}>
+      {players.map(p=>{
+        const isActive=p.id===selPlayer?.id;
+        return <button key={p.id} onClick={()=>{setSelPlayerId(p.id);setShowForm(false);}} style={{
+          flexShrink:0,padding:"5px 10px 5px 7px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+          border:`2px solid ${isActive?p.color||"#10b981":"var(--border2)"}`,
+          background:isActive?(p.color||"#10b981")+"22":"transparent",
+          color:isActive?p.color||"#10b981":"var(--text2)",
+          display:"flex",alignItems:"center",gap:5,
+        }}><span>{p.avatar||"🏓"}</span>{p.firstName}</button>;
+      })}
+    </div>
+
+    {selPlayer&&<>
+      {/* Header mit Spieler-Info und Neu-Button */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:selPlayer.color||"#10b981"}}>{selPlayer.firstName} {selPlayer.lastName}</div>
+          <div style={{fontSize:11,color:"var(--text3)"}}>{observations.length} Beobachtung{observations.length!==1?"en":""}</div>
+        </div>
+        <button onClick={()=>setShowForm(v=>!v)} style={{
+          padding:"7px 14px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+          background:showForm?"transparent":"linear-gradient(135deg,#3b82f6,#1d4ed8)",
+          border:showForm?"2px solid var(--border2)":"none",
+          color:showForm?"var(--text3)":"#fff",
+        }}>{showForm?"✕ Abbrechen":"+ Neue Beobachtung"}</button>
+      </div>
+
+      {/* Eingabe-Formular */}
+      {showForm&&<div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:14,marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Datum</label>
+            <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}
+              style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:13}}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Kontext</label>
+            <select value={form.context} onChange={e=>setForm(p=>({...p,context:e.target.value}))}>
+              <option>Training</option>
+              <option>Punktspiel</option>
+              <option>Turnier</option>
+            </select>
+          </div>
+        </div>
+        <div style={{marginBottom:8}}>
+          <label style={{fontSize:11,color:"#10b981",display:"block",marginBottom:4,fontWeight:600}}>💪 Stärken</label>
+          <textarea value={form.strengths} onChange={e=>setForm(p=>({...p,strengths:e.target.value}))}
+            placeholder="Was lief gut? Was zeigt das Kind besonders gut?"
+            rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #10b98144",background:"var(--bg)",color:"var(--text)",fontSize:13,resize:"vertical",outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:8}}>
+          <label style={{fontSize:11,color:"#f59e0b",display:"block",marginBottom:4,fontWeight:600}}>⚠️ Entwicklungsfelder</label>
+          <textarea value={form.weaknesses} onChange={e=>setForm(p=>({...p,weaknesses:e.target.value}))}
+            placeholder="Was soll verbessert werden? Wo gibt es Defizite?"
+            rows={2} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #f59e0b44",background:"var(--bg)",color:"var(--text)",fontSize:13,resize:"vertical",outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,color:"#3b82f6",display:"block",marginBottom:4,fontWeight:600}}>🎯 Fokus nächstes Training</label>
+          <textarea value={form.focus} onChange={e=>setForm(p=>({...p,focus:e.target.value}))}
+            placeholder="Ein konkreter Fokuspunkt für das nächste Training"
+            rows={1} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #3b82f644",background:"var(--bg)",color:"var(--text)",fontSize:13,resize:"vertical",outline:"none"}}/>
+        </div>
+        <button onClick={saveObs} style={{width:"100%",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+          💾 Beobachtung speichern
+        </button>
+      </div>}
+
+      {/* Liste */}
+      {loading&&<div style={{textAlign:"center",color:"var(--text3)",padding:20}}>Lädt…</div>}
+      {!loading&&observations.length===0&&!showForm&&<div style={{textAlign:"center",color:"var(--text3)",padding:30,fontSize:13}}>
+        Noch keine Beobachtungen für {selPlayer.firstName}.<br/>
+        <span style={{fontSize:11}}>Klicke auf „+ Neue Beobachtung" um zu starten.</span>
+      </div>}
+      {observations.map(obs=>{
+        const isExp=expandedId===obs.id;
+        const ctxColor=CONTEXT_COLORS[obs.context]||"#6b7280";
+        return <div key={obs.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,marginBottom:8,overflow:"hidden"}}>
+          {/* Header */}
+          <div onClick={()=>setExpandedId(isExp?null:obs.id)}
+            style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+            <span style={{fontSize:11,fontWeight:700,color:ctxColor,background:ctxColor+"22",padding:"2px 8px",borderRadius:20,flexShrink:0}}>{obs.context}</span>
+            <span style={{fontSize:12,color:"var(--text2)",flex:1}}>{new Date(obs.date).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}</span>
+            <span style={{fontSize:10,color:"var(--text4)"}}>{obs.trainerName}</span>
+            <span style={{color:"var(--text4)",fontSize:12}}>{isExp?"▲":"▼"}</span>
+          </div>
+          {/* Vorschau (immer sichtbar) */}
+          {!isExp&&obs.focus&&<div style={{padding:"0 14px 10px",fontSize:12,color:"#93c5fd"}}>
+            🎯 {obs.focus}
+          </div>}
+          {/* Detail (ausgeklappt) */}
+          {isExp&&<div style={{padding:"0 14px 14px",borderTop:"1px solid var(--border)"}}>
+            {obs.strengths&&<div style={{marginBottom:8,marginTop:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#10b981",marginBottom:3}}>💪 Stärken</div>
+              <div style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{obs.strengths}</div>
+            </div>}
+            {obs.weaknesses&&<div style={{marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:3}}>⚠️ Entwicklungsfelder</div>
+              <div style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{obs.weaknesses}</div>
+            </div>}
+            {obs.focus&&<div style={{marginBottom:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:3}}>🎯 Fokus nächstes Training</div>
+              <div style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{obs.focus}</div>
+            </div>}
+            <button onClick={()=>deleteObs(obs.id)} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>🗑️ Löschen</button>
+          </div>}
+        </div>;
+      })}
+    </>}
+  </div>;
+}
+
+// ─── BEOBACHTUNGEN TAB (Spielerbereich) ───────────────────────────────────────
+function BeobachtungenPlayerTab({player}) {
+  const [observations,setObservations] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [expandedId,setExpandedId] = useState(null);
+
+  useEffect(()=>{
+    if (!player) return;
+    const unsub = onSnapshot(
+      collection(db,"observations",player.id,"entries"),
+      snap=>{
+        const data = snap.docs.map(d=>({id:d.id,...d.data()}))
+          .sort((a,b)=>b.date.localeCompare(a.date));
+        setObservations(data);
+        setLoading(false);
+      },
+      ()=>setLoading(false)
+    );
+    return unsub;
+  },[player?.id]);
+
+  const CONTEXT_COLORS = {Training:"#3b82f6",Punktspiel:"#f59e0b",Turnier:"#10b981"};
+  const newestFocus = observations.find(o=>o.focus)?.focus;
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🔍 Beobachtungen</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Rückmeldungen deines Trainers aus Training, Spielen und Turnieren.</div>
+
+    {/* Aktueller Fokus — prominent oben */}
+    {newestFocus&&<div style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:12,padding:"12px 14px",marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:4}}>🎯 Dein aktueller Trainingsfokus</div>
+      <div style={{fontSize:14,color:"var(--text)",fontWeight:600,lineHeight:1.5}}>{newestFocus}</div>
+    </div>}
+
+    {loading&&<div style={{textAlign:"center",color:"var(--text3)",padding:20}}>Lädt…</div>}
+    {!loading&&observations.length===0&&<div style={{textAlign:"center",padding:40}}>
+      <div style={{fontSize:32,marginBottom:8}}>🔍</div>
+      <div style={{fontSize:14,color:"var(--text2)",fontWeight:600}}>Noch keine Beobachtungen</div>
+      <div style={{fontSize:12,color:"var(--text3)",marginTop:4}}>Dein Trainer hat noch keine Einträge hinterlegt.</div>
+    </div>}
+
+    {observations.map((obs,i)=>{
+      const isExp=expandedId===obs.id;
+      const ctxColor=CONTEXT_COLORS[obs.context]||"#6b7280";
+      const isNewest=i===0;
+      return <div key={obs.id} style={{
+        background:"var(--bg2)",
+        border:`1px solid ${isNewest?"var(--border2)":"var(--border)"}`,
+        borderLeft:`3px solid ${ctxColor}`,
+        borderRadius:12,marginBottom:8,overflow:"hidden",
+        opacity:i>0?0.9:1,
+      }}>
+        <div onClick={()=>setExpandedId(isExp?null:obs.id)}
+          style={{padding:"11px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+          <span style={{fontSize:11,fontWeight:700,color:ctxColor,background:ctxColor+"22",padding:"2px 8px",borderRadius:20,flexShrink:0}}>{obs.context}</span>
+          <span style={{fontSize:12,color:"var(--text2)",flex:1}}>
+            {new Date(obs.date).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}
+          </span>
+          {isNewest&&<span style={{fontSize:10,background:"#10b98122",color:"#10b981",padding:"1px 6px",borderRadius:10,fontWeight:600}}>NEU</span>}
+          <span style={{color:"var(--text4)",fontSize:12}}>{isExp?"▲":"▼"}</span>
+        </div>
+        {/* Immer: Fokus-Vorschau */}
+        {!isExp&&obs.focus&&<div style={{padding:"0 14px 10px",fontSize:12,color:"#93c5fd",lineHeight:1.4}}>
+          🎯 {obs.focus}
+        </div>}
+        {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"12px 14px"}}>
+          {obs.strengths&&<div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#10b981",marginBottom:3}}>💪 Stärken</div>
+            <div style={{fontSize:13,color:"var(--text)",lineHeight:1.6,background:"#10b98111",borderRadius:8,padding:"8px 10px"}}>{obs.strengths}</div>
+          </div>}
+          {obs.weaknesses&&<div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:3}}>⚠️ Entwicklungsfelder</div>
+            <div style={{fontSize:13,color:"var(--text)",lineHeight:1.6,background:"#f59e0b11",borderRadius:8,padding:"8px 10px"}}>{obs.weaknesses}</div>
+          </div>}
+          {obs.focus&&<div>
+            <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:3}}>🎯 Fokus nächstes Training</div>
+            <div style={{fontSize:13,color:"var(--text)",lineHeight:1.6,background:"#3b82f611",borderRadius:8,padding:"8px 10px"}}>{obs.focus}</div>
+          </div>}
+        </div>}
+      </div>;
+    })}
   </div>;
 }
 
