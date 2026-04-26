@@ -2687,17 +2687,25 @@ function BeobachtungenAdminTab({players,user,showToast}) {
   },[selPlayer?.id]);
 
   async function saveObs() {
-    if (!selPlayer||(!form.strengths&&!form.weaknesses&&!form.focus)) return;
+    if (!selPlayer||(!form.strengths&&!form.weaknesses&&!form.focus)) {
+      showToast("Bitte mindestens ein Feld ausfüllen","⚠️");
+      return;
+    }
     const entry = {
       ...form,
       trainerId: user?.uid||"",
       trainerName: user?.displayName||user?.email||"Trainer",
       createdAt: Date.now(),
     };
-    await addDoc(collection(db,"observations",selPlayer.id,"entries"),entry).catch(e=>showToast("Fehler: "+e.message,"❌"));
-    showToast("Beobachtung gespeichert","🔍");
-    setShowForm(false);
-    setForm({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
+    try {
+      await addDoc(collection(db,"observations",selPlayer.id,"entries"),entry);
+      showToast("Beobachtung gespeichert","🔍");
+      setShowForm(false);
+      setForm({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
+    } catch(e) {
+      showToast("Fehler beim Speichern: "+e.message,"❌");
+      console.error("saveObs error:",e);
+    }
   }
 
   async function deleteObs(id) {
