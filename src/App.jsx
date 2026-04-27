@@ -750,12 +750,17 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   }
 
   const isFriday = selDate ? new Date(selDate).getDay()===5 : false;
-  // Punkt 8: Nur Spieler anzeigen deren trainingStart <= selDate
+  const isTuesday = selDate ? new Date(selDate).getDay()===2 : false;
   const relevantPlayers = players.filter(p=>{
-    if (p.group==="Trainer") return true;
+    if (p.group==="Trainer") {
+      // Trainer nur an ihren Trainingstagen zeigen
+      const td = p.trainingDays||"Di";
+      if (isFriday && td==="Di") return false;  // Fr-Training aber nur Di-Trainer
+      if (isTuesday && td==="Fr") return false; // Di-Training aber nur Fr-Trainer
+      return true;
+    }
     if (isFriday && p.group!=="Profis") return false;
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
-    // Punkt 8: trainingStart-Filter
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
   });
@@ -1509,7 +1514,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Schläger-Nr.</label>
                     <select value={editPlayer.racketNr||""} onChange={e=>setEditPlayer(prev=>({...prev,racketNr:e.target.value}))}>
                       <option value="">— wählen —</option>
-                      {(rackets||[]).filter(r=>!r.vergebenAn&&(r.status==="frei"||r.status==="offen"||!r.status)||String(r.nr)===String(editPlayer.racketNr)).sort((a,b)=>a.nr-b.nr).map(r=>(
+                      {(rackets||[]).filter(r=>{const isCurrentRacket=String(r.nr)===String(editPlayer.racketNr);const isFree=!r.vergebenAn&&(r.status==="frei"||r.status==="offen"||!r.status);return isFree||isCurrentRacket;}).sort((a,b)=>Number(a.nr)-Number(b.nr)).map(r=>(
                         <option key={r.nr} value={r.nr}>{String(r.nr).padStart(3,"0")} {r.status==="frei"?"(frei)":"(aktuell)"}</option>
                       ))}
                     </select>
@@ -1883,7 +1888,7 @@ function SchlaegerTab({rackets,players,showToast}) {
     setSaving(false);
   }
 
-  const playersWithoutRacket = players.filter(p=>p.group!=="Trainer"&&p.racketType!=="TTC");
+  const playersWithoutRacket = players.filter(p=>p.racketType!=="TTC"&&p.racketType!=="eigener");
   const statColor={frei:"#10b981",vergeben:"#f59e0b",kaputt:"#ef4444",offen:"#6b7280",verkauft:"#8b5cf6"};
 
   // Punkt 12: Sticky header — table inside scrollable div
@@ -2246,8 +2251,8 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader}) {
-  const myPlayer=players.find(p=>p.email===user.email);
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer}) {
+  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
@@ -2936,6 +2941,9 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut}) {
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
+  // Punkt 4+5: Impersonierung — welchen Spieler schaut man sich an?
+  const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
+  const [groupFilter,setGroupFilter] = useState("all");
 
   const VIEW_CONFIG = {
     player:  {icon:"🏓", label:"Spieler",  color:"#10b981"},
@@ -2945,8 +2953,18 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
 
+  // Spieler nach Gruppe gefiltert für die Auswahl
+  const activePlayers = players.filter(p=>p.status!=="passiv");
+  const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
+  const filteredChips = groupFilter==="all" ? activePlayers
+    : activePlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
+  const selectedPlayer = players.find(p=>p.id===viewAsPlayer) || myPlayer || activePlayers[0];
+
+  // Fake user object for impersonation
+  const fakeUser = selectedPlayer ? {...(user||{}), email: selectedPlayer.email||user?.email} : user;
+
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
-    {/* Role Switch Bar — sticky oben */}
+    {/* Role Switch Bar */}
     <div style={{
       background:"var(--bg2)",borderBottom:"2px solid var(--border2)",
       padding:"8px 14px",display:"flex",alignItems:"center",gap:8,
@@ -2971,9 +2989,50 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       }}>⏻</button>
     </div>
 
+    {/* Punkt 5: Spieler-Auswahl für Trainer/Admin in Spieler-Ansicht */}
+    {activeView==="player"&&(hasAdminRole||(availableViews.includes("trainer")))&&<div style={{
+      background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px",
+      position:"sticky",top:44,zIndex:499,
+    }}>
+      {/* Gruppenfilter */}
+      <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
+        <button onClick={()=>setGroupFilter("all")} style={{
+          padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+          border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
+          background:groupFilter==="all"?"#6b728022":"transparent",
+          color:groupFilter==="all"?"#9ca3af":"#6b728066",
+        }}>Alle</button>
+        {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+          const c=GROUP_COLORS[g]; const on=groupFilter===g;
+          return <button key={g} onClick={()=>setGroupFilter(g)} style={{
+            padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+            border:`2px solid ${on?c:c+"44"}`,background:on?c+"22":"transparent",color:on?c:c+"66",
+          }}>{g}</button>;
+        })}
+      </div>
+      {/* Spieler-Chips */}
+      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+        {filteredChips.map(p=>{
+          const isActive=p.id===selectedPlayer?.id;
+          return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
+            flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+            border:`2px solid ${isActive?p.color||"#10b981":"var(--border2)"}`,
+            background:isActive?(p.color||"#10b981")+"22":"transparent",
+            color:isActive?p.color||"#10b981":"var(--text2)",
+            display:"flex",alignItems:"center",gap:4,
+          }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{p.firstName}</button>;
+        })}
+      </div>
+    </div>}
+
     {/* Aktive View */}
-    {activeView==="player"&&<PlayerView user={user} players={players} attendance={attendance}
-      hideHeader {...sharedProps}/>}
+    {activeView==="player"&&<PlayerView
+      user={user}
+      players={players}
+      attendance={attendance}
+      forcePlayer={selectedPlayer}
+      hideHeader
+      {...sharedProps}/>}
     {activeView==="trainer"&&<AdminPanel
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={false}
