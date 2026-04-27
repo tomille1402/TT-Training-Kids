@@ -103,8 +103,14 @@ function generateTrainingDays() {
 
 const { tuesdays: ALL_TUESDAYS, fridays: ALL_FRIDAYS } = generateTrainingDays();
 
-function getTrainingDaysForGroup(group) {
+function getTrainingDaysForGroup(group, trainerDays) {
   if (group === "Profis") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
+  if (group === "Trainer") {
+    // Trainer: days from their trainingDays field ("Di", "Fr", "Di+Fr")
+    if (!trainerDays || trainerDays === "Di+Fr") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
+    if (trainerDays === "Fr") return ALL_FRIDAYS;
+    return ALL_TUESDAYS; // default: Di only
+  }
   return ALL_TUESDAYS;
 }
 
@@ -211,7 +217,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Profis","Fortgeschrittene","Anfänger"]; // Trainer wird über Funktionen gesteuert
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -415,7 +421,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [expandedEx,setExpandedEx]=useState(null);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
-  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true});
+  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
@@ -428,9 +434,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const visiblePlayers = activePlayers
     .filter(p=>{
       const g = p.group||"Anfänger";
-      // Trainer-Gruppe nur anzeigen wenn person Spieler-Rolle hat
-      if (g === "Trainer") return p.roles?.player === true;
-      // Gruppenfilter (Profis/Fortgeschrittene/Anfänger)
       return groupFilters[g] !== false;
     })
     .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
@@ -523,8 +526,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",
       position:"sticky",top:hideHeader?44:0,zIndex:97,flexShrink:0}}>
       <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
-        {["Profis","Fortgeschrittene","Anfänger"].map(g=>{
-          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981"};
+        {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
           const c=colors[g]; const on=groupFilters[g];
           return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
             padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
@@ -864,7 +867,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
-  const nonTrainers = players.filter(p=>p.group!=="Trainer" && p.status!=="passiv");
+  const allActive = players.filter(p=>p.status!=="passiv");
 
   // Punkt 4: Trainingszeitraum aus Firestore lesen
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
@@ -877,7 +880,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 
   function getStats(player) {
     const group = player.group||"Anfänger";
-    const days = getTrainingDaysForGroup(group);
+    const days = getTrainingDaysForGroup(group, player?.trainingDays);
     // Heute als String YYYY-MM-DD (kein Timezone-Problem)
     const todayStr = new Date().toLocaleDateString("sv"); // sv-locale gibt YYYY-MM-DD
 
@@ -913,7 +916,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
     return {pct, present, total, excused, unexcused};
   }
 
-  const ranked = [...nonTrainers].map(p=>({...p,...getStats(p)})).sort((a,b)=>b.pct-a.pct);
+  const ranked = [...allActive].map(p=>({...p,...getStats(p)})).sort((a,b)=>b.pct-a.pct);
 
   return <div style={{padding:13}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung 2026</div>
@@ -1009,6 +1012,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         trainingEnd:   editPlayer.trainingEnd||"",
         trainingsheft: editPlayer.trainingsheft||"ja",
         roles:         editPlayer.roles||{},
+        trainingDays:  editPlayer.trainingDays||"Di",
         racketType:    editPlayer.racketType||"",
         racketNr:      editPlayer.racketNr||"",
         racketStart:   editPlayer.racketStart||"",
@@ -1444,6 +1448,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(prev=>({...prev,birthdate:""}))} style={{padding:"9px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:12,cursor:"pointer",flexShrink:0}}>✕</button>}
                 </div>
               </div>
+              {/* Trainingstage (nur für Trainer-Gruppe) */}
+              {editPlayer.group==="Trainer"&&<div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage</label>
+                <select value={editPlayer.trainingDays||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
+                  <option value="Di">Nur Dienstag</option>
+                  <option value="Fr">Nur Freitag</option>
+                  <option value="Di+Fr">Dienstag + Freitag</option>
+                </select>
+              </div>}
+
               {/* Trainingsheft erhalten */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
@@ -1495,7 +1509,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Schläger-Nr.</label>
                     <select value={editPlayer.racketNr||""} onChange={e=>setEditPlayer(prev=>({...prev,racketNr:e.target.value}))}>
                       <option value="">— wählen —</option>
-                      {(rackets||[]).filter(r=>r.status==="frei"||r.nr===editPlayer.racketNr).sort((a,b)=>a.nr-b.nr).map(r=>(
+                      {(rackets||[]).filter(r=>!r.vergebenAn&&(r.status==="frei"||r.status==="offen"||!r.status)||String(r.nr)===String(editPlayer.racketNr)).sort((a,b)=>a.nr-b.nr).map(r=>(
                         <option key={r.nr} value={r.nr}>{String(r.nr).padStart(3,"0")} {r.status==="frei"?"(frei)":"(aktuell)"}</option>
                       ))}
                     </select>
@@ -1713,7 +1727,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
 // ─── PLAYER TRAINING DETAIL (Punkt 7: editierbare Trainingsübersicht im Drilldown) ──
 function PlayerTrainingDetail({player,attendance,showToast}) {
-  const days = getTrainingDaysForGroup(player.group||"Anfänger");
+  const days = getTrainingDaysForGroup(player.group||"Anfänger", player.trainingDays);
   const today = new Date(); today.setHours(0,0,0,0);
   const pStart = player.trainingStart||null;
   // Punkt 2: Nur vergangene Trainings (inkl. heute), neuestes oben
@@ -1936,7 +1950,7 @@ function SchlaegerTab({rackets,players,showToast}) {
                 <td style={{padding:"4px"}}>
                   <select value={form.status||"frei"} onChange={e=>{
                     const ns=e.target.value;
-                    setForm(p=>({...p,status:ns,...(ns==="vergeben"&&!p.griffform?{griffform:"Konkav"}:{}), ...(ns==="vergeben"&&!p.farbeBelaege?{farbeBelaege:"Schwarz/rot"}:{})}));
+                    setForm(p=>({...p,status:ns,...(ns==="vergeben"?{griffform:"Konkav",farbeBelaege:"Schwarz/rot"}:{})}));
                   }} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
                     {["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
                   </select>
@@ -1948,12 +1962,12 @@ function SchlaegerTab({rackets,players,showToast}) {
                 </td>
                 <td style={{padding:"4px"}}>
                   <input list={`marke-${r.nr}`} value={form.marke||""} onChange={e=>setForm(p=>({...p,marke:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
-                  <datalist id={`marke-${r.nr}`}><option>Butterfly</option><option>Joola</option><option>GEWO</option></datalist>
+                  <datalist id={`marke-${r.nr}`}><option>Butterfly</option><option>GEWO</option><option>Joola</option><option>Nimatsu</option><option>TSP</option></datalist>
                 </td>
                 <td style={{padding:"4px"}}>
                   <input list={`art-${form.nr}`} value={form.art||""} onChange={e=>setForm(p=>({...p,art:e.target.value}))} style={{fontSize:11,padding:"3px 6px",width:"100%",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text)",outline:"none"}}/>
                   <datalist id={`art-${form.nr}`}>
-                    {form.marke==="GEWO"&&["Blast Junior","Raver","School Junior","Standard Pro"].map(a=><option key={a}>{a}</option>)}
+                    {form.marke==="GEWO"&&["Blast Junior","Raver","Standard Pro"].map(a=><option key={a}>{a}</option>)}
                     {form.marke==="Butterfly"&&["Comfort","Easy Bat"].map(a=><option key={a}>{a}</option>)}
                     {form.marke==="Joola"&&["Champ","Team","Classic"].map(a=><option key={a}>{a}</option>)}
                   </datalist>
@@ -2270,7 +2284,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
   const nexts=nextAwards(myPlayer);
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
-  const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger");
+  const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays);
   const todayStr=new Date().toLocaleDateString("sv");
   const pastDays=myDays.filter(d=>d<=todayStr);
   let present=0,total=0;
@@ -2431,7 +2445,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       // Stats vorab berechnen, dann absteigend nach % sortieren
       const today2=new Date();today2.setHours(0,0,0,0);
       const rankedPeers=[...groupPeers].map(player=>{
-        const days=getTrainingDaysForGroup(player.group||"Anfänger");
+        const days=getTrainingDaysForGroup(player.group||"Anfänger", player.trainingDays);
         const pStart=player.trainingStart||null;
         const pEnd=player.trainingEnd||null;
         const todayS=new Date().toLocaleDateString("sv");
