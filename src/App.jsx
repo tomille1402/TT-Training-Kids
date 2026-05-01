@@ -436,7 +436,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       const g = p.group||"Anfänger";
       return groupFilters[g] !== false;
     })
-    .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
+    .sort((a,b)=>{
+      const fa=(a.firstName||a.name||"").toLowerCase();
+      const fb=(b.firstName||b.name||"").toLowerCase();
+      if(fa!==fb) return fa.localeCompare(fb,"de");
+      return (a.lastName||"").localeCompare(b.lastName||"","de");
+    });
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
   const sortedRanking = [...visiblePlayers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
@@ -976,9 +981,66 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [upgrading,setUpgrading]=useState(false);
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
   const [rangeSaving,setRangeSaving]=useState(false);
-  // Punkt 1: Lokaler State für sofortige UI-Aktualisierung
   const [localGlobalTheme,setLocalGlobalTheme]=useState(null);
   const effectiveGlobalTheme = localGlobalTheme || globalTheme || "dark";
+  const [joinImporting,setJoinImporting]=useState(false);
+  const [joinNotFound,setJoinNotFound]=useState([]);
+
+  function parseDateStr(raw) {
+    if (!raw && raw!==0) return "";
+    const s=String(raw).trim();
+    if (/^\d{5}$/.test(s)){
+      const d=new Date(Math.round((Number(s)-25569)*86400*1000));
+      if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+    }
+    if (s.includes(".")){
+      const pts=s.split(".");
+      if(pts.length>=3){
+        let [d,m,y]=[pts[0].trim(),pts[1].trim(),pts[2].trim()];
+        if(y.length===2) y=(parseInt(y)>30?"19":"20")+y;
+        if(d&&m&&y.length===4) return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+      }
+    }
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return "";
+  }
+
+  async function handleJoinImport(e) {
+    const file=e.target.files?.[0]; if(!file) return;
+    setJoinImporting(true); setJoinNotFound([]);
+    try {
+      const XLSX=await new Promise((res,rej)=>{
+        if(window.XLSX){res(window.XLSX);return;}
+        const sc=document.createElement("script");
+        sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+        document.head.appendChild(sc);
+      });
+      const ab=await file.arrayBuffer();
+      const wb=XLSX.read(ab,{type:"array",cellDates:false});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{raw:true});
+      let count=0,notFound=[];
+      for(const row of rows){
+        const fn=String(row["Vorname"]||row["vorname"]||"").trim();
+        const ln=String(row["Nachname"]||row["nachname"]||"").trim();
+        const rawDate=row["Datum Vereinsbeitritt"]||row["Vereinsbeitritt"]||row["Beitritt"]||"";
+        if(!fn) continue;
+        const p=players.find(pl=>
+          (pl.firstName||"").toLowerCase()===fn.toLowerCase()&&
+          (pl.lastName||"").toLowerCase()===ln.toLowerCase()
+        );
+        if(!p){notFound.push(`${fn} ${ln}`);continue;}
+        const dateStr=parseDateStr(rawDate);
+        if(!dateStr){notFound.push(`${fn} ${ln} (Datum: ${rawDate})`);continue;}
+        await updateDoc(doc(db,"players",p.id),{joinDate:dateStr}).catch(()=>{});
+        count++;
+      }
+      if(notFound.length) setJoinNotFound(notFound);
+      showToast(count>0?`${count} Beitrittsdaten importiert`:"Keine importiert","📅");
+    } catch(err){showToast("Fehler: "+err.message,"❌");}
+    setJoinImporting(false); e.target.value="";
+  }
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
@@ -1016,6 +1078,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
         trainingsheft: editPlayer.trainingsheft||"ja",
+        joinDate:      editPlayer.joinDate||"",
+        leaveDate:     editPlayer.leaveDate||"",
         roles:         editPlayer.roles||{},
         trainingDays:  editPlayer.trainingDays||"Di",
         racketType:    editPlayer.racketType||"",
@@ -1215,12 +1279,25 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </Modal>}
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
       <div style={{fontSize:17,fontWeight:800}}>⚙️ Spieler- & Trainerverwaltung</div>
-      <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-        {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
-      </button>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:joinImporting?"#6b7280":"var(--text2)",fontSize:12,cursor:joinImporting?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:5}}>
+          {joinImporting?"⏳":"📥"} Beitritte importieren
+          <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleJoinImport} disabled={joinImporting}/>
+        </label>
+        <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+          {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
+        </button>
+      </div>
     </div>
+
+    {/* Import-Fehler */}
+    {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
+      {joinNotFound.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
+      <button onClick={()=>setJoinNotFound([])} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid #ef444466",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>Schließen</button>
+    </div>}
 
     {/* Hinweis wenn eingeloggter Admin kein Spielerprofil hat */}
     {(()=>{
@@ -1443,6 +1520,20 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))}>
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
+              </div>
+
+              {/* Vereinsbeitritt / Vereinsaustritt */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsbeitritt</label>
+                  <input type="date" value={editPlayer.joinDate||""} onChange={e=>setEditPlayer(prev=>({...prev,joinDate:e.target.value}))}
+                    style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsaustritt</label>
+                  <input type="date" value={editPlayer.leaveDate||""} onChange={e=>setEditPlayer(prev=>({...prev,leaveDate:e.target.value}))}
+                    style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                </div>
               </div>
               {/* Geburtstag */}
               <div style={{marginBottom:10}}>
@@ -1711,6 +1802,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {p.roles&&Object.entries({player:"🏓",trainer:"🛡️",admin:"⚙️"}).map(([k,icon])=>
                     p.roles[k]&&<span key={k} style={{fontSize:10,background:"var(--border)",borderRadius:4,padding:"1px 4px"}}>{icon}</span>
                   )}
+                  {p.joinDate&&<span style={{fontSize:10,color:"var(--text4)"}}>🏅 {new Date(p.joinDate).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}</span>}
                   {p.racketType==="TTC"&&p.racketNr&&(
                     <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
                       🏓 Nr.{String(p.racketNr).padStart(3,"0")}
