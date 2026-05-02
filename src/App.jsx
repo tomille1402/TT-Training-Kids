@@ -409,7 +409,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
-    {key:"spielbetrieb", label:"Spielbetrieb",  icon:"⚽"},
+    {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
@@ -2362,7 +2362,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
-    {key:"spielbetrieb",label:"Spielbetrieb",icon:"⚽"},
+    {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -3113,12 +3113,13 @@ function teamLinks(t) {
   const g = `${BASE}/${S}/ligen`;
   const liga = t.liga.replace(/ /g,"_").replace(/\./g,"");
   const mBase = `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}`;
+  const gBase = `${g}/${liga}/gruppe/${t.gruppe}`;
   return {
-    tabelle:      `${g}/${liga}/gruppe/${t.gruppe}/tabelle/gesamt`,
+    tabelle:      `${gBase}/tabelle/gesamt`,
     spielplan:    `${mBase}/spielplan/gesamt`,
     aufstellung:  `${mBase}/spielerbilanzen/gesamt`,
-    einzelrl:     `${mBase}/rangliste/einzel`,
-    doppelrl:     `${mBase}/rangliste/doppel`,
+    einzelrl:     `${gBase}/gruppen-ranglisten/spieler/gesamt`,
+    doppelrl:     `${gBase}/gruppen-ranglisten/doppel/gesamt`,
   };
 }
 
@@ -3160,7 +3161,7 @@ function SpielbetrieblTab({isSuperAdmin}) {
   );
 
   return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Spielbetrieb</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📋 Spielbetrieb</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
       TTC Niederzeuzheim · Saison 2025/26 · Hessischer Tischtennis-Verband
     </div>
