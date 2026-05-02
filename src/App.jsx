@@ -409,6 +409,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
+    {key:"spielbetrieb",  label:"Spielbetrieb",  icon:"🏆"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
@@ -703,6 +704,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
+    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
 
     <style>{`
@@ -2360,6 +2362,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
+    {key:"spielbetrieb",label:"Spielbetrieb",icon:"🏆"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -2635,6 +2638,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
+    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -3027,6 +3031,210 @@ function BeobachtungenPlayerTab({player}) {
   </div>;
 }
 
+// ─── SPIELBETRIEB TAB ─────────────────────────────────────────────────────────
+const BASE = "https://www.mytischtennis.de/click-tt/HeTTV";
+const CLUB = "verein/33053/TTC_Niederzeuzheim";
+const S = "25--26"; // Saison
+
+const TEAMS = [
+  {
+    id:"erw1",
+    name:"Erwachsene I",
+    liga:"West Bezirksliga Gr. West",
+    gruppe:"496021",
+    mannschaft:"2966286",
+    mName:"Erwachsene",
+    rang:10, punkte:"3:33",
+    color:"#3b82f6",
+  },
+  {
+    id:"erw2",
+    name:"Erwachsene II",
+    liga:"Kreisliga Gr. 3",
+    gruppe:"496580",
+    mannschaft:"2967555",
+    mName:"Erwachsene_II_(4er)",
+    rang:7, punkte:"15:21",
+    color:"#10b981",
+  },
+  {
+    id:"erw3",
+    name:"Erwachsene III",
+    liga:"1. Kreisklasse Gr. 3",
+    gruppe:"496295",
+    mannschaft:"2968581",
+    mName:"Erwachsene_III_(4er)",
+    rang:10, punkte:"18:26",
+    color:"#f59e0b",
+  },
+  {
+    id:"erw4",
+    name:"Erwachsene IV",
+    liga:"3. Kreisklasse Gr. 1",
+    gruppe:"496366",
+    mannschaft:"2969119",
+    mName:"Erwachsene_IV_(4er)",
+    rang:2, punkte:"26:6",
+    color:"#ef4444",
+  },
+  {
+    id:"erw5",
+    name:"Erwachsene V",
+    liga:"3. Kreisklasse Gr. 2",
+    gruppe:"496450",
+    mannschaft:"2966072",
+    mName:"Erwachsene_V_(4er)",
+    rang:9, punkte:"6:30",
+    color:"#8b5cf6",
+  },
+  {
+    id:"maed13",
+    name:"Mädchen 13",
+    liga:"Jugend 13 Kreisliga",
+    gruppe:"496458",
+    mannschaft:"2993877",
+    mName:"M%C3%A4dchen_13",
+    rang:7, punkte:"9:23",
+    color:"#ec4899",
+  },
+  {
+    id:"maed15",
+    name:"Mädchen 15",
+    liga:"Jugend 15 Kreisklasse",
+    gruppe:"496479",
+    mannschaft:"2993878",
+    mName:"M%C3%A4dchen_15",
+    rang:2, punkte:"20:8",
+    color:"#14b8a6",
+  },
+];
+
+function teamLinks(t) {
+  const g = `${BASE}/${S}/ligen`;
+  const liga = t.liga.replace(/ /g,"_").replace(/\./g,"");
+  return {
+    tabelle:      `${g}/${liga}/gruppe/${t.gruppe}/tabelle/gesamt`,
+    spielplan:    `${g}/${liga}/gruppe/${t.gruppe}/spielplan/gesamt`,
+    aufstellung:  `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/spielerbilanzen/gesamt`,
+    einzelrl:     `${BASE}/${S}/ligen/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/rangliste/einzel`,
+    doppelrl:     `${BASE}/${S}/ligen/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/rangliste/doppel`,
+  };
+}
+
+function SpielbetrieblTab({isSuperAdmin}) {
+  // Photos stored in Firestore config/teamPhotos as {teamId: url}
+  const [teamPhotos,setTeamPhotos] = useState({});
+  const [uploadingFor,setUploadingFor] = useState(null);
+
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
+      if(snap.exists()) setTeamPhotos(snap.data());
+    },()=>{});
+    return unsub;
+  },[]);
+
+  async function handlePhotoUpload(teamId, file) {
+    if (!file) return;
+    setUploadingFor(teamId);
+    // Store as base64 in Firestore (small images only)
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      const updated = {...teamPhotos, [teamId]: dataUrl};
+      await setDoc(doc(db,"config","teamPhotos"), updated, {merge:true}).catch(()=>{});
+      setTeamPhotos(updated);
+      setUploadingFor(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const LinkBtn = ({href,label,icon}) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={{
+      display:"inline-flex",alignItems:"center",gap:4,
+      padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,
+      background:"var(--bg3)",border:"1px solid var(--border2)",
+      color:"var(--text2)",textDecoration:"none",
+      whiteSpace:"nowrap",
+    }}>{icon} {label}</a>
+  );
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Spielbetrieb</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
+      TTC Niederzeuzheim · Saison 2025/26 · Hessischer Tischtennis-Verband
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12}}>
+      {TEAMS.map(t=>{
+        const links = teamLinks(t);
+        const photo = teamPhotos[t.id];
+        return <div key={t.id} style={{
+          background:"var(--bg2)",borderRadius:14,overflow:"hidden",
+          border:`1px solid var(--border)`,
+          borderLeft:`4px solid ${t.color}`,
+        }}>
+          {/* Team header */}
+          <div style={{display:"flex",alignItems:"stretch",minHeight:80}}>
+            {/* Photo area */}
+            <div style={{
+              width:90,flexShrink:0,background:photo?"transparent":"var(--bg3)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              position:"relative",overflow:"hidden",
+            }}>
+              {photo
+                ? <img src={photo} alt={t.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                : <span style={{fontSize:28}}>🏓</span>
+              }
+              {isSuperAdmin&&<label style={{
+                position:"absolute",bottom:0,left:0,right:0,
+                background:"rgba(0,0,0,0.55)",color:"#fff",
+                fontSize:9,textAlign:"center",padding:"3px 0",cursor:"pointer",
+              }}>
+                {uploadingFor===t.id?"⏳":photo?"📷 ändern":"📷 Foto"}
+                <input type="file" accept="image/*" style={{display:"none"}}
+                  onChange={e=>handlePhotoUpload(t.id, e.target.files?.[0])}
+                  disabled={uploadingFor===t.id}/>
+              </label>}
+            </div>
+
+            {/* Team info */}
+            <div style={{flex:1,padding:"10px 12px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+                <div style={{fontSize:14,fontWeight:800,color:t.color}}>{t.name}</div>
+                <div style={{
+                  fontSize:11,fontWeight:700,
+                  color:t.rang<=3?"#10b981":t.rang<=6?"#f59e0b":"var(--text3)",
+                  background:t.rang<=3?"#10b98122":t.rang<=6?"#f59e0b22":"var(--bg3)",
+                  padding:"2px 7px",borderRadius:20,
+                }}>Platz {t.rang}</div>
+              </div>
+              <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{t.liga}</div>
+              <div style={{fontSize:11,color:"var(--text2)"}}>
+                Punkte: <b style={{color:"var(--text)"}}>{t.punkte}</b>
+              </div>
+            </div>
+          </div>
+
+          {/* Links */}
+          <div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
+            <LinkBtn href={links.tabelle}    label="Tabelle"    icon="📊"/>
+            <LinkBtn href={links.spielplan}  label="Spielplan"  icon="📅"/>
+            <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
+            <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
+            <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
+          </div>
+        </div>;
+      })}
+    </div>
+
+    {/* Link to full overview */}
+    <a href={`${BASE}/10--11/${CLUB}/mannschaften`} target="_blank" rel="noopener noreferrer"
+      style={{display:"block",marginTop:16,textAlign:"center",fontSize:12,color:"#3b82f6",textDecoration:"none"}}>
+      🌐 Alle Mannschaften auf myTischtennis.de →
+    </a>
+  </div>;
+}
+
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
 // Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
 function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,
@@ -3046,7 +3254,13 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
 
   // Spieler nach Gruppe gefiltert für die Auswahl
-  const activePlayers = players.filter(p=>p.status!=="passiv");
+  const activePlayers = [...players.filter(p=>p.status!=="passiv")]
+    .sort((a,b)=>{
+      const fa=(a.firstName||a.name||"").toLowerCase();
+      const fb=(b.firstName||b.name||"").toLowerCase();
+      if(fa!==fb) return fa.localeCompare(fb,"de");
+      return (a.lastName||"").localeCompare(b.lastName||"","de");
+    });
   const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
   const filteredChips = groupFilter==="all" ? activePlayers
     : activePlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
