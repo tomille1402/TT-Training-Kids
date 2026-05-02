@@ -2362,7 +2362,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
-    {key:"spielbetrieb",label:"Spielbetrieb",icon:"🏆"},
+    {key:"spielbetrieb",label:"Spielbetrieb",icon:"⚽"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -3112,12 +3112,13 @@ const TEAMS = [
 function teamLinks(t) {
   const g = `${BASE}/${S}/ligen`;
   const liga = t.liga.replace(/ /g,"_").replace(/\./g,"");
+  const mBase = `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}`;
   return {
     tabelle:      `${g}/${liga}/gruppe/${t.gruppe}/tabelle/gesamt`,
-    spielplan:    `${g}/${liga}/gruppe/${t.gruppe}/spielplan/gesamt`,
-    aufstellung:  `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/spielerbilanzen/gesamt`,
-    einzelrl:     `${BASE}/${S}/ligen/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/rangliste/einzel`,
-    doppelrl:     `${BASE}/${S}/ligen/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}/rangliste/doppel`,
+    spielplan:    `${mBase}/spielplan/gesamt`,
+    aufstellung:  `${mBase}/spielerbilanzen/gesamt`,
+    einzelrl:     `${mBase}/rangliste/einzel`,
+    doppelrl:     `${mBase}/rangliste/doppel`,
   };
 }
 
