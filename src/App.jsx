@@ -404,19 +404,19 @@ function ThemeToggle({isDark,onSetUserTheme}) {
 }
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader}) {
   const ALL_TABS=[
-    {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
+    {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
-    {key:"spielbetrieb",  label:"Spielbetrieb",  icon:"🏆"},
+    {key:"spielbetrieb", label:"Spielbetrieb",  icon:"⚽"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
   // Nur Super-Admins sehen Verwaltung
   const TABS = ALL_TABS.filter(t=>!t.superAdminOnly || isSuperAdmin);
-  const [activeTab,setActiveTab]=useState("uebungen");
+  const [activeTab,setActiveTab]=useState("training");
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
   const [expandedEx,setExpandedEx]=useState(null);
