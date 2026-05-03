@@ -620,7 +620,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
                   <div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{ex.description}</div>
                 </div>
                 <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                  <StarRating stars={stars} readonly/>
+                  <StarRating stars={stars} onRate={v=>setStars(curPlayer.id,ex.id,v)}/>
                   <span style={{color:"var(--text3)",fontSize:12}}>{isExp?"▲":"▼"}</span>
                 </div>
               </div>
@@ -629,10 +629,14 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
                 <div style={{marginBottom:13}}><StarRating stars={stars} onRate={v=>setStars(curPlayer.id,ex.id,v)}/></div>
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
                   {ex.thresholds.map((t,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,background:stars>=i+1?"#f59e0b11":"var(--border)",border:`1px solid ${stars>=i+1?"#f59e0b44":"var(--border2)"}`}}>
+                    <div key={i} onClick={()=>setStars(curPlayer.id,ex.id,stars===i+1?0:i+1)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,cursor:"pointer",
+                        background:stars>=i+1?"#f59e0b11":"var(--border)",
+                        border:`1px solid ${stars>=i+1?"#f59e0b44":"var(--border2)"}`,
+                        transition:"all .15s"}}>
                       <span style={{color:stars>=i+1?"#f59e0b":"#6b7280",fontSize:13}}>{"★".repeat(i+1)}{"☆".repeat(4-i)}</span>
                       <span style={{fontSize:13,color:stars>=i+1?"var(--text)":"#9ca3af",flex:1}}>{t}</span>
-                      {stars>=i+1&&<span style={{color:"#10b981"}}>✓</span>}
+                      {stars>=i+1?<span style={{color:"#10b981"}}>✓</span>:<span style={{color:"var(--text4)",fontSize:10}}>Tippen zum Setzen</span>}
                     </div>
                   ))}
                 </div>
@@ -2781,6 +2785,8 @@ function BeobachtungenAdminTab({players,user,showToast}) {
   const [showForm,setShowForm] = useState(false);
   const [form,setForm] = useState({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
   const [expandedId,setExpandedId] = useState(null);
+  const [editingId,setEditingId] = useState(null);
+  const [editForm,setEditForm] = useState({});
 
   const selPlayer = players.find(p=>p.id===selPlayerId)||players[0];
 
@@ -2827,6 +2833,16 @@ function BeobachtungenAdminTab({players,user,showToast}) {
     if (!window.confirm("Beobachtung löschen?")) return;
     await deleteDoc(doc(db,"observations",selPlayer.id,"entries",id)).catch(()=>{});
     showToast("Gelöscht","🗑️");
+  }
+
+  async function updateObs(id) {
+    if (!editForm.strengths&&!editForm.weaknesses&&!editForm.focus) return;
+    try {
+      await setDoc(doc(db,"observations",selPlayer.id,"entries",id),
+        {...editForm, updatedAt:Date.now()},{merge:true});
+      showToast("Beobachtung aktualisiert","✏️");
+      setEditingId(null);
+    } catch(e){ showToast("Fehler: "+e.message,"❌"); }
   }
 
   const CONTEXT_COLORS = {Training:"#3b82f6",Punktspiel:"#f59e0b",Turnier:"#10b981"};
@@ -2940,6 +2956,45 @@ function BeobachtungenAdminTab({players,user,showToast}) {
               <div style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{obs.focus}</div>
             </div>}
             <button onClick={()=>deleteObs(obs.id)} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>🗑️ Löschen</button>
+            <button onClick={()=>{
+              if(editingId===obs.id){setEditingId(null);}
+              else{setEditingId(obs.id);setEditForm({date:obs.date,context:obs.context,strengths:obs.strengths||"",weaknesses:obs.weaknesses||"",focus:obs.focus||""});}
+            }} style={{padding:"4px 10px",background:"#3b82f622",border:"1px solid #3b82f644",borderRadius:6,color:"#3b82f6",fontSize:11,cursor:"pointer"}}>
+              {editingId===obs.id?"✕ Abbrechen":"✏️ Bearbeiten"}
+            </button>
+            {editingId===obs.id&&<div style={{marginTop:10,borderTop:"1px solid var(--border2)",paddingTop:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <div>
+                  <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Datum</label>
+                  <input type="date" value={editForm.date||""} onChange={e=>setEditForm(p=>({...p,date:e.target.value}))}
+                    style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:12,outline:"none"}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Kontext</label>
+                  <select value={editForm.context||"Training"} onChange={e=>setEditForm(p=>({...p,context:e.target.value}))} style={{fontSize:12,padding:"6px 8px"}}>
+                    <option>Training</option><option>Punktspiel</option><option>Turnier</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{marginBottom:6}}>
+                <label style={{fontSize:10,color:"#10b981",display:"block",marginBottom:3,fontWeight:600}}>💪 Stärken</label>
+                <textarea value={editForm.strengths||""} onChange={e=>setEditForm(p=>({...p,strengths:e.target.value}))} rows={2}
+                  style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #10b98144",background:"var(--bg)",color:"var(--text)",fontSize:12,resize:"vertical",outline:"none"}}/>
+              </div>
+              <div style={{marginBottom:6}}>
+                <label style={{fontSize:10,color:"#f59e0b",display:"block",marginBottom:3,fontWeight:600}}>⚠️ Entwicklungsfelder</label>
+                <textarea value={editForm.weaknesses||""} onChange={e=>setEditForm(p=>({...p,weaknesses:e.target.value}))} rows={2}
+                  style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #f59e0b44",background:"var(--bg)",color:"var(--text)",fontSize:12,resize:"vertical",outline:"none"}}/>
+              </div>
+              <div style={{marginBottom:8}}>
+                <label style={{fontSize:10,color:"#3b82f6",display:"block",marginBottom:3,fontWeight:600}}>🎯 Fokus</label>
+                <textarea value={editForm.focus||""} onChange={e=>setEditForm(p=>({...p,focus:e.target.value}))} rows={1}
+                  style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1px solid #3b82f644",background:"var(--bg)",color:"var(--text)",fontSize:12,resize:"vertical",outline:"none"}}/>
+              </div>
+              <button onClick={()=>updateObs(obs.id)} style={{width:"100%",padding:"8px",background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",border:"none",borderRadius:7,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                💾 Änderungen speichern
+              </button>
+            </div>}
           </div>}
         </div>;
       })}
