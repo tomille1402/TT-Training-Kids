@@ -423,6 +423,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
   const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
+  const [showOnlyPresent,setShowOnlyPresent]=useState(false);
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
@@ -531,7 +532,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* Gruppenfilter + Spieler-Chips — IMMER sichtbar, sticky */}
     <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",
       position:"sticky",top:hideHeader?44:0,zIndex:97,flexShrink:0}}>
-      <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
         {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
           const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
           const c=colors[g]; const on=groupFilters[g];
@@ -541,8 +542,37 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           }}>{g}</button>;
         })}
       </div>
-      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-        {visiblePlayers.map(p=>(
+      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
+        {/* Punkt 1: Filter-Button für Anwesende */}
+        {(() => {
+          const todayStr = new Date().toLocaleDateString("sv");
+          // Finde aktuellstes Training (heute oder letztes)
+          const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
+          const nearestDay = [...allDays].reverse().find(d=>d<=todayStr) || allDays[0];
+          const sess = attendance?.[nearestDay];
+          const hasSession = sess && sess.took_place !== false && sess.attendances;
+          const absentCount = hasSession
+            ? visiblePlayers.filter(p=>{const v=sess.attendances[p.id]; return v==="e"||v==="u";}).length
+            : 0;
+          if(!hasSession || absentCount===0) return null;
+          return <button onClick={()=>setShowOnlyPresent&&setShowOnlyPresent(p=>!p)} style={{
+            flexShrink:0,padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+            border:`2px solid #6b728088`,background:"var(--bg3)",color:"var(--text3)",
+            display:"flex",alignItems:"center",gap:4,
+          }}>👁 Abwesende {showOnlyPresent?"anzeigen":"ausblenden"}</button>;
+        })()}
+        {visiblePlayers
+          .filter(p=>{
+            if(!showOnlyPresent) return true;
+            const todayStr=new Date().toLocaleDateString("sv");
+            const allDays=[...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
+            const nearestDay=[...allDays].reverse().find(d=>d<=todayStr)||allDays[0];
+            const sess=attendance?.[nearestDay];
+            if(!sess||sess.took_place===false||!sess.attendances) return true;
+            const v=sess.attendances[p.id];
+            return v!=="e"&&v!=="u";
+          })
+          .map(p=>(
           <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
             flexShrink:0,padding:"3px 9px 3px 5px",borderRadius:20,
             border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--border2)"}`,
@@ -829,26 +859,55 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
           <button onClick={()=>setAll("a")} style={{padding:"4px 10px",borderRadius:7,background:"#10b98122",border:"1px solid #10b98144",color:"#10b981",fontSize:11,fontWeight:600,cursor:"pointer"}}>Alle ✓ anwesend</button>
         </div>
 
-        {/* Punkt 9: Spaltenköpfe als Kreise */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 52px 52px 52px",gap:6,marginBottom:8,padding:"0 4px"}}>
-          <div style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>Name</div>
-          {COL_HEADERS.map(h=>(
-            <div key={h.key} style={{display:"flex",justifyContent:"center"}}>
-              <div style={{
-                width:36,height:36,borderRadius:"50%",
-                background:h.color+"22",border:`2px solid ${h.color}88`,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:14,fontWeight:800,color:h.color,
-              }} title={h.title}>{h.label}</div>
+        {/* Punkt 5: GESAMT-Zeile + Gruppenköpfe mit Spaltenköpfen */}
+        {(()=>{
+          const playerGroups = ["Profis","Fortgeschrittene","Anfänger"];
+          const countFor = (grp) => {
+            const gp = grp==="Trainer"
+              ? relevantPlayers.filter(p=>(p.group||"Anfänger")==="Trainer")
+              : relevantPlayers.filter(p=>(p.group||"Anfänger")===grp);
+            const a=gp.filter(p=>(sessionData.attendances?.[p.id]||"a")==="a").length;
+            const e=gp.filter(p=>sessionData.attendances?.[p.id]==="e").length;
+            const u=gp.filter(p=>sessionData.attendances?.[p.id]==="u").length;
+            return {a,e,u,total:gp.length};
+          };
+          const gesamtA = playerGroups.reduce((s,g)=>s+countFor(g).a,0);
+          const gesamtE = playerGroups.reduce((s,g)=>s+countFor(g).e,0);
+          const gesamtU = playerGroups.reduce((s,g)=>s+countFor(g).u,0);
+          const SumRow = ({label,counts,bold})=>(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 44px 44px 44px",gap:4,marginBottom:4,alignItems:"center",
+              background:bold?"var(--bg3)":"var(--bg)",borderRadius:8,padding:"5px 8px",
+              borderLeft:bold?"3px solid #10b981":"3px solid var(--border2)"}}>
+              <div style={{fontSize:11,fontWeight:700,color:bold?"#10b981":"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div>
+              <div style={{textAlign:"center",fontSize:13,fontWeight:700,color:"#10b981"}}>{counts.a}</div>
+              <div style={{textAlign:"center",fontSize:13,fontWeight:700,color:"#f59e0b"}}>{counts.e}</div>
+              <div style={{textAlign:"center",fontSize:13,fontWeight:700,color:"#ef4444"}}>{counts.u}</div>
             </div>
-          ))}
-        </div>
+          );
+          return <>
+            {/* Spaltenköpfe */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 44px 44px 44px",gap:4,marginBottom:6,padding:"0 8px"}}>
+              <div/>
+              {COL_HEADERS.map(h=>(
+                <div key={h.key} style={{display:"flex",justifyContent:"center"}}>
+                  <div style={{width:34,height:34,borderRadius:"50%",background:h.color+"22",border:`2px solid ${h.color}88`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:h.color}} title={h.title}>{h.label}</div>
+                </div>
+              ))}
+            </div>
+            <SumRow label="GESAMT" counts={{a:gesamtA,e:gesamtE,u:gesamtU}} bold/>
+            {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+              const cnt=countFor(g);
+              if(!relevantPlayers.some(p=>(p.group||"Anfänger")===g)) return null;
+              return <SumRow key={g} label={g} counts={cnt}/>;
+            })}
+          </>;
+        })()}
 
         {groupOrder.map(group=>{
           const groupPlayers = relevantPlayers.filter(p=>(p.group||"Anfänger")===group)
             .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
-          return <div key={group} style={{marginBottom:12}}>
+          return <div key={group} style={{marginBottom:12,marginTop:10}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
             {groupPlayers.map(p=>{
               const val=sessionData.attendances?.[p.id]||"a";
@@ -1532,13 +1591,19 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
                 <div>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsbeitritt</label>
-                  <input type="date" value={editPlayer.joinDate||""} onChange={e=>setEditPlayer(prev=>({...prev,joinDate:e.target.value}))}
-                    style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  <div style={{display:"flex",gap:4}}>
+                    <input type="date" value={editPlayer.joinDate||""} onChange={e=>setEditPlayer(prev=>({...prev,joinDate:e.target.value}))}
+                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    {editPlayer.joinDate&&<button onClick={()=>setEditPlayer(p=>({...p,joinDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                  </div>
                 </div>
                 <div>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsaustritt</label>
-                  <input type="date" value={editPlayer.leaveDate||""} onChange={e=>setEditPlayer(prev=>({...prev,leaveDate:e.target.value}))}
-                    style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                  <div style={{display:"flex",gap:4}}>
+                    <input type="date" value={editPlayer.leaveDate||""} onChange={e=>setEditPlayer(prev=>({...prev,leaveDate:e.target.value}))}
+                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    {editPlayer.leaveDate&&<button onClick={()=>setEditPlayer(p=>({...p,leaveDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                  </div>
                 </div>
               </div>
               {/* Geburtstag */}
@@ -1574,9 +1639,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {[
-                    {key:"player",  icon:"🏓", label:"Spieler"},
-                    {key:"trainer", icon:"🛡️", label:"Trainer"},
-                    {key:"admin",   icon:"⚙️", label:"Admin"},
+                    {key:"player",     icon:"🏓", label:"Spieler"},
+                    {key:"trainer",    icon:"🛡️", label:"Trainer"},
+                    {key:"admin",      icon:"⚙️", label:"Admin"},
+                    {key:"erwachsene", icon:"👪", label:"Erwachsene"},
                   ].map(role=>{
                     const isOn=(editPlayer.roles||{})[role.key]===true;
                     return <button key={role.key} onClick={()=>setEditPlayer(prev=>({
@@ -2055,7 +2121,7 @@ function SchlaegerTab({rackets,players,showToast}) {
                     const ns=e.target.value;
                     setForm(p=>({...p,status:ns,...(ns==="vergeben"?{griffform:"Konkav",farbeBelaege:"Schwarz/rot"}:{})}));
                   }} style={{fontSize:11,padding:"3px 6px",width:"100%"}}>
-                    {["frei","vergeben","kaputt","offen","verkauft"].map(s=><option key={s}>{s}</option>)}
+                    {["frei","kaputt","offen","vergeben","verkauft","verschenkt"].map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
                 <td style={{padding:"4px"}}>
@@ -3292,6 +3358,27 @@ function SpielbetrieblTab({isSuperAdmin}) {
   </div>;
 }
 
+// ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
+function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut}) {
+  const [activeTab,setActiveTab]=useState("spielbetrieb");
+  const myPlayer=players.find(p=>p.email===user?.email);
+  const TABS=[
+    {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
+    {key:"erfolge",label:"Erfolge",icon:"🏅"},
+  ];
+  return <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:40}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:44,zIndex:96,overflowX:"auto"}}>
+      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 4px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#ec4899":"transparent"}`,color:activeTab===t.key?"#ec4899":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer"}}>{t.icon} {t.label}</button>)}
+    </div>
+    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="beobachtungen"&&myPlayer&&<BeobachtungenPlayerTab player={myPlayer}/>}
+    {activeTab==="beobachtungen"&&!myPlayer&&<div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Spielerprofil verknüpft.</div>}
+    {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer}/>}
+    {activeTab==="erfolge"&&!myPlayer&&<div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Spielerprofil verknüpft.</div>}
+  </div>;
+}
+
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
 // Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
 function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,
@@ -3303,9 +3390,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const [groupFilter,setGroupFilter] = useState("all");
 
   const VIEW_CONFIG = {
-    player:  {icon:"🏓", label:"Spieler",  color:"#10b981"},
-    trainer: {icon:"🛡️", label:"Trainer",  color:"#3b82f6"},
-    admin:   {icon:"⚙️", label:"Admin",    color:"#f59e0b"},
+    player:     {icon:"🏓", label:"Spieler",     color:"#10b981"},
+    trainer:    {icon:"🛡️", label:"Trainer",     color:"#3b82f6"},
+    admin:      {icon:"⚙️", label:"Admin",       color:"#f59e0b"},
+    erwachsene: {icon:"👪", label:"Erwachsene",  color:"#ec4899"},
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
@@ -3402,7 +3490,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded}
       hideHeader {...sharedProps}/>}
-    {activeView==="admin"&&<AdminPanel
+    {activeView==="erwachsene"&&<ErwachseneView user={user} players={players} {...sharedProps}/>}
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={true}
       globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
@@ -3592,12 +3680,14 @@ export default function App() {
   const hasTrainerRole = isAdmin || playerRoles.trainer === true;
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
   const hasPlayerRole  = !isAdmin || playerRoles.player === true || !!myPlayer;
+  const hasErwachseneRole = playerRoles.erwachsene === true;
 
   // Verfügbare Views für diese Person
   const availableViews = [];
   if (hasPlayerRole && myPlayer) availableViews.push("player");
   if (hasTrainerRole)             availableViews.push("trainer");
   if (hasAdminRole)               availableViews.push("admin");
+  if (hasErwachseneRole)          availableViews.push("erwachsene");
   if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
