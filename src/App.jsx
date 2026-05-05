@@ -3490,12 +3490,13 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded}
       hideHeader {...sharedProps}/>}
-    {activeView==="erwachsene"&&<ErwachseneView user={user} players={players} {...sharedProps}/>}
+    {activeView==="admin"&&<AdminPanel
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={true}
       globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded}
       hideHeader {...sharedProps}/>}
+    {activeView==="erwachsene"&&<ErwachseneView user={user} players={players} {...sharedProps}/>}
   </div>;
 }
 
