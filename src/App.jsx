@@ -424,6 +424,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [saving,setSaving]=useState(false);
   const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
   const [showOnlyPresent,setShowOnlyPresent]=useState(false);
+  const [selectedErwachsene,setSelectedErwachsene]=useState(null);
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
@@ -585,6 +586,29 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         ))}
         {visiblePlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler sichtbar</span>}
       </div>
+      {/* Punkt 4: Erwachsene-Chips (nur für Admin) */}
+      {isSuperAdmin&&(()=>{
+        const erwachsene=players.filter(p=>p.status!=="passiv"&&(p.group||"")==="Erwachsene")
+          .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
+        if(!erwachsene.length) return null;
+        // Detect duplicate first names
+        const fnCounts={};
+        erwachsene.forEach(p=>{fnCounts[p.firstName]=(fnCounts[p.firstName]||0)+1;});
+        return <div style={{marginTop:5,display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
+          <span style={{fontSize:10,color:"#ec4899",fontWeight:700,flexShrink:0}}>👪</span>
+          {erwachsene.map(p=>{
+            const label=fnCounts[p.firstName]>1?`${p.firstName} ${(p.lastName||"").charAt(0)}.`:p.firstName;
+            const isActive=selectedErwachsene===p.id;
+            return <button key={p.id} onClick={()=>{setSelectedErwachsene(p.id);setActiveTab("uebungen");}} style={{
+              flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
+              border:`2px solid ${isActive?"#ec4899":"var(--border2)"}`,
+              background:isActive?"#ec489922":"transparent",
+              color:isActive?"#ec4899":"var(--text2)",
+              display:"flex",alignItems:"center",gap:3,
+            }}><span style={{fontSize:12}}>{p.avatar||"👤"}</span>{label}</button>;
+          })}
+        </div>;
+      })()}
     </div>
 
     {/* Tabs */}
@@ -596,8 +620,25 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
 
+    {/* ── ERWACHSENE EINZELANSICHT ── */}
+    {selectedErwachsene&&(()=>{
+      const ep=players.find(p=>p.id===selectedErwachsene);
+      if(!ep) return null;
+      return <div style={{padding:13}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,background:"var(--bg2)",borderRadius:12,padding:"10px 14px"}}>
+          <span style={{fontSize:24}}>{ep.avatar||"👤"}</span>
+          <div>
+            <div style={{fontSize:14,fontWeight:800,color:"#ec4899"}}>{ep.firstName} {ep.lastName}</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>👪 Erwachsene</div>
+          </div>
+          <button onClick={()=>setSelectedErwachsene(null)} style={{marginLeft:"auto",padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕ Schließen</button>
+        </div>
+        <ErwachseneView user={{email:ep.email}} players={players} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} forcePlayer={ep}/>
+      </div>;
+    })()}
+
     {/* ── ÜBUNGEN TAB ── */}
-    {activeTab==="uebungen"&&curPlayer&&(()=>{
+    {!selectedErwachsene&&activeTab==="uebungen"&&curPlayer&&(()=>{
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
       const nexts=nextAwards(curPlayer);
       return <div style={{padding:"13px 13px 0"}}>
@@ -679,13 +720,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     })()}
 
     {/* ── TRAINING TAB ── */}
-    {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={groupFilters} attendance={attendance} showToast={showToast}/>}
+    {!selectedErwachsene&&activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={groupFilters} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB (Punkt 7: klickbar) ── */}
-    {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}/>}
+    {!selectedErwachsene&&activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}/>}
 
     {/* ── RANGLISTE TAB ── */}
-    {activeTab==="rangliste"&&<div style={{padding:13}}>
+    {!selectedErwachsene&&activeTab==="rangliste"&&<div style={{padding:13}}>
       <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏆 Rangliste</div>
       {sortedRanking.map((player,idx)=>{
         const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(player);
@@ -732,15 +773,15 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>}
 
     {/* ── SCHLÄGER TAB ── */}
-    {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
+    {!selectedErwachsene&&activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
 
     {/* ── GEBURTSTAGE TAB ── */}
-    {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
+    {!selectedErwachsene&&activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
-    {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
-    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
+    {!selectedErwachsene&&activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
+    {!selectedErwachsene&&activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
+    {!selectedErwachsene&&activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -1124,7 +1165,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setRangeSaving(false);
   }
 
-  const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""};
+  const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:"",roles:{}};
   const [newData,setNewData]=useState(newData0);
   const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
 
@@ -1268,6 +1309,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         name:newData.firstName.trim()+" "+newData.lastName.trim(),
         gender:newData.gender,email:finalEmail,noLogin:newData.noLogin||!newData.email.trim(),
         avatar:newData.avatar,group:newData.group,status:newData.status,
+        roles:newData.roles||{},
         color,stars:{},createdAt:Date.now(),
       });
       if (onPlayerAdded) onPlayerAdded(newData.firstName.trim());
@@ -1519,6 +1561,22 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
         </select>
       </div>
+      {/* Funktionen bei Neuanlage */}
+      <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+        <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"}].map(role=>{
+            const isOn=(newData.roles||{})[role.key]===true;
+            return <button key={role.key} onClick={()=>setNewData(p=>({...p,roles:{...(p.roles||{}),[role.key]:!isOn}}))} style={{
+              padding:"6px 11px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${isOn?"#10b981":"var(--border2)"}`,
+              background:isOn?"#10b98122":"transparent",
+              color:isOn?"#10b981":"var(--text3)",
+              display:"flex",alignItems:"center",gap:5,
+            }}>{role.icon} {role.label}{isOn?" ✓":""}</button>;
+          })}
+        </div>
+      </div>
       <div style={{marginBottom:10}}>
         <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6}}>Login-Typ</label>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -1626,6 +1684,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </select>
               </div>}
 
+              {/* Punkt 3: Abschnitte für Erwachsene-Only ausblenden */}
+              {(()=>{
+                const isEOnly=editPlayer.roles?.erwachsene===true&&!editPlayer.roles?.player&&!editPlayer.roles?.trainer&&!editPlayer.roles?.admin;
+                if(isEOnly) return null;
+                return <>
+              {/* Abschnitte ausblenden für reine Erwachsene */}
+              {(()=>{
+                const roles=editPlayer.roles||{};
+                const isEOnly=roles.erwachsene===true&&!roles.player&&!roles.trainer&&!roles.admin;
+                if(isEOnly) return null;
+                return <>
               {/* Trainingsheft erhalten */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
@@ -1761,7 +1830,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </div>;
               })()}
 
-              {/* Turniere */}
+                </>;
+              })()}
+
+                </>;
+              })()}
+                            {/* Turniere */}
               {(()=>{
                 const VEREINS_TURNIERE=["Brettchenturnier","Minimeisterschaften","Ranglistenturnier","Vereinsmeisterschaften"];
                 const KREIS_TURNIERE=["Kreisjahrgangsmeisterschaften","Kreismeisterschaften","Kreisrangliste","Kreisentscheid Minimeisterschaften"];
@@ -2573,7 +2647,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* ── TRAINING ── */}
-    {activeTab==="training"&&<div style={{padding:14}}>
+    {!selectedErwachsene&&activeTab==="training"&&<div style={{padding:14}}>
       <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>📅 Meine Trainingstage</div>
 
       {/* Summary - fixiert beim Scrollen */}
@@ -2618,7 +2692,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* ── TEILNAHME (Spielerbereich) ── */}
-    {activeTab==="teilnahme"&&(()=>{
+    {!selectedErwachsene&&activeTab==="teilnahme"&&(()=>{
       // Stats vorab berechnen, dann absteigend nach % sortieren
       const today2=new Date();today2.setHours(0,0,0,0);
       const rankedPeers=[...groupPeers].map(player=>{
@@ -2714,8 +2788,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="erfolge"&&<ErfolgeTab player={myPlayer}/>}
 
     {/* ── BEOBACHTUNGEN ── */}
-    {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {!selectedErwachsene&&activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
+    {!selectedErwachsene&&activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -3366,9 +3440,9 @@ function SpielbetrieblTab({isSuperAdmin}) {
 }
 
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
-function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut}) {
+function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
-  const myPlayer=players.find(p=>p.email===user?.email);
+  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
@@ -3378,9 +3452,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut}
     <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:44,zIndex:96,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 4px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#ec4899":"transparent"}`,color:activeTab===t.key?"#ec4899":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer"}}>{t.icon} {t.label}</button>)}
     </div>
-    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
-    {activeTab==="beobachtungen"&&myPlayer&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    {activeTab==="beobachtungen"&&!myPlayer&&<div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Spielerprofil verknüpft.</div>}
+    {!selectedErwachsene&&activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {!selectedErwachsene&&activeTab==="beobachtungen"&&myPlayer&&<BeobachtungenPlayerTab player={myPlayer}/>}
+    {!selectedErwachsene&&activeTab==="beobachtungen"&&!myPlayer&&<div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Spielerprofil verknüpft.</div>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer}/>}
     {activeTab==="erfolge"&&!myPlayer&&<div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Spielerprofil verknüpft.</div>}
   </div>;
