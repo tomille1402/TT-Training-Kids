@@ -217,7 +217,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -436,6 +436,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const visiblePlayers = activePlayers
     .filter(p=>{
       const g = p.group||"Anfänger";
+      if (g==="Erwachsene" && !isSuperAdmin) return false; // Erwachsene nur für Admin
       return groupFilters[g] !== false;
     })
     .sort((a,b)=>{
@@ -533,8 +534,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",
       position:"sticky",top:hideHeader?44:0,zIndex:97,flexShrink:0}}>
       <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-        {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
-          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
+        {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
+          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
           const c=colors[g]; const on=groupFilters[g];
           return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
             padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
@@ -805,7 +806,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
   });
-  const groupOrder = ["Profis","Fortgeschrittene","Anfänger","Trainer"];
+  const groupOrder = ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
 
   // Punkt 9: Spaltenköpfe mit Kreisen
   const COL_HEADERS = [
@@ -895,7 +896,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
               ))}
             </div>
             <SumRow label="GESAMT" counts={{a:gesamtA,e:gesamtE,u:gesamtU}} bold/>
-            {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+            {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
               const cnt=countFor(g);
               if(!relevantPlayers.some(p=>(p.group||"Anfänger")===g)) return null;
               return <SumRow key={g} label={g} counts={cnt}/>;
@@ -942,7 +943,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
-  const allActive = players.filter(p=>p.status!=="passiv");
+  const allActive = players.filter(p=>p.status!=="passiv" && (p.group||"Anfänger")!=="Erwachsene");
 
   // Punkt 4: Trainingszeitraum aus Firestore lesen
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
@@ -1125,7 +1126,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
   const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""};
   const [newData,setNewData]=useState(newData0);
-  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer"];
+  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
 
   async function saveEdit() {
     if (!editPlayer) return;
@@ -1702,15 +1703,19 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
                     <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Start Training</label>
-                    <input type="date" value={editPlayer.trainingStart||""} min="2026-01-01" max="2026-12-31"
-                      onChange={e=>setEditPlayer(prev=>({...prev,trainingStart:e.target.value}))}
-                      style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:4}}>
+                      <input type="date" value={editPlayer.trainingStart||""} onChange={e=>setEditPlayer(prev=>({...prev,trainingStart:e.target.value}))}
+                        style={{flex:1,padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                      {editPlayer.trainingStart&&<button onClick={()=>setEditPlayer(p=>({...p,trainingStart:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                    </div>
                   </div>
                   <div>
                     <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Ende Training</label>
-                    <input type="date" value={editPlayer.trainingEnd||""} min="2026-01-01" max="2026-12-31"
-                      onChange={e=>setEditPlayer(prev=>({...prev,trainingEnd:e.target.value}))}
-                      style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:4}}>
+                      <input type="date" value={editPlayer.trainingEnd||""} onChange={e=>setEditPlayer(prev=>({...prev,trainingEnd:e.target.value}))}
+                        style={{flex:1,padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                      {editPlayer.trainingEnd&&<button onClick={()=>setEditPlayer(p=>({...p,trainingEnd:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                    </div>
                   </div>
                 </div>
                 <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
@@ -1733,6 +1738,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                       <input type="date" value={editPlayer[key]||""}
                         onChange={e=>setEditPlayer(prev=>({...prev,[key]:e.target.value}))}
                         style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+                      {editPlayer[key]&&<button onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
                     </div>;
                   })}
                   <div style={{marginTop:8,borderTop:"1px solid var(--border2)",paddingTop:8}}>
@@ -1748,6 +1754,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                         <input type="date" value={editPlayer[a.key]||""}
                           onChange={e=>setEditPlayer(prev=>({...prev,[a.key]:e.target.value}))}
                           style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+                        {editPlayer[a.key]&&<button onClick={()=>setEditPlayer(p=>({...p,[a.key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
                       </div>
                     ))}
                   </div>
@@ -3453,7 +3460,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           background:groupFilter==="all"?"#6b728022":"transparent",
           color:groupFilter==="all"?"#9ca3af":"#6b728066",
         }}>Alle</button>
-        {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+        {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
           const c=GROUP_COLORS[g]; const on=groupFilter===g;
           return <button key={g} onClick={()=>setGroupFilter(g)} style={{
             padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
