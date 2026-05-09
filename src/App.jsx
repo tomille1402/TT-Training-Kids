@@ -3474,18 +3474,16 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {teamFiles[`${t.id}_pin`]&&<button onClick={()=>{
-              const a=document.createElement('a');
-              a.href=teamFiles[`${t.id}_pin`];
-              a.download=teamFiles[`${t.id}_pin_name`]||'spiel-pins';
-              a.click();
-            }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🔑 Spiel-PINs</button>}
-            {teamFiles[`${t.id}_code`]&&<button onClick={()=>{
-              const a=document.createElement('a');
-              a.href=teamFiles[`${t.id}_code`];
-              a.download=teamFiles[`${t.id}_code_name`]||'spielcodes';
-              a.click();
-            }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🎫 Spielcodes</button>}
+            {teamFiles[`${t.id}_pin`]&&<a
+              href={teamFiles[`${t.id}_pin`]}
+              target="_blank" rel="noopener noreferrer"
+              download={teamFiles[`${t.id}_pin_name`]||"spiel-pins"}
+              style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>}
+            {teamFiles[`${t.id}_code`]&&<a
+              href={teamFiles[`${t.id}_code`]}
+              target="_blank" rel="noopener noreferrer"
+              download={teamFiles[`${t.id}_code_name`]||"spielcodes"}
+              style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🎫 Spielcodes</a>}
           </div>
         </div>;
       })}
