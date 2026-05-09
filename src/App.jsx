@@ -447,7 +447,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     });
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
-  const sortedRanking = [...visiblePlayers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  const sortedRanking = [...visiblePlayers].filter(p=>(p.group||"Anfänger")!=="Erwachsene").sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
 
   async function setStars(playerId,exId,value) {
     setSaving(true);
@@ -2543,8 +2543,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?0:70,zIndex:99}}>
-      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,padding:"11px 0",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{t.icon} {t.label}</button>)}
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?0:70,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
+      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
@@ -3352,6 +3352,13 @@ function MannschaftenVerwaltung({showToast}) {
   </div>;
 }
 
+function dataURLtoBlob(dataUrl) {
+  const arr=dataUrl.split(","); const mime=arr[0].match(/:(.*?);/)[1];
+  const bstr=atob(arr[1]); let n=bstr.length;
+  const u8=new Uint8Array(n); while(n--){u8[n]=bstr.charCodeAt(n);}
+  return new Blob([u8],{type:mime});
+}
+
 // ─── SPIELBETRIEB TAB ─────────────────────────────────────────────────────────
 const BASE = "https://www.mytischtennis.de/click-tt/HeTTV";
 const CLUB = "verein/33053/TTC_Niederzeuzheim";
@@ -3548,16 +3555,34 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {teamFiles[`${t.id}_pin`]&&<a
-              href={teamFiles[`${t.id}_pin`]}
-              target="_blank" rel="noopener noreferrer"
-              download={teamFiles[`${t.id}_pin_name`]||"spiel-pins"}
-              style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>}
-            {teamFiles[`${t.id}_code`]&&<a
-              href={teamFiles[`${t.id}_code`]}
-              target="_blank" rel="noopener noreferrer"
-              download={teamFiles[`${t.id}_code_name`]||"spielcodes"}
-              style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🎫 Spielcodes</a>}
+            {teamFiles[`${t.id}_pin`]&&(()=>{
+              const dataUrl=teamFiles[`${t.id}_pin`];
+              const name=teamFiles[`${t.id}_pin_name`]||"spiel-pins";
+              const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
+              if(isPdf){
+                return <button onClick={()=>{
+                  const blob=dataURLtoBlob(dataUrl);
+                  const url=URL.createObjectURL(blob);
+                  window.open(url,"_blank");
+                }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🔑 Spiel-PINs</button>;
+              }
+              return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
+                style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>;
+            })()}
+            {teamFiles[`${t.id}_code`]&&(()=>{
+              const dataUrl=teamFiles[`${t.id}_code`];
+              const name=teamFiles[`${t.id}_code_name`]||"spielcodes";
+              const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
+              if(isPdf){
+                return <button onClick={()=>{
+                  const blob=dataURLtoBlob(dataUrl);
+                  const url=URL.createObjectURL(blob);
+                  window.open(url,"_blank");
+                }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🎫 Spielcodes</button>;
+              }
+              return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
+                style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🎫 Spielcodes</a>;
+            })()}
           </div>
         </div>;
       })}
