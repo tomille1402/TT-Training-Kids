@@ -522,7 +522,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {recentBirthdays.length>0&&<button onClick={()=>setBirthdayPopupDismissed(false)} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer"}}>🎂 {recentBirthdays.length}</button>}
+          <BirthdayBtn players={players} attendance={attendance}/>
           {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
           <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
@@ -544,30 +544,38 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         })}
       </div>
       <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
-        {/* Punkt 1: Filter-Button für Anwesende */}
-        {(() => {
-          const todayStr = new Date().toLocaleDateString("sv");
-          // Finde aktuellstes Training (heute oder letztes)
-          const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-          const nearestDay = [...allDays].reverse().find(d=>d<=todayStr) || allDays[0];
-          const sess = attendance?.[nearestDay];
-          const hasSession = sess && sess.took_place !== false && sess.attendances;
-          const absentCount = hasSession
-            ? visiblePlayers.filter(p=>{const v=sess.attendances[p.id]; return v==="e"||v==="u";}).length
-            : 0;
-          if(!hasSession || absentCount===0) return null;
-          return <button onClick={()=>setShowOnlyPresent&&setShowOnlyPresent(p=>!p)} style={{
-            flexShrink:0,padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-            border:`2px solid #6b728088`,background:"var(--bg3)",color:"var(--text3)",
-            display:"flex",alignItems:"center",gap:4,
-          }}>👁 Abwesende {showOnlyPresent?"anzeigen":"ausblenden"}</button>;
+        {/* Punkt 1+2: Filter-Button Abwesende - gruppenspezifisch, nur Icon */}
+        {(()=>{
+          const todayStr=new Date().toLocaleDateString("sv");
+          // Finde für jeden sichtbaren Spieler seinen letzten Trainingstag
+          // Ein Abwesender = explizit "e" oder "u" in einer Session die für seine Gruppe gilt
+          let absentCount=0;
+          for(const p of visiblePlayers){
+            const grp=p.group||"Anfänger";
+            const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+            const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
+            if(!nearestDay) continue;
+            const sess=attendance?.[nearestDay];
+            if(!sess||sess.took_place===false||!sess.attendances) continue;
+            const v=sess.attendances[p.id];
+            if(v==="e"||v==="u") absentCount++;
+          }
+          if(absentCount===0) return null;
+          return <button onClick={()=>setShowOnlyPresent(p=>!p)} title={showOnlyPresent?"Abwesende anzeigen":"Abwesende ausblenden"} style={{
+            flexShrink:0,padding:"4px 8px",borderRadius:20,fontSize:14,cursor:"pointer",
+            border:`2px solid ${showOnlyPresent?"#f59e0b":"#6b728088"}`,
+            background:showOnlyPresent?"#f59e0b22":"var(--bg3)",
+            color:showOnlyPresent?"#f59e0b":"var(--text3)",
+          }}>👁</button>;
         })()}
         {visiblePlayers
           .filter(p=>{
             if(!showOnlyPresent) return true;
             const todayStr=new Date().toLocaleDateString("sv");
-            const allDays=[...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-            const nearestDay=[...allDays].reverse().find(d=>d<=todayStr)||allDays[0];
+            const grp=p.group||"Anfänger";
+            const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+            const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
+            if(!nearestDay) return true;
             const sess=attendance?.[nearestDay];
             if(!sess||sess.took_place===false||!sess.attendances) return true;
             const v=sess.attendances[p.id];
@@ -3195,6 +3203,72 @@ function BeobachtungenPlayerTab({player}) {
   </div>;
 }
 
+// ─── BIRTHDAY BUTTON COMPONENT ────────────────────────────────────────────────
+function BirthdayBtn({players, attendance}) {
+  const [dismissed,setDismissed] = useState(false);
+  const [showPopup,setShowPopup] = useState(false);
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toLocaleDateString("sv");
+
+  // Punkt 4: Per-player last training day based on group+trainingDays
+  function getLastTrainingForPlayer(p) {
+    const grp = p.group||"Anfänger";
+    const days = getTrainingDaysForGroup(grp, p.trainingDays);
+    return [...days].reverse().find(d=>d<=todayStr) || null;
+  }
+
+  // Collect birthdays since each player's last training
+  const recentBirthdays = [];
+  const activePlayers = players.filter(p=>p.birthdate && p.status!=="passiv" && p.group!=="Erwachsene");
+  for (const p of activePlayers) {
+    const lastDay = getLastTrainingForPlayer(p);
+    if (!lastDay) continue;
+    const since = new Date(lastDay); since.setHours(0,0,0,0);
+    const bd = new Date(p.birthdate);
+    const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
+    thisYear.setHours(0,0,0,0);
+    if (thisYear >= since && thisYear <= today) {
+      recentBirthdays.push({...p, age: today.getFullYear()-bd.getFullYear(), bday:thisYear, lastDay});
+    }
+  }
+
+  if (recentBirthdays.length === 0) return null;
+
+  return <>
+    <button onClick={()=>{setShowPopup(true);setDismissed(false);}} style={{
+      background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,
+      color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer",flexShrink:0,
+    }}>🎂 {recentBirthdays.length}</button>
+
+    {showPopup&&!dismissed&&<div style={{
+      position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0008",zIndex:800,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+    }} onClick={()=>setShowPopup(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:"var(--bg2)",borderRadius:16,padding:20,maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",
+      }}>
+        <div style={{textAlign:"center",marginBottom:16}}>
+          <div style={{fontSize:40,marginBottom:8}}>🎂</div>
+          <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>Geburtstage seit letztem Training</div>
+          <div style={{fontSize:11,color:"var(--text3)"}}>Gruppenspezifische Trainingstage berücksichtigt</div>
+        </div>
+        {recentBirthdays.map(p=>(
+          <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
+              <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
+              <div style={{fontSize:10,color:"var(--text4)"}}>seit {new Date(p.lastDay).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})}</div>
+            </div>
+          </div>
+        ))}
+        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Schließen</button>
+      </div>
+    </div>}
+  </>;
+}
+
 // ─── MANNSCHAFTEN VERWALTUNG ──────────────────────────────────────────────────
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
@@ -3599,6 +3673,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         }}>{cfg.icon} {cfg.label}</button>;
       })}
       <div style={{flex:1}}/>
+      <BirthdayBtn players={players} attendance={attendance}/>
       <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
       <button onClick={onSignOut} title="Abmelden" style={{
         padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
