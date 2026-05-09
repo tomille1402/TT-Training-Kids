@@ -1419,7 +1419,46 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     ))}
 
-    {/* Punkt 4: Trainingszeitraum */}
+    {/* App-Design — jetzt zuerst */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:6}}>🎨 App-Design</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+        Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
+      </div>
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
+          const isActive = effectiveGlobalTheme===opt.mode;
+          return <button key={opt.mode} onClick={async()=>{
+            setLocalGlobalTheme(opt.mode);
+            await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
+            showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
+          }} style={{
+            flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
+            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+            background:isActive?"#10b98122":"var(--bg3)",
+            color:isActive?"#10b981":"var(--text2)",
+          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+        })}
+      </div>
+      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
+      <div style={{display:"flex",gap:8}}>
+        {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
+          const isActive = userTheme===opt.mode;
+          return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
+            flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+            background:isActive?"#10b98122":"var(--bg3)",
+            color:isActive?"#10b981":"var(--text2)",
+          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+        })}
+      </div>
+      {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
+        Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
+      </div>}
+    </div>
+
+    {/* Trainingszeitraum — jetzt nach App-Design */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
       <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📅 Trainingszeitraum</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
@@ -1437,53 +1476,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>
       </div>
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-        Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums. Beide Daten sind inklusiv.
+        Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums.
       </div>
       <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
         {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
       </button>
     </div>
 
-    {/* App-Design */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
-      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:6}}>🎨 App-Design</div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-        Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
-      </div>
-
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
-        {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
-          const isActive = effectiveGlobalTheme===opt.mode;
-          return <button key={opt.mode} onClick={async()=>{
-            setLocalGlobalTheme(opt.mode); // sofort anzeigen
-            await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
-            showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
-          }} style={{
-            flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
-            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-            background:isActive?"#10b98122":"var(--bg3)",
-            color:isActive?"#10b981":"var(--text2)",
-          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-        })}
-      </div>
-
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
-      <div style={{display:"flex",gap:8}}>
-        {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
-          const isActive = userTheme===opt.mode;
-          return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
-            flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-            background:isActive?"#10b98122":"var(--bg3)",
-            color:isActive?"#10b981":"var(--text2)",
-          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-        })}
-      </div>
-      {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
-        Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
-      </div>}
-    </div>
+    {/* Mannschaften — Spiel-PINs und Spielcodes */}
+    <MannschaftenVerwaltung showToast={showToast}/>
 
     {/* Add form */}
     {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
@@ -3194,6 +3195,89 @@ function BeobachtungenPlayerTab({player}) {
   </div>;
 }
 
+// ─── MANNSCHAFTEN VERWALTUNG ──────────────────────────────────────────────────
+function MannschaftenVerwaltung({showToast}) {
+  const [teamFiles,setTeamFiles] = useState({});
+  const [uploading,setUploading] = useState({});
+
+  useEffect(()=>{
+    const unsub = onSnapshot(doc(db,"config","teamFiles"),snap=>{
+      if(snap.exists()) setTeamFiles(snap.data());
+    },()=>{});
+    return unsub;
+  },[]);
+
+  async function handleUpload(teamId, type, file) {
+    if(!file) return;
+    setUploading(p=>({...p,[teamId+type]:true}));
+    const reader = new FileReader();
+    reader.onload = async(e)=>{
+      const dataUrl = e.target.result;
+      const key = `${teamId}_${type}`;
+      const updated = {...teamFiles, [key]:dataUrl, [`${key}_name`]:file.name};
+      await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
+      setTeamFiles(updated);
+      showToast(`${file.name} hochgeladen`,"📎");
+      setUploading(p=>({...p,[teamId+type]:false}));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleDelete(teamId, type) {
+    const key = `${teamId}_${type}`;
+    const updated = {...teamFiles};
+    delete updated[key]; delete updated[`${key}_name`];
+    await setDoc(doc(db,"config","teamFiles"),updated).catch(()=>{});
+    setTeamFiles(updated);
+    showToast("Gelöscht","🗑️");
+  }
+
+  return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
+    <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
+    </div>
+    {TEAMS.map(t=>{
+      const pinKey = `${t.id}_pin`; const codeKey = `${t.id}_code`;
+      const pinFile = teamFiles[pinKey]; const codFile = teamFiles[codeKey];
+      const pinName = teamFiles[`${pinKey}_name`]; const codName = teamFiles[`${codeKey}_name`];
+      return <div key={t.id} style={{borderTop:"1px solid var(--border)",paddingTop:10,marginBottom:10}}>
+        <div style={{fontSize:12,fontWeight:700,color:t.color,marginBottom:6}}>{t.name}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {/* Spiel-PINs */}
+          <div style={{background:"var(--bg3)",borderRadius:8,padding:8}}>
+            <div style={{fontSize:10,color:"var(--text3)",marginBottom:4,fontWeight:700}}>🔑 Spiel-PINs</div>
+            {pinFile
+              ? <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pinName}</span>
+                  <button onClick={()=>handleDelete(t.id,"pin")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                </div>
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"pin"]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[t.id+"pin"]?"⏳ Lädt…":"📎 Datei hochladen"}
+                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
+                    onChange={e=>handleUpload(t.id,"pin",e.target.files?.[0])} disabled={uploading[t.id+"pin"]}/>
+                </label>}
+          </div>
+          {/* Spielcodes */}
+          <div style={{background:"var(--bg3)",borderRadius:8,padding:8}}>
+            <div style={{fontSize:10,color:"var(--text3)",marginBottom:4,fontWeight:700}}>🎫 Spielcodes</div>
+            {codFile
+              ? <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{codName}</span>
+                  <button onClick={()=>handleDelete(t.id,"code")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                </div>
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"code"]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[t.id+"code"]?"⏳ Lädt…":"📎 Datei hochladen"}
+                  <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
+                    onChange={e=>handleUpload(t.id,"code",e.target.files?.[0])} disabled={uploading[t.id+"code"]}/>
+                </label>}
+          </div>
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 // ─── SPIELBETRIEB TAB ─────────────────────────────────────────────────────────
 const BASE = "https://www.mytischtennis.de/click-tt/HeTTV";
 const CLUB = "verein/33053/TTC_Niederzeuzheim";
@@ -3287,15 +3371,18 @@ function teamLinks(t) {
 }
 
 function SpielbetrieblTab({isSuperAdmin}) {
-  // Photos stored in Firestore config/teamPhotos as {teamId: url}
   const [teamPhotos,setTeamPhotos] = useState({});
+  const [teamFiles,setTeamFiles] = useState({});
   const [uploadingFor,setUploadingFor] = useState(null);
 
   useEffect(()=>{
-    const unsub = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
+    const u1 = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
       if(snap.exists()) setTeamPhotos(snap.data());
     },()=>{});
-    return unsub;
+    const u2 = onSnapshot(doc(db,"config","teamFiles"),snap=>{
+      if(snap.exists()) setTeamFiles(snap.data());
+    },()=>{});
+    return ()=>{u1();u2();};
   },[]);
 
   async function handlePhotoUpload(teamId, file) {
@@ -3387,6 +3474,18 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
+            {teamFiles[`${t.id}_pin`]&&<button onClick={()=>{
+              const a=document.createElement('a');
+              a.href=teamFiles[`${t.id}_pin`];
+              a.download=teamFiles[`${t.id}_pin_name`]||'spiel-pins';
+              a.click();
+            }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🔑 Spiel-PINs</button>}
+            {teamFiles[`${t.id}_code`]&&<button onClick={()=>{
+              const a=document.createElement('a');
+              a.href=teamFiles[`${t.id}_code`];
+              a.download=teamFiles[`${t.id}_code_name`]||'spielcodes';
+              a.click();
+            }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🎫 Spielcodes</button>}
           </div>
         </div>;
       })}
@@ -3491,7 +3590,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
     {/* Role Switch Bar */}
     <div style={{background:"var(--bg2)",borderBottom:"2px solid var(--border2)",
-      padding:"8px 14px",display:"flex",alignItems:"center",gap:8,
+      padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
       position:"sticky",top:0,zIndex:500}}>
       {availableViews.map(v=>{
         const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
@@ -3756,18 +3855,19 @@ export default function App() {
   const playerRoles = myPlayer?.roles || {};
   const hasTrainerRole = isAdmin || playerRoles.trainer === true;
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
-  const hasPlayerRole  = !isAdmin || playerRoles.player === true || !!myPlayer;
   const hasErwachseneRole = playerRoles.erwachsene === true;
+  // hasPlayerRole: explicit player-role, OR admin, OR has profile but NOT purely erwachsene
+  const hasPlayerRole  = playerRoles.player === true || (isAdmin && !hasErwachseneRole) ||
+    (!!myPlayer && !hasErwachseneRole && !playerRoles.trainer && !playerRoles.admin);
 
-  // Verfügbare Views für diese Person
-  // Erwachsene-only: nur eigene Daten, kein Spieler/Trainer-Button
-  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !hasPlayerRole;
+  // Erwachsene-only: nur eigene Daten
+  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player;
   const availableViews = [];
-  if (hasAdminRole)                            availableViews.push("admin");
-  if (hasTrainerRole)                          availableViews.push("trainer");
-  if (hasPlayerRole && myPlayer && !isErwachseneOnly) availableViews.push("player");
-  if (hasErwachseneRole)                       availableViews.push("erwachsene");
-  if (availableViews.length === 0 && isAdmin)  availableViews.push("trainer");
+  if (hasAdminRole)                 availableViews.push("admin");
+  if (hasTrainerRole)               availableViews.push("trainer");
+  if (hasPlayerRole && myPlayer)    availableViews.push("player");
+  if (hasErwachseneRole)            availableViews.push("erwachsene");
+  if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
   if (!myPlayer && !isAdmin) return (
