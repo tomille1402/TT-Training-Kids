@@ -1643,26 +1643,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </select>
               </div>}
 
-              {/* Punkt 3: Abschnitte für Erwachsene-Only ausblenden */}
-              {(()=>{
-                const isEOnly=editPlayer.roles?.erwachsene===true&&!editPlayer.roles?.player&&!editPlayer.roles?.trainer&&!editPlayer.roles?.admin;
-                if(isEOnly) return null;
-                return <>
-              {/* Abschnitte ausblenden für reine Erwachsene */}
-              {(()=>{
-                const roles=editPlayer.roles||{};
-                const isEOnly=roles.erwachsene===true&&!roles.player&&!roles.trainer&&!roles.admin;
-                if(isEOnly) return null;
-                return <>
-              {/* Trainingsheft erhalten */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
-                <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
-                  <option value="ja">Ja</option>
-                  <option value="nein">Nein</option>
-                </select>
-              </div>
-
               {/* Funktionen */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
@@ -1690,6 +1670,28 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   Trainer/Admin: Person kann zwischen Ansichten wechseln. Admin: Verwaltung sichtbar.
                 </div>
               </div>
+
+              {/* Punkt 3: Abschnitte für Erwachsene-Only ausblenden */}
+              {(()=>{
+                const isEOnly=editPlayer.roles?.erwachsene===true&&!editPlayer.roles?.player&&!editPlayer.roles?.trainer&&!editPlayer.roles?.admin;
+                if(isEOnly) return null;
+                return <>
+              {/* Abschnitte ausblenden für reine Erwachsene */}
+              {(()=>{
+                const roles=editPlayer.roles||{};
+                const isEOnly=roles.erwachsene===true&&!roles.player&&!roles.trainer&&!roles.admin;
+                if(isEOnly) return null;
+                return <>
+              {/* Trainingsheft erhalten */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
+                <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
+                  <option value="ja">Ja</option>
+                  <option value="nein">Nein</option>
+                </select>
+              </div>
+
+
               {/* Schläger */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏓 Schläger</div>
@@ -3460,27 +3462,31 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const allActive = [...players.filter(p=>p.status!=="passiv")]
     .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
 
-  // Duplicate first name detection for all
+  // Duplicate first name detection
   const fnCounts = {};
   allActive.forEach(p=>{fnCounts[p.firstName]=(fnCounts[p.firstName]||0)+1;});
   const chipLabel = (p) => fnCounts[p.firstName]>1
     ? `${p.firstName} ${(p.lastName||"").charAt(0)}.`
     : (p.firstName||p.name||"?");
 
-  // Separate lists
   const spielerPlayers = allActive.filter(p=>(p.group||"Anfänger")!=="Erwachsene");
   const erwachsenePlayers = allActive.filter(p=>(p.group||"Anfänger")==="Erwachsene");
 
-  // Chips to show based on view
-  const chipPlayers = activeView==="erwachsene" ? erwachsenePlayers
+  // Erwachsene-only: only see own data, no chip selection
+  const isErwachseneOnly = availableViews.length===1 && availableViews[0]==="erwachsene";
+
+  const chipPlayers = activeView==="erwachsene"
+    ? (isErwachseneOnly ? [] : erwachsenePlayers)
     : groupFilter==="all" ? spielerPlayers
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
-  // Selected player for impersonation
-  const selectedPlayer = players.find(p=>p.id===viewAsPlayer)
-    || (activeView==="erwachsene" ? erwachsenePlayers[0] : (myPlayer||spielerPlayers[0]));
+  // For erwachsene-only: force own player, no selection possible
+  const selectedPlayer = isErwachseneOnly
+    ? myPlayer
+    : players.find(p=>p.id===viewAsPlayer)
+      || (activeView==="erwachsene" ? erwachsenePlayers[0] : (myPlayer||spielerPlayers[0]));
 
-  const showChips = activeView==="player" || activeView==="erwachsene";
+  const showChips = (activeView==="player" || activeView==="erwachsene") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
     {/* Role Switch Bar */}
@@ -3556,8 +3562,6 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         <div style={{fontSize:32,marginBottom:8}}>👪</div>
         <div>Keine Erwachsene vorhanden oder Person auswählen</div>
       </div>}
-
-    {/* Trainer-View */}
     {activeView==="trainer"&&<AdminPanel
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={false} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
@@ -3756,12 +3760,14 @@ export default function App() {
   const hasErwachseneRole = playerRoles.erwachsene === true;
 
   // Verfügbare Views für diese Person
+  // Erwachsene-only: nur eigene Daten, kein Spieler/Trainer-Button
+  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !hasPlayerRole;
   const availableViews = [];
-  if (hasPlayerRole && myPlayer) availableViews.push("player");
-  if (hasTrainerRole)             availableViews.push("trainer");
-  if (hasAdminRole)               availableViews.push("admin");
-  if (hasErwachseneRole)          availableViews.push("erwachsene");
-  if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
+  if (hasAdminRole)                            availableViews.push("admin");
+  if (hasTrainerRole)                          availableViews.push("trainer");
+  if (hasPlayerRole && myPlayer && !isErwachseneOnly) availableViews.push("player");
+  if (hasErwachseneRole)                       availableViews.push("erwachsene");
+  if (availableViews.length === 0 && isAdmin)  availableViews.push("trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
   if (!myPlayer && !isAdmin) return (
