@@ -457,10 +457,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     setSaving(false);
   }
 
-  // Punkt 6: Geburtstage seit letztem Training ermitteln
+  // Punkt 6: Geburtstage seit letztem Training — letzter DIENSTAG als Referenz
+  // (Anfänger/Fortgeschrittene trainieren nur Di → wir nehmen den frühesten letzten Tag)
   const today = new Date(); today.setHours(0,0,0,0);
-  const allTrainingDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-  const lastTraining = [...allTrainingDays].reverse().find(d=>new Date(d)<=today) || null;
+  const todayStr2 = today.toLocaleDateString("sv");
+  const lastTue = [...ALL_TUESDAYS].reverse().find(d=>d<=todayStr2) || ALL_TUESDAYS[0];
+  const lastFri = [...ALL_FRIDAYS].reverse().find(d=>d<=todayStr2)  || ALL_FRIDAYS[0];
+  const lastTraining = lastTue < lastFri ? lastTue : lastFri; // earlier = broader window
   const birthdaySince = lastTraining ? new Date(lastTraining) : today;
 
   function getBirthdaysSince(since) {
@@ -2301,14 +2304,17 @@ function GeburtstageTab({players,showToast}) {
   });
 
   const today=new Date();today.setHours(0,0,0,0);
-  const allDays=[...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-  const lastTraining=([...allDays].reverse().find(d=>new Date(d)<=today))||null;
+  const todayStr3=today.toLocaleDateString("sv");
+  const lastTue3=[...ALL_TUESDAYS].reverse().find(d=>d<=todayStr3)||ALL_TUESDAYS[0];
+  const lastFri3=[...ALL_FRIDAYS].reverse().find(d=>d<=todayStr3)||ALL_FRIDAYS[0];
+  const lastTraining=lastTue3<lastFri3?lastTue3:lastFri3; // letzter Dienstag = breiteres Fenster
 
   function isRecentBirthday(p) {
     if (!lastTraining||!p.birthdate) return false;
     const bd=new Date(p.birthdate);
-    const since=new Date(lastTraining);
+    const since=new Date(lastTraining); since.setHours(0,0,0,0);
     const thisYear=new Date(today.getFullYear(),bd.getMonth(),bd.getDate());
+    thisYear.setHours(0,0,0,0);
     return thisYear>=since && thisYear<=today;
   }
 
@@ -2912,6 +2918,7 @@ function BeobachtungenAdminTab({players,user,showToast}) {
   const [expandedId,setExpandedId] = useState(null);
   const [editingId,setEditingId] = useState(null);
   const [editForm,setEditForm] = useState({});
+  const [detailExpandedId,setDetailExpandedId] = useState(null);
 
   const selPlayer = players.find(p=>p.id===selPlayerId)||players[0];
 
@@ -3737,9 +3744,9 @@ function EinheitenTab({user}) {
               } else if(abschnitt.id==="aufwaermen"&&awSelNames.length>0){
                 content=<div style={{display:"flex",flexDirection:"column",gap:5}}>
                   {awSelNames.map(s=>{
-                    const isDetExp=expandedId===("detail_aw_"+e.id+"_"+s.id);
+                    const isDetExp=detailExpandedId===("detail_aw_"+e.id+"_"+s.id);
                     return <div key={s.id} style={{borderRadius:7,border:"1px solid var(--border2)",overflow:"hidden"}}>
-                      <div onClick={()=>setExpandedId(isDetExp?null:("detail_aw_"+e.id+"_"+s.id))} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#f59e0b11"}}>
+                      <div onClick={ev=>{ev.stopPropagation();setDetailExpandedId(isDetExp?null:("detail_aw_"+e.id+"_"+s.id));}} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#f59e0b11"}}>
                         <span style={{fontSize:14}}>{s.icon}</span>
                         <span style={{fontSize:11,fontWeight:700,color:"#f59e0b",flex:1}}>{s.name}</span>
                         <span style={{fontSize:9,color:"var(--text4)"}}>{isDetExp?"▲":"▼"}</span>
@@ -3759,9 +3766,9 @@ function EinheitenTab({user}) {
               } else if(abschnitt.id==="wettkampf"&&wkSelNames.length>0){
                 content=<div style={{display:"flex",flexDirection:"column",gap:5}}>
                   {wkSelNames.map(s=>{
-                    const isDetExp=expandedId===("detail_wk_"+e.id+"_"+s.id);
+                    const isDetExp=detailExpandedId===("detail_wk_"+e.id+"_"+s.id);
                     return <div key={s.id} style={{borderRadius:7,border:"1px solid var(--border2)",overflow:"hidden"}}>
-                      <div onClick={()=>setExpandedId(isDetExp?null:("detail_wk_"+e.id+"_"+s.id))} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#ef444411"}}>
+                      <div onClick={ev=>{ev.stopPropagation();setDetailExpandedId(isDetExp?null:("detail_wk_"+e.id+"_"+s.id));}} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#ef444411"}}>
                         <span style={{fontSize:14}}>{s.icon}</span>
                         <span style={{fontSize:11,fontWeight:700,color:"#ef4444",flex:1}}>{s.name}</span>
                         <span style={{fontSize:9,color:"var(--text4)"}}>{isDetExp?"▲":"▼"}</span>
@@ -3819,10 +3826,14 @@ function BirthdayBtn({players, attendance}) {
   }
 
   // Use single lastTraining date (most recent across all groups) for consistent window
-  // Use exact same logic as AdminPanel getBirthdaysSince
-  const allDays2 = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-  const lastTrainingDay = [...allDays2].reverse().find(d=>new Date(d)<=today) || null;
-  const birthdaySince2 = lastTrainingDay ? new Date(lastTrainingDay) : today;
+  // Use OLDEST last training day across all groups (last Tuesday)
+  // so Anfänger/Fortgeschrittene birthdays aren't missed because of a Friday training
+  const todayDateStr = today.toLocaleDateString("sv");
+  const lastTuesday = [...ALL_TUESDAYS].reverse().find(d=>d<=todayDateStr) || ALL_TUESDAYS[0];
+  const lastFriday  = [...ALL_FRIDAYS].reverse().find(d=>d<=todayDateStr)  || ALL_FRIDAYS[0];
+  // Use the earlier of the two (Dienstag), so all players are covered
+  const lastTrainingDay = lastTuesday < lastFriday ? lastTuesday : lastFriday;
+  const birthdaySince2 = new Date(lastTrainingDay);
   birthdaySince2.setHours(0,0,0,0);
 
   const recentBirthdays = [];
