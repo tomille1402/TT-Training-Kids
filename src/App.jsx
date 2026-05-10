@@ -437,7 +437,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const visiblePlayers = activePlayers
     .filter(p=>{
       const g = p.group||"Anfänger";
-      if (g==="Erwachsene" && !isSuperAdmin) return false; // Erwachsene nur für Admin
+      if (g==="Erwachsene") return false; // Erwachsene immer separat in RoleSwitchWrapper
       return groupFilters[g] !== false;
     })
     .sort((a,b)=>{
@@ -589,7 +589,11 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             background:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color+"22":"transparent",
             color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--text2)",
             fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-            <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{p.firstName||p.name}
+            <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{(()=>{
+              const counts={};
+              visiblePlayers.forEach(x=>{counts[x.firstName]=(counts[x.firstName]||0)+1;});
+              return counts[p.firstName]>1?`${p.firstName} ${(p.lastName||"").charAt(0)}.`:(p.firstName||p.name);
+            })()}
           </button>
         ))}
         {visiblePlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler sichtbar</span>}
@@ -1572,11 +1576,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     {/* Players by group */}
     {groupOrder.map(group=>{
-      const groupPlayers=[...players.filter(p=>(p.group||"Anfänger")===group)]
+      const allGroupPlayers=[...players.filter(p=>(p.group||"Anfänger")===group)]
         .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
-      if (!groupPlayers.length) return null;
+      if (!allGroupPlayers.length) return null;
+      const activeGroupPlayers = allGroupPlayers.filter(p=>p.status!=="passiv");
+      const passiveGroupPlayers = allGroupPlayers.filter(p=>p.status==="passiv");
+      const groupPlayers = [...activeGroupPlayers, ...passiveGroupPlayers];
       return <div key={group} style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8,paddingLeft:2}}>{group} ({groupPlayers.length})</div>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8,paddingLeft:2}}>{group} ({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</div>
         {groupPlayers.map(p=>(
           editPlayer?.id===p.id ? (
             <div key={p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
@@ -3728,20 +3735,40 @@ function EinheitenTab({user}) {
               } else if(abschnitt.id==="begruessung"){
                 content=<div style={{fontSize:11,color:"var(--text4)"}}>Begrüßung, Anwesenheitsliste, Gruppeneinteilung</div>;
               } else if(abschnitt.id==="aufwaermen"&&awSelNames.length>0){
-                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {awSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#f59e0b22",color:"#f59e0b",borderRadius:6,padding:"2px 8px"}}>{s.icon} {s.name}</span>)}
+                content=<div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {awSelNames.map(s=>{
+                    const isDetExp=expandedId===("detail_aw_"+e.id+"_"+s.id);
+                    return <div key={s.id} style={{borderRadius:7,border:"1px solid var(--border2)",overflow:"hidden"}}>
+                      <div onClick={()=>setExpandedId(isDetExp?null:("detail_aw_"+e.id+"_"+s.id))} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#f59e0b11"}}>
+                        <span style={{fontSize:14}}>{s.icon}</span>
+                        <span style={{fontSize:11,fontWeight:700,color:"#f59e0b",flex:1}}>{s.name}</span>
+                        <span style={{fontSize:9,color:"var(--text4)"}}>{isDetExp?"▲":"▼"}</span>
+                      </div>
+                      {isDetExp&&<div style={{padding:"6px 9px",borderTop:"1px solid var(--border)",fontSize:11,color:"var(--text2)",lineHeight:1.6}}>{s.details}</div>}
+                    </div>;
+                  })}
                 </div>;
               } else if(abschnitt.id==="ballgewoehnung"&&bgSelNames.length>0){
                 content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {bgSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#10b98122",color:"#10b981",borderRadius:6,padding:"2px 8px"}}>🏓 {s.name}</span>)}
+                  {bgSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#10b98122",color:"#10b981",borderRadius:6,padding:"2px 8px"}}>🏓 {s.name} <span style={{fontSize:9,opacity:0.7}}>(Ü{String(s.id).padStart(3,"0")})</span></span>)}
                 </div>;
               } else if(abschnitt.id==="technik"&&tkSelNames.length>0){
                 content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {tkSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#3b82f622",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>⚡ {s.name}</span>)}
+                  {tkSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#3b82f622",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>⚡ {s.name} <span style={{fontSize:9,opacity:0.7}}>(Ü{String(s.id).padStart(3,"0")})</span></span>)}
                 </div>;
               } else if(abschnitt.id==="wettkampf"&&wkSelNames.length>0){
-                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {wkSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#ef444422",color:"#ef4444",borderRadius:6,padding:"2px 8px"}}>🏆 {s.name}</span>)}
+                content=<div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {wkSelNames.map(s=>{
+                    const isDetExp=expandedId===("detail_wk_"+e.id+"_"+s.id);
+                    return <div key={s.id} style={{borderRadius:7,border:"1px solid var(--border2)",overflow:"hidden"}}>
+                      <div onClick={()=>setExpandedId(isDetExp?null:("detail_wk_"+e.id+"_"+s.id))} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 9px",cursor:"pointer",background:"#ef444411"}}>
+                        <span style={{fontSize:14}}>{s.icon}</span>
+                        <span style={{fontSize:11,fontWeight:700,color:"#ef4444",flex:1}}>{s.name}</span>
+                        <span style={{fontSize:9,color:"var(--text4)"}}>{isDetExp?"▲":"▼"}</span>
+                      </div>
+                      {isDetExp&&<div style={{padding:"6px 9px",borderTop:"1px solid var(--border)",fontSize:11,color:"var(--text2)",lineHeight:1.6}}>{s.details}</div>}
+                    </div>;
+                  })}
                 </div>;
               } else if(abschnitt.id==="abschluss"){
                 const rf=e.notizen?.reflexion;
@@ -3792,10 +3819,11 @@ function BirthdayBtn({players, attendance}) {
   }
 
   // Use single lastTraining date (most recent across all groups) for consistent window
+  // Use exact same logic as AdminPanel getBirthdaysSince
   const allDays2 = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
-  const lastTrainingDay = [...allDays2].reverse().find(d=>d<=todayStr) || allDays2[0];
-  const since = lastTrainingDay ? new Date(lastTrainingDay) : today;
-  since.setHours(0,0,0,0);
+  const lastTrainingDay = [...allDays2].reverse().find(d=>new Date(d)<=today) || null;
+  const birthdaySince2 = lastTrainingDay ? new Date(lastTrainingDay) : today;
+  birthdaySince2.setHours(0,0,0,0);
 
   const recentBirthdays = [];
   const activePlayers = players.filter(p=>p.birthdate && p.status!=="passiv" && p.group!=="Erwachsene");
@@ -3803,7 +3831,7 @@ function BirthdayBtn({players, attendance}) {
     const bd = new Date(p.birthdate);
     const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
     thisYear.setHours(0,0,0,0);
-    if (thisYear >= since && thisYear <= today) {
+    if (thisYear >= birthdaySince2 && thisYear <= today) {
       recentBirthdays.push({...p, age: today.getFullYear()-bd.getFullYear(), bday:thisYear, lastDay:lastTrainingDay});
     }
   }
