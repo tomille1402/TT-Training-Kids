@@ -406,6 +406,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const ALL_TABS=[
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
+    {key:"einheiten",    label:"Einheiten",     icon:"📝"},
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
@@ -604,7 +605,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
 
-    {/* ── ÜBUNGEN TAB ── */}
+    {activeTab==="einheiten"&&<EinheitenTab user={user}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
       const nexts=nextAwards(curPlayer);
@@ -3200,6 +3201,481 @@ function BeobachtungenPlayerTab({player}) {
         </div>}
       </div>;
     })}
+  </div>;
+}
+
+// ─── EINHEITEN TAB ────────────────────────────────────────────────────────────
+
+const AUFWAERM_SPIELE = [
+  {id:"aw1",  name:"Raketenfänger",        icon:"🚀", alter:"6+", dauer:"10-15 Min", material:"Softbälle"},
+  {id:"aw2",  name:"Lava-Lauf",            icon:"🌋", alter:"6+", dauer:"15 Min",    material:"Reifen/Matten"},
+  {id:"aw3",  name:"Ninja-Schwänze",       icon:"🥷", alter:"6+", dauer:"10-15 Min", material:"Tücher"},
+  {id:"aw4",  name:"Piraten gegen Haie",   icon:"🏴‍☠️", alter:"6+", dauer:"15 Min",   material:"Hütchen"},
+  {id:"aw5",  name:"Farben-Blitz",         icon:"🌈", alter:"6+", dauer:"10 Min",    material:"Farbige Hütchen"},
+  {id:"aw6",  name:"Affenalarm",           icon:"🐒", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw7",  name:"Geisterjagd",          icon:"👻", alter:"6+", dauer:"10-15 Min", material:"Leibchen"},
+  {id:"aw8",  name:"Roboter-Explosion",    icon:"🤖", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw9",  name:"König der Reifen",     icon:"👑", alter:"6+", dauer:"15 Min",    material:"Reifen"},
+  {id:"aw10", name:"Superhelden-Fänger",   icon:"🦸", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw11", name:"Feuer-Wasser-Blitz",   icon:"⚡", alter:"6+", dauer:"10-15 Min", material:"Keines"},
+  {id:"aw12", name:"Monster-Mix",          icon:"👾", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw13", name:"Turbo-Zoo",            icon:"🦁", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
+  {id:"aw14", name:"Kettenblitz",          icon:"⛓️", alter:"6+", dauer:"15 Min",   material:"Keines"},
+  {id:"aw15", name:"Chaos-Transport",      icon:"🚚", alter:"6+", dauer:"15 Min",    material:"Bälle"},
+  {id:"aw16", name:"Die verrückte Ampel",  icon:"🚦", alter:"6+", dauer:"10-15 Min", material:"Keines"},
+  {id:"aw17", name:"Raketenstart",         icon:"🛸", alter:"6+", dauer:"10 Min",    material:"Keines"},
+  {id:"aw18", name:"Hütchen-Klau",         icon:"🎩", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
+  {id:"aw19", name:"Eisbären-Fang",        icon:"🐻‍❄️", alter:"6+", dauer:"15 Min", material:"Keines"},
+  {id:"aw20", name:"Weltraum-Mission",     icon:"🌍", alter:"6+", dauer:"15 Min",    material:"Matten+Hütchen"},
+  {id:"aw21", name:"Zahlen-Jäger",         icon:"🔢", alter:"6+", dauer:"10-15 Min", material:"Keines"},
+  {id:"aw22", name:"Turbo-Tunnel",         icon:"🚇", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw23", name:"Bananenfangen",        icon:"🍌", alter:"6+", dauer:"10 Min",    material:"Softbälle"},
+  {id:"aw24", name:"Schlangenrennen",      icon:"🐍", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
+  {id:"aw25", name:"Zombie-Insel",         icon:"🧟", alter:"6+", dauer:"15 Min",    material:"Matten/Reifen"},
+  {id:"aw26", name:"Der Boden ist Pudding",icon:"🍮", alter:"6+", dauer:"10-15 Min", material:"Linien/Matten"},
+  {id:"aw27", name:"Blitz-Ball",           icon:"⚾", alter:"6+", dauer:"15 Min",    material:"Softbälle"},
+  {id:"aw28", name:"Frosch-König",         icon:"🐸", alter:"6+", dauer:"10-15 Min", material:"Keines"},
+  {id:"aw29", name:"Schatzräuber",         icon:"💎", alter:"6+", dauer:"15 Min",    material:"Bälle/Hütchen"},
+  {id:"aw30", name:"Wirbelwind-Challenge", icon:"🌀", alter:"6+", dauer:"15 Min",    material:"Keines"},
+];
+
+const WETTKAMPF_SPIELE = [
+  // Anfänger 6-10 Jahre
+  {id:"wk1",  gruppe:"Anfänger 6–10",  name:"Balloon-Tischtennis",         beschreibung:"Luftballon statt Ball — langsam & spaßig, Grundstellung üben"},
+  {id:"wk2",  gruppe:"Anfänger 6–10",  name:"Boden-Rallye",                beschreibung:"Ball einmal auftippen lassen vor jedem Schlag"},
+  {id:"wk3",  gruppe:"Anfänger 6–10",  name:"Kooperations-Rallye",         beschreibung:"So viele Ballwechsel wie möglich gemeinsam schaffen"},
+  {id:"wk4",  gruppe:"Anfänger 6–10",  name:"Zieltreffer-Duell",           beschreibung:"Kleines Ziel (Hütchen) auf der Tischseite des Gegners treffen"},
+  {id:"wk5",  gruppe:"Anfänger 6–10",  name:"Tischtennis-Bowling",         beschreibung:"Ball über den Tisch rollen und Hütchen umwerfen"},
+  {id:"wk6",  gruppe:"Anfänger 6–10",  name:"Aufschlag-König",             beschreibung:"Wer trifft 5× den gegnerischen Tisch? Punkte für's Treffen"},
+  {id:"wk7",  gruppe:"Anfänger 6–10",  name:"Linienturnier",               beschreibung:"Punkt nur wenn Ball auf die weit entfernte Grundlinie trifft"},
+  {id:"wk8",  gruppe:"Anfänger 6–10",  name:"Rückhand-Battle",             beschreibung:"Nur Rückhand spielen — wer macht 3 Punkte?"},
+  {id:"wk9",  gruppe:"Anfänger 6–10",  name:"Vorhand-Battle",              beschreibung:"Nur Vorhand spielen — wer macht 3 Punkte?"},
+  {id:"wk10", gruppe:"Anfänger 6–10",  name:"Endlos-Turnier",              beschreibung:"Punkte sammeln, nach jedem Punkt weiterrotieren"},
+  {id:"wk11", gruppe:"Anfänger 6–10",  name:"Zwei-Felder-Duell",           beschreibung:"Tisch in 2 Hälften geteilt — nur in die richtige Hälfte spielen"},
+  {id:"wk12", gruppe:"Anfänger 6–10",  name:"Tischtennnis-Darts",          beschreibung:"Ringe auf dem Tisch, Punkte je nach getroffener Zone"},
+  {id:"wk13", gruppe:"Anfänger 6–10",  name:"Ball-Halten-Wettbewerb",      beschreibung:"Wer kann den Ball am längsten alleine auf dem Schläger halten?"},
+  {id:"wk14", gruppe:"Anfänger 6–10",  name:"Spiegelspiel",                beschreibung:"Trainer spielt vor, Kinder spiegeln — dann gegenseitig"},
+  {id:"wk15", gruppe:"Anfänger 6–10",  name:"Kerzen-Bowling",              beschreibung:"Plastikhütchen als Kegel, Ball rollen und alle umwerfen"},
+  // Fortgeschrittene 10-14 Jahre
+  {id:"wk16", gruppe:"Fortgeschrittene 10–14", name:"21er-Turnier",        beschreibung:"Klassisch bis 21, Aufschlag wechselt alle 5 Punkte"},
+  {id:"wk17", gruppe:"Fortgeschrittene 10–14", name:"Zonenduell",          beschreibung:"Punkte nur wenn in markierte Zonen gespielt wird"},
+  {id:"wk18", gruppe:"Fortgeschrittene 10–14", name:"Aufschlag-Varianten", beschreibung:"Nur bestimmte Aufschlagtechniken erlaubt — abwechselnd"},
+  {id:"wk19", gruppe:"Fortgeschrittene 10–14", name:"Konter-Battle",       beschreibung:"Nur Konterschläge — kein Aufschlagtopspin erlaubt"},
+  {id:"wk20", gruppe:"Fortgeschrittene 10–14", name:"Diagonal-Duell",      beschreibung:"Nur diagonal spielen — Fehler bei Parallelball gibt Punkt"},
+  {id:"wk21", gruppe:"Fortgeschrittene 10–14", name:"Parallel-Duell",      beschreibung:"Nur parallel spielen — Fehler bei Diagonalball gibt Punkt"},
+  {id:"wk22", gruppe:"Fortgeschrittene 10–14", name:"Topspin-König",       beschreibung:"Punkt nur wenn Topspin gespielt wird — sonst neutraler Ball"},
+  {id:"wk23", gruppe:"Fortgeschrittene 10–14", name:"Runden-Turnier",      beschreibung:"Jeder gegen jeden, Tabelle führen, Meister ermitteln"},
+  {id:"wk24", gruppe:"Fortgeschrittene 10–14", name:"Doppel-Turnier",      beschreibung:"Zufällige Doppelpaare, klassisches Doppelturnier"},
+  {id:"wk25", gruppe:"Fortgeschrittene 10–14", name:"Handicap-Match",      beschreibung:"Stärkerer Spieler startet mit -5 Punkten"},
+  {id:"wk26", gruppe:"Fortgeschrittene 10–14", name:"Zonen-Fünfer",        beschreibung:"Tisch in 5 Zonen geteilt, Punkte nach getroffener Zone"},
+  {id:"wk27", gruppe:"Fortgeschrittene 10–14", name:"Schweizer System",    beschreibung:"4 Runden à 5 Punkte — immer ähnlich starke Spieler"},
+  {id:"wk28", gruppe:"Fortgeschrittene 10–14", name:"Comeback-King",       beschreibung:"Startet immer mit 0:5 Rückstand — wer dreht noch?"},
+  {id:"wk29", gruppe:"Fortgeschrittene 10–14", name:"Stille-Post-Duell",   beschreibung:"Trainer gibt Taktik vor — Kinder setzen sie sofort um"},
+  {id:"wk30", gruppe:"Fortgeschrittene 10–14", name:"Meisterschaft",       beschreibung:"Vollständiges Miniturnier mit Auf-/Abstieg nach jeder Runde"},
+];
+
+const REFLEXIONS_FRAGEN = [
+  "Was hat dir heute am meisten Spaß gemacht?",
+  "Was war heute für dich besonders schwierig?",
+  "Welche Übung möchtest du beim nächsten Mal nochmal machen?",
+  "Was hast du heute Neues gelernt?",
+  "Bist du heute mit deiner Leistung zufrieden? Warum?",
+  "Was würdest du das nächste Mal anders machen?",
+  "Wem möchtest du heute ein Lob aussprechen?",
+  "Welches Spiel hat dir am besten gefallen und warum?",
+  "Was hat dich heute überrascht?",
+  "Was nimmst du dir für das nächste Training vor?",
+];
+
+const BALLGEWOEHNUNG = EXERCISES_BEGINNER.filter(e=>e.id>=3&&e.id<=10);
+const TECHNIK_EX = EXERCISES_ADVANCED;
+
+const ABSCHNITTE = [
+  {id:"begruessung",    label:"1. Begrüßung & Aufbau",        icon:"👋", color:"#6366f1"},
+  {id:"aufwaermen",     label:"2. Aufwärmen",                 icon:"🏃", color:"#f59e0b"},
+  {id:"ballgewoehnung", label:"3. Ball- & Schlägergewöhnung", icon:"🏓", color:"#10b981"},
+  {id:"technik",        label:"4. Technik & Hauptteil",       icon:"⚡", color:"#3b82f6"},
+  {id:"wettkampf",      label:"5. Wettkampf & Spiele",        icon:"🏆", color:"#ef4444"},
+  {id:"abschluss",      label:"6. Abbau & Abschluss",         icon:"🎯", color:"#8b5cf6"},
+];
+
+function EinheitenTab({user}) {
+  const [einheiten,setEinheiten] = useState([]);
+  const [editId,setEditId] = useState(null);
+  const [showForm,setShowForm] = useState(false);
+  const [form,setForm] = useState(null);
+  const [loading,setLoading] = useState(true);
+  const [toast,setToast] = useState(null);
+  const [expandedId,setExpandedId] = useState(null);
+  const [activeAbschnitt,setActiveAbschnitt] = useState("begruessung");
+
+  function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
+
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"einheiten"),snap=>{
+      setEinheiten(snap.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    },()=>setLoading(false));
+    return unsub;
+  },[]);
+
+  function newForm(){
+    const todayStr=new Date().toLocaleDateString("sv");
+    return {
+      titel:"", gruppe:"Anfänger", datum:todayStr,
+      aufwaermen:[], ballgewoehnung:[], technik:[], wettkampf:[],
+      notizen:{begruessung:"",abschluss:"",reflexion:""},
+      nachbereitung:{gutGelaufen:"",wenigerGut:"",naechstesMal:""},
+      status:"geplant",
+    };
+  }
+
+  async function saveEinheit() {
+    if(!form.datum||!form.gruppe) return;
+    try {
+      if(editId){
+        await updateDoc(doc(db,"einheiten",editId),{...form,updatedAt:Date.now()});
+        showToast("Einheit gespeichert","💾");
+      } else {
+        await addDoc(collection(db,"einheiten"),{...form,createdBy:user?.email||"",createdAt:Date.now()});
+        showToast("Einheit erstellt","✅");
+      }
+      setShowForm(false); setEditId(null); setForm(null);
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
+  }
+
+  async function deleteEinheit(id){
+    if(!window.confirm("Einheit löschen?")) return;
+    await deleteDoc(doc(db,"einheiten",id)).catch(()=>{});
+    showToast("Gelöscht","🗑️");
+  }
+
+  function toggleSel(arr,val,max){
+    if(arr.includes(val)) return arr.filter(x=>x!==val);
+    if(arr.length>=max) return arr;
+    return [...arr,val];
+  }
+
+  const sorted = [...einheiten].sort((a,b)=>(a.datum||"").localeCompare(b.datum||""));
+  const GRUPPEN_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
+
+  return <div style={{padding:14,paddingBottom:60}}>
+    {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",
+      background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",
+      display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
+      boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
+
+    {/* Header */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{fontSize:17,fontWeight:800}}>📝 Trainingseinheiten</div>
+      <button onClick={()=>{setForm(newForm());setEditId(null);setShowForm(true);setActiveAbschnitt("begruessung");}} style={{
+        padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",
+        border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",
+      }}>+ Neue Einheit</button>
+    </div>
+
+    {/* Formular */}
+    {showForm&&form&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:20}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#10b981",marginBottom:12}}>
+        {editId?"✏️ Einheit bearbeiten":"🆕 Neue Einheit"}
+      </div>
+
+      {/* Grunddaten */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        <div>
+          <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Gruppe</label>
+          <select value={form.gruppe} onChange={e=>setForm(p=>({...p,gruppe:e.target.value}))} style={{fontSize:13}}>
+            {["Anfänger","Fortgeschrittene","Profis","Trainer"].map(g=><option key={g}>{g}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Trainingstag</label>
+          <input type="date" value={form.datum} onChange={e=>setForm(p=>({...p,datum:e.target.value}))}
+            style={{padding:"7px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Titel (optional)</label>
+        <input value={form.titel} onChange={e=>setForm(p=>({...p,titel:e.target.value}))} placeholder="z.B. Aufschlag-Training Dienstag"
+          style={{width:"100%",padding:"8px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+
+      {/* Abschnitt-Navigation */}
+      <div style={{display:"flex",gap:4,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
+        {ABSCHNITTE.map(a=><button key={a.id} onClick={()=>setActiveAbschnitt(a.id)} style={{
+          flexShrink:0,padding:"5px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+          border:`2px solid ${activeAbschnitt===a.id?a.color:a.color+"44"}`,
+          background:activeAbschnitt===a.id?a.color+"22":"transparent",
+          color:activeAbschnitt===a.id?a.color:"var(--text3)",
+        }}>{a.icon}</button>)}
+      </div>
+
+      {/* Abschnitt-Label */}
+      {(()=>{const a=ABSCHNITTE.find(x=>x.id===activeAbschnitt); return <div style={{fontSize:13,fontWeight:700,color:a.color,marginBottom:10}}>{a.icon} {a.label}</div>;})()}
+
+      {/* 1. Begrüßung */}
+      {activeAbschnitt==="begruessung"&&<div>
+        <div style={{background:"var(--bg)",borderRadius:10,padding:12,marginBottom:8,fontSize:12,color:"var(--text2)",lineHeight:1.8}}>
+          <b>Ablauf:</b><br/>
+          🤝 Alle Kinder kommen zusammen<br/>
+          📋 Trainer begrüßt alle, macht die Anwesenheitsliste<br/>
+          👥 Dienstags: Aufteilung in Profis, Fortgeschrittene, Anfänger<br/>
+          🏓 Freitags: Nur Profis trainieren<br/>
+          📌 Festlegung wer welche Gruppe übernimmt
+        </div>
+        <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Notizen zur Begrüßung</label>
+        <textarea value={form.notizen.begruessung||""} rows={3} placeholder="z.B. Besondere Ankündigungen, wer welche Gruppe hat..."
+          onChange={e=>setForm(p=>({...p,notizen:{...p.notizen,begruessung:e.target.value}}))}
+          style={{width:"100%",padding:8,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+      </div>}
+
+      {/* 2. Aufwärmen */}
+      {activeAbschnitt==="aufwaermen"&&<div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–2 Spiele auswählen:</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
+          {AUFWAERM_SPIELE.map(sp=>{
+            const sel=form.aufwaermen.includes(sp.id);
+            const disabled=!sel&&form.aufwaermen.length>=2;
+            return <button key={sp.id} onClick={()=>!disabled&&setForm(p=>({...p,aufwaermen:toggleSel(p.aufwaermen,sp.id,2)}))} style={{
+              display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:9,cursor:disabled?"not-allowed":"pointer",
+              border:`2px solid ${sel?"#f59e0b":"var(--border2)"}`,
+              background:sel?"#f59e0b22":"var(--bg3)",
+              opacity:disabled?0.5:1,textAlign:"left",
+            }}>
+              <span style={{fontSize:20,flexShrink:0}}>{sp.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:sel?"#f59e0b":"var(--text)"}}>{sp.name}</div>
+                <div style={{fontSize:10,color:"var(--text3)"}}>{sp.dauer} · {sp.material}</div>
+              </div>
+              {sel&&<span style={{color:"#f59e0b",fontSize:16}}>✓</span>}
+            </button>;
+          })}
+        </div>
+        {form.aufwaermen.length>0&&<div style={{marginTop:8,fontSize:11,color:"#f59e0b",fontWeight:700}}>
+          Ausgewählt: {form.aufwaermen.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)?.name).join(", ")}
+        </div>}
+      </div>}
+
+      {/* 3. Ballgewöhnung */}
+      {activeAbschnitt==="ballgewoehnung"&&<div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–4 Übungen aus Anfänger-Bereich (Nr. 3–10):</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {BALLGEWOEHNUNG.map(ex=>{
+            const sel=form.ballgewoehnung.includes(ex.id);
+            const disabled=!sel&&form.ballgewoehnung.length>=4;
+            return <button key={ex.id} onClick={()=>!disabled&&setForm(p=>({...p,ballgewoehnung:toggleSel(p.ballgewoehnung,ex.id,4)}))} style={{
+              display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:9,cursor:disabled?"not-allowed":"pointer",
+              border:`2px solid ${sel?"#10b981":"var(--border2)"}`,
+              background:sel?"#10b98122":"var(--bg3)",
+              opacity:disabled?0.5:1,textAlign:"left",
+            }}>
+              <span style={{fontSize:16,flexShrink:0}}>🏓</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:sel?"#10b981":"var(--text)"}}>#{ex.id} {ex.name}</div>
+                <div style={{fontSize:10,color:"var(--text3)"}}>{ex.description}</div>
+              </div>
+              {sel&&<span style={{color:"#10b981",fontSize:16}}>✓</span>}
+            </button>;
+          })}
+        </div>
+      </div>}
+
+      {/* 4. Technik */}
+      {activeAbschnitt==="technik"&&<div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>2–4 Technikübungen aus Fortgeschrittenen-Bereich:</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:320,overflowY:"auto"}}>
+          {TECHNIK_EX.map(ex=>{
+            const sel=form.technik.includes(ex.id);
+            const disabled=!sel&&form.technik.length>=4;
+            return <button key={ex.id} onClick={()=>!disabled&&setForm(p=>({...p,technik:toggleSel(p.technik,ex.id,4)}))} style={{
+              display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:9,cursor:disabled?"not-allowed":"pointer",
+              border:`2px solid ${sel?"#3b82f6":"var(--border2)"}`,
+              background:sel?"#3b82f622":"var(--bg3)",
+              opacity:disabled?0.5:1,textAlign:"left",
+            }}>
+              <span style={{fontSize:16,flexShrink:0}}>⚡</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:sel?"#3b82f6":"var(--text)"}}>#{ex.id} {ex.name}</div>
+                <div style={{fontSize:10,color:"var(--text3)"}}>{ex.description}</div>
+              </div>
+              {sel&&<span style={{color:"#3b82f6",fontSize:16}}>✓</span>}
+            </button>;
+          })}
+        </div>
+      </div>}
+
+      {/* 5. Wettkampf */}
+      {activeAbschnitt==="wettkampf"&&<div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–4 Spielformen auswählen:</div>
+        {["Anfänger 6–10","Fortgeschrittene 10–14"].map(gruppe=><div key={gruppe} style={{marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:5}}>{gruppe}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {WETTKAMPF_SPIELE.filter(w=>w.gruppe===gruppe).map(w=>{
+              const sel=form.wettkampf.includes(w.id);
+              const disabled=!sel&&form.wettkampf.length>=4;
+              return <button key={w.id} onClick={()=>!disabled&&setForm(p=>({...p,wettkampf:toggleSel(p.wettkampf,w.id,4)}))} style={{
+                display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,cursor:disabled?"not-allowed":"pointer",
+                border:`2px solid ${sel?"#ef4444":"var(--border2)"}`,
+                background:sel?"#ef444422":"var(--bg3)",
+                opacity:disabled?0.5:1,textAlign:"left",
+              }}>
+                <span style={{fontSize:14,flexShrink:0}}>🏆</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:700,color:sel?"#ef4444":"var(--text)"}}>{w.name}</div>
+                  <div style={{fontSize:10,color:"var(--text3)"}}>{w.beschreibung}</div>
+                </div>
+                {sel&&<span style={{color:"#ef4444"}}>✓</span>}
+              </button>;
+            })}
+          </div>
+        </div>)}
+      </div>}
+
+      {/* 6. Abschluss */}
+      {activeAbschnitt==="abschluss"&&<div>
+        <div style={{background:"var(--bg)",borderRadius:10,padding:12,marginBottom:10,fontSize:12,color:"var(--text2)",lineHeight:1.8}}>
+          <b>Ablauf Abschluss:</b><br/>
+          🧹 Halle aufräumen, Bälle sammeln<br/>
+          🎖️ Ggf. Urkunden vergeben<br/>
+          📅 Ausblick nächste Turniere / Punktspiele<br/>
+          👋 Kurze Verabschiedung
+        </div>
+        <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Reflexionsfrage(n) für heute</label>
+        <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+          {REFLEXIONS_FRAGEN.map((f,i)=>{
+            const sel=(form.notizen.reflexion||"").includes(f);
+            return <button key={i} onClick={()=>{
+              const curr=form.notizen.reflexion||"";
+              const updated=sel?curr.replace(f,"").trim():curr+(curr?"\n":"")+f;
+              setForm(p=>({...p,notizen:{...p.notizen,reflexion:updated}}));
+            }} style={{
+              padding:"6px 10px",borderRadius:7,cursor:"pointer",textAlign:"left",fontSize:11,
+              border:`1px solid ${sel?"#8b5cf6":"var(--border2)"}`,
+              background:sel?"#8b5cf622":"var(--bg3)",
+              color:sel?"#8b5cf6":"var(--text2)",
+            }}>❓ {f}</button>;
+          })}
+        </div>
+        <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Weitere Notizen</label>
+        <textarea value={form.notizen.abschluss||""} rows={2} placeholder="Urkundenvergabe, Turnierhinweise..."
+          onChange={e=>setForm(p=>({...p,notizen:{...p.notizen,abschluss:e.target.value}}))}
+          style={{width:"100%",padding:8,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+
+        {/* Nachbereitung */}
+        <div style={{marginTop:12,borderTop:"1px solid var(--border)",paddingTop:10}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📊 Nachbereitung (nach dem Training)</div>
+          {[
+            {key:"gutGelaufen",label:"✅ Was ist gut gelaufen?",placeholder:"z.B. Aufwärmphase hat super funktioniert"},
+            {key:"wenigerGut",label:"⚠️ Was lief weniger gut?",placeholder:"z.B. Technikübungen zu komplex für Anfänger"},
+            {key:"naechstesMal",label:"📌 Für nächstes Training beachten",placeholder:"z.B. Mehr Fokus auf Rückhand"},
+          ].map(f=><div key={f.key} style={{marginBottom:8}}>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>{f.label}</label>
+            <textarea value={form.nachbereitung[f.key]||""} rows={2} placeholder={f.placeholder}
+              onChange={e=>setForm(p=>({...p,nachbereitung:{...p.nachbereitung,[f.key]:e.target.value}}))}
+              style={{width:"100%",padding:7,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+          </div>)}
+        </div>
+      </div>}
+
+      {/* Save/Cancel */}
+      <div style={{display:"flex",gap:8,marginTop:14}}>
+        <button onClick={saveEinheit} style={{flex:1,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+          💾 Einheit speichern
+        </button>
+        <button onClick={()=>{setShowForm(false);setEditId(null);setForm(null);}} style={{padding:"10px 14px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>
+          ✕
+        </button>
+      </div>
+    </div>}
+
+    {/* Liste der Einheiten */}
+    {loading?<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>Lädt...</div>
+    :sorted.length===0?<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>
+        <div style={{fontSize:40,marginBottom:8}}>📝</div>
+        <div>Noch keine Einheiten geplant</div>
+        <div style={{fontSize:12,marginTop:4}}>Erstelle deine erste Trainingseinheit!</div>
+      </div>
+    :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {sorted.map(e=>{
+        const isExp=expandedId===e.id;
+        const gc=GRUPPEN_COLORS[e.gruppe]||"#6b7280";
+        const datum=e.datum?new Date(e.datum).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}):"";
+        const awSelNames=e.aufwaermen?.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)).filter(Boolean)||[];
+        const bgSelNames=e.ballgewoehnung?.map(id=>BALLGEWOEHNUNG.find(x=>x.id===id)).filter(Boolean)||[];
+        const tkSelNames=e.technik?.map(id=>TECHNIK_EX.find(x=>x.id===id)).filter(Boolean)||[];
+        const wkSelNames=e.wettkampf?.map(id=>WETTKAMPF_SPIELE.find(x=>x.id===id)).filter(Boolean)||[];
+        const hasNachbereitung=e.nachbereitung?.gutGelaufen||e.nachbereitung?.wenigerGut||e.nachbereitung?.naechstesMal;
+
+        return <div key={e.id} style={{background:"var(--bg2)",borderRadius:13,border:"1px solid var(--border)",borderLeft:`4px solid ${gc}`,overflow:"hidden"}}>
+          {/* Header */}
+          <div onClick={()=>setExpandedId(isExp?null:e.id)} style={{padding:"11px 13px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${e.gruppe}`}</div>
+              <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {e.gruppe}</div>
+              <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
+                {awSelNames.length>0&&<span style={{fontSize:9,background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"1px 5px"}}>🏃 {awSelNames.length} Aufwärm</span>}
+                {bgSelNames.length>0&&<span style={{fontSize:9,background:"#10b98122",color:"#10b981",borderRadius:4,padding:"1px 5px"}}>🏓 {bgSelNames.length} Ballgew.</span>}
+                {tkSelNames.length>0&&<span style={{fontSize:9,background:"#3b82f622",color:"#3b82f6",borderRadius:4,padding:"1px 5px"}}>⚡ {tkSelNames.length} Technik</span>}
+                {wkSelNames.length>0&&<span style={{fontSize:9,background:"#ef444422",color:"#ef4444",borderRadius:4,padding:"1px 5px"}}>🏆 {wkSelNames.length} Wettkampf</span>}
+                {hasNachbereitung&&<span style={{fontSize:9,background:"#8b5cf622",color:"#8b5cf6",borderRadius:4,padding:"1px 5px"}}>📊 Nachbereitung</span>}
+              </div>
+            </div>
+            <span style={{color:"var(--text3)",fontSize:12}}>{isExp?"▲":"▼"}</span>
+          </div>
+
+          {/* Detail */}
+          {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"12px 14px"}}>
+            {ABSCHNITTE.map(abschnitt=>{
+              let content=null;
+              if(abschnitt.id==="begruessung"&&e.notizen?.begruessung){
+                content=<div style={{fontSize:12,color:"var(--text2)"}}>{e.notizen.begruessung}</div>;
+              } else if(abschnitt.id==="begruessung"){
+                content=<div style={{fontSize:11,color:"var(--text4)"}}>Begrüßung, Anwesenheitsliste, Gruppeneinteilung</div>;
+              } else if(abschnitt.id==="aufwaermen"&&awSelNames.length>0){
+                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {awSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#f59e0b22",color:"#f59e0b",borderRadius:6,padding:"2px 8px"}}>{s.icon} {s.name}</span>)}
+                </div>;
+              } else if(abschnitt.id==="ballgewoehnung"&&bgSelNames.length>0){
+                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {bgSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#10b98122",color:"#10b981",borderRadius:6,padding:"2px 8px"}}>🏓 {s.name}</span>)}
+                </div>;
+              } else if(abschnitt.id==="technik"&&tkSelNames.length>0){
+                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {tkSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#3b82f622",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>⚡ {s.name}</span>)}
+                </div>;
+              } else if(abschnitt.id==="wettkampf"&&wkSelNames.length>0){
+                content=<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {wkSelNames.map(s=><span key={s.id} style={{fontSize:11,background:"#ef444422",color:"#ef4444",borderRadius:6,padding:"2px 8px"}}>🏆 {s.name}</span>)}
+                </div>;
+              } else if(abschnitt.id==="abschluss"){
+                const rf=e.notizen?.reflexion;
+                content=<>
+                  {rf&&<div style={{fontSize:11,color:"#8b5cf6",marginBottom:4}}>{rf.split("\n").map((q,i)=><div key={i}>❓ {q}</div>)}</div>}
+                  {e.notizen?.abschluss&&<div style={{fontSize:11,color:"var(--text2)"}}>{e.notizen.abschluss}</div>}
+                </>;
+              }
+              if(!content) return null;
+              return <div key={abschnitt.id} style={{marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:abschnitt.color,marginBottom:4}}>{abschnitt.icon} {abschnitt.label}</div>
+                {content}
+              </div>;
+            })}
+
+            {hasNachbereitung&&<div style={{marginTop:12,borderTop:"1px solid var(--border)",paddingTop:10}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#8b5cf6",marginBottom:8}}>📊 Nachbereitung</div>
+              {e.nachbereitung?.gutGelaufen&&<div style={{marginBottom:5}}><span style={{fontSize:10,color:"#10b981",fontWeight:700}}>✅ Gut gelaufen: </span><span style={{fontSize:11,color:"var(--text2)"}}>{e.nachbereitung.gutGelaufen}</span></div>}
+              {e.nachbereitung?.wenigerGut&&<div style={{marginBottom:5}}><span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>⚠️ Weniger gut: </span><span style={{fontSize:11,color:"var(--text2)"}}>{e.nachbereitung.wenigerGut}</span></div>}
+              {e.nachbereitung?.naechstesMal&&<div><span style={{fontSize:10,color:"#3b82f6",fontWeight:700}}>📌 Nächstes Mal: </span><span style={{fontSize:11,color:"var(--text2)"}}>{e.nachbereitung.naechstesMal}</span></div>}
+            </div>}
+
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>{setForm({...e});setEditId(e.id);setShowForm(true);setActiveAbschnitt("begruessung");}} style={{flex:1,padding:"7px",background:"#3b82f622",border:"1px solid #3b82f644",borderRadius:8,color:"#3b82f6",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Bearbeiten</button>
+              <button onClick={()=>deleteEinheit(e.id)} style={{padding:"7px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,color:"#ef4444",fontSize:12,cursor:"pointer"}}>🗑️</button>
+            </div>
+          </div>}
+        </div>;
+      })}
+    </div>}
   </div>;
 }
 
