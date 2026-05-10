@@ -3207,71 +3207,129 @@ function BeobachtungenPlayerTab({player}) {
 // ─── EINHEITEN TAB ────────────────────────────────────────────────────────────
 
 const AUFWAERM_SPIELE = [
-  {id:"aw1",  name:"Raketenfänger",        icon:"🚀", alter:"6+", dauer:"10-15 Min", material:"Softbälle"},
-  {id:"aw2",  name:"Lava-Lauf",            icon:"🌋", alter:"6+", dauer:"15 Min",    material:"Reifen/Matten"},
-  {id:"aw3",  name:"Ninja-Schwänze",       icon:"🥷", alter:"6+", dauer:"10-15 Min", material:"Tücher"},
-  {id:"aw4",  name:"Piraten gegen Haie",   icon:"🏴‍☠️", alter:"6+", dauer:"15 Min",   material:"Hütchen"},
-  {id:"aw5",  name:"Farben-Blitz",         icon:"🌈", alter:"6+", dauer:"10 Min",    material:"Farbige Hütchen"},
-  {id:"aw6",  name:"Affenalarm",           icon:"🐒", alter:"6+", dauer:"15 Min",    material:"Keines"},
-  {id:"aw7",  name:"Geisterjagd",          icon:"👻", alter:"6+", dauer:"10-15 Min", material:"Leibchen"},
-  {id:"aw8",  name:"Roboter-Explosion",    icon:"🤖", alter:"6+", dauer:"15 Min",    material:"Keines"},
-  {id:"aw9",  name:"König der Reifen",     icon:"👑", alter:"6+", dauer:"15 Min",    material:"Reifen"},
-  {id:"aw10", name:"Superhelden-Fänger",   icon:"🦸", alter:"6+", dauer:"15 Min",    material:"Keines"},
-  {id:"aw11", name:"Feuer-Wasser-Blitz",   icon:"⚡", alter:"6+", dauer:"10-15 Min", material:"Keines"},
-  {id:"aw12", name:"Monster-Mix",          icon:"👾", alter:"6+", dauer:"15 Min",    material:"Keines"},
-  {id:"aw13", name:"Turbo-Zoo",            icon:"🦁", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
-  {id:"aw14", name:"Kettenblitz",          icon:"⛓️", alter:"6+", dauer:"15 Min",   material:"Keines"},
-  {id:"aw15", name:"Chaos-Transport",      icon:"🚚", alter:"6+", dauer:"15 Min",    material:"Bälle"},
-  {id:"aw16", name:"Die verrückte Ampel",  icon:"🚦", alter:"6+", dauer:"10-15 Min", material:"Keines"},
-  {id:"aw17", name:"Raketenstart",         icon:"🛸", alter:"6+", dauer:"10 Min",    material:"Keines"},
-  {id:"aw18", name:"Hütchen-Klau",         icon:"🎩", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
-  {id:"aw19", name:"Eisbären-Fang",        icon:"🐻‍❄️", alter:"6+", dauer:"15 Min", material:"Keines"},
-  {id:"aw20", name:"Weltraum-Mission",     icon:"🌍", alter:"6+", dauer:"15 Min",    material:"Matten+Hütchen"},
-  {id:"aw21", name:"Zahlen-Jäger",         icon:"🔢", alter:"6+", dauer:"10-15 Min", material:"Keines"},
-  {id:"aw22", name:"Turbo-Tunnel",         icon:"🚇", alter:"6+", dauer:"15 Min",    material:"Keines"},
-  {id:"aw23", name:"Bananenfangen",        icon:"🍌", alter:"6+", dauer:"10 Min",    material:"Softbälle"},
-  {id:"aw24", name:"Schlangenrennen",      icon:"🐍", alter:"6+", dauer:"15 Min",    material:"Hütchen"},
-  {id:"aw25", name:"Zombie-Insel",         icon:"🧟", alter:"6+", dauer:"15 Min",    material:"Matten/Reifen"},
-  {id:"aw26", name:"Der Boden ist Pudding",icon:"🍮", alter:"6+", dauer:"10-15 Min", material:"Linien/Matten"},
-  {id:"aw27", name:"Blitz-Ball",           icon:"⚾", alter:"6+", dauer:"15 Min",    material:"Softbälle"},
-  {id:"aw28", name:"Frosch-König",         icon:"🐸", alter:"6+", dauer:"10-15 Min", material:"Keines"},
-  {id:"aw29", name:"Schatzräuber",         icon:"💎", alter:"6+", dauer:"15 Min",    material:"Bälle/Hütchen"},
-  {id:"aw30", name:"Wirbelwind-Challenge", icon:"🌀", alter:"6+", dauer:"15 Min",    material:"Keines"},
+  {id:"aw1",  name:"Raketenfänger",        icon:"🚀", dauer:"10-15 Min", material:"3-6 Softbälle",        details:"Alle Kinder laufen frei durch die Halle. 2-4 Kinder sind Raketenwerfer und rollen oder werfen Softbälle flach über den Boden. Wer getroffen wird, macht 3 Hampelmänner und läuft sofort weiter. Nach einigen Minuten wechseln die Werfer. Besonders gut für: Reaktion, Ausweichen, schnelles Laufen."},
+  {id:"aw2",  name:"Lava-Lauf",            icon:"🌋", dauer:"15 Min",    material:"Reifen oder Matten",    details:"Der Boden ist Lava. Kinder bewegen sich zwischen sicheren Inseln (Reifen/Matten). Wer die Lava berührt, macht eine kleine Zusatzaufgabe und spielt weiter. Nach und nach verschwinden Inseln. Besonders gut für: Schnelligkeit und Orientierung."},
+  {id:"aw3",  name:"Ninja-Schwänze",       icon:"🥷", dauer:"10-15 Min", material:"Tücher oder Bänder",    details:"Jedes Kind trägt ein Tuch hinten in der Hose. Ziel ist es, möglichst viele Schwänze anderer Kinder zu klauen und den eigenen zu behalten. Wer keinen Schwanz mehr hat, holt sich einen neuen. Besonders gut für: Richtungswechsel und Reaktion."},
+  {id:"aw4",  name:"Piraten gegen Haie",   icon:"🏴‍☠️", dauer:"15 Min",  material:"Hütchen",               details:"Piraten bewegen sich zwischen Inseln (Hütchen). Haie versuchen sie zwischen den Inseln abzuschlagen. Gefangene machen eine kleine Aufgabe und spielen weiter. Wechsel nach 3 Minuten. Besonders gut für: Dauerbewegung."},
+  {id:"aw5",  name:"Farben-Blitz",         icon:"🌈", dauer:"10 Min",    material:"Farbige Hütchen",       details:"Der Trainer ruft Farben auf. Alle Kinder sprinten zum passenden Hütchen. Wer zuletzt ankommt, macht eine Zusatzaufgabe. Bewegungsarten können variiert werden (hüpfen, rückwärts laufen). Besonders gut für: Schnelle Reaktion."},
+  {id:"aw6",  name:"Affenalarm",           icon:"🐒", dauer:"15 Min",    material:"Keines",                details:"Die Kinder bewegen sich wie verschiedene Tiere durch die Halle (Affe, Känguru, Elefant). Auf Zuruf wechseln alle blitzschnell die Tierart. Trainer zeigt kurz vor, wie das Tier sich bewegt. Besonders gut für: Koordination und Kreativität."},
+  {id:"aw7",  name:"Geisterjagd",          icon:"👻", dauer:"10-15 Min", material:"Leibchen",              details:"Gefangene Kinder frieren ein und können durch Unterkrabbeln eines freien Kindes befreit werden. 2-3 Fänger mit Leibchen starten. Wechsel nach 3 Minuten. Besonders gut für: Teamarbeit und Bewegung."},
+  {id:"aw8",  name:"Roboter-Explosion",    icon:"🤖", dauer:"15 Min",    material:"Keines",                details:"Alle Kinder bewegen sich langsam und steif wie Roboter durch die Halle. Beim Signalwort 'Explosion' sprinten alle los. Beim Signalwort 'Stopp' wieder einfrieren als Roboter. Variation: verschiedene Signale für verschiedene Bewegungen. Besonders gut für: Tempowechsel."},
+  {id:"aw9",  name:"König der Reifen",     icon:"👑", dauer:"15 Min",    material:"Reifen",                details:"Immer ein Reifen weniger als Kinder. Nach dem Signal sucht jedes Kind schnell einen Reifen und stellt sich hinein. Wer keinen findet, scheidet aus oder macht eine Aufgabe. Ein weiterer Reifen wird entfernt. Besonders gut für: Aufmerksamkeit und Tempo."},
+  {id:"aw10", name:"Superhelden-Fänger",   icon:"🦸", dauer:"15 Min",    material:"Keines",                details:"Jedes Kind wählt eine besondere Bewegungsart (Supersprung, Flugbewegung). Fänger versuchen die Superhelden abzuschlagen. Wer abgeschlagen wird, muss 5 Sekunden in der Superheldenpose stehen bleiben. Besonders gut für: Bewegungsvielfalt."},
+  {id:"aw11", name:"Feuer-Wasser-Blitz",   icon:"⚡", dauer:"10-15 Min", material:"Keines",                details:"Der Trainer ruft verschiedene Kommandos: Feuer=alle laufen, Wasser=alle stehen still, Blitz=alle hüpfen, Sturm=alle drehen sich. Wer falsch reagiert, macht eine Zusatzaufgabe. Tempo steigern. Besonders gut für: Reaktionsfähigkeit."},
+  {id:"aw12", name:"Monster-Mix",          icon:"👾", dauer:"15 Min",    material:"Keines",                details:"Die Kinder bewegen sich wie verschiedene Monsterarten durch die Halle: Zombie (langsam, steif), Werwolf (auf allen Vieren), Dracula (Arme ausgebreitet). Trainer wechselt das Monster alle 30 Sekunden. Besonders gut für: Ganzkörperbewegung."},
+  {id:"aw13", name:"Turbo-Zoo",            icon:"🦁", dauer:"15 Min",    material:"Hütchen als Ziel",      details:"Teams von 3-4 Kindern bewegen sich als Tierherde (Löwen, Pferde, Frösche) durch die Halle. Erste Herde die alle Hütchen auf der eigenen Seite gesammelt hat, gewinnt. Besonders gut für: Beinaktivierung."},
+  {id:"aw14", name:"Kettenblitz",          icon:"⛓️",  dauer:"15 Min",    material:"Keines",                details:"1 Kind startet als Fänger. Gefangene Kinder fassen den Fänger an und bilden eine Kette. Die Kette muss zusammenhalten. Nur die Enden der Kette dürfen fangen. Ziel: alle einfangen. Besonders gut für: Teambewegung."},
+  {id:"aw15", name:"Chaos-Transport",      icon:"🚚", dauer:"15 Min",    material:"Bälle oder Gegenstände", details:"Teams transportieren möglichst viele Bälle von A nach B mit wechselnden Bewegungsarten (hüpfen, rückwärts, auf Zehenspitzen). Wer mehr Bälle in 3 Minuten transportiert, gewinnt. Besonders gut für: Koordination."},
+  {id:"aw16", name:"Die verrückte Ampel",  icon:"🚦", dauer:"10-15 Min", material:"Keines",                details:"Rot=Stopp, Gelb=langsam schleichen, Grün=sprinten. Trainer wechselt schnell. Wer falsch reagiert, macht eine Aufgabe. Variation: Farben umkehren (Grün=Stopp). Besonders gut für: Konzentration."},
+  {id:"aw17", name:"Raketenstart",         icon:"🛸", dauer:"10 Min",    material:"Keines",                details:"Alle Kinder starten aus verschiedenen Positionen: liegend, hockend, auf einem Bein stehend, mit geschlossenen Augen. Auf das Signal sprinten alle zur Hallenmitte. Erste Person gewinnt. Besonders gut für: Explosivität."},
+  {id:"aw18", name:"Hütchen-Klau",         icon:"🎩", dauer:"15 Min",    material:"Viele Hütchen",         details:"Teams haben je ein Lager mit Hütchen. Teams klauen Hütchen aus den Lagern der anderen. Eigene Hütchen dürfen nicht bewacht werden. Nach 3 Minuten: Wer hat die meisten? Besonders gut für: Dauerbewegung."},
+  {id:"aw19", name:"Eisbären-Fang",        icon:"🐻‍❄️", dauer:"15 Min", material:"Keines",                details:"Gefangene Kinder frieren ein (stehen still mit ausgebreckten Armen). Sie können von freien Kindern durch Unterlaufen befreit werden. Eisbären (Fänger) patrouillieren. Wechsel nach 3 Minuten. Besonders gut für: Hohe Aktivität."},
+  {id:"aw20", name:"Weltraum-Mission",     icon:"🌍", dauer:"15 Min",    material:"Matten und Hütchen",    details:"Kinder überwinden Asteroidenfelder (Matten auf dem Boden) und retten Energie-Kristalle (Hütchen). Teams konkurrieren wer mehr Kristalle retten kann ohne die Asteroiden zu berühren. Besonders gut für: Koordination."},
+  {id:"aw21", name:"Zahlen-Jäger",         icon:"🔢", dauer:"10-15 Min", material:"Keines",                details:"Der Trainer ruft eine Zahl. Kinder müssen sich blitzschnell in Gruppen genau dieser Größe finden. Wer keiner Gruppe angehört oder eine falsche Gruppe hat, macht eine kleine Aufgabe. Besonders gut für: Kommunikation und Tempo."},
+  {id:"aw22", name:"Turbo-Tunnel",         icon:"🚇", dauer:"15 Min",    material:"Keines",                details:"Gruppen von 4-6 Kindern bilden Tunnel mit den Beinen. Letztes Kind krabbelt durch den Tunnel und stellt sich vorne an. Wer ist zuerst am Ziel? Variation: Tunnel muss sich vorwärts bewegen. Besonders gut für: Ganzkörperaktivität."},
+  {id:"aw23", name:"Bananenfangen",        icon:"🍌", dauer:"10 Min",    material:"Softbälle",             details:"Mehrere Softbälle (Bananen) rollen kreuz und quer durch die Halle. Kinder müssen ausweichen ohne getroffen zu werden. Wer getroffen wird, macht 5 Hampelmänner. Mehr Bälle = schwieriger. Besonders gut für: Reaktion."},
+  {id:"aw24", name:"Schlangenrennen",      icon:"🐍", dauer:"15 Min",    material:"Hütchen als Parcours",  details:"Teams von 3-5 Kindern stellen sich hintereinander auf und halten sich an den Schultern fest (Schlange). Sie bewegen sich als Schlange durch einen Hüt-chen-Parcours. Welche Schlange ist am schnellsten? Besonders gut für: Koordination."},
+  {id:"aw25", name:"Zombie-Insel",         icon:"🧟", dauer:"15 Min",    material:"Matten oder Reifen",    details:"Zombies bewegen sich langsam durch die Halle. Andere Kinder fliehen und suchen sichere Inseln (Matten/Reifen). Auf der Insel sind sie sicher, aber nicht länger als 5 Sekunden. Wer angetippt wird, wird selbst zum Zombie. Besonders gut für: Richtungswechsel."},
+  {id:"aw26", name:"Der Boden ist Pudding",icon:"🍮", dauer:"10-15 Min", material:"Linien oder Matten",    details:"Bestimmte Bereiche der Halle (markiert mit Linien oder Matten) sind Pudding und dürfen nicht betreten werden. Kinder müssen springen, balancieren und ausweichen. Wer den Pudding berührt, macht eine Zusatzaufgabe. Besonders gut für: Sprungkraft."},
+  {id:"aw27", name:"Blitz-Ball",           icon:"⚾", dauer:"15 Min",    material:"Mehrere Softbälle",     details:"Viele Bälle gleichzeitig im Spiel. Kinder spielen sich gegenseitig zu und niemand darf länger als 2 Sekunden einen Ball halten. Wer einen Ball fallen lässt, macht eine kleine Aufgabe. Besonders gut für: Hohe Aktivität."},
+  {id:"aw28", name:"Frosch-König",         icon:"🐸", dauer:"10-15 Min", material:"Keines",                details:"Alle Kinder bewegen sich hüpfend (wie Frösche) durch die Halle. Der König gibt neue Bewegungsaufgaben vor: Riesenfrosch, Minifrosch, Seitwärtsfrosch. König wechselt nach 2 Minuten. Besonders gut für: Beinaktivierung."},
+  {id:"aw29", name:"Schatzräuber",         icon:"💎", dauer:"15 Min",    material:"Bälle oder Hütchen",   details:"Schätze (Bälle/Hütchen) liegen in der Hallenmitte. Teams sammeln Schätze und bringen sie ins eigene Lager. Dabei können gegnerische Schätze aus deren Lager gestohlen werden. Nach 3 Minuten zählen. Besonders gut für: Sprinten und Wenden."},
+  {id:"aw30", name:"Wirbelwind-Challenge", icon:"🌀", dauer:"15 Min",    material:"Keines",                details:"Alle 30 Sekunden wechseln die Bewegungsaufgaben: sprinten, hüpfen, krabbeln, drehen, rückwärts laufen, auf Zehenspitzen. Trainer gibt Takt vor. Alle machen gleichzeitig dieselbe Bewegung. Besonders gut für: Maximale Aktivierung."},
 ];
 
 const WETTKAMPF_SPIELE = [
-  // Anfänger 6-10 Jahre
-  {id:"wk1",  gruppe:"Anfänger 6–10",  name:"Balloon-Tischtennis",         beschreibung:"Luftballon statt Ball — langsam & spaßig, Grundstellung üben"},
-  {id:"wk2",  gruppe:"Anfänger 6–10",  name:"Boden-Rallye",                beschreibung:"Ball einmal auftippen lassen vor jedem Schlag"},
-  {id:"wk3",  gruppe:"Anfänger 6–10",  name:"Kooperations-Rallye",         beschreibung:"So viele Ballwechsel wie möglich gemeinsam schaffen"},
-  {id:"wk4",  gruppe:"Anfänger 6–10",  name:"Zieltreffer-Duell",           beschreibung:"Kleines Ziel (Hütchen) auf der Tischseite des Gegners treffen"},
-  {id:"wk5",  gruppe:"Anfänger 6–10",  name:"Tischtennis-Bowling",         beschreibung:"Ball über den Tisch rollen und Hütchen umwerfen"},
-  {id:"wk6",  gruppe:"Anfänger 6–10",  name:"Aufschlag-König",             beschreibung:"Wer trifft 5× den gegnerischen Tisch? Punkte für's Treffen"},
-  {id:"wk7",  gruppe:"Anfänger 6–10",  name:"Linienturnier",               beschreibung:"Punkt nur wenn Ball auf die weit entfernte Grundlinie trifft"},
-  {id:"wk8",  gruppe:"Anfänger 6–10",  name:"Rückhand-Battle",             beschreibung:"Nur Rückhand spielen — wer macht 3 Punkte?"},
-  {id:"wk9",  gruppe:"Anfänger 6–10",  name:"Vorhand-Battle",              beschreibung:"Nur Vorhand spielen — wer macht 3 Punkte?"},
-  {id:"wk10", gruppe:"Anfänger 6–10",  name:"Endlos-Turnier",              beschreibung:"Punkte sammeln, nach jedem Punkt weiterrotieren"},
-  {id:"wk11", gruppe:"Anfänger 6–10",  name:"Zwei-Felder-Duell",           beschreibung:"Tisch in 2 Hälften geteilt — nur in die richtige Hälfte spielen"},
-  {id:"wk12", gruppe:"Anfänger 6–10",  name:"Tischtennnis-Darts",          beschreibung:"Ringe auf dem Tisch, Punkte je nach getroffener Zone"},
-  {id:"wk13", gruppe:"Anfänger 6–10",  name:"Ball-Halten-Wettbewerb",      beschreibung:"Wer kann den Ball am längsten alleine auf dem Schläger halten?"},
-  {id:"wk14", gruppe:"Anfänger 6–10",  name:"Spiegelspiel",                beschreibung:"Trainer spielt vor, Kinder spiegeln — dann gegenseitig"},
-  {id:"wk15", gruppe:"Anfänger 6–10",  name:"Kerzen-Bowling",              beschreibung:"Plastikhütchen als Kegel, Ball rollen und alle umwerfen"},
-  // Fortgeschrittene 10-14 Jahre
-  {id:"wk16", gruppe:"Fortgeschrittene 10–14", name:"21er-Turnier",        beschreibung:"Klassisch bis 21, Aufschlag wechselt alle 5 Punkte"},
-  {id:"wk17", gruppe:"Fortgeschrittene 10–14", name:"Zonenduell",          beschreibung:"Punkte nur wenn in markierte Zonen gespielt wird"},
-  {id:"wk18", gruppe:"Fortgeschrittene 10–14", name:"Aufschlag-Varianten", beschreibung:"Nur bestimmte Aufschlagtechniken erlaubt — abwechselnd"},
-  {id:"wk19", gruppe:"Fortgeschrittene 10–14", name:"Konter-Battle",       beschreibung:"Nur Konterschläge — kein Aufschlagtopspin erlaubt"},
-  {id:"wk20", gruppe:"Fortgeschrittene 10–14", name:"Diagonal-Duell",      beschreibung:"Nur diagonal spielen — Fehler bei Parallelball gibt Punkt"},
-  {id:"wk21", gruppe:"Fortgeschrittene 10–14", name:"Parallel-Duell",      beschreibung:"Nur parallel spielen — Fehler bei Diagonalball gibt Punkt"},
-  {id:"wk22", gruppe:"Fortgeschrittene 10–14", name:"Topspin-König",       beschreibung:"Punkt nur wenn Topspin gespielt wird — sonst neutraler Ball"},
-  {id:"wk23", gruppe:"Fortgeschrittene 10–14", name:"Runden-Turnier",      beschreibung:"Jeder gegen jeden, Tabelle führen, Meister ermitteln"},
-  {id:"wk24", gruppe:"Fortgeschrittene 10–14", name:"Doppel-Turnier",      beschreibung:"Zufällige Doppelpaare, klassisches Doppelturnier"},
-  {id:"wk25", gruppe:"Fortgeschrittene 10–14", name:"Handicap-Match",      beschreibung:"Stärkerer Spieler startet mit -5 Punkten"},
-  {id:"wk26", gruppe:"Fortgeschrittene 10–14", name:"Zonen-Fünfer",        beschreibung:"Tisch in 5 Zonen geteilt, Punkte nach getroffener Zone"},
-  {id:"wk27", gruppe:"Fortgeschrittene 10–14", name:"Schweizer System",    beschreibung:"4 Runden à 5 Punkte — immer ähnlich starke Spieler"},
-  {id:"wk28", gruppe:"Fortgeschrittene 10–14", name:"Comeback-King",       beschreibung:"Startet immer mit 0:5 Rückstand — wer dreht noch?"},
-  {id:"wk29", gruppe:"Fortgeschrittene 10–14", name:"Stille-Post-Duell",   beschreibung:"Trainer gibt Taktik vor — Kinder setzen sie sofort um"},
-  {id:"wk30", gruppe:"Fortgeschrittene 10–14", name:"Meisterschaft",       beschreibung:"Vollständiges Miniturnier mit Auf-/Abstieg nach jeder Runde"},
+  {id:"wk1",  gruppe:"Anfänger", name:"Balloon-Tischtennis",    icon:"🎈",
+    beschreibung:"Luftballon statt Ball — langsam & spaßig",
+    details:"Material: Luftballon. Ablauf: Jedes Kind bekommt einen Luftballon als Ball. Gespielt wird normal am Tisch oder auf dem Boden. Der Ballon fliegt langsam — genug Zeit für Grundstellung und Schlagtechnik. Variation: Wer schlägt den Ballon öfter hin und her ohne Fehler? Besonders gut für: Motivation, Grundstellung, erster Schlagkontakt."},
+  {id:"wk2",  gruppe:"Anfänger", name:"Boden-Rallye",           icon:"⛹️",
+    beschreibung:"Ball einmal auftippen lassen vor jedem Schlag",
+    details:"Material: Tischtennisball und Schläger. Ablauf: Wie normale Rallye, aber vor jedem Schlag darf der Ball einmal auf den Boden tippen. Das verlangsamt das Spiel und gibt Zeit zum Vorbereiten. Punkte für jeden erfolgreichen Ballwechsel. Besonders gut für: Timing, Reaktion, Grundschläge."},
+  {id:"wk3",  gruppe:"Anfänger", name:"Kooperations-Rallye",    icon:"🤝",
+    beschreibung:"So viele Ballwechsel wie möglich gemeinsam schaffen",
+    details:"Material: Tischtennisball und Schläger. Ablauf: Kein Gegeneinander — beide Seiten versuchen den Ball möglichst oft hin und her zu spielen ohne Fehler. Ziel: eigenen Rekord brechen. Trainer zählt laut mit. Variation: Zeitlimit 1 Minute. Besonders gut für: Teamwork, Konzentration, Ausdauer."},
+  {id:"wk4",  gruppe:"Anfänger", name:"Zieltreffer-Duell",      icon:"🎯",
+    beschreibung:"Kleines Ziel (Hütchen) auf Gegner-Tischseite treffen",
+    details:"Material: 1 Hütchen pro Tisch. Ablauf: Ein Hütchen steht in der Mitte der gegnerischen Tischseite. Wer das Hütchen trifft, bekommt 2 Punkte. Normaler Treffer = 1 Punkt. Bis 10 Punkte spielen. Besonders gut für: Zielgenauigkeit, Motivation, Freude am Treffen."},
+  {id:"wk5",  gruppe:"Anfänger", name:"Tischtennis-Bowling",    icon:"🎳",
+    beschreibung:"Ball über den Tisch rollen und Hütchen umwerfen",
+    details:"Material: 6 Hütchen, Tischtennisball. Ablauf: Hütchen werden auf der Grundlinie des Gegners aufgestellt. Ball wird über den Tisch gerollt (nicht geschlagen) um die Kegel umzuwerfen. Jeder Spieler hat 3 Versuche. Wer mehr Kegel trifft, gewinnt. Besonders gut für: Feinmotorik, Spaß, Wurfgefühl."},
+  {id:"wk6",  gruppe:"Anfänger", name:"Aufschlag-König",        icon:"👑",
+    beschreibung:"Wer trifft 5× den gegnerischen Tisch?",
+    details:"Material: Tischtennisball. Ablauf: Jedes Kind macht 5 Aufschläge. Wer den Ball auf die gegnerische Tischseite bringt, bekommt einen Punkt. Wer zuerst 5 Punkte hat, ist Aufschlag-König. Alle dürfen ihre eigene Aufschlagposition wählen. Besonders gut für: Aufschlag üben, Erfolgserlebnisse schaffen."},
+  {id:"wk7",  gruppe:"Anfänger", name:"Linienturnier",          icon:"📏",
+    beschreibung:"Punkt nur wenn Ball auf die Grundlinie trifft",
+    details:"Material: Tischtennisball. Ablauf: Normales Spiel, aber Punkte gibt es nur wenn der Ball die gegnerische Grundlinie berührt oder überfliegt. Sonst kein Punkt. Fördert gezieltes, langes Spiel. Bis 7 Punkte. Besonders gut für: Längeneinschätzung, Schlagstärke."},
+  {id:"wk8",  gruppe:"Anfänger", name:"Rückhand-Battle",        icon:"🤜",
+    beschreibung:"Nur Rückhand spielen — wer macht 3 Punkte?",
+    details:"Material: Tischtennisball. Ablauf: Beide Spieler spielen ausschließlich mit Rückhand. Vorhand = Fehler, Punkt für den Gegner. Bis 5 Punkte. Trainer kann Aufschlag machen. Besonders gut für: Rückhand isoliert üben, taktisches Bewusstsein."},
+  {id:"wk9",  gruppe:"Anfänger", name:"Vorhand-Battle",         icon:"🤛",
+    beschreibung:"Nur Vorhand spielen — wer macht 3 Punkte?",
+    details:"Material: Tischtennisball. Ablauf: Beide Spieler spielen ausschließlich mit Vorhand. Rückhand = Fehler, Punkt für den Gegner. Beide Spieler stehen leicht versetzt. Bis 5 Punkte. Besonders gut für: Vorhand isoliert üben."},
+  {id:"wk10", gruppe:"Anfänger", name:"Endlos-Turnier",         icon:"🔄",
+    beschreibung:"Punkte sammeln, nach jedem Punkt weiterrotieren",
+    details:"Material: Alle Tische. Ablauf: Gewinner bleibt, Verlierer wechselt zum nächsten Tisch (im Uhrzeigersinn). Jeder sammelt Punkte über alle Spiele hinweg. Nach 15 Minuten: Wer hat die meisten Punkte? Besonders gut für: Viele Spielsituationen, Selbstbewusstsein stärken."},
+  {id:"wk11", gruppe:"Anfänger", name:"Zwei-Felder-Duell",      icon:"✂️",
+    beschreibung:"Tisch in 2 Hälften — nur in die richtige Hälfte spielen",
+    details:"Material: Klebeband oder Hütchen als Markierung. Ablauf: Tisch wird längs oder quer in 2 Felder geteilt. Spieler einigen sich vorher welches Feld erlaubt ist. Ball im falschen Feld = Fehler. Variation: Feld nach jedem Punkt wechseln. Besonders gut für: Zielgenauigkeit, Platzierung."},
+  {id:"wk12", gruppe:"Anfänger", name:"Tischtennis-Darts",      icon:"🎯",
+    beschreibung:"Ringe auf dem Tisch, Punkte je nach Zone",
+    details:"Material: Klebeband für Zonen, Tischtennisball. Ablauf: Auf der Tischseite des Gegners werden 3 Zonen markiert (innen=3P, mitte=2P, außen=1P). Jeder Spieler macht 5 gezielte Aufschläge oder Schläge. Wer mehr Punkte sammelt, gewinnt. Besonders gut für: Präzision, Motivation."},
+  {id:"wk13", gruppe:"Anfänger", name:"Ball-Halten-Wettbewerb", icon:"⏱️",
+    beschreibung:"Ball am längsten auf dem Schläger halten",
+    details:"Material: Tischtennisball und Schläger. Ablauf: Jeder Spieler balanciert den Ball auf dem Schläger und geht dabei durch die Halle. Wer den Ball fallen lässt, scheidet aus oder zählt die Zeit neu. Variation: Hindernisse überwinden. Besonders gut für: Konzentration, Gleichgewicht, Ballgefühl."},
+  {id:"wk14", gruppe:"Anfänger", name:"Spiegelspiel",           icon:"🪞",
+    beschreibung:"Trainer spielt vor — Kinder spiegeln, dann gegenseitig",
+    details:"Material: Tischtennisball und Schläger. Ablauf: Trainer schlägt in verschiedene Ecken. Kinder versuchen denselben Schlag zu spiegeln (selbe Richtung, selbe Stärke). Dann spielen zwei Kinder gegeneinander — einer macht vor, der andere spiegelt. Besonders gut für: Beobachtungsvermögen, Schlagtechnik."},
+  {id:"wk15", gruppe:"Anfänger", name:"Kerzen-Bowling",         icon:"🕯️",
+    beschreibung:"Hütchen als Kegel aufstellen und umrollen",
+    details:"Material: Hütchen, Tischtennisball. Ablauf: 6 Hütchen werden auf dem Tisch aufgestellt. Ball wird von der Grundlinie gerollt (nicht geschlagen). Wer alle Kegel mit weniger Versuchen umwirft, gewinnt. Variation: Ball über Netz rollen. Besonders gut für: Präzision, Feinmotorik."},
+  {id:"wk16", gruppe:"Fortgeschrittene", name:"21er-Turnier",          icon:"🔢",
+    beschreibung:"Klassisch bis 21, Aufschlag wechselt alle 5 Punkte",
+    details:"Material: Tischtennisball. Ablauf: Klassisches Tischtennis bis 21 Punkte, 2 Punkte Vorsprung erforderlich. Aufschlag wechselt alle 5 Punkte (ab 20:20 jede Runde). Gewinner bleibt, Nächster kommt. Besonders gut für: Wettkampferfahrung, Regelkenntnisse."},
+  {id:"wk17", gruppe:"Fortgeschrittene", name:"Zonenduell",             icon:"🗺️",
+    beschreibung:"Punkte nur wenn in markierte Zonen gespielt wird",
+    details:"Material: Klebeband, Tischtennisball. Ablauf: Tisch wird in 4 Zonen eingeteilt. Vor dem Spiel werden 2 Zonen als Pflichtzonen definiert. Ball nur in Pflichtzone = 2 Punkte, andere Seite = 1 Punkt, Netz = 0. Wechselt alle 3 Minuten. Besonders gut für: Platzierung, taktisches Denken."},
+  {id:"wk18", gruppe:"Fortgeschrittene", name:"Aufschlag-Varianten",    icon:"🌀",
+    beschreibung:"Nur bestimmte Aufschlagtechniken erlaubt",
+    details:"Material: Tischtennisball. Ablauf: Trainer bestimmt die Aufschlagform (z.B. nur Unterschnitt, nur Seitenschnitt, nur langer Aufschlag). Punktestand bis 11. Jede Runde andere Aufschlagtechnik. Besonders gut für: Aufschlagtechnik vertiefen, taktische Variabilität."},
+  {id:"wk19", gruppe:"Fortgeschrittene", name:"Konter-Battle",          icon:"⚔️",
+    beschreibung:"Nur Konterschläge — kein Topspin erlaubt",
+    details:"Material: Tischtennisball. Ablauf: Beide Spieler spielen ausschließlich Konterschläge (flach, schnell, keine Rotation). Topspin = Fehler, Punkt für Gegner. Bis 11 Punkte. Fördert schnelle Reaktion und klare Schlagtechnik. Besonders gut für: Kontertechnik, Reflexe."},
+  {id:"wk20", gruppe:"Fortgeschrittene", name:"Diagonal-Duell",         icon:"↗️",
+    beschreibung:"Nur diagonal spielen",
+    details:"Material: Tischtennisball. Ablauf: Beide Spieler spielen ausschließlich diagonal. Parallelball = Fehler, Punkt für Gegner. Aufschlag diagonal. Bis 11 Punkte. Variation: Nur Vorhand-diagonal oder Rückhand-diagonal. Besonders gut für: Diagonalspielen, Taktik."},
+  {id:"wk21", gruppe:"Fortgeschrittene", name:"Parallel-Duell",         icon:"↕️",
+    beschreibung:"Nur parallel spielen",
+    details:"Material: Tischtennisball. Ablauf: Beide Spieler spielen ausschließlich parallel (gerade). Diagonalball = Fehler, Punkt für Gegner. Bis 11 Punkte. Gut kombinierbar nach dem Diagonal-Duell. Besonders gut für: Parallelspielen, Bahngefühl."},
+  {id:"wk22", gruppe:"Fortgeschrittene", name:"Topspin-König",          icon:"🌊",
+    beschreibung:"Punkt nur wenn Topspin gespielt wird",
+    details:"Material: Tischtennisball. Ablauf: Jeder Punkt zählt nur wenn der Angriff mit Topspin gespielt wurde. Blocker-Punkte zählen nicht. Bis 15 Punkte. Trainer kann prüfen ob Rotation vorhanden ist. Besonders gut für: Topspin-Motivation, Angriffsspiel."},
+  {id:"wk23", gruppe:"Fortgeschrittene", name:"Runden-Turnier",         icon:"🏅",
+    beschreibung:"Jeder gegen jeden, Tabelle führen",
+    details:"Material: Whiteboard oder Zettel. Ablauf: Alle Spieler spielen einmal gegeneinander (Jeder-gegen-Jeden). Bis 11 Punkte. 3 Punkte für Sieg, 1 für Unentschieden. Am Ende Tabelle auswerten. Besonders gut für: Wettkampferfahrung, Fairplay."},
+  {id:"wk24", gruppe:"Fortgeschrittene", name:"Doppel-Turnier",         icon:"👫",
+    beschreibung:"Zufällige Doppelpaare, klassisches Doppelturnier",
+    details:"Material: Los-System (Zettel). Ablauf: Zufällige Doppelpaare auslosen. Doppelturnier bis 21. Aufschlag wechselt nach 5 Punkten, innerhalb eines Paares abwechselnd schlagen. Besonders gut für: Teamgeist, Doppelregeln kennenlernen."},
+  {id:"wk25", gruppe:"Fortgeschrittene", name:"Handicap-Match",         icon:"⚖️",
+    beschreibung:"Stärkerer Spieler startet mit -5 Punkten",
+    details:"Material: Tischtennisball. Ablauf: Stärkerer Spieler startet bei -5 (oder mehr), schwächerer bei 0. Bis 11 Punkte. Handicap kann angepasst werden. Hält Motivation beider Spieler hoch. Besonders gut für: Ausgeglichene Duelle, Fairness."},
+  {id:"wk26", gruppe:"Fortgeschrittene", name:"Zonen-Fünfer",           icon:"5️⃣",
+    beschreibung:"Tisch in 5 Zonen, Punkte nach getroffener Zone",
+    details:"Material: Klebeband. Ablauf: Tisch in 5 Zonen (1-5 Punkte) einteilen, hintere Ecken = 5P. Aufschlag muss in Zone landen. Pro Runde 5 Aufschläge, Punkte summieren. Wechseln. Besonders gut für: Präzision, Strategie beim Aufschlag."},
+  {id:"wk27", gruppe:"Fortgeschrittene", name:"Schweizer System",       icon:"🇨🇭",
+    beschreibung:"4 Runden à 5 Punkte — immer ähnlich starke Spieler",
+    details:"Material: Zettel mit Paarungen. Ablauf: Runde 1 zufällig. Ab Runde 2 spielen Gewinner gegen Gewinner, Verlierer gegen Verlierer. 4 Runden à 5 Punkte. Gesamtpunkte addieren. Besonders gut für: Viele Spiele, immer passende Gegner."},
+  {id:"wk28", gruppe:"Fortgeschrittene", name:"Comeback-King",          icon:"📈",
+    beschreibung:"Startet immer mit 0:5 Rückstand",
+    details:"Material: Tischtennisball. Ablauf: Spieler A startet immer mit 0:5 Rückstand und muss von hinten kommen. Bis 11 Punkte. Dann tauschen. Zählt wie oft der Rückstand aufgeholt wird. Besonders gut für: Mentalstärke, Comeback-Fähigkeit."},
+  {id:"wk29", gruppe:"Fortgeschrittene", name:"Stille-Post-Duell",      icon:"🗣️",
+    beschreibung:"Trainer gibt Taktik vor — sofort umsetzen",
+    details:"Material: Tischtennisball. Ablauf: Trainer flüstert vor dem Punkt einen taktischen Auftrag (z.B. 'spiel kurz dann lang' oder 'Aufschlag in die Rückhand'). Spieler setzt es um. Nach 5 Punkten neuer Auftrag. Besonders gut für: Taktikverständnis, Spielintelligenz."},
+  {id:"wk30", gruppe:"Fortgeschrittene", name:"Meisterschaft",          icon:"🏆",
+    beschreibung:"Miniturnier mit Auf-/Abstieg nach jeder Runde",
+    details:"Material: Alle Tische, Nummerierung. Ablauf: Tisch 1 = Königstisch. Gewinner steigt auf (zu niedrigerem Tisch = besser), Verlierer steigt ab. Jeder spielt bis 5. Nach 20 Minuten: Wer sitzt am Königstisch? Besonders gut für: Motivation, Wettkampfatmosphäre."},
 ];
 
 const REFLEXIONS_FRAGEN = [
@@ -3325,6 +3383,22 @@ function EinheitenTab({user}) {
       titel:"", gruppe:"Anfänger", datum:todayStr,
       aufwaermen:[], ballgewoehnung:[], technik:[], wettkampf:[],
       notizen:{begruessung:"",abschluss:"",reflexion:""},
+      nachbereitung:{gutGelaufen:"",wenigerGut:"",naechstesMal:""},
+      status:"geplant",
+    };
+  }
+
+  function dupForm(e){
+    const todayStr=new Date().toLocaleDateString("sv");
+    return {
+      titel:(e.titel?e.titel+" (Kopie)":"Kopie"),
+      gruppe:e.gruppe, datum:todayStr,
+      aufwaermen:[...(e.aufwaermen||[])],
+      ballgewoehnung:[...(e.ballgewoehnung||[])],
+      technik:[...(e.technik||[])],
+      wettkampf:[...(e.wettkampf||[])],
+      notizen:{begruessung:e.notizen?.begruessung||"",abschluss:e.notizen?.abschluss||"",reflexion:e.notizen?.reflexion||""},
+      // Nachbereitung wird geleert (Punkt 7)
       nachbereitung:{gutGelaufen:"",wenigerGut:"",naechstesMal:""},
       status:"geplant",
     };
@@ -3385,7 +3459,7 @@ function EinheitenTab({user}) {
         <div>
           <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Gruppe</label>
           <select value={form.gruppe} onChange={e=>setForm(p=>({...p,gruppe:e.target.value}))} style={{fontSize:13}}>
-            {["Anfänger","Fortgeschrittene","Profis","Trainer"].map(g=><option key={g}>{g}</option>)}
+            {["Anfänger","Fortgeschrittene","Profis"].map(g=><option key={g}>{g}</option>)}
           </select>
         </div>
         <div>
@@ -3431,28 +3505,34 @@ function EinheitenTab({user}) {
 
       {/* 2. Aufwärmen */}
       {activeAbschnitt==="aufwaermen"&&<div>
-        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–2 Spiele auswählen:</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–2 Spiele auswählen (antippen für Details):</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
           {AUFWAERM_SPIELE.map(sp=>{
             const sel=form.aufwaermen.includes(sp.id);
             const disabled=!sel&&form.aufwaermen.length>=2;
-            return <button key={sp.id} onClick={()=>!disabled&&setForm(p=>({...p,aufwaermen:toggleSel(p.aufwaermen,sp.id,2)}))} style={{
-              display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:9,cursor:disabled?"not-allowed":"pointer",
-              border:`2px solid ${sel?"#f59e0b":"var(--border2)"}`,
-              background:sel?"#f59e0b22":"var(--bg3)",
-              opacity:disabled?0.5:1,textAlign:"left",
-            }}>
-              <span style={{fontSize:20,flexShrink:0}}>{sp.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12,fontWeight:700,color:sel?"#f59e0b":"var(--text)"}}>{sp.name}</div>
-                <div style={{fontSize:10,color:"var(--text3)"}}>{sp.dauer} · {sp.material}</div>
+            const isExpAW=expandedId===("aw_"+sp.id);
+            return <div key={sp.id} style={{borderRadius:9,border:`2px solid ${sel?"#f59e0b":"var(--border2)"}`,background:sel?"#f59e0b22":"var(--bg3)",opacity:disabled?0.5:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer"}}
+                onClick={()=>setExpandedId(isExpAW?null:("aw_"+sp.id))}>
+                <span style={{fontSize:20,flexShrink:0}}>{sp.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:700,color:sel?"#f59e0b":"var(--text)"}}>{sp.name}</div>
+                  <div style={{fontSize:10,color:"var(--text3)"}}>{sp.dauer} · {sp.material}</div>
+                </div>
+                <button onClick={e=>{e.stopPropagation();!disabled&&setForm(p=>({...p,aufwaermen:toggleSel(p.aufwaermen,sp.id,2)}))} } style={{
+                  flexShrink:0,padding:"4px 8px",borderRadius:7,border:`1px solid ${sel?"#f59e0b":"var(--border2)"}`,
+                  background:sel?"#f59e0b":"var(--bg2)",color:sel?"#fff":"var(--text3)",fontSize:11,cursor:"pointer",
+                }}>{sel?"✓ Gewählt":"+ Wählen"}</button>
+                <span style={{color:"var(--text4)",fontSize:10}}>{isExpAW?"▲":"▼"}</span>
               </div>
-              {sel&&<span style={{color:"#f59e0b",fontSize:16}}>✓</span>}
-            </button>;
+              {isExpAW&&<div style={{padding:"0 12px 10px",borderTop:"1px solid var(--border)",marginTop:0}}>
+                <p style={{fontSize:11,color:"var(--text2)",lineHeight:1.6,margin:"8px 0 0"}}>{sp.details}</p>
+              </div>}
+            </div>;
           })}
         </div>
         {form.aufwaermen.length>0&&<div style={{marginTop:8,fontSize:11,color:"#f59e0b",fontWeight:700}}>
-          Ausgewählt: {form.aufwaermen.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)?.name).join(", ")}
+          ✓ {form.aufwaermen.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)?.name).join(" + ")}
         </div>}
       </div>}
 
@@ -3506,29 +3586,40 @@ function EinheitenTab({user}) {
 
       {/* 5. Wettkampf */}
       {activeAbschnitt==="wettkampf"&&<div>
-        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–4 Spielformen auswählen:</div>
-        {["Anfänger 6–10","Fortgeschrittene 10–14"].map(gruppe=><div key={gruppe} style={{marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:5}}>{gruppe}</div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            {WETTKAMPF_SPIELE.filter(w=>w.gruppe===gruppe).map(w=>{
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>1–4 Spielformen auswählen (antippen für Details):</div>
+        {(()=>{
+          // Punkt 4: Filter by selected gruppe
+          const isAnfaenger = form.gruppe==="Anfänger";
+          const isProfi = form.gruppe==="Profis";
+          // Anfänger → nur Anfänger-Wettkämpfe; Profis/Fortgeschrittene → nur Fortgeschrittene-Wettkämpfe
+          const gruppeFilter = isAnfaenger ? "Anfänger" : "Fortgeschrittene";
+          const filtered = WETTKAMPF_SPIELE.filter(w=>w.gruppe===gruppeFilter);
+          return <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:360,overflowY:"auto"}}>
+            {filtered.map(w=>{
               const sel=form.wettkampf.includes(w.id);
               const disabled=!sel&&form.wettkampf.length>=4;
-              return <button key={w.id} onClick={()=>!disabled&&setForm(p=>({...p,wettkampf:toggleSel(p.wettkampf,w.id,4)}))} style={{
-                display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,cursor:disabled?"not-allowed":"pointer",
-                border:`2px solid ${sel?"#ef4444":"var(--border2)"}`,
-                background:sel?"#ef444422":"var(--bg3)",
-                opacity:disabled?0.5:1,textAlign:"left",
-              }}>
-                <span style={{fontSize:14,flexShrink:0}}>🏆</span>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:700,color:sel?"#ef4444":"var(--text)"}}>{w.name}</div>
-                  <div style={{fontSize:10,color:"var(--text3)"}}>{w.beschreibung}</div>
+              const isExpWK=expandedId===("wk_"+w.id);
+              return <div key={w.id} style={{borderRadius:9,border:`2px solid ${sel?"#ef4444":"var(--border2)"}`,background:sel?"#ef444422":"var(--bg3)",opacity:disabled?0.5:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",cursor:"pointer"}}
+                  onClick={()=>setExpandedId(isExpWK?null:("wk_"+w.id))}>
+                  <span style={{fontSize:16,flexShrink:0}}>{w.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,color:sel?"#ef4444":"var(--text)"}}>{w.name}</div>
+                    <div style={{fontSize:10,color:"var(--text3)"}}>{w.beschreibung}</div>
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();!disabled&&setForm(p=>({...p,wettkampf:toggleSel(p.wettkampf,w.id,4)}))}} style={{
+                    flexShrink:0,padding:"4px 8px",borderRadius:7,border:`1px solid ${sel?"#ef4444":"var(--border2)"}`,
+                    background:sel?"#ef4444":"var(--bg2)",color:sel?"#fff":"var(--text3)",fontSize:11,cursor:"pointer",
+                  }}>{sel?"✓":"+"}</button>
+                  <span style={{color:"var(--text4)",fontSize:10}}>{isExpWK?"▲":"▼"}</span>
                 </div>
-                {sel&&<span style={{color:"#ef4444"}}>✓</span>}
-              </button>;
+                {isExpWK&&<div style={{padding:"0 10px 10px",borderTop:"1px solid var(--border)"}}>
+                  <p style={{fontSize:11,color:"var(--text2)",lineHeight:1.6,margin:"8px 0 0"}}>{w.details}</p>
+                </div>}
+              </div>;
             })}
-          </div>
-        </div>)}
+          </div>;
+        })()}
       </div>}
 
       {/* 6. Abschluss */}
@@ -3670,6 +3761,7 @@ function EinheitenTab({user}) {
 
             <div style={{display:"flex",gap:8,marginTop:12}}>
               <button onClick={()=>{setForm({...e});setEditId(e.id);setShowForm(true);setActiveAbschnitt("begruessung");}} style={{flex:1,padding:"7px",background:"#3b82f622",border:"1px solid #3b82f644",borderRadius:8,color:"#3b82f6",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Bearbeiten</button>
+              <button onClick={()=>{setForm(dupForm(e));setEditId(null);setShowForm(true);setActiveAbschnitt("begruessung");}} style={{flex:1,padding:"7px",background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,color:"#10b981",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Duplizieren</button>
               <button onClick={()=>deleteEinheit(e.id)} style={{padding:"7px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,color:"#ef4444",fontSize:12,cursor:"pointer"}}>🗑️</button>
             </div>
           </div>}
