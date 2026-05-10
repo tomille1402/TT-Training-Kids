@@ -3482,6 +3482,11 @@ function EinheitenTab({user}) {
           background:activeAbschnitt===a.id?a.color+"22":"transparent",
           color:activeAbschnitt===a.id?a.color:"var(--text3)",
         }}>{a.icon}</button>)}
+        {/* Punkt 2: Zwischenspeichern jederzeit */}
+        <button onClick={saveEinheit} style={{
+          flexShrink:0,marginLeft:"auto",padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+          border:"2px solid #10b981",background:"#10b98122",color:"#10b981",
+        }}>💾 Speichern</button>
       </div>
 
       {/* Abschnitt-Label */}
@@ -3600,9 +3605,9 @@ function EinheitenTab({user}) {
               const disabled=!sel&&form.wettkampf.length>=4;
               const isExpWK=expandedId===("wk_"+w.id);
               return <div key={w.id} style={{borderRadius:9,border:`2px solid ${sel?"#ef4444":"var(--border2)"}`,background:sel?"#ef444422":"var(--bg3)",opacity:disabled?0.5:1}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",cursor:"pointer"}}
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer"}}
                   onClick={()=>setExpandedId(isExpWK?null:("wk_"+w.id))}>
-                  <span style={{fontSize:16,flexShrink:0}}>{w.icon}</span>
+                  <span style={{fontSize:20,flexShrink:0}}>{w.icon}</span>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:700,color:sel?"#ef4444":"var(--text)"}}>{w.name}</div>
                     <div style={{fontSize:10,color:"var(--text3)"}}>{w.beschreibung}</div>
@@ -3610,10 +3615,10 @@ function EinheitenTab({user}) {
                   <button onClick={e=>{e.stopPropagation();!disabled&&setForm(p=>({...p,wettkampf:toggleSel(p.wettkampf,w.id,4)}))}} style={{
                     flexShrink:0,padding:"4px 8px",borderRadius:7,border:`1px solid ${sel?"#ef4444":"var(--border2)"}`,
                     background:sel?"#ef4444":"var(--bg2)",color:sel?"#fff":"var(--text3)",fontSize:11,cursor:"pointer",
-                  }}>{sel?"✓":"+"}</button>
+                  }}>{sel?"✓ Gewählt":"+ Wählen"}</button>
                   <span style={{color:"var(--text4)",fontSize:10}}>{isExpWK?"▲":"▼"}</span>
                 </div>
-                {isExpWK&&<div style={{padding:"0 10px 10px",borderTop:"1px solid var(--border)"}}>
+                {isExpWK&&<div style={{padding:"0 12px 10px",borderTop:"1px solid var(--border)",marginTop:0}}>
                   <p style={{fontSize:11,color:"var(--text2)",lineHeight:1.6,margin:"8px 0 0"}}>{w.details}</p>
                 </div>}
               </div>;
@@ -3786,18 +3791,20 @@ function BirthdayBtn({players, attendance}) {
     return [...days].reverse().find(d=>d<=todayStr) || null;
   }
 
-  // Collect birthdays since each player's last training
+  // Use single lastTraining date (most recent across all groups) for consistent window
+  const allDays2 = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
+  const lastTrainingDay = [...allDays2].reverse().find(d=>d<=todayStr) || allDays2[0];
+  const since = lastTrainingDay ? new Date(lastTrainingDay) : today;
+  since.setHours(0,0,0,0);
+
   const recentBirthdays = [];
   const activePlayers = players.filter(p=>p.birthdate && p.status!=="passiv" && p.group!=="Erwachsene");
   for (const p of activePlayers) {
-    const lastDay = getLastTrainingForPlayer(p);
-    if (!lastDay) continue;
-    const since = new Date(lastDay); since.setHours(0,0,0,0);
     const bd = new Date(p.birthdate);
     const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
     thisYear.setHours(0,0,0,0);
     if (thisYear >= since && thisYear <= today) {
-      recentBirthdays.push({...p, age: today.getFullYear()-bd.getFullYear(), bday:thisYear, lastDay});
+      recentBirthdays.push({...p, age: today.getFullYear()-bd.getFullYear(), bday:thisYear, lastDay:lastTrainingDay});
     }
   }
 
