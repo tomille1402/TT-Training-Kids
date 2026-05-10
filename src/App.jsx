@@ -2918,7 +2918,6 @@ function BeobachtungenAdminTab({players,user,showToast}) {
   const [expandedId,setExpandedId] = useState(null);
   const [editingId,setEditingId] = useState(null);
   const [editForm,setEditForm] = useState({});
-  const [detailExpandedId,setDetailExpandedId] = useState(null);
 
   const selPlayer = players.find(p=>p.id===selPlayerId)||players[0];
 
@@ -3380,6 +3379,7 @@ function EinheitenTab({user}) {
   const [toast,setToast] = useState(null);
   const [expandedId,setExpandedId] = useState(null);
   const [activeAbschnitt,setActiveAbschnitt] = useState("begruessung");
+  const [detailExpandedId,setDetailExpandedId] = useState(null);
 
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
 
