@@ -1614,9 +1614,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const activeGroupPlayers = allGroupPlayers.filter(p=>p.status!=="passiv");
       const passiveGroupPlayers = allGroupPlayers.filter(p=>p.status==="passiv");
       const groupPlayers = [...activeGroupPlayers, ...passiveGroupPlayers];
-      return <div key={group} style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8,paddingLeft:2}}>{group} ({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</div>
-        {groupPlayers.map(p=>(
+      const grpOpen = showGrp[group]===true;
+      const GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+      const gc = GRP_COL[group]||"#6b7280";
+      return <div key={group} style={{marginBottom:8,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden",borderLeft:`4px solid ${gc}`}}>
+        <div onClick={()=>setShowGrp(p=>({...p,[group]:!grpOpen}))} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <div style={{fontSize:13,fontWeight:700,color:gc}}>{group} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
+          <span style={{fontSize:11,color:"var(--text4)"}}>{grpOpen?"▲":"▼"}</span>
+        </div>
+        {grpOpen&&groupPlayers.map(p=>(
           editPlayer?.id===p.id ? (
             <div key={p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
@@ -1653,15 +1659,36 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <input type="text" value={editPlayer.lastName||""} onChange={e=>setEditPlayer(prev=>({...prev,lastName:e.target.value}))}
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
               </div>
-              {/* 2a Geburtstag nach Nachname */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎂 Geburtstag</label>
-                <div style={{display:"flex",gap:6}}>
-                  <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
-                    style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-                  {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(p=>({...p,birthdate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
-                </div>
-              </div>
+              {/* 2a Geburtstag nach Nachname - für Erwachsene mit T-Shirt Größe daneben */}
+              {(()=>{
+                const isErw=(editPlayer.group||"Anfänger")==="Erwachsene";
+                const erwSizes=["XS","S","M","L","XL","XXL","3XL","4XL"];
+                if(isErw) return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎂 Geburtstag</label>
+                    <div style={{display:"flex",gap:4}}>
+                      <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
+                        style={{flex:1,padding:"9px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+                      {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(p=>({...p,birthdate:""}))} style={{padding:"4px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:10,cursor:"pointer",flexShrink:0}}>✕</button>}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👕 T-Shirt Größe</label>
+                    <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))} style={{fontSize:12}}>
+                      <option value="">—</option>
+                      {erwSizes.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>;
+                return <div style={{marginBottom:10}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎂 Geburtstag</label>
+                  <div style={{display:"flex",gap:6}}>
+                    <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
+                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(p=>({...p,birthdate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                  </div>
+                </div>;
+              })()}
               {/* 2e Handy vor E-Mail */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
@@ -1718,6 +1745,37 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </div>
                 <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
               </div>
+
+              {/* Vereinsbeitritt / Vereinsaustritt */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsbeitritt</label>
+                  <div style={{display:"flex",gap:4}}>
+                    <input type="date" value={editPlayer.joinDate||""} onChange={e=>setEditPlayer(prev=>({...prev,joinDate:e.target.value}))}
+                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    {editPlayer.joinDate&&<button onClick={()=>setEditPlayer(p=>({...p,joinDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                  </div>
+                </div>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsaustritt</label>
+                  <div style={{display:"flex",gap:4}}>
+                    <input type="date" value={editPlayer.leaveDate||""} onChange={e=>setEditPlayer(prev=>({...prev,leaveDate:e.target.value}))}
+                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+                    {editPlayer.leaveDate&&<button onClick={()=>setEditPlayer(p=>({...p,leaveDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
+                  </div>
+                </div>
+              </div>
+              {/* Trainingstage (nur für Trainer-Gruppe) */}
+              {editPlayer.group==="Trainer"&&<div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage</label>
+                <select value={editPlayer.trainingDays||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
+                  <option value="Di">Nur Dienstag</option>
+                  <option value="Fr">Nur Freitag</option>
+                  <option value="Di+Fr">Dienstag + Freitag</option>
+                </select>
+              </div>}
+
+
 
               {/* Punkt 3: Abschnitte für Erwachsene-Only ausblenden */}
               {(()=>{
@@ -1801,44 +1859,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   </div>
                 </>}
               </div>
-              {/* Vereinsbeitritt / Vereinsaustritt */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                <div>
-                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsbeitritt</label>
-                  <div style={{display:"flex",gap:4}}>
-                    <input type="date" value={editPlayer.joinDate||""} onChange={e=>setEditPlayer(prev=>({...prev,joinDate:e.target.value}))}
-                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-                    {editPlayer.joinDate&&<button onClick={()=>setEditPlayer(p=>({...p,joinDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
-                  </div>
-                </div>
-                <div>
-                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📅 Vereinsaustritt</label>
-                  <div style={{display:"flex",gap:4}}>
-                    <input type="date" value={editPlayer.leaveDate||""} onChange={e=>setEditPlayer(prev=>({...prev,leaveDate:e.target.value}))}
-                      style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-                    {editPlayer.leaveDate&&<button onClick={()=>setEditPlayer(p=>({...p,leaveDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
-                  </div>
-                </div>
-              </div>
-              {/* Geburtstag */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geburtstag</label>
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <input type="date" value={editPlayer.birthdate||""} onChange={e=>setEditPlayer(prev=>({...prev,birthdate:e.target.value}))}
-                    style={{flex:1,padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-                  {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(prev=>({...prev,birthdate:""}))} style={{padding:"9px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:12,cursor:"pointer",flexShrink:0}}>✕</button>}
-                </div>
-              </div>
-              {/* Trainingstage (nur für Trainer-Gruppe) */}
-              {editPlayer.group==="Trainer"&&<div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage</label>
-                <select value={editPlayer.trainingDays||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
-                  <option value="Di">Nur Dienstag</option>
-                  <option value="Fr">Nur Freitag</option>
-                  <option value="Di+Fr">Dienstag + Freitag</option>
-                </select>
-              </div>}
-
 
               {/* Urkunden-Vergabedaten */}
               {(()=>{
@@ -4508,6 +4528,10 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer}/>}
     {activeTab==="erfolge"&&!myPlayer&&
+      <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
+    {/* Punkt 3: Ehrungen Tab - war komplett fehlend */}
+    {activeTab==="ehrungen"&&myPlayer&&<EhrungenView player={myPlayer}/>}
+    {activeTab==="ehrungen"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
   </div>;
 }
