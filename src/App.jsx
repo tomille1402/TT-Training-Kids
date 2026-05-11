@@ -1452,41 +1452,40 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <span style={{fontSize:11,color:"var(--text4)"}}>{showAppDesign?"▲":"▼"}</span>
       </div>
       {showAppDesign&&<div style={{padding:"0 14px 14px"}}>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-        Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
-      </div>
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
-        {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
-          const isActive = effectiveGlobalTheme===opt.mode;
-          return <button key={opt.mode} onClick={async()=>{
-            setLocalGlobalTheme(opt.mode);
-            await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
-            showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
-          }} style={{
-            flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
-            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-            background:isActive?"#10b98122":"var(--bg3)",
-            color:isActive?"#10b981":"var(--text2)",
-          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-        })}
-      </div>
-      <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
-      <div style={{display:"flex",gap:8}}>
-        {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
-          const isActive = userTheme===opt.mode;
-          return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
-            flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-            border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-            background:isActive?"#10b98122":"var(--bg3)",
-            color:isActive?"#10b981":"var(--text2)",
-          }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-        })}
-      </div>
-      {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
-        Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
-      </div>}
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+          Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
+            const isActive = effectiveGlobalTheme===opt.mode;
+            return <button key={opt.mode} onClick={async()=>{
+              setLocalGlobalTheme(opt.mode);
+              await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
+              showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
+            }} style={{
+              flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
+              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+              background:isActive?"#10b98122":"var(--bg3)",
+              color:isActive?"#10b981":"var(--text2)",
+            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+          })}
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
+        <div style={{display:"flex",gap:8}}>
+          {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
+            const isActive = userTheme===opt.mode;
+            return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
+              flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+              background:isActive?"#10b98122":"var(--bg3)",
+              color:isActive?"#10b981":"var(--text2)",
+            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+          })}
+        </div>
+        {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
+          Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
+        </div>}
       </div>}
     </div>
 
