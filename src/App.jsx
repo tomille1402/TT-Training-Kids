@@ -1053,9 +1053,12 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user}) {
   const [editPlayer,setEditPlayer]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
-  const [showM,setShowM]=useState(false);       // Mannschaften ausblenden
-  const [showT,setShowT]=useState(false);       // Turniererfolge ausblenden
-  const [showEhr,setShowEhr]=useState(false);   // Ehrungen ausblenden
+  const [showM,setShowM]=useState(false);
+  const [showT,setShowT]=useState(false);
+  const [showEhr,setShowEhr]=useState(false);
+  const [showAppDesign,setShowAppDesign]=useState(false);    // P4
+  const [showTrainingZR,setShowTrainingZR]=useState(false);  // P4
+  const [showGrp,setShowGrp]=useState({});                   // P5 per-group
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -1168,6 +1171,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         roles:         editPlayer.roles||{},
         trainingDays:  editPlayer.trainingDays||"Di",
         phone:         editPlayer.phone||"",
+        tshirtSize:    editPlayer.tshirtSize||"",
         tshirtDTTB:    editPlayer.tshirtDTTB||"nein",
         tshirtTTC:     editPlayer.tshirtTTC||"nein",
         racketType:    editPlayer.racketType||"",
@@ -1369,7 +1373,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </Modal>}
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-      <div style={{fontSize:17,fontWeight:800}}>⚙️ Spieler- & Trainerverwaltung</div>
+      <div style={{fontSize:17,fontWeight:800}}>⚙️ Personen-Verwaltung</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:joinImporting?"#6b7280":"var(--text2)",fontSize:12,cursor:joinImporting?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:5}}>
           {joinImporting?"⏳":"📥"} Beitritte importieren
@@ -1441,9 +1445,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     ))}
 
-    {/* App-Design — jetzt zuerst */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
-      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:6}}>🎨 App-Design</div>
+    {/* App-Design — P4 ausblendbar */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🎨 App-Design</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showAppDesign?"▲":"▼"}</span>
+      </div>
+      {showAppDesign&&<div style={{padding:"0 14px 14px"}}>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
         Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
       </div>
@@ -1478,11 +1487,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
         Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
       </div>}
+      </div>}
     </div>
 
-    {/* Trainingszeitraum — jetzt nach App-Design */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
-      <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📅 Trainingszeitraum</div>
+    {/* Trainingszeitraum — P4 ausblendbar */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 Trainingszeitraum</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showTrainingZR?"▲":"▼"}</span>
+      </div>
+      {showTrainingZR&&<div style={{padding:"0 14px 14px"}}>
+      <div style={{height:0}}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <div>
           <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Start Training</label>
@@ -1503,6 +1518,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
         {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
       </button>
+      </div>}
     </div>
 
     {/* Punkt 3: Mannschaften — ausblendbar */}
@@ -1727,14 +1743,28 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 const isEOnly=roles.erwachsene===true&&!roles.player&&!roles.trainer&&!roles.admin;
                 if(isEOnly) return null;
                 return <>
-              {/* Trainingsheft erhalten */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
-                <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
-                  <option value="ja">Ja</option>
-                  <option value="nein">Nein</option>
-                </select>
-              </div>
+              {/* T-Shirt Größe + Trainingsheft */}
+              {(()=>{
+                const grp=editPlayer.group||"Anfänger";
+                const isErw=grp==="Erwachsene";
+                const sizes=isErw?["XS","S","M","L","XL","XXL","3XL","4XL"]:["128","134","140","146","152","158","164"];
+                return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👕 T-Shirt Größe</label>
+                    <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))}>
+                      <option value="">—</option>
+                      {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
+                    <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
+                      <option value="ja">Ja</option>
+                      <option value="nein">Nein</option>
+                    </select>
+                  </div>
+                </div>;
+              })()}
 
 
               {/* Schläger */}
@@ -4313,13 +4343,22 @@ function getAllEhrungLabel(e) {
 function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
   const [ehrungen,setEhrungen]=useState(initialEhrungen||[]);
   const [showAdd,setShowAdd]=useState(false);
+  const [editingEhr,setEditingEhr]=useState(null); // id of entry being edited
   const [newE,setNewE]=useState({typ:"spieler",art:"sv_bronze",datum:new Date().toLocaleDateString("sv")});
+  const [editE,setEditE]=useState({});
+
   async function addEhrung() {
     const updated=[...ehrungen,{...newE,id:Date.now().toString()}];
     await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
     setEhrungen(updated); setShowAdd(false); showToast&&showToast("Ehrung gespeichert","🏅");
   }
+  async function saveEditEhrung() {
+    const updated=ehrungen.map(e=>e.id===editingEhr?{...e,...editE}:e);
+    await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
+    setEhrungen(updated); setEditingEhr(null); showToast&&showToast("Ehrung aktualisiert","✅");
+  }
   async function delEhrung(id) {
+    if(!window.confirm("Ehrung löschen?")) return;
     const updated=ehrungen.filter(e=>e.id!==id);
     await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
     setEhrungen(updated);
@@ -4354,12 +4393,39 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
     {ehrungen.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Noch keine Ehrungen.</div>}
     {ehrungen.map(e=>{
       const art=getAllEhrungLabel(e);
+      const isEditing=editingEhr===e.id;
+      if(isEditing) return <div key={e.id} style={{background:"var(--bg3)",borderRadius:8,padding:8,marginBottom:4}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+          <div>
+            <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Typ</label>
+            <select value={editE.typ||e.typ} onChange={ev=>setEditE(p=>({...p,typ:ev.target.value,art:ev.target.value==="spieler"?"sv_bronze":"em_urkunde"}))} style={{fontSize:11}}>
+              <option value="spieler">Spielerverdienstnadel</option>
+              <option value="mitarbeiter">Vereinsmitarbeiter</option>
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Datum</label>
+            <input type="date" value={editE.datum||e.datum||""} onChange={ev=>setEditE(p=>({...p,datum:ev.target.value}))}
+              style={{padding:"4px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
+          </div>
+        </div>
+        <select value={editE.art||e.art} onChange={ev=>setEditE(p=>({...p,art:ev.target.value}))} style={{fontSize:11,width:"100%",marginBottom:6}}>
+          {((editE.typ||e.typ)==="spieler"?SPIELER_VERDIENST:VEREINSMITARBEITER_EHRUNGEN).map(a=>(
+            <option key={a.id} value={a.id}>{a.icon} {a.label}</option>
+          ))}
+        </select>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={saveEditEhrung} style={{flex:1,padding:"5px",background:"#10b981",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>💾 Speichern</button>
+          <button onClick={()=>setEditingEhr(null)} style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>
+        </div>
+      </div>;
       return <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid var(--border)"}}>
         <span style={{fontSize:18}}>{art.icon}</span>
         <div style={{flex:1}}>
           <div style={{fontSize:11,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
           <div style={{fontSize:10,color:"var(--text3)"}}>{e.datum?new Date(e.datum).toLocaleDateString("de-DE"):"—"}</div>
         </div>
+        <button onClick={()=>{setEditingEhr(e.id);setEditE({typ:e.typ,art:e.art,datum:e.datum});}} style={{padding:"2px 6px",background:"#3b82f622",border:"none",borderRadius:4,color:"#3b82f6",fontSize:10,cursor:"pointer"}}>✏️</button>
         <button onClick={()=>delEhrung(e.id)} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
       </div>;
     })}
@@ -4367,23 +4433,40 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
 }
 
 function EhrungenView({player}) {
-  const ehrungen=player?.ehrungen||[];
-  if(!ehrungen.length) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Ehrungen vorhanden.</div>;
+  // Punkt 1: load live from Firestore (not from stale prop)
+  const [ehrungen,setEhrungen]=useState(player?.ehrungen||[]);
+  useEffect(()=>{
+    if(!player?.id) return;
+    const unsub=onSnapshot(doc(db,"players",player.id),snap=>{
+      if(snap.exists()) setEhrungen(snap.data().ehrungen||[]);
+    },()=>{});
+    return unsub;
+  },[player?.id]);
+
   const spieler=ehrungen.filter(e=>e.typ==="spieler");
   const mit=ehrungen.filter(e=>e.typ==="mitarbeiter");
-  const Section=({title,items})=>items.length===0?null:<div style={{marginBottom:16}}>
-    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>{title}</div>
+
+  if(!ehrungen.length) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
+    <div style={{fontSize:32,marginBottom:8}}>🏅</div>
+    <div>Keine Ehrungen vorhanden.</div>
+  </div>;
+
+  const Section=({title,items})=>items.length===0?null:<div style={{marginBottom:20}}>
+    <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",marginBottom:10}}>{title}</div>
     {items.map((e,i)=>{
       const art=getAllEhrungLabel(e);
-      return <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--bg2)",borderRadius:10,marginBottom:6}}>
-        <span style={{fontSize:28}}>{art.icon}</span>
-        <div>
+      return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--bg2)",borderRadius:12,marginBottom:8,border:"1px solid var(--border)"}}>
+        <span style={{fontSize:32,flexShrink:0}}>{art.icon}</span>
+        <div style={{flex:1}}>
           <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
-          <div style={{fontSize:11,color:"var(--text3)"}}>{e.datum?new Date(e.datum).toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"}):"—"}</div>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
+            {e.datum?new Date(e.datum).toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"}):"—"}
+          </div>
         </div>
       </div>;
     })}
   </div>;
+
   return <div style={{padding:14}}>
     <Section title="🏅 Spielerverdienstnadel" items={spieler}/>
     <Section title="🌟 Ehrung für Vereinsmitarbeiter" items={mit}/>
