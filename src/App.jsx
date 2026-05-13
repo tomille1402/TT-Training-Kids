@@ -433,7 +433,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   function toggleGroupFilter(g){setGroupFilters(f=>({...f,[g]:!f[g]}));}
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2200);}
 
-  const activePlayers = players.filter(p=>p.status!=="passiv");
+  const activePlayers = players.filter(p=>p.status!=="passiv"&&(p.group||"Anfänger")!=="Erwachsene");
   const visiblePlayers = activePlayers
     .filter(p=>{
       const g = p.group||"Anfänger";
@@ -463,7 +463,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const todayStr2 = today.toLocaleDateString("sv");
   const lastTue = [...ALL_TUESDAYS].reverse().find(d=>d<=todayStr2) || ALL_TUESDAYS[0];
   const lastFri = [...ALL_FRIDAYS].reverse().find(d=>d<=todayStr2)  || ALL_FRIDAYS[0];
-  const lastTraining = lastTue < lastFri ? lastTue : lastFri; // earlier = broader window
+  // Use the LATER of the two = most recent training day (not the earlier/broader window)
+  // Anfänger/Fortgeschrittene only train Tuesday, so lastTue is the correct reference
+  const lastTraining = lastTue > lastFri ? lastTue : lastFri; // most recent training
   const birthdaySince = lastTraining ? new Date(lastTraining) : today;
 
   function getBirthdaysSince(since) {
@@ -756,6 +758,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user}/>}
 
     <style>{`
@@ -2413,7 +2416,7 @@ function GeburtstageTab({players,showToast}) {
   const todayStr3=today.toLocaleDateString("sv");
   const lastTue3=[...ALL_TUESDAYS].reverse().find(d=>d<=todayStr3)||ALL_TUESDAYS[0];
   const lastFri3=[...ALL_FRIDAYS].reverse().find(d=>d<=todayStr3)||ALL_FRIDAYS[0];
-  const lastTraining=lastTue3<lastFri3?lastTue3:lastFri3; // letzter Dienstag = breiteres Fenster
+  const lastTraining=lastTue3>lastFri3?lastTue3:lastFri3; // letzten Trainingstag nehmen
 
   function isRecentBirthday(p) {
     if (!lastTraining||!p.birthdate) return false;
@@ -2604,6 +2607,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"spielplan",label:"Spielplan",icon:"📅"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -3956,8 +3960,8 @@ function BirthdayBtn({players, attendance}) {
   const todayDateStr = today.toLocaleDateString("sv");
   const lastTuesday = [...ALL_TUESDAYS].reverse().find(d=>d<=todayDateStr) || ALL_TUESDAYS[0];
   const lastFriday  = [...ALL_FRIDAYS].reverse().find(d=>d<=todayDateStr)  || ALL_FRIDAYS[0];
-  // Use the earlier of the two (Dienstag), so all players are covered
-  const lastTrainingDay = lastTuesday < lastFriday ? lastTuesday : lastFriday;
+  // Use the LATER of the two = most recent actual training day
+  const lastTrainingDay = lastTuesday > lastFriday ? lastTuesday : lastFriday;
   const birthdaySince2 = new Date(lastTrainingDay);
   birthdaySince2.setHours(0,0,0,0);
 
@@ -4049,6 +4053,10 @@ function MannschaftenVerwaltung({showToast}) {
     <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
       Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
+    </div>
+    {/* Vereinsspielplan Editor */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:12,marginTop:12,marginBottom:12}}>
+      <SpielplanEditor showToast={showToast}/>
     </div>
     {TEAMS.map(t=>{
       const pinKey = `${t.id}_pin`; const codeKey = `${t.id}_code`;
@@ -4336,6 +4344,243 @@ function SpielbetrieblTab({isSuperAdmin}) {
 }
 
 
+// ─── GEBURTSTAGE TAB FÜR ERWACHSENE ─────────────────────────────────────────
+function GeburtstageTabErwachsene({players}) {
+  const erwachsene = players.filter(p=>p.birthdate && p.roles?.erwachsene===true && p.status!=="passiv")
+    .sort((a,b)=>{
+      const bdA = new Date(a.birthdate); const bdB = new Date(b.birthdate);
+      const now = new Date();
+      const nextA = new Date(now.getFullYear(), bdA.getMonth(), bdA.getDate());
+      if(nextA < now) nextA.setFullYear(now.getFullYear()+1);
+      const nextB = new Date(now.getFullYear(), bdB.getMonth(), bdB.getDate());
+      if(nextB < now) nextB.setFullYear(now.getFullYear()+1);
+      return nextA-nextB;
+    });
+  const today = new Date(); today.setHours(0,0,0,0);
+  return <div style={{padding:14}}>
+    <div style={{fontSize:14,fontWeight:700,marginBottom:12}}>🎂 Geburtstage Erwachsene</div>
+    {erwachsene.length===0&&<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>Keine Geburtstage vorhanden.</div>}
+    {erwachsene.map(p=>{
+      const bd=new Date(p.birthdate);
+      const next=new Date(today.getFullYear(),bd.getMonth(),bd.getDate());
+      if(next<today) next.setFullYear(today.getFullYear()+1);
+      const days=Math.round((next-today)/(1000*60*60*24));
+      const isToday=days===0; const isSoon=days<=7;
+      const age=today.getFullYear()-bd.getFullYear()-(next>today&&next.getFullYear()>today.getFullYear()?1:0);
+      return <div key={p.id} style={{
+        display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:6,
+        background:isToday?"#f59e0b22":isSoon?"#10b98111":"var(--bg2)",
+        borderRadius:10,border:`1px solid ${isToday?"#f59e0b44":isSoon?"#10b98133":"var(--border)"}`
+      }}>
+        <span style={{fontSize:22,flexShrink:0}}>{isToday?"🎉":(p.avatar||"👤")}</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:13,fontWeight:700,color:isToday?"#f59e0b":"var(--text)"}}>{p.firstName} {p.lastName}</div>
+          <div style={{fontSize:11,color:"var(--text3)"}}>
+            {bd.toLocaleDateString("de-DE",{day:"2-digit",month:"long"})} · {isToday?"🎂 Heute!":days===1?"Morgen!":`in ${days} Tagen`}
+          </div>
+        </div>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{age+1} J.</div>
+      </div>;
+    })}
+  </div>;
+}
+
+// ─── VEREINSSPIELPLAN ─────────────────────────────────────────────────────────
+const SPIELPLAN_COLS = [
+  {key:"datum",    label:"Datum",      w:"90px"},
+  {key:"tag",      label:"Tag",        w:"40px"},
+  {key:"uhrzeit",  label:"Uhrzeit",    w:"60px"},
+  {key:"mannschaft",label:"Mannschaft",w:"100px"},
+  {key:"ort",      label:"Ort",        w:"80px"},
+  {key:"gegner",   label:"Gegner",     w:"auto"},
+  {key:"aenderung",label:"Änderung",   w:"80px"},
+];
+
+function VereinsSpielplan({nurNachwuchs=false}) {
+  const [spiele,setSpiele]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [sortKey,setSortKey]=useState("datum");
+  const [sortAsc,setSortAsc]=useState(true);
+  const [filters,setFilters]=useState({});
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","spielplan"),snap=>{
+      if(snap.exists()){
+        const data=snap.data();
+        setSpiele(data.spiele||[]);
+      }
+      setLoading(false);
+    },()=>setLoading(false));
+    return unsub;
+  },[]);
+
+  const nachwuchsMannschaften=["Mädchen 13","Mädchen 15"];
+  const filtered = spiele.filter(s=>{
+    if(nurNachwuchs && !nachwuchsMannschaften.includes(s.mannschaft)) return false;
+    return Object.entries(filters).every(([k,v])=>!v||String(s[k]||"").toLowerCase().includes(v.toLowerCase()));
+  });
+
+  const sorted = [...filtered].sort((a,b)=>{
+    let va=a[sortKey]||""; let vb=b[sortKey]||"";
+    if(sortKey==="datum"){va=va.split(".").reverse().join(""); vb=vb.split(".").reverse().join("");}
+    return sortAsc?(va<vb?-1:1):(va>vb?-1:1);
+  });
+
+  function toggleSort(key){
+    if(sortKey===key) setSortAsc(p=>!p);
+    else{setSortKey(key);setSortAsc(true);}
+  }
+
+  const MANN_COLORS={"Herren 1":"#3b82f6","Herren 2":"#6366f1","Mädchen 13":"#ec4899","Mädchen 15":"#f59e0b"};
+
+  if(loading) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Lädt...</div>;
+  if(spiele.length===0) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>
+    <div style={{fontSize:32,marginBottom:8}}>📅</div>
+    <div>Kein Spielplan vorhanden.</div>
+    <div style={{fontSize:11,marginTop:8}}>Bitte in der Verwaltung unter „Mannschaften" den Spielplan eingeben.</div>
+  </div>;
+
+  return <div style={{padding:"10px 14px 20px"}}>
+    {/* Filter Row */}
+    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+      {["mannschaft","ort","gegner","aenderung"].map(k=>(
+        <input key={k} placeholder={`Filter ${SPIELPLAN_COLS.find(c=>c.key===k)?.label}`}
+          value={filters[k]||""} onChange={e=>setFilters(p=>({...p,[k]:e.target.value}))}
+          style={{flex:1,minWidth:80,padding:"5px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+      ))}
+    </div>
+    {/* Table */}
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead>
+          <tr style={{background:"var(--bg2)"}}>
+            {SPIELPLAN_COLS.map(col=>(
+              <th key={col.key} onClick={()=>toggleSort(col.key)}
+                style={{padding:"7px 8px",textAlign:"left",cursor:"pointer",fontWeight:700,
+                  color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
+                  borderBottom:"2px solid var(--border2)",width:col.w}}>
+                {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((s,i)=>{
+            const isChange=s.aenderung&&s.aenderung.trim()!=="";
+            const mc=MANN_COLORS[s.mannschaft]||"#6b7280";
+            return <tr key={i} style={{background:isChange?"#f59e0b11":i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
+              <td style={{padding:"6px 8px",whiteSpace:"nowrap"}}>{s.datum}</td>
+              <td style={{padding:"6px 8px",color:"var(--text3)"}}>{s.tag}</td>
+              <td style={{padding:"6px 8px",whiteSpace:"nowrap",fontWeight:600}}>{s.uhrzeit}</td>
+              <td style={{padding:"6px 8px"}}>
+                <span style={{background:mc+"22",color:mc,borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.mannschaft}</span>
+              </td>
+              <td style={{padding:"6px 8px"}}>
+                <span style={{color:s.ort==="Heim"?"#10b981":"#3b82f6",fontWeight:600,fontSize:10}}>{s.ort}</span>
+              </td>
+              <td style={{padding:"6px 8px"}}>{s.gegner}</td>
+              <td style={{padding:"6px 8px"}}>
+                {isChange&&<span style={{background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{s.aenderung}</span>}
+              </td>
+            </tr>;
+          })}
+          {sorted.length===0&&<tr><td colSpan={7} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>{sorted.length} Spiele · T=Terminänderung, V=Verlegung</div>
+  </div>;
+}
+
+// Spielplan-Editor für Verwaltung
+function SpielplanEditor({showToast}) {
+  const [spiele,setSpiele]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [editRow,setEditRow]=useState(null);
+  const [editData,setEditData]=useState({});
+  const LEER={datum:"",tag:"",uhrzeit:"",mannschaft:"Herren 1",ort:"Heim",gegner:"",aenderung:""};
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","spielplan"),snap=>{
+      if(snap.exists()) setSpiele(snap.data().spiele||[]);
+      setLoading(false);
+    },()=>setLoading(false));
+    return unsub;
+  },[]);
+
+  async function save(newSpiele){
+    await setDoc(doc(db,"config","spielplan"),{spiele:newSpiele}).catch(()=>{});
+    setSpiele(newSpiele);
+    showToast("Spielplan gespeichert","📅");
+  }
+
+  function addRow(){
+    const idx=spiele.length;
+    setSpiele(p=>[...p,{...LEER}]);
+    setEditRow(idx); setEditData({...LEER});
+  }
+  function startEdit(i){setEditRow(i);setEditData({...spiele[i]});}
+  async function saveRow(){
+    const updated=[...spiele]; updated[editRow]={...editData};
+    await save(updated); setEditRow(null);
+  }
+  async function delRow(i){
+    const updated=spiele.filter((_,idx)=>idx!==i);
+    await save(updated);
+  }
+
+  const DAYS=["Mo","Di","Mi","Do","Fr","Sa","So"];
+  const MANNS=["Herren 1","Herren 2","Mädchen 13","Mädchen 15"];
+  const AEND=["","T","V","T / V"];
+
+  if(loading) return null;
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>📅 Vereinsspielplan ({spiele.length} Spiele)</div>
+      <button onClick={addRow} style={{padding:"5px 10px",background:"#10b98122",border:"1px solid #10b98144",borderRadius:7,color:"#10b981",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Spiel</button>
+    </div>
+    <div style={{overflowX:"auto",maxHeight:400,overflowY:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead style={{position:"sticky",top:0,background:"var(--bg2)",zIndex:1}}>
+          <tr>{["Datum","Tag","Uhrzeit","Mannschaft","Ort","Gegner","Änd.",""].map(h=>(
+            <th key={h} style={{padding:"5px 6px",textAlign:"left",fontWeight:700,color:"var(--text2)",borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap"}}>{h}</th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {spiele.map((s,i)=>editRow===i?
+            <tr key={i} style={{background:"#10b98111"}}>
+              <td style={{padding:"3px 4px"}}><input value={editData.datum||""} onChange={e=>setEditData(p=>({...p,datum:e.target.value}))} placeholder="TT.MM.JJ" style={{width:72,padding:"3px 5px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",fontSize:11,outline:"none"}}/></td>
+              <td style={{padding:"3px 4px"}}><select value={editData.tag||""} onChange={e=>setEditData(p=>({...p,tag:e.target.value}))} style={{fontSize:11,padding:"3px 4px"}}><option value="">—</option>{DAYS.map(d=><option key={d}>{d}</option>)}</select></td>
+              <td style={{padding:"3px 4px"}}><input value={editData.uhrzeit||""} onChange={e=>setEditData(p=>({...p,uhrzeit:e.target.value}))} placeholder="HH:MM" style={{width:52,padding:"3px 5px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",fontSize:11,outline:"none"}}/></td>
+              <td style={{padding:"3px 4px"}}><select value={editData.mannschaft||"Herren 1"} onChange={e=>setEditData(p=>({...p,mannschaft:e.target.value}))} style={{fontSize:11,padding:"3px 4px"}}>{MANNS.map(m=><option key={m}>{m}</option>)}</select></td>
+              <td style={{padding:"3px 4px"}}><select value={editData.ort||"Heim"} onChange={e=>setEditData(p=>({...p,ort:e.target.value}))} style={{fontSize:11,padding:"3px 4px"}}><option>Heim</option><option>Auswärts</option></select></td>
+              <td style={{padding:"3px 4px"}}><input value={editData.gegner||""} onChange={e=>setEditData(p=>({...p,gegner:e.target.value}))} placeholder="Gegner" style={{width:120,padding:"3px 5px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",fontSize:11,outline:"none"}}/></td>
+              <td style={{padding:"3px 4px"}}><select value={editData.aenderung||""} onChange={e=>setEditData(p=>({...p,aenderung:e.target.value}))} style={{fontSize:11,padding:"3px 4px"}}>{AEND.map(a=><option key={a}>{a}</option>)}</select></td>
+              <td style={{padding:"3px 4px"}}>
+                <button onClick={saveRow} style={{padding:"3px 7px",background:"#10b981",border:"none",borderRadius:5,color:"#fff",fontSize:10,cursor:"pointer",marginRight:3}}>✓</button>
+                <button onClick={()=>setEditRow(null)} style={{padding:"3px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>
+              </td>
+            </tr>:
+            <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"var(--bg2)":"var(--bg)"}}>
+              <td style={{padding:"4px 6px",whiteSpace:"nowrap"}}>{s.datum}</td>
+              <td style={{padding:"4px 6px",color:"var(--text3)"}}>{s.tag}</td>
+              <td style={{padding:"4px 6px",fontWeight:600}}>{s.uhrzeit}</td>
+              <td style={{padding:"4px 6px"}}>{s.mannschaft}</td>
+              <td style={{padding:"4px 6px",color:s.ort==="Heim"?"#10b981":"#3b82f6",fontWeight:600,fontSize:10}}>{s.ort}</td>
+              <td style={{padding:"4px 6px"}}>{s.gegner}</td>
+              <td style={{padding:"4px 6px"}}>{s.aenderung&&<span style={{color:"#f59e0b",fontWeight:700}}>{s.aenderung}</span>}</td>
+              <td style={{padding:"4px 6px",whiteSpace:"nowrap"}}>
+                <button onClick={()=>startEdit(i)} style={{padding:"2px 6px",background:"#3b82f622",border:"none",borderRadius:4,color:"#3b82f6",fontSize:10,cursor:"pointer",marginRight:3}}>✏️</button>
+                <button onClick={()=>delRow(i)} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+
 // ─── EHRUNGEN ─────────────────────────────────────────────────────────────────
 const SPIELER_VERDIENST = [
   {id:"sv_bronze",  icon:"🥉", label:"Spielerverdienstnadel Bronze",         info:"15 Jahre aktives Spielen"},
@@ -4500,9 +4745,11 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
+    {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
@@ -4529,10 +4776,12 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer}/>}
     {activeTab==="erfolge"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
-    {/* Punkt 3: Ehrungen Tab - war komplett fehlend */}
     {activeTab==="ehrungen"&&myPlayer&&<EhrungenView player={myPlayer}/>}
     {activeTab==="ehrungen"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
+    {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
+    {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
   </div>;
 }
 
@@ -4899,6 +5148,11 @@ export default function App() {
       <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
         isSuperAdmin={hasAdminRole} globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}
         onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)} {...sharedProps}/>
+    );
+    // Punkt 3: Erwachsene-only → ErwachseneView (nicht PlayerView)
+    if (isErwachseneOnly) return (
+      <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer}
+        globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
     );
     return <PlayerView user={authUser} players={players} attendance={attendance} {...sharedProps}/>;
   }
