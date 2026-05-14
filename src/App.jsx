@@ -518,7 +518,10 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* Header-Titel — wird ausgeblendet wenn RoleSwitchWrapper den Header übernimmt */}
+    {/* STICKY TOP AREA: Header + Chips + Tabs — alles zusammen sticky */}
+    <div style={{position:"sticky",top:hideHeader?44:0,zIndex:97,background:"var(--bg2)"}}>
+
+    {/* Header-Titel */}
     {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -537,9 +540,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       </div>
     </div>}
 
-    {/* Gruppenfilter + Spieler-Chips — IMMER sichtbar, sticky */}
-    <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",
-      position:"sticky",top:hideHeader?44:0,zIndex:97,flexShrink:0}}>
+    {/* Gruppenfilter + Spieler-Chips */}
+    <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",flexShrink:0}}>
       <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
         {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
           const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
@@ -554,8 +556,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         {/* Punkt 1+2: Filter-Button Abwesende - gruppenspezifisch, nur Icon */}
         {(()=>{
           const todayStr=new Date().toLocaleDateString("sv");
-          // Finde für jeden sichtbaren Spieler seinen letzten Trainingstag
-          // Ein Abwesender = explizit "e" oder "u" in einer Session die für seine Gruppe gilt
           let absentCount=0;
           for(const p of visiblePlayers){
             const grp=p.group||"Anfänger";
@@ -607,13 +607,15 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?106:62,zIndex:96,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
+
+    </div>{/* end sticky top area */}
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
