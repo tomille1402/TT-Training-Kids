@@ -519,7 +519,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* FIXED TOP AREA: Header + Chips + Tabs */}
-    <div style={{position:"fixed",top:hideHeader?44:0,left:0,right:0,zIndex:97,background:"var(--bg2)",maxWidth:720,margin:"0 auto"}}>
+    <div style={{position:"fixed",top:hideHeader?116:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
 
     {/* Header-Titel */}
     {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
@@ -617,7 +617,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     </div>{/* end fixed top area */}
     {/* Spacer to compensate for fixed header */}
-    <div style={{height:hideHeader?102:162}}/>
+    <div style={{height:hideHeader?160:162}}/>
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -2680,12 +2680,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?44:70,left:0,right:0,zIndex:99,overflowX:"auto",overflowY:"hidden",maxWidth:720,margin:"0 auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?116:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?44:114}}/>
+    <div style={{height:hideHeader?160:114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -2897,7 +2897,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    <div style={{height:44}}/>
+    <div style={{height:inRSW?160:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
@@ -4739,7 +4739,7 @@ function EhrungenView({player}) {
 }
 
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
-function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer}) {
+function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const [toast,setToast]=useState(null);
@@ -4760,8 +4760,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
-    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)",maxWidth:720,margin:"0 auto"}}>
-      <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
+    <div style={{position:"fixed",top:inRSW?116:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
             flexShrink:0,padding:"9px 8px",background:"transparent",border:"none",
@@ -4777,6 +4776,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         }}>⏻</button>
       </div>
     </div>
+    {/* Spacer for fixed EW header */}
+    <div style={{height:inRSW?160:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
@@ -4845,10 +4846,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const showChips = (activeView==="player" || activeView==="erwachsene") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
-    {/* Role Switch Bar */}
+    {/* Role Switch Bar — FIXED */}
     <div style={{background:"var(--bg2)",borderBottom:"2px solid var(--border2)",
       padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
-      position:"sticky",top:0,zIndex:500}}>
+      position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:500}}>
       {availableViews.map(v=>{
         const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
         return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
@@ -4865,10 +4866,12 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
       }}>⏻</button>
     </div>
+    {/* Spacer for fixed switch bar */}
+    <div style={{height:44}}/>
 
     {/* Chip-Leiste für Spieler- und Erwachsene-Ansicht */}
     {showChips&&<div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",
-      padding:"8px 14px",position:"fixed",top:44,left:0,right:0,zIndex:499,maxWidth:720,margin:"0 auto"}}>
+      padding:"8px 14px",position:"fixed",top:44,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:499}}>
       {/* Gruppenfilter nur bei Spieler-View */}
       {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
         <button onClick={()=>setGroupFilter("all")} style={{
@@ -4900,9 +4903,8 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       </div>
     </div>}
 
-    {/* Spacer for fixed switch bar + chips */}
-    {showChips&&<div style={{height:116}}/>}
-    {!showChips&&<div style={{height:44}}/>}
+    {/* Spacer for fixed chips bar when visible */}
+    {showChips&&<div style={{height:72}}/>}
     {/* Spieler-View */}
     {activeView==="player"&&selectedPlayer&&
       <PlayerView user={user} players={players} attendance={attendance}
@@ -4916,7 +4918,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     {/* Erwachsene-View */}
     {activeView==="erwachsene"&&selectedPlayer&&
       <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer}
-        isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut}/>}
+        isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>}
     {activeView==="erwachsene"&&!selectedPlayer&&
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
         <div style={{fontSize:32,marginBottom:8}}>👪</div>
