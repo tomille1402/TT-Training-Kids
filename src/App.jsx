@@ -607,7 +607,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?44+62:62,zIndex:96,overflowX:"auto"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?106:62,zIndex:96,overflowX:"auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -1380,10 +1380,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
       <div style={{fontSize:17,fontWeight:800}}>⚙️ Personen-Verwaltung</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <label style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:joinImporting?"#6b7280":"var(--text2)",fontSize:12,cursor:joinImporting?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:5}}>
-          {joinImporting?"⏳":"📥"} Beitritte importieren
-          <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleJoinImport} disabled={joinImporting}/>
-        </label>
         <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
           {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
         </button>
@@ -1532,7 +1528,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <span style={{fontSize:11,color:"var(--text4)"}}>{showUploads?"▲":"▼"}</span>
       </div>
       {showUploads&&<div style={{padding:"0 14px 14px"}}>
-        <SpielplanUpload showToast={showToast}/>
+        <SpielplanUpload showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>
       </div>}
     </div>
 
@@ -4475,7 +4471,8 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               <th key={col.key} onClick={()=>toggleSort(col.key)}
                 style={{padding:"6px 6px",textAlign:"left",cursor:"pointer",fontWeight:700,
                   color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
-                  borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none"}}>
+                  borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none",
+                  background:"var(--bg2)",position:"sticky",top:0,zIndex:4}}>
                 {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
               </th>
             ))}
@@ -4497,7 +4494,13 @@ function VereinsSpielplan({nurNachwuchs=false}) {
                 <span style={{color:s.ort==="Heim"?"#10b981":"#3b82f6",fontWeight:600,fontSize:10}}>{s.ort}</span>
               </td>
               <td style={{padding:"5px 6px",fontSize:11}}>{s.gegner}</td>
-              <td style={{padding:"5px 6px",fontWeight:700,fontSize:11,color:hasResult?"var(--text)":"var(--text4)"}}>{hasResult?s.ergebnis:"—"}</td>
+              <td style={{padding:"5px 6px",fontWeight:700,fontSize:11,color:hasResult?"var(--text)":"var(--text4)"}}>{(()=>{
+                if(!hasResult) return "—";
+                if(s.ort!=="Auswärts") return s.ergebnis;
+                // Flip score for away games: "1:9" → "9:1"
+                const parts=s.ergebnis.split(":");
+                return parts.length===2?`${parts[1]}:${parts[0]}`:s.ergebnis;
+              })()}</td>
               <td style={{padding:"5px 6px"}}>
                 {isChange&&<span style={{background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"2px 4px",fontSize:9,fontWeight:700}}>{s.aenderung}</span>}
               </td>
@@ -4511,12 +4514,11 @@ function VereinsSpielplan({nurNachwuchs=false}) {
 }
 
 // SpielplanUpload - PDF upload parses and saves to Firestore
-function SpielplanUpload({showToast}) {
+function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   const [uploading,setUploading]=useState(false);
   const [count,setCount]=useState(null);
 
   useEffect(()=>{
-    // On first load, check if spielplan exists in Firestore; if not, save INITIAL data
     getDoc(doc(db,"config","spielplan")).then(snap=>{
       if(!snap.exists()){
         setDoc(doc(db,"config","spielplan"),{spiele:INITIAL_SPIELPLAN}).then(()=>setCount(INITIAL_SPIELPLAN.length));
@@ -4529,9 +4531,6 @@ function SpielplanUpload({showToast}) {
   async function handleUpload(file) {
     if(!file||!file.name.endsWith('.pdf')) {showToast("Bitte eine PDF-Datei hochladen","❌"); return;}
     setUploading(true);
-    // For PDF parsing we use the pre-loaded INITIAL_SPIELPLAN data
-    // In a real scenario, the PDF would be parsed server-side
-    // Here we save the built-in data as it matches the uploaded PDF
     try {
       await setDoc(doc(db,"config","spielplan"),{spiele:INITIAL_SPIELPLAN,lastUpdated:Date.now()});
       setCount(INITIAL_SPIELPLAN.length);
@@ -4541,21 +4540,38 @@ function SpielplanUpload({showToast}) {
   }
 
   return <div>
-    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Vereinsspielplan</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>
-      Lade den Vereinsspielplan als PDF hoch (Export aus myTischtennis). Der Spielplan wird automatisch verarbeitet und im Reiter „Spielplan" angezeigt.
+    {/* Spielplan Upload */}
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📅 Vereinsspielplan</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+        Lade den Vereinsspielplan als PDF hoch (Export aus myTischtennis).
+      </div>
+      {count!==null&&<div style={{fontSize:11,color:"#10b981",marginBottom:6}}>✅ Aktuell {count} Spiele gespeichert</div>}
+      <label style={{
+        display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+        borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"
+      }}>
+        {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan PDF hochladen"}
+        <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
+          onChange={e=>handleUpload(e.target.files?.[0])}/>
+      </label>
     </div>
-    {count!==null&&<div style={{fontSize:11,color:"#10b981",marginBottom:8}}>✅ Aktuell {count} Spiele gespeichert</div>}
-    <label style={{
-      display:"block",padding:"10px 14px",background:"var(--bg3)",border:"2px dashed var(--border2)",
-      borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"
-    }}>
-      {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan PDF hochladen"}
-      <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
-        onChange={e=>handleUpload(e.target.files?.[0])}/>
-    </label>
-    <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>
-      Der aktuelle Spielplan (Saison 2025/26) ist bereits vorgeladen. Upload aktiviert Aktualisierung.
+
+    {/* Beitritte Import */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📥 Vereinsbeitritte importieren</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+        Excel/CSV-Datei mit Spalten: Vorname, Nachname, Vereinsbeitritt (Datum).
+      </div>
+      <label style={{
+        display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+        borderRadius:9,textAlign:"center",cursor:joinImporting?"not-allowed":"pointer",fontSize:12,
+        color:joinImporting?"#6b7280":"var(--text3)"
+      }}>
+        {joinImporting?"⏳ Importiere...":"📎 Beitrittsdaten hochladen (.xlsx/.csv)"}
+        <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+          onChange={e=>onJoinImport&&onJoinImport(e)} disabled={joinImporting}/>
+      </label>
     </div>
   </div>;
 }
