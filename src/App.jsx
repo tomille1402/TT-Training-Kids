@@ -518,8 +518,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* STICKY TOP AREA: Header + Chips + Tabs — alles zusammen sticky */}
-    <div style={{position:"sticky",top:hideHeader?44:0,zIndex:97,background:"var(--bg2)"}}>
+    {/* FIXED TOP AREA: Header + Chips + Tabs */}
+    <div style={{position:"fixed",top:hideHeader?44:0,left:0,right:0,zIndex:97,background:"var(--bg2)",maxWidth:720,margin:"0 auto"}}>
 
     {/* Header-Titel */}
     {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
@@ -615,7 +615,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
 
-    </div>{/* end sticky top area */}
+    </div>{/* end fixed top area */}
+    {/* Spacer to compensate for fixed header */}
+    <div style={{height:hideHeader?102:162}}/>
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -2678,11 +2680,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"sticky",top:hideHeader?0:70,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?44:70,left:0,right:0,zIndex:99,overflowX:"auto",overflowY:"hidden",maxWidth:720,margin:"0 auto"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
+    <div style={{height:hideHeader?44:114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -2894,6 +2897,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
+    <div style={{height:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
@@ -4756,7 +4760,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
-    <div style={{position:"sticky",top:0,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)",maxWidth:720,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
@@ -4864,7 +4868,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
     {/* Chip-Leiste für Spieler- und Erwachsene-Ansicht */}
     {showChips&&<div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",
-      padding:"8px 14px",position:"sticky",top:44,zIndex:499}}>
+      padding:"8px 14px",position:"fixed",top:44,left:0,right:0,zIndex:499,maxWidth:720,margin:"0 auto"}}>
       {/* Gruppenfilter nur bei Spieler-View */}
       {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
         <button onClick={()=>setGroupFilter("all")} style={{
@@ -4896,6 +4900,9 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       </div>
     </div>}
 
+    {/* Spacer for fixed switch bar + chips */}
+    {showChips&&<div style={{height:116}}/>}
+    {!showChips&&<div style={{height:44}}/>}
     {/* Spieler-View */}
     {activeView==="player"&&selectedPlayer&&
       <PlayerView user={user} players={players} attendance={attendance}
