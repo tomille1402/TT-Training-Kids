@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { initializeApp } from "firebase/app";
 import {
   getAuth, signInWithEmailAndPassword, signOut,
@@ -518,8 +518,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* FIXED TOP AREA: Header + Chips + Tabs */}
-    <div style={{position:"fixed",top:hideHeader?118:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
+    {/* TOP AREA: Header + Chips + Tabs - fixed only when standalone (no RSW) */}
+    <div style={{...(hideHeader?{}:{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97}),background:"var(--bg2)"}}>
 
     {/* Header-Titel */}
     {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
@@ -617,7 +617,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     </div>{/* end fixed top area */}
     {/* Spacer to compensate for fixed header */}
-    <div style={{height:hideHeader?158:162}}/>
+    {!hideHeader&&<div style={{height:162}}/>}
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -2680,12 +2680,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?118:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",...(hideHeader?{}:{position:"fixed",top:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99}),overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?162:114}}/>
+    {!hideHeader&&<div style={{height:114}}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -2897,7 +2897,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    <div style={{height:inRSW?162:44}}/>
+    {!inRSW&&<div style={{height:44}}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
@@ -4760,7 +4760,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
-    <div style={{position:"fixed",top:inRSW?118:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+    <div style={{...(inRSW?{}:{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200}),background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
@@ -4795,6 +4795,56 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
   </div>;
+}
+
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props); this.state={error:null};}
+  static getDerivedStateFromError(error){return {error};}
+  componentDidCatch(error,info){console.error("ErrorBoundary caught:",error,info);}
+  render(){
+    if(this.state.error) return <div style={{padding:20,background:"#fee",color:"#900",fontSize:13,fontFamily:"monospace",whiteSpace:"pre-wrap"}}>
+      <div style={{fontSize:16,fontWeight:700,marginBottom:10}}>⚠️ Fehler in Komponente</div>
+      <div>{String(this.state.error?.message||this.state.error)}</div>
+      <div style={{marginTop:10,fontSize:11}}>Stack: {String(this.state.error?.stack||"").slice(0,500)}</div>
+      <button onClick={()=>this.setState({error:null})} style={{marginTop:14,padding:"6px 12px",background:"#900",border:"none",borderRadius:6,color:"#fff",cursor:"pointer"}}>Neu laden</button>
+    </div>;
+    return this.props.children;
+  }
+}
+
+// ─── RSW HEADER mit dynamischer Höhenmessung ────────────────────────────────
+function RSWHeader({switchBarContent, chipsContent}) {
+  const containerRef = useRef(null);
+  const [height, setHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    const measure = () => setHeight(containerRef.current?.offsetHeight || 0);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [chipsContent]);
+
+  return <>
+    <div ref={containerRef} style={{
+      position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
+      width:"100%",maxWidth:720,zIndex:500,background:"var(--bg2)",
+      borderBottom:"2px solid var(--border2)"
+    }}>
+      {/* Switch Bar */}
+      <div style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+        {switchBarContent}
+      </div>
+      {/* Chips */}
+      {chipsContent && <div style={{padding:"4px 14px 8px",borderTop:"1px solid var(--border)"}}>
+        {chipsContent}
+      </div>}
+    </div>
+    {/* Spacer - matches measured height exactly */}
+    <div style={{height:height}}/>
+  </>;
 }
 
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
@@ -4847,66 +4897,62 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const showChips = (activeView==="player" || activeView==="erwachsene") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
-    {/* Role Switch Bar — FIXED */}
-    <div style={{background:"var(--bg2)",borderBottom:"2px solid var(--border2)",
-      padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
-      position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:500}}>
-      {availableViews.map(v=>{
-        const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
-        return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
-          padding:"6px 12px",borderRadius:20,border:`2px solid ${isActive?cfg.color:cfg.color+"44"}`,
-          background:isActive?cfg.color+"22":"transparent",color:isActive?cfg.color:"var(--text3)",
-          fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,
-        }}>{cfg.icon} {cfg.label}</button>;
-      })}
-      <div style={{flex:1}}/>
-      <BirthdayBtn players={players} attendance={attendance}/>
-      <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-      <button onClick={onSignOut} title="Abmelden" style={{
-        padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
-        borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
-      }}>⏻</button>
-    </div>
-    {/* Chip-Leiste für Spieler- und Erwachsene-Ansicht */}
-    {showChips&&<div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",
-      padding:"8px 14px",position:"fixed",top:44,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:499}}>
-      {/* Gruppenfilter nur bei Spieler-View */}
-      {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,overflowX:"auto"}}>
-        <button onClick={()=>setGroupFilter("all")} style={{
-          padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-          border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
-          background:groupFilter==="all"?"#6b728022":"transparent",
-          color:groupFilter==="all"?"#9ca3af":"#6b728066"}}>Alle</button>
-        {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
-          const col=GROUP_COLORS[g]; const on=groupFilter===g;
-          return <button key={g} onClick={()=>setGroupFilter(g)} style={{
+    {/* Header-Container — misst seine eigene Höhe */}
+    <RSWHeader switchBarContent={
+      <>
+        {availableViews.map(v=>{
+          const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
+          return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
+            padding:"6px 12px",borderRadius:20,border:`2px solid ${isActive?cfg.color:cfg.color+"44"}`,
+            background:isActive?cfg.color+"22":"transparent",color:isActive?cfg.color:"var(--text3)",
+            fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,
+          }}>{cfg.icon} {cfg.label}</button>;
+        })}
+        <div style={{flex:1}}/>
+        <BirthdayBtn players={players} attendance={attendance}/>
+        <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+        <button onClick={onSignOut} title="Abmelden" style={{
+          padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
+          borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
+        }}>⏻</button>
+      </>
+    } chipsContent={showChips ? (
+      <>
+        {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,overflowX:"auto"}}>
+          <button onClick={()=>setGroupFilter("all")} style={{
             padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-            border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
-          }}>{g}</button>;
-        })}
-      </div>}
-      {/* Person-Chips */}
-      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-        {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
-        {chipPlayers.map(p=>{
-          const isActive=p.id===selectedPlayer?.id;
-          const col=p.color||"#10b981";
-          return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
-            flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
-            border:`2px solid ${isActive?col:"var(--border2)"}`,
-            background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
-            display:"flex",alignItems:"center",gap:4,
-          }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
-        })}
-      </div>
-    </div>}
-
-    {/* Spacer: switch(44) + chips(74) = 118 when visible, else 44 */}
-    <div style={{height:showChips?118:44}}/>
-    {/* Spieler-View */}
+            border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
+            background:groupFilter==="all"?"#6b728022":"transparent",
+            color:groupFilter==="all"?"#9ca3af":"#6b728066"}}>Alle</button>
+          {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+            const col=GROUP_COLORS[g]; const on=groupFilter===g;
+            return <button key={g} onClick={()=>setGroupFilter(g)} style={{
+              padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
+            }}>{g}</button>;
+          })}
+        </div>}
+        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+          {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
+          {chipPlayers.map(p=>{
+            const isActive=p.id===selectedPlayer?.id;
+            const col=p.color||"#10b981";
+            return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
+              flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+              border:`2px solid ${isActive?col:"var(--border2)"}`,
+              background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
+              display:"flex",alignItems:"center",gap:4,
+            }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
+          })}
+        </div>
+      </>
+    ) : null}/>
+    {/* Spieler-View - mit ErrorBoundary */}
     {activeView==="player"&&selectedPlayer&&
-      <PlayerView key={selectedPlayer.id} user={user} players={players} attendance={attendance}
-        forcePlayer={selectedPlayer} hideHeader {...sharedProps}/>}
+      <ErrorBoundary key={selectedPlayer.id}>
+        <PlayerView user={user} players={players} attendance={attendance}
+          forcePlayer={selectedPlayer} hideHeader {...sharedProps}/>
+      </ErrorBoundary>}
     {activeView==="player"&&!selectedPlayer&&
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
         <div style={{fontSize:32,marginBottom:8}}>🏓</div>
