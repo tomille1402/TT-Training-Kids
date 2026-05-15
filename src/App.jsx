@@ -518,95 +518,91 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       <button onClick={()=>setTeilnahmePlayer(null)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </Modal>}
 
-    {/* TOP AREA: Header + Chips + Tabs - fixed only when standalone (no RSW) */}
-    <div style={{...(hideHeader?{}:{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97}),background:"var(--bg2)"}}>
-
-    {/* Header-Titel */}
-    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
-          <div>
-            <div style={{fontSize:15,fontWeight:800}}>TTC Niederzeuzheim</div>
-            <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
+    {/* Standalone header + chips - only when NOT inside RSW */}
+    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
+      <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
+            <div>
+              <div style={{fontSize:15,fontWeight:800}}>TTC Niederzeuzheim</div>
+              <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <BirthdayBtn players={players} attendance={attendance}/>
+            {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
+            <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+            <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <BirthdayBtn players={players} attendance={attendance}/>
-          {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
-          <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-          <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
+      </div>
+      <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px"}}>
+        <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+          {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
+            const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+            const c=colors[g]; const on=groupFilters[g];
+            return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
+              padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${on?c:c+"44"}`,background:on?c+"22":"transparent",color:on?c:c+"66",transition:"all .15s",
+            }}>{g}</button>;
+          })}
+        </div>
+        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
+          {(()=>{
+            const todayStr=new Date().toLocaleDateString("sv");
+            let absentCount=0;
+            for(const p of visiblePlayers){
+              const grp=p.group||"Anfänger";
+              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
+              if(!nearestDay) continue;
+              const sess=attendance?.[nearestDay];
+              if(!sess||sess.took_place===false||!sess.attendances) continue;
+              const v=sess.attendances[p.id];
+              if(v==="e"||v==="u") absentCount++;
+            }
+            if(absentCount===0) return null;
+            return <button onClick={()=>setShowOnlyPresent(p=>!p)} title={showOnlyPresent?"Abwesende anzeigen":"Abwesende ausblenden"} style={{
+              flexShrink:0,padding:"4px 8px",borderRadius:20,fontSize:14,cursor:"pointer",
+              border:`2px solid ${showOnlyPresent?"#f59e0b":"#6b728088"}`,
+              background:showOnlyPresent?"#f59e0b22":"var(--bg3)",
+              color:showOnlyPresent?"#f59e0b":"var(--text3)",
+            }}>👁</button>;
+          })()}
+          {visiblePlayers
+            .filter(p=>{
+              if(!showOnlyPresent) return true;
+              const todayStr=new Date().toLocaleDateString("sv");
+              const grp=p.group||"Anfänger";
+              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
+              if(!nearestDay) return true;
+              const sess=attendance?.[nearestDay];
+              if(!sess||sess.took_place===false||!sess.attendances) return true;
+              const v=sess.attendances[p.id];
+              return v!=="e"&&v!=="u";
+            })
+            .map(p=>(
+            <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
+              flexShrink:0,padding:"3px 9px 3px 5px",borderRadius:20,
+              border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--border2)"}`,
+              background:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color+"22":"transparent",
+              color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--text2)",
+              fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{(()=>{
+                const counts={};
+                visiblePlayers.forEach(x=>{counts[x.firstName]=(counts[x.firstName]||0)+1;});
+                return counts[p.firstName]>1?`${p.firstName} ${(p.lastName||"").charAt(0)}.`:(p.firstName||p.name);
+              })()}
+            </button>
+          ))}
+          {visiblePlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler sichtbar</span>}
         </div>
       </div>
     </div>}
 
-    {/* Gruppenfilter + Spieler-Chips */}
-    <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px",flexShrink:0}}>
-      <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-        {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
-          const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
-          const c=colors[g]; const on=groupFilters[g];
-          return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
-            padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-            border:`2px solid ${on?c:c+"44"}`,background:on?c+"22":"transparent",color:on?c:c+"66",transition:"all .15s",
-          }}>{g}</button>;
-        })}
-      </div>
-      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
-        {/* Punkt 1+2: Filter-Button Abwesende - gruppenspezifisch, nur Icon */}
-        {(()=>{
-          const todayStr=new Date().toLocaleDateString("sv");
-          let absentCount=0;
-          for(const p of visiblePlayers){
-            const grp=p.group||"Anfänger";
-            const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
-            const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
-            if(!nearestDay) continue;
-            const sess=attendance?.[nearestDay];
-            if(!sess||sess.took_place===false||!sess.attendances) continue;
-            const v=sess.attendances[p.id];
-            if(v==="e"||v==="u") absentCount++;
-          }
-          if(absentCount===0) return null;
-          return <button onClick={()=>setShowOnlyPresent(p=>!p)} title={showOnlyPresent?"Abwesende anzeigen":"Abwesende ausblenden"} style={{
-            flexShrink:0,padding:"4px 8px",borderRadius:20,fontSize:14,cursor:"pointer",
-            border:`2px solid ${showOnlyPresent?"#f59e0b":"#6b728088"}`,
-            background:showOnlyPresent?"#f59e0b22":"var(--bg3)",
-            color:showOnlyPresent?"#f59e0b":"var(--text3)",
-          }}>👁</button>;
-        })()}
-        {visiblePlayers
-          .filter(p=>{
-            if(!showOnlyPresent) return true;
-            const todayStr=new Date().toLocaleDateString("sv");
-            const grp=p.group||"Anfänger";
-            const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
-            const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
-            if(!nearestDay) return true;
-            const sess=attendance?.[nearestDay];
-            if(!sess||sess.took_place===false||!sess.attendances) return true;
-            const v=sess.attendances[p.id];
-            return v!=="e"&&v!=="u";
-          })
-          .map(p=>(
-          <button key={p.id} onClick={()=>{setSelectedPlayer(p.id);setActiveTab("uebungen");}} style={{
-            flexShrink:0,padding:"3px 9px 3px 5px",borderRadius:20,
-            border:`2px solid ${curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--border2)"}`,
-            background:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color+"22":"transparent",
-            color:curPlayer?.id===p.id&&activeTab==="uebungen"?p.color:"var(--text2)",
-            fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-            <span style={{fontSize:14}}>{p.avatar||"🏓"}</span>{(()=>{
-              const counts={};
-              visiblePlayers.forEach(x=>{counts[x.firstName]=(counts[x.firstName]||0)+1;});
-              return counts[p.firstName]>1?`${p.firstName} ${(p.lastName||"").charAt(0)}.`:(p.firstName||p.name);
-            })()}
-          </button>
-        ))}
-        {visiblePlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler sichtbar</span>}
-      </div>
-    </div>
-
-    {/* Tabs — fixiert unter RSWHeader wenn hideHeader, sonst standalone-fixed */}
+    {/* Tabs — immer fixiert: unter RSWHeader (hideHeader) oder standalone (62px) */}
     <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"62px",
@@ -618,10 +614,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
-
-    </div>{/* end fixed top area */}
-    {/* Spacer to compensate for fixed header */}
+    {/* Spacer: standalone=header(62)+tabs(40)=102, in RSW RSWHeader-Spacer+tabs(40)=40 */}
     <div style={{height:hideHeader?40:102}}/>
+
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -4787,8 +4782,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         }}>⏻</button>}
       </div>
     </div>
-    {/* Spacer for fixed EW header */}
-    <div style={{height:inRSW?160:44}}/>
+    {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
+    <div style={{height:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
