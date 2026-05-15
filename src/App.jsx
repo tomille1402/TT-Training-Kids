@@ -4761,6 +4761,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
     <div style={{position:"fixed",top:inRSW?116:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+      <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
             flexShrink:0,padding:"9px 8px",background:"transparent",border:"none",
