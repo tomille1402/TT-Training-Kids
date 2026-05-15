@@ -4865,6 +4865,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
   const [groupFilter,setGroupFilter] = useState("all");
+  const [adminGroupFilters,setAdminGroupFilters] = useState({});
 
   const VIEW_CONFIG = {
     player:     {icon:"🏓", label:"Spieler",    color:"#10b981"},
@@ -4904,7 +4905,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     : players.find(p=>p.id===viewAsPlayer)
       || (activeView==="erwachsene" ? erwachsenePlayers[0] : (myPlayer||spielerPlayers[0]));
 
-  const showChips = (activeView==="player" || activeView==="erwachsene") && !isErwachseneOnly;
+  const showChips = (activeView==="player" || activeView==="erwachsene" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
     {/* Header-Container — misst seine eigene Höhe */}
@@ -4928,32 +4929,61 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       </>
     } chipsContent={showChips ? (
       <>
-        {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,overflowX:"auto"}}>
-          <button onClick={()=>setGroupFilter("all")} style={{
-            padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-            border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
-            background:groupFilter==="all"?"#6b728022":"transparent",
-            color:groupFilter==="all"?"#9ca3af":"#6b728066"}}>Alle</button>
-          {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
-            const col=GROUP_COLORS[g]; const on=groupFilter===g;
-            return <button key={g} onClick={()=>setGroupFilter(g)} style={{
-              padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-              border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
-            }}>{g}</button>;
-          })}
-        </div>}
-        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-          {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
-          {chipPlayers.map(p=>{
-            const isActive=p.id===selectedPlayer?.id;
-            const col=p.color||"#10b981";
-            return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
-              flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
-              border:`2px solid ${isActive?col:"var(--border2)"}`,
-              background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
-              display:"flex",alignItems:"center",gap:4,
-            }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
-          })}
+        {/* Menü 2: Gruppenfilter — einzeilig, scrollbar */}
+        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:4,marginBottom:4,flexWrap:"nowrap"}}>
+          {(activeView==="player")&&<>
+            <button onClick={()=>setGroupFilter("all")} style={{
+              flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
+              background:groupFilter==="all"?"#6b728022":"transparent",
+              color:groupFilter==="all"?"#9ca3af":"#6b728066"}}>Alle</button>
+            {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
+              const col=GROUP_COLORS[g]; const on=groupFilter===g;
+              return <button key={g} onClick={()=>setGroupFilter(g)} style={{
+                flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
+              }}>{g}</button>;
+            })}
+          </>}
+          {(activeView==="admin"||activeView==="trainer")&&
+            ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
+              const col=GROUP_COLORS[g]; const on=adminGroupFilters[g];
+              return <button key={g} onClick={()=>setAdminGroupFilters(p=>({...p,[g]:!on}))} style={{
+                flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
+                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
+              }}>{g}</button>;
+            })}
+          {activeView==="erwachsene"&&<span style={{fontSize:11,color:"var(--text3)",padding:"3px 0",flexShrink:0}}>👪 Erwachsene</span>}
+        </div>
+        {/* Menü 3: Personen-Chips — einzeilig, scrollbar */}
+        <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,flexWrap:"nowrap"}}>
+          {(activeView==="player"||activeView==="erwachsene")&&<>
+            {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
+            {chipPlayers.map(p=>{
+              const isActive=p.id===selectedPlayer?.id;
+              const col=p.color||"#10b981";
+              return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
+                flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+                border:`2px solid ${isActive?col:"var(--border2)"}`,
+                background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
+                display:"flex",alignItems:"center",gap:4,
+              }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
+            })}
+          </>}
+          {(activeView==="admin"||activeView==="trainer")&&(()=>{
+            const hasFilter=Object.values(adminGroupFilters).some(Boolean);
+            const filtered=spielerPlayers.filter(p=>!hasFilter||adminGroupFilters[p.group||"Anfänger"]);
+            return filtered.length===0
+              ? <span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler</span>
+              : filtered.map(p=>{
+                const col=p.color||"#10b981";
+                return <span key={p.id} style={{
+                  flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,
+                  border:`2px solid ${col+"44"}`,color:"var(--text2)",
+                  display:"inline-flex",alignItems:"center",gap:4,
+                }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</span>;
+              });
+          })()}
         </div>
       </>
     ) : null}/>
