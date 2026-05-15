@@ -606,8 +606,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       </div>
     </div>
 
-    {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",overflowX:"auto"}}>
+    {/* Tabs — fixiert unter RSWHeader wenn hideHeader, sonst standalone-fixed */}
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
+      position:"fixed",
+      top:hideHeader?"var(--rsw-height)":"62px",
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:96,
+      overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
         borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
@@ -617,7 +621,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     </div>{/* end fixed top area */}
     {/* Spacer to compensate for fixed header */}
-    {!hideHeader&&<div style={{height:162}}/>}
+    <div style={{height:hideHeader?40:102}}/>
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -2680,12 +2684,16 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",...(hideHeader?{}:{position:"fixed",top:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99}),overflowX:"auto",overflowY:"hidden"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
+      position:"fixed",
+      top:hideHeader?"var(--rsw-height)":"70px",
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,
+      overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
-    {!hideHeader&&<div style={{height:114}}/>}
+    <div style={{height:hideHeader?40:114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -4759,7 +4767,10 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
-    <div style={{...(inRSW?{}:{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200}),background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+    <div style={{position:"fixed",
+      top:inRSW?"var(--rsw-height)":"0px",
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,
+      background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
@@ -4769,11 +4780,11 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
             fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
           }}>{t.icon} {t.label}</button>)}
         </div>
-        <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-        <button onClick={onSignOut} title="Abmelden" style={{
+        {!inRSW&&<ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>}
+        {!inRSW&&<button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:14,cursor:"pointer",lineHeight:1,flexShrink:0,
-        }}>⏻</button>
+        }}>⏻</button>}
       </div>
     </div>
     {/* Spacer for fixed EW header */}
@@ -4819,7 +4830,12 @@ function RSWHeader({switchBarContent, chipsContent}) {
 
   useLayoutEffect(() => {
     if (!containerRef.current) return;
-    const measure = () => setHeight(containerRef.current?.offsetHeight || 0);
+    const measure = () => {
+      const h = containerRef.current?.offsetHeight || 0;
+      setHeight(h);
+      // Set CSS variable so children can use it for their tab bars
+      document.documentElement.style.setProperty('--rsw-height', h + 'px');
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(containerRef.current);
