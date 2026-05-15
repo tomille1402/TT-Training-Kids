@@ -519,7 +519,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* FIXED TOP AREA: Header + Chips + Tabs */}
-    <div style={{position:"fixed",top:hideHeader?116:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
+    <div style={{position:"fixed",top:hideHeader?118:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
 
     {/* Header-Titel */}
     {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px",flexShrink:0}}>
@@ -617,7 +617,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     </div>{/* end fixed top area */}
     {/* Spacer to compensate for fixed header */}
-    <div style={{height:hideHeader?160:162}}/>
+    <div style={{height:hideHeader?158:162}}/>
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
@@ -2680,12 +2680,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?116:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
+    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",position:"fixed",top:hideHeader?118:70,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?160:114}}/>
+    <div style={{height:hideHeader?162:114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -2897,7 +2897,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    <div style={{height:inRSW?160:44}}/>
+    <div style={{height:inRSW?162:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
 
     <style>{`
@@ -4760,7 +4760,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
       boxShadow:"0 8px 32px #0008"}}><span style={{fontSize:18}}>{toast.emoji}</span>{toast.msg}</div>}
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
-    <div style={{position:"fixed",top:inRSW?116:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+    <div style={{position:"fixed",top:inRSW?118:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
@@ -4867,14 +4867,11 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
       }}>⏻</button>
     </div>
-    {/* Spacer for fixed switch bar */}
-    <div style={{height:44}}/>
-
     {/* Chip-Leiste für Spieler- und Erwachsene-Ansicht */}
     {showChips&&<div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",
       padding:"8px 14px",position:"fixed",top:44,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:499}}>
       {/* Gruppenfilter nur bei Spieler-View */}
-      {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
+      {activeView==="player"&&<div style={{display:"flex",gap:5,marginBottom:6,overflowX:"auto"}}>
         <button onClick={()=>setGroupFilter("all")} style={{
           padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
           border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
@@ -4893,7 +4890,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
         {chipPlayers.map(p=>{
           const isActive=p.id===selectedPlayer?.id;
-          const col=p.color||(activeView==="erwachsene"?"#ec4899":"#10b981");
+          const col=p.color||"#10b981";
           return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
             flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
             border:`2px solid ${isActive?col:"var(--border2)"}`,
@@ -4904,11 +4901,11 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       </div>
     </div>}
 
-    {/* Spacer for fixed chips bar when visible */}
-    {showChips&&<div style={{height:72}}/>}
+    {/* Spacer: switch(44) + chips(74) = 118 when visible, else 44 */}
+    <div style={{height:showChips?118:44}}/>
     {/* Spieler-View */}
     {activeView==="player"&&selectedPlayer&&
-      <PlayerView user={user} players={players} attendance={attendance}
+      <PlayerView key={selectedPlayer.id} user={user} players={players} attendance={attendance}
         forcePlayer={selectedPlayer} hideHeader {...sharedProps}/>}
     {activeView==="player"&&!selectedPlayer&&
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
@@ -4925,13 +4922,13 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         <div style={{fontSize:32,marginBottom:8}}>👪</div>
         <div>Keine Erwachsene vorhanden oder Person auswählen</div>
       </div>}
-    {activeView==="trainer"&&<AdminPanel
+    {activeView==="trainer"&&<AdminPanel key="trainer"
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={false} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded} hideHeader {...sharedProps}/>}
 
     {/* Admin-View */}
-    {activeView==="admin"&&<AdminPanel
+    {activeView==="admin"&&<AdminPanel key="admin"
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={true} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded} hideHeader {...sharedProps}/>}
