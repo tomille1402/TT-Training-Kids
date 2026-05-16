@@ -2820,7 +2820,6 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:600,color:"var(--text)",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div>
               </div>
-              {ex.symbol&&<span style={{fontSize:18,flexShrink:0}}>{ex.symbol}</span>}
               <StarRating stars={stars} readonly/>
               <span style={{color:"var(--text3)",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
             </div>
