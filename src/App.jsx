@@ -5067,12 +5067,14 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             return filtered.length===0
               ? <span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler</span>
               : filtered.map(p=>{
+                const isActive=p.id===selectedPlayer?.id;
                 const col=p.color||"#10b981";
-                return <span key={p.id} style={{
-                  flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,
-                  border:`2px solid ${col+"44"}`,color:"var(--text2)",
-                  display:"inline-flex",alignItems:"center",gap:4,
-                }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</span>;
+                return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
+                  flexShrink:0,padding:"3px 9px 3px 6px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
+                  border:`2px solid ${isActive?col:"var(--border2)"}`,
+                  background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
+                  display:"flex",alignItems:"center",gap:4,
+                }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
               });
           })()}
         </div>
