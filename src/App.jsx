@@ -482,7 +482,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent}) {
   const ALL_TABS=[
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
@@ -512,7 +512,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
   const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
-  const [showOnlyPresent,setShowOnlyPresent]=useState(false);
+  const [showOnlyPresentLocal,setShowOnlyPresentLocal]=useState(false);
+  const showOnlyPresent = showOnlyPresentExt !== undefined ? showOnlyPresentExt : showOnlyPresentLocal;
+  const setShowOnlyPresent = onSetShowOnlyPresent || setShowOnlyPresentLocal;
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
@@ -4964,6 +4966,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
   const [groupFilter,setGroupFilter] = useState("all");
   const [adminGroupFilters,setAdminGroupFilters] = useState({});
+  const [showOnlyPresent,setShowOnlyPresent] = useState(false);
 
   const VIEW_CONFIG = {
     player:     {icon:"🏓", label:"Spieler",    color:"#10b981"},
@@ -5071,9 +5074,39 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           {(activeView==="admin"||activeView==="trainer")&&(()=>{
             const hasFilter=Object.values(adminGroupFilters).some(Boolean);
             const filtered=spielerPlayers.filter(p=>!hasFilter||adminGroupFilters[p.group||"Anfänger"]);
+            // Count absent players for eye button
+            const todayStr=new Date().toLocaleDateString("sv");
+            let absentCount=0;
+            for(const p of filtered){
+              const grp=p.group||"Anfänger";
+              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
+              if(!nearestDay) continue;
+              const sess=attendance?.[nearestDay];
+              if(!sess||sess.took_place===false||!sess.attendances) continue;
+              const v=sess.attendances[p.id];
+              if(v==="e"||v==="u") absentCount++;
+            }
             return filtered.length===0
               ? <span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler</span>
-              : filtered.map(p=>{
+              : <>{absentCount>0&&<button onClick={()=>setShowOnlyPresent(p=>!p)}
+                title={showOnlyPresent?"Abwesende anzeigen":"Abwesende ausblenden"}
+                style={{flexShrink:0,padding:"4px 8px",borderRadius:20,fontSize:14,cursor:"pointer",
+                  border:`2px solid ${showOnlyPresent?"#f59e0b":"#6b728088"}`,
+                  background:showOnlyPresent?"#f59e0b22":"var(--bg3)",
+                  color:showOnlyPresent?"#f59e0b":"var(--text3)"}}>👁</button>}
+                {filtered.filter(p=>{
+                  if(!showOnlyPresent) return true;
+                  const todayStr2=new Date().toLocaleDateString("sv");
+                  const grp=p.group||"Anfänger";
+                  const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+                  const nearestDay=[...pDays].reverse().find(d=>d<=todayStr2)||pDays[0];
+                  if(!nearestDay) return true;
+                  const sess=attendance?.[nearestDay];
+                  if(!sess||sess.took_place===false||!sess.attendances) return true;
+                  const v=sess.attendances[p.id];
+                  return v!=="e"&&v!=="u";
+                }).map(p=>{
                 const isActive=p.id===selectedPlayer?.id;
                 const col=p.color||"#10b981";
                 return <button key={p.id} onClick={()=>setViewAsPlayer(p.id)} style={{
@@ -5082,7 +5115,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
                   background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
                   display:"flex",alignItems:"center",gap:4,
                 }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
-              });
+              })}</>;
           })()}
         </div>
       </>
@@ -5113,6 +5146,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       isSuperAdmin={false} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
+      showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
       {...sharedProps}/>}
 
     {/* Admin-View */}
@@ -5121,6 +5155,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       isSuperAdmin={true} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
+      showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
       {...sharedProps}/>}
   </div>;
 }
