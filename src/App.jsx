@@ -576,7 +576,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const recentBirthdays = getBirthdaysSince(birthdaySince);
   const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:720,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
@@ -608,7 +608,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* Standalone header + chips - only when NOT inside RSW */}
-    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:97,background:"var(--bg2)"}}>
+    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:97,background:"var(--bg2)"}}>
       <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -695,7 +695,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"62px",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:96,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
@@ -1489,7 +1489,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {(()=>{
       if (!user) return null;
       const myP = players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase());
-      if (myP) return null; // Profil gefunden — alles ok
+      if (myP) return null;
+      // Also suppress if user has admin role in any player (e.g. email mismatch)
+      const hasAdminPlayer = players.find(p=>p.roles?.admin===true);
+      if (hasAdminPlayer) return null;
 
       // Gibt es einen Eintrag mit ähnlichem Namen aber falscher E-Mail?
       const trainerEntry = players.find(p=>p.group==="Trainer"&&!p.email);
@@ -1579,6 +1582,33 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
           Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
         </div>}
+        {/* P1: Whitelabel */}
+        <div style={{borderTop:"1px solid var(--border)",paddingTop:12,marginTop:12}}>
+          <div style={{fontSize:11,color:"var(--text2)",fontWeight:700,marginBottom:8}}>🏷️ Vereins-Branding</div>
+          {[{k:"name",l:"Vereinsname",p:"TTC Niederzeuzheim"},{k:"subtitle",l:"Untertitel",p:"Trainings-App"}].map(f=>(
+            <div key={f.k} style={{marginBottom:8}}>
+              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>{f.l}</label>
+              <input type="text" defaultValue={clubConfig[f.k]||""} onBlur={async e=>{
+                const val=e.target.value.trim();
+                const updated={...clubConfig,[f.k]:val};
+                await setDoc(doc(db,"config","clubConfig"),updated).catch(()=>{});
+                showToast(f.l+" gespeichert","✅");
+              }} placeholder={f.p}
+              style={{width:"100%",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          <div style={{marginBottom:6}}>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Vereinswappen (URL)</label>
+            <input type="text" defaultValue={clubConfig.logo||""} onBlur={async e=>{
+              const val=e.target.value.trim();
+              const updated={...clubConfig,logo:val};
+              await setDoc(doc(db,"config","clubConfig"),updated).catch(()=>{});
+              showToast("Logo gespeichert","🖼️");
+            }} placeholder="https://... oder leer lassen"
+            style={{width:"100%",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+            <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>PNG/SVG-URL. Wird oben links im Anmeldebildschirm angezeigt.</div>
+          </div>
+        </div>
       </div>}
     </div>
 
@@ -2771,7 +2801,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"70px",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:99,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
     </div>
@@ -4534,7 +4564,11 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   const nachwuchsMannschaften=["Mädchen 13","Mädchen 15"];
   const filtered = spiele.filter(s=>{
     if(nurNachwuchs && !nachwuchsMannschaften.includes(s.mannschaft)) return false;
-    return Object.entries(filters).every(([k,v])=>!v||String(s[k]||"").toLowerCase().includes(v.toLowerCase()));
+    const selManns=filters.mannschaften||[];
+    if(selManns.length>0 && !selManns.includes(s.mannschaft)) return false;
+    if(filters.ort && s.ort!==filters.ort) return false;
+    if(filters.gegner && !String(s.gegner||"").toLowerCase().includes(filters.gegner.toLowerCase())) return false;
+    return true;
   });
 
   function datumSort(d){
@@ -4559,20 +4593,50 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   if(loading) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Lädt...</div>;
 
   return <div style={{padding:"10px 8px 20px"}}>
-    {/* Filter Row */}
-    <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap"}}>
-      {["mannschaft","ort","gegner"].map(k=>(
-        <input key={k} placeholder={`Filter ${SPIELPLAN_COLS.find(col=>col.key===k)?.label}`}
-          value={filters[k]||""} onChange={e=>setFilters(p=>({...p,[k]:e.target.value}))}
+    {/* P4: Filter Row mit Dropdowns */}
+    {(()=>{
+      const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
+      const selManns=filters.mannschaften||[];
+      return <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Mannschaft Multi-Select */}
+        <div style={{position:"relative",minWidth:100}}>
+          <div onClick={()=>setFilters(p=>({...p,_showMannDrop:!p._showMannDrop}))}
+            style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,
+              color:"var(--text)",fontSize:11,cursor:"pointer",display:"flex",gap:4,alignItems:"center"}}>
+            <span>Mannschaft{selManns.length>0?` (${selManns.length})`:""}</span><span style={{fontSize:9}}>▼</span>
+          </div>
+          {filters._showMannDrop&&<div style={{position:"absolute",top:"100%",left:0,zIndex:50,background:"var(--bg2)",
+            border:"1px solid var(--border2)",borderRadius:8,padding:6,minWidth:140,boxShadow:"0 4px 12px #0004"}}>
+            {MANNS.map(m=>{
+              const on=selManns.includes(m);
+              return <div key={m} onClick={()=>setFilters(p=>({...p,mannschaften:on?selManns.filter(x=>x!==m):[...selManns,m]}))}
+                style={{padding:"4px 8px",borderRadius:5,fontSize:11,cursor:"pointer",
+                  background:on?"#10b98122":"transparent",color:on?"#10b981":"var(--text)"}}>
+                {on?"☑":"☐"} {m}
+              </div>;
+            })}
+            <button onClick={()=>setFilters(p=>({...p,mannschaften:[],_showMannDrop:false}))}
+              style={{width:"100%",marginTop:4,padding:"3px",background:"var(--bg3)",border:"none",borderRadius:4,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Alle</button>
+          </div>}
+        </div>
+        {/* Ort Dropdown */}
+        <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,ort:e.target.value}))}
+          style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Ort (alle)</option>
+          <option value="Heim">Heim</option>
+          <option value="Auswärts">Auswärts</option>
+        </select>
+        {/* Gegner Freitext */}
+        <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
           style={{flex:1,minWidth:70,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
-      ))}
-      {Object.values(filters).some(Boolean)&&
-        <button onClick={()=>setFilters({})} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕ Reset</button>}
-    </div>
+        {(selManns.length>0||filters.ort||filters.gegner)&&
+          <button onClick={()=>setFilters({})} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+      </div>;
+    })()}
     <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Spiele{nurNachwuchs?" (Nachwuchs)":""} · T=Terminänderung, V=Verlegung</div>
     {/* Table */}
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:480}}>
         <thead>
           <tr style={{background:"var(--bg2)"}}>
             {SPIELPLAN_COLS.map(col=>(
@@ -4580,7 +4644,10 @@ function VereinsSpielplan({nurNachwuchs=false}) {
                 style={{padding:"6px 6px",textAlign:"left",cursor:"pointer",fontWeight:700,
                   color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
                   borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none",
-                  background:"var(--bg2)",position:"sticky",top:0,zIndex:4}}>
+                  background:"var(--bg2)",
+                  position:"sticky",
+                  top:"calc(var(--rsw-height, 44px) + 44px)",
+                  zIndex:4}}>
                 {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
               </th>
             ))}
@@ -4666,7 +4733,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     </div>
 
     {/* Beitritte Import */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📥 Vereinsbeitritte importieren</div>
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
         Excel/CSV-Datei mit Spalten: Vorname, Nachname, Vereinsbeitritt (Datum).
@@ -4680,6 +4747,11 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
           onChange={e=>onJoinImport&&onJoinImport(e)} disabled={joinImporting}/>
       </label>
+    </div>
+    {/* P7: Mannschaften als 3. Thema in Uploads */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
+      <MannschaftenVerwaltung showToast={showToast}/>
     </div>
   </div>;
 }
@@ -4864,7 +4936,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
     <div style={{position:"fixed",
       top:inRSW?"var(--rsw-height)":"0px",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:720,zIndex:200,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:200,
       background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
@@ -4940,7 +5012,7 @@ function RSWHeader({switchBarContent, chipsContent}) {
   return <>
     <div ref={containerRef} style={{
       position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
-      width:"100%",maxWidth:720,zIndex:500,background:"var(--bg2)",
+      width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
       borderBottom:"2px solid var(--border2)"
     }}>
       {/* Switch Bar */}
@@ -5074,7 +5146,6 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           {(activeView==="admin"||activeView==="trainer")&&(()=>{
             const hasFilter=Object.values(adminGroupFilters).some(Boolean);
             const filtered=spielerPlayers.filter(p=>!hasFilter||adminGroupFilters[p.group||"Anfänger"]);
-            // Count absent players for eye button
             const todayStr=new Date().toLocaleDateString("sv");
             let absentCount=0;
             for(const p of filtered){
@@ -5089,12 +5160,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             }
             return filtered.length===0
               ? <span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Spieler</span>
-              : <>{absentCount>0&&<button onClick={()=>setShowOnlyPresent(p=>!p)}
+              : <div style={{display:"flex",gap:5,alignItems:"center",overflow:"hidden"}}>
+                {/* P6: Eye button fixed/sticky on left */}
+                {absentCount>0&&<button onClick={()=>setShowOnlyPresent(p=>!p)}
                 title={showOnlyPresent?"Abwesende anzeigen":"Abwesende ausblenden"}
                 style={{flexShrink:0,padding:"4px 8px",borderRadius:20,fontSize:14,cursor:"pointer",
                   border:`2px solid ${showOnlyPresent?"#f59e0b":"#6b728088"}`,
                   background:showOnlyPresent?"#f59e0b22":"var(--bg3)",
                   color:showOnlyPresent?"#f59e0b":"var(--text3)"}}>👁</button>}
+                <div style={{display:"flex",gap:5,overflowX:"auto",flex:1}}>
                 {filtered.filter(p=>{
                   if(!showOnlyPresent) return true;
                   const todayStr2=new Date().toLocaleDateString("sv");
@@ -5166,6 +5240,7 @@ export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [players,      setPlayers]      = useState([]);
   const [attendance,   setAttendance]   = useState({});
+  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",logo:""});
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
   const [loginLoad,    setLoginLoad]    = useState(false);
@@ -5214,6 +5289,12 @@ export default function App() {
   },[isDark]);
 
   // Globale Theme-Einstellung aus Firestore laden
+  useEffect(()=>{
+    const unsub2=onSnapshot(doc(db,"config","clubConfig"),snap=>{
+      if(snap.exists()) setClubConfig(prev=>({...prev,...snap.data()}));
+    },()=>{});
+    return unsub2;
+  },[]);
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
       if(snap.exists()) setGlobalTheme(snap.data().mode||"dark");
