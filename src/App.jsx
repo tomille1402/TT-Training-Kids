@@ -482,7 +482,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer}) {
   const ALL_TABS=[
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
@@ -502,6 +502,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
   const [expandedEx,setExpandedEx]=useState(null);
+  // Sync external player selection from RSW chips
+  useEffect(()=>{
+    if(externalPlayer){
+      setSelectedPlayer(externalPlayer.id);
+      setActiveTab("uebungen");
+    }
+  },[externalPlayer?.id]);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
   const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
@@ -5104,13 +5111,17 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     {activeView==="trainer"&&<AdminPanel key="trainer"
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={false} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
-      onPlayerAdded={onPlayerAdded} hideHeader {...sharedProps}/>}
+      onPlayerAdded={onPlayerAdded} hideHeader
+      externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
+      {...sharedProps}/>}
 
     {/* Admin-View */}
     {activeView==="admin"&&<AdminPanel key="admin"
       user={user} players={players} attendance={attendance} rackets={rackets}
       isSuperAdmin={true} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
-      onPlayerAdded={onPlayerAdded} hideHeader {...sharedProps}/>}
+      onPlayerAdded={onPlayerAdded} hideHeader
+      externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
+      {...sharedProps}/>}
   </div>;
 }
 
