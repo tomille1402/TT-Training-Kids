@@ -5189,7 +5189,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
                   background:isActive?col+"22":"transparent",color:isActive?col:"var(--text2)",
                   display:"flex",alignItems:"center",gap:4,
                 }}><span style={{fontSize:13}}>{p.avatar||"🏓"}</span>{chipLabel(p)}</button>;
-              })}</>;
+              })}</div></div>;
           })()}
         </div>
       </>
