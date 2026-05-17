@@ -1547,7 +1547,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🎨 App-Design</div>
         <span style={{fontSize:11,color:"var(--text4)"}}>{showAppDesign?"▲":"▼"}</span>
       </div>
-      {showAppDesign&&<div style={{padding:"0 14px 14px"}}>
+      {showAppDesign&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
           Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
         </div>
@@ -1609,7 +1609,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>PNG/SVG-URL. Wird oben links im Anmeldebildschirm angezeigt.</div>
           </div>
         </div>
-      </div>}
+      </div></ErrorBoundary>}
     </div>
 
     {/* Trainingszeitraum — P4 ausblendbar */}
@@ -2774,7 +2774,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:680,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
@@ -4927,7 +4927,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
-  return <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:40}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",
       background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
@@ -5079,7 +5079,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const showChips = (activeView==="player" || activeView==="erwachsene" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
 
-  return <div style={{background:"var(--bg)",minHeight:"100vh"}}>
+  return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:1024,margin:"0 auto"}}>
     {/* Header-Container — misst seine eigene Höhe */}
     <RSWHeader switchBarContent={
       <>
