@@ -482,7 +482,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={}}) {
   const ALL_TABS=[
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
@@ -4635,7 +4635,8 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     })()}
     <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Spiele{nurNachwuchs?" (Nachwuchs)":""} · T=Terminänderung, V=Verlegung</div>
     {/* Table */}
-    <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+    {/* Sticky header wie Schlägerverwaltung: Container mit maxHeight+overflowY:auto, th mit top:0 */}
+    <div style={{maxHeight:"calc(100vh - var(--rsw-height, 88px) - 90px)",overflowY:"auto",overflowX:"auto",borderRadius:12,border:"1px solid var(--border)"}}>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:480}}>
         <thead>
           <tr style={{background:"var(--bg2)"}}>
@@ -4645,9 +4646,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
                   color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
                   borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none",
                   background:"var(--bg2)",
-                  position:"sticky",
-                  top:"calc(var(--rsw-height, 44px) + 44px)",
-                  zIndex:4}}>
+                  position:"sticky",top:0,zIndex:4}}>
                 {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
               </th>
             ))}
@@ -5031,7 +5030,7 @@ function RSWHeader({switchBarContent, chipsContent}) {
 
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
 // Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
-function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,
+function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,clubConfig={},
   globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut}) {
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
@@ -5221,7 +5220,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
       showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
-      {...sharedProps}/>}
+      clubConfig={clubConfig} {...sharedProps}/>}
 
     {/* Admin-View */}
     {activeView==="admin"&&<AdminPanel key="admin"
@@ -5230,7 +5229,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
       showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
-      {...sharedProps}/>}
+      clubConfig={clubConfig} {...sharedProps}/>}
   </div>;
 }
 
@@ -5486,6 +5485,7 @@ export default function App() {
       myPlayer={myPlayer}
       availableViews={availableViews}
       hasAdminRole={hasAdminRole}
+      clubConfig={clubConfig}
       globalTheme={globalTheme}
       onSetGlobalTheme={handleSetGlobalTheme}
       onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)}
