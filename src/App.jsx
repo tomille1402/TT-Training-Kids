@@ -5402,8 +5402,21 @@ export default function App() {
     document.body.style.color = isDark ? "#e5e7eb" : "#111827";
   },[isDark]);
 
-  // Globale Theme-Einstellung aus Firestore laden
+  // Club-Konfiguration laden - erst getDoc dann onSnapshot für Live-Updates
   useEffect(()=>{
+    // Sofort laden mit getDoc
+    getDoc(doc(db,"config","clubConfig")).then(snap=>{
+      if(snap.exists()){
+        const d=snap.data();
+        setClubConfig({
+          name:d.name||"TTC Niederzeuzheim",
+          subtitle:d.subtitle||"Trainings-App",
+          logo:d.logo||""
+        });
+      }
+      setClubConfigLoaded(true);
+    }).catch(()=>setClubConfigLoaded(true));
+    // Dann Live-Updates
     const unsub2=onSnapshot(doc(db,"config","clubConfig"),snap=>{
       if(snap.exists()){
         const d=snap.data();
@@ -5414,7 +5427,7 @@ export default function App() {
         });
       }
       setClubConfigLoaded(true);
-    },(e)=>{ setClubConfigLoaded(true); });
+    },()=>{ setClubConfigLoaded(true); });
     return ()=>{ unsub2(); };
   },[]);
   useEffect(()=>{
