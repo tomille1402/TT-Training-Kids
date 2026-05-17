@@ -3156,7 +3156,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 }
 
 // ─── ERFOLGE TAB (Spielerbereich) ─────────────────────────────────────────────
-function ErfolgeTab({player}) {
+function ErfolgeTab({player, hideTraining=false}) {
   const {beginnerStars,totalStars}=getAward(player);
 
   // Ribbon-Badge Komponente (Option C)
@@ -3227,7 +3227,7 @@ function ErfolgeTab({player}) {
     <div style={{fontSize:17,fontWeight:800,marginBottom:16}}>🏅 Meine Erfolge</div>
 
     {/* Training */}
-    <div style={{marginBottom:20}}>
+    {!hideTraining&&<div style={{marginBottom:20}}>
       <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>🏋️ Training — Urkunden</div>
       {earnedBeg.length===0&&earnedAdv.length===0&&(
         <div style={{fontSize:12,color:"var(--text4)",textAlign:"center",padding:16}}>Noch keine Urkunden erreicht — weiter trainieren! 💪</div>
@@ -3245,7 +3245,7 @@ function ErfolgeTab({player}) {
       {player.attendGoldDate&&<RibbonBadge emoji="🥇" label="Trainingsbeteiligung Gold >90%" color="#ffd700" date={player.attendGoldDate} earned/>}
       {player.attendSilverDate&&<RibbonBadge emoji="🥈" label="Trainingsbeteiligung Silber >80%" color="#b8b8b8" date={player.attendSilverDate} earned/>}
       {player.attendBronzeDate&&<RibbonBadge emoji="🥉" label="Trainingsbeteiligung Bronze >70%" color="#cd7f32" date={player.attendBronzeDate} earned/>}
-    </div>
+    </div>}
 
     {/* Vereinsturniere */}
     {vereinsTurniere.length>0&&<div style={{marginBottom:20}}>
@@ -3751,6 +3751,8 @@ function EinheitenTab({user, players}) {
   const [expandedId,setExpandedId] = useState(null);
   const [activeAbschnitt,setActiveAbschnitt] = useState("begruessung");
   const [detailExpandedId,setDetailExpandedId] = useState(null);
+  const [filterZeit, setFilterZeit] = useState("kuenftig");
+  const [filterGruppe, setFilterGruppe] = useState("alle");
 
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
 
@@ -3817,7 +3819,17 @@ function EinheitenTab({user, players}) {
     return [...arr,val];
   }
 
-  const sorted = [...einheiten].sort((a,b)=>(a.datum||"").localeCompare(b.datum||""));
+  const todayFilter = new Date().toLocaleDateString("sv");
+  const sorted = [...einheiten]
+    .filter(e=>{
+      if(filterGruppe!=="alle" && e.gruppe!==filterGruppe) return false;
+      if(filterZeit==="kuenftig")  return (e.datum||"")>=todayFilter;
+      if(filterZeit==="vergangen") return (e.datum||"")<todayFilter;
+      return true;
+    })
+    .sort((a,b)=>filterZeit==="vergangen"
+      ?(b.datum||"").localeCompare(a.datum||"")
+      :(a.datum||"").localeCompare(b.datum||""));
   const GRUPPEN_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
 
   return <div style={{padding:14,paddingBottom:60}}>
@@ -4088,12 +4100,35 @@ function EinheitenTab({user, players}) {
       </div>
     </div>}
 
+    {/* P4: Filter Einheiten + Gruppe */}
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:3}}>
+        {[["kuenftig","Künftige"],["vergangen","Vergangene"],["alle","Alle"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilterZeit(v)} style={{
+            padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,cursor:"pointer",
+            background:filterZeit===v?"#10b981":"var(--bg3)",
+            color:filterZeit===v?"#fff":"var(--text3)",
+            border:`1px solid ${filterZeit===v?"#10b981":"var(--border2)"}`,
+          }}>{l}</button>
+        ))}
+      </div>
+      <select value={filterGruppe} onChange={ev=>setFilterGruppe(ev.target.value)} style={{
+        padding:"5px 8px",borderRadius:7,fontSize:11,background:"var(--bg3)",
+        border:"1px solid var(--border2)",color:"var(--text)",outline:"none",
+      }}>
+        <option value="alle">Alle Gruppen</option>
+        <option value="Anfänger">Anfänger</option>
+        <option value="Fortgeschrittene">Fortgeschrittene</option>
+        <option value="Profis">Profis</option>
+      </select>
+    </div>
+
     {/* Liste der Einheiten */}
     {loading?<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>Lädt...</div>
     :sorted.length===0?<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>
         <div style={{fontSize:40,marginBottom:8}}>📝</div>
-        <div>Noch keine Einheiten geplant</div>
-        <div style={{fontSize:12,marginTop:4}}>Erstelle deine erste Trainingseinheit!</div>
+        <div>{filterZeit==="vergangen"?"Keine vergangenen Einheiten":filterZeit==="kuenftig"?"Keine künftigen Einheiten":"Noch keine Einheiten"}</div>
+        <div style={{fontSize:12,marginTop:4}}>{filterZeit==="kuenftig"?"Erstelle deine erste Trainingseinheit!":""}</div>
       </div>
     :<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {sorted.map(e=>{
@@ -4112,6 +4147,9 @@ function EinheitenTab({user, players}) {
             <div style={{flex:1}}>
               <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${e.gruppe}`}</div>
               <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {e.gruppe}</div>
+              {(e.trainer1||e.trainer2)&&<div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>
+                👤 {[e.trainer1,e.trainer2].filter(Boolean).join(", ")}
+              </div>}
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
                 {awSelNames.length>0&&<span style={{fontSize:9,background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"1px 5px"}}>🏃 {awSelNames.length} Aufwärm</span>}
                 {bgSelNames.length>0&&<span style={{fontSize:9,background:"#10b98122",color:"#10b981",borderRadius:4,padding:"1px 5px"}}>🏓 {bgSelNames.length} Ballgew.</span>}
@@ -5075,7 +5113,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <BeobachtungenAdminTab players={[myPlayer]} user={user} showToast={showToast}/>}
     {activeTab==="beobachtungen"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
-    {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer}/>}
+    {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
     {activeTab==="erfolge"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {activeTab==="ehrungen"&&myPlayer&&<EhrungenView player={myPlayer}/>}
