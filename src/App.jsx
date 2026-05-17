@@ -1212,8 +1212,8 @@ function BrandingEditor({showToast}) {
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target.result;
-      if(dataUrl.length > 500000) {
-        window.alert("Bild zu groß! Bitte unter 350KB wählen.");
+      if(dataUrl.length > 700000) {
+        window.alert("Bild zu groß! Bitte unter 500KB wählen.");
         setLogoSaving(false);
         return;
       }
@@ -1274,7 +1274,7 @@ function BrandingEditor({showToast}) {
     </div>
     <label style={{display:"block",padding:"9px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:8,textAlign:"center",cursor:logoSaving?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
-      {logoSaving?"⏳ Hochladen...":"📎 JPG/PNG hochladen (max 350KB)"}
+      {logoSaving?"⏳ Hochladen...":"📎 JPG/PNG hochladen (max 500KB)"}
       <input type="file" accept="image/*" style={{display:"none"}} disabled={logoSaving}
         onChange={e=>saveLogo(e.target.files?.[0])}/>
     </label>
@@ -4148,7 +4148,10 @@ function EinheitenTab({user, players}) {
               <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${e.gruppe}`}</div>
               <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {e.gruppe}</div>
               {(e.trainer1||e.trainer2)&&<div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>
-                👤 {[e.trainer1,e.trainer2].filter(Boolean).join(", ")}
+                👤 {[e.trainer1,e.trainer2].filter(Boolean).map(id=>{
+                  const p=players.find(x=>x.id===id);
+                  return p?`${p.firstName||""} ${p.lastName||""}`.trim():id;
+                }).join(", ")}
               </div>}
               <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
                 {awSelNames.length>0&&<span style={{fontSize:9,background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"1px 5px"}}>🏃 {awSelNames.length} Aufwärm</span>}
