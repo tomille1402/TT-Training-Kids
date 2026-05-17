@@ -1187,13 +1187,22 @@ function BrandingEditor({clubConfig, showToast}) {
   }, [clubConfig.name, clubConfig.subtitle]);
 
   async function saveText() {
+    if (!name.trim() && !subtitle.trim()) {
+      showToast("Bitte Vereinsname oder Untertitel eingeben","❌");
+      return;
+    }
     setSaving(true);
     try {
-      await setDoc(doc(db,"config","clubConfig"), {
-        name: name.trim(), subtitle: subtitle.trim()
-      }, {merge: true});
-      showToast("Branding gespeichert","✅");
-    } catch(e) { showToast("Fehler: "+e.message,"❌"); }
+      const data = {};
+      if (name.trim()) data.name = name.trim();
+      if (subtitle.trim()) data.subtitle = subtitle.trim();
+      const ref = doc(db,"config","clubConfig");
+      await setDoc(ref, data, {merge: true});
+      showToast(`Gespeichert: "${name.trim()}"`, "✅");
+    } catch(e) {
+      showToast("Speicherfehler: "+e.code+" / "+e.message,"❌");
+      console.error("BrandingEditor saveText error:", e);
+    }
     setSaving(false);
   }
 
