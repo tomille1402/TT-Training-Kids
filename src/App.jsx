@@ -396,7 +396,7 @@ function AvatarPicker({current,onSelect,onClose}) {
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-function LoginScreen({onLogin,error,loading,successMessage}) {
+function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
   const [resetMode,setResetMode]=useState(false);
@@ -404,6 +404,27 @@ function LoginScreen({onLogin,error,loading,successMessage}) {
   const [resetSent,setResetSent]=useState(false);
   const [resetErr,setResetErr]=useState("");
   const [resetLoad,setResetLoad]=useState(false);
+  const [uploadingLogo,setUploadingLogo]=useState(false);
+
+  const clubName = clubConfig.name || "TTC Niederzeuzheim";
+  const clubSubtitle = clubConfig.subtitle || "Trainings-App";
+  const clubLogo = clubConfig.logo || "";
+
+  async function handleLogoUpload(file) {
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target.result;
+        // Save as data URL in Firestore (no Storage needed)
+        const updated = {...clubConfig, logo: dataUrl};
+        await setDoc(doc(db,"config","clubConfig"), updated).catch(()=>{});
+        setUploadingLogo(false);
+      };
+      reader.readAsDataURL(file);
+    } catch(e) { setUploadingLogo(false); }
+  }
 
   async function doReset() {
     if (!resetEmail.trim()) {setResetErr("Bitte E-Mail eingeben.");return;}
@@ -416,9 +437,15 @@ function LoginScreen({onLogin,error,loading,successMessage}) {
   return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
     <div style={{maxWidth:360,width:"100%"}}>
       <div style={{textAlign:"center",marginBottom:32}}>
-        <div style={{fontSize:56,marginBottom:12}}>🏓</div>
-        <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>TTC Niederzeuzheim</div>
-        <div style={{fontSize:13,color:"var(--text3)",marginTop:4}}>Nachwuchs Trainingsheft</div>
+        {/* Vereinswappen oder Standard-Emoji */}
+        <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
+          {clubLogo
+            ? <img src={clubLogo} alt="Vereinswappen" style={{width:80,height:80,objectFit:"contain",borderRadius:8}}/>
+            : <div style={{fontSize:56}}>🏓</div>
+          }
+        </div>
+        <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{clubName}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginTop:4}}>{clubSubtitle}</div>
       </div>
       {!resetMode ? (
         <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:16,padding:24}}>
@@ -1598,15 +1625,30 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             </div>
           ))}
           <div style={{marginBottom:6}}>
-            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Vereinswappen (URL)</label>
-            <input type="text" defaultValue={clubConfig.logo||""} onBlur={async e=>{
-              const val=e.target.value.trim();
-              const updated={...clubConfig,logo:val};
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Vereinswappen (JPG/PNG hochladen)</label>
+            {clubConfig.logo&&<div style={{display:"flex",justifyContent:"center",marginBottom:8}}>
+              <img src={clubConfig.logo} alt="Vereinswappen" style={{width:80,height:80,objectFit:"contain",borderRadius:8,border:"1px solid var(--border2)"}}/>
+            </div>}
+            <label style={{display:"block",padding:"8px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",borderRadius:8,textAlign:"center",cursor:"pointer",fontSize:11,color:"var(--text3)"}}>
+              {clubConfig.logo?"🖼️ Anderes Bild hochladen":"📎 JPG oder PNG hochladen"}
+              <input type="file" accept="image/jpeg,image/png,image/svg+xml" style={{display:"none"}} onChange={async e=>{
+                const file=e.target.files?.[0]; if(!file) return;
+                const reader=new FileReader();
+                reader.onload=async ev=>{
+                  const dataUrl=ev.target.result;
+                  const updated={...clubConfig,logo:dataUrl};
+                  await setDoc(doc(db,"config","clubConfig"),updated).catch(()=>{});
+                  showToast("Vereinswappen gespeichert","🖼️");
+                };
+                reader.readAsDataURL(file);
+              }}/>
+            </label>
+            {clubConfig.logo&&<button onClick={async()=>{
+              const updated={...clubConfig,logo:""};
               await setDoc(doc(db,"config","clubConfig"),updated).catch(()=>{});
-              showToast("Logo gespeichert","🖼️");
-            }} placeholder="https://... oder leer lassen"
-            style={{width:"100%",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
-            <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>PNG/SVG-URL. Wird oben links im Anmeldebildschirm angezeigt.</div>
+              showToast("Wappen entfernt","✅");
+            }} style={{marginTop:6,padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕ Wappen entfernen</button>}
+            <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Wird zentriert im Anmeldebildschirm angezeigt (ersetzt 🏓).</div>
           </div>
         </div>
       </div></ErrorBoundary>}
@@ -5411,6 +5453,7 @@ export default function App() {
       error={loginErr}
       loading={loginLoad}
       successMessage={loginSuccess}
+      clubConfig={clubConfig}
     />
   );
 
