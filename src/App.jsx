@@ -4641,7 +4641,7 @@ function GeburtstageTabErwachsene({players}) {
             {bd.toLocaleDateString("de-DE",{day:"2-digit",month:"long"})} · {isToday?"🎂 Heute!":days===1?"Morgen!":`in ${days} Tagen`}
           </div>
         </div>
-        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{age+1} J.</div>
+        <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{age} J.</div>
       </div>;
     })}
   </div>;
@@ -5404,12 +5404,16 @@ export default function App() {
   // Globale Theme-Einstellung aus Firestore laden
   useEffect(()=>{
     const unsub2=onSnapshot(doc(db,"config","clubConfig"),snap=>{
-      if(snap.exists()) setClubConfig(prev=>({...prev,...snap.data()}));
+      if(snap.exists()){
+        const d=snap.data();
+        setClubConfig({
+          name:d.name||"TTC Niederzeuzheim",
+          subtitle:d.subtitle||"Trainings-App",
+          logo:d.logo||""
+        });
+      }
     },()=>{});
-    const unsub3=onSnapshot(doc(db,"config","clubLogo"),snap=>{
-      if(snap.exists()) setClubConfig(prev=>({...prev,logo:snap.data().logo||""}));
-    },()=>{});
-    return ()=>{ unsub2(); unsub3(); };
+    return ()=>{ unsub2(); };
   },[]);
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
