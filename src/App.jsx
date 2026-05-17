@@ -5354,6 +5354,7 @@ export default function App() {
   const [players,      setPlayers]      = useState([]);
   const [attendance,   setAttendance]   = useState({});
   const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",logo:""});
+  const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
   const [loginLoad,    setLoginLoad]    = useState(false);
@@ -5412,7 +5413,8 @@ export default function App() {
           logo:d.logo||""
         });
       }
-    },()=>{});
+      setClubConfigLoaded(true);
+    },(e)=>{ setClubConfigLoaded(true); });
     return ()=>{ unsub2(); };
   },[]);
   useEffect(()=>{
@@ -5526,15 +5528,26 @@ export default function App() {
   );
 
   // ── Nicht angemeldet → Login ──
-  if (!authUser) return (
-    <LoginScreen
-      onLogin={handleLogin}
-      error={loginErr}
-      loading={loginLoad}
-      successMessage={loginSuccess}
-      clubConfig={clubConfig}
-    />
-  );
+  if (!authUser) {
+    // Warte auf clubConfig bevor Login-Maske angezeigt wird
+    if (!clubConfigLoaded) return (
+      <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{textAlign:"center",color:"#6b7280"}}>
+          <div style={{fontSize:32,marginBottom:12}}>🏓</div>
+          <div style={{fontSize:12}}>Laden...</div>
+        </div>
+      </div>
+    );
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        error={loginErr}
+        loading={loginLoad}
+        successMessage={loginSuccess}
+        clubConfig={clubConfig}
+      />
+    );
+  }
 
   // ── Spieler-Profil suchen ──
   const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
