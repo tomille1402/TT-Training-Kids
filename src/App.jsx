@@ -1190,10 +1190,10 @@ function BrandingEditor({clubConfig, showToast}) {
     setSaving(true);
     try {
       await setDoc(doc(db,"config","clubConfig"), {
-        ...clubConfig, name: name.trim(), subtitle: subtitle.trim()
-      });
+        name: name.trim(), subtitle: subtitle.trim()
+      }, {merge: true});
       showToast("Branding gespeichert","✅");
-    } catch(e) { showToast("Fehler beim Speichern: "+e.message,"❌"); }
+    } catch(e) { showToast("Fehler: "+e.message,"❌"); }
     setSaving(false);
   }
 
@@ -1206,17 +1206,17 @@ function BrandingEditor({clubConfig, showToast}) {
         reader.onload = async (ev) => {
           try {
             const dataUrl = ev.target.result;
-            // Check size — Firestore limit 1MB per field
-            if (dataUrl.length > 700000) {
-              showToast("Bild zu groß (max ~500KB). Bitte kleineres Bild wählen.","❌");
+            if (dataUrl.length > 900000) {
+              showToast("Bild zu groß (max ~650KB). Bitte kleineres Bild wählen.","❌");
               setLogoSaving(false);
               reject();
               return;
             }
-            await setDoc(doc(db,"config","clubConfig"), {...clubConfig, logo: dataUrl});
+            // Logo in separatem Dokument speichern (vermeidet 1MB Limit)
+            await setDoc(doc(db,"config","clubLogo"), {logo: dataUrl});
             showToast("Vereinswappen gespeichert","🖼️");
             resolve();
-          } catch(e) { showToast("Fehler: "+e.message,"❌"); reject(e); }
+          } catch(e) { showToast("Fehler beim Speichern: "+e.message,"❌"); reject(e); }
         };
         reader.onerror = () => { showToast("Datei konnte nicht gelesen werden","❌"); reject(); };
         reader.readAsDataURL(file);
@@ -1227,9 +1227,9 @@ function BrandingEditor({clubConfig, showToast}) {
 
   async function removeLogo() {
     try {
-      await setDoc(doc(db,"config","clubConfig"), {...clubConfig, logo: ""});
+      await setDoc(doc(db,"config","clubLogo"), {logo: ""});
       showToast("Wappen entfernt","✅");
-    } catch(e) { showToast("Fehler","❌"); }
+    } catch(e) { showToast("Fehler: "+e.message,"❌"); }
   }
 
   return <div style={{borderTop:"1px solid var(--border)",paddingTop:12,marginTop:12}}>
@@ -5409,7 +5409,10 @@ export default function App() {
     const unsub2=onSnapshot(doc(db,"config","clubConfig"),snap=>{
       if(snap.exists()) setClubConfig(prev=>({...prev,...snap.data()}));
     },()=>{});
-    return unsub2;
+    const unsub3=onSnapshot(doc(db,"config","clubLogo"),snap=>{
+      if(snap.exists()) setClubConfig(prev=>({...prev,logo:snap.data().logo||""}));
+    },()=>{});
+    return ()=>{ unsub2(); unsub3(); };
   },[]);
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
