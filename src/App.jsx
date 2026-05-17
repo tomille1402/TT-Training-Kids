@@ -1196,12 +1196,16 @@ function BrandingEditor({clubConfig, showToast}) {
       const data = {};
       if (name.trim()) data.name = name.trim();
       if (subtitle.trim()) data.subtitle = subtitle.trim();
+      console.log("BrandingEditor: saving", data);
       const ref = doc(db,"config","clubConfig");
       await setDoc(ref, data, {merge: true});
+      console.log("BrandingEditor: saved OK");
       showToast(`Gespeichert: "${name.trim()}"`, "✅");
     } catch(e) {
-      showToast("Speicherfehler: "+e.code+" / "+e.message,"❌");
       console.error("BrandingEditor saveText error:", e);
+      // Use window.alert to make sure we see the error regardless of toast
+      window.alert("Fehler beim Speichern:\n" + e.code + "\n" + e.message);
+      showToast("Speicherfehler: "+e.code,"❌");
     }
     setSaving(false);
   }
