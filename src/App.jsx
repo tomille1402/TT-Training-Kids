@@ -1174,130 +1174,114 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
-function BrandingEditor({clubConfig, showToast}) {
-  const [name,    setName]    = useState(clubConfig.name    || "");
-  const [subtitle,setSubtitle]= useState(clubConfig.subtitle|| "");
-  const [saving,  setSaving]  = useState(false);
-  const [logoSaving, setLogoSaving] = useState(false);
+function BrandingEditor({showToast}) {
+  const [name,     setName]     = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [logo,     setLogo]     = useState("");
+  const [saving,   setSaving]   = useState(false);
+  const [logoSaving,setLogoSaving] = useState(false);
+  const [loaded,   setLoaded]   = useState(false);
 
-  // Sync wenn clubConfig von außen kommt
+  // Einmalig beim Mount aus Firestore laden
   useEffect(()=>{
-    setName(clubConfig.name || "");
-    setSubtitle(clubConfig.subtitle || "");
-  }, [clubConfig.name, clubConfig.subtitle]);
+    getDoc(doc(db,"config","clubConfig")).then(snap=>{
+      if(snap.exists()){
+        const d=snap.data();
+        setName(d.name||"");
+        setSubtitle(d.subtitle||"");
+        setLogo(d.logo||"");
+      }
+      setLoaded(true);
+    }).catch(()=>setLoaded(true));
+  },[]);
 
   async function saveText() {
-    if (!name.trim() && !subtitle.trim()) {
-      showToast("Bitte Vereinsname oder Untertitel eingeben","❌");
-      return;
-    }
     setSaving(true);
     try {
-      const data = {};
-      if (name.trim()) data.name = name.trim();
-      if (subtitle.trim()) data.subtitle = subtitle.trim();
-      console.log("BrandingEditor: saving", data);
-      const ref = doc(db,"config","clubConfig");
-      await setDoc(ref, data, {merge: true});
-      console.log("BrandingEditor: saved OK");
-      showToast(`Gespeichert: "${name.trim()}"`, "✅");
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo},{merge:false});
+      showToast("Gespeichert ✅","✅");
     } catch(e) {
-      console.error("BrandingEditor saveText error:", e);
-      // Use window.alert to make sure we see the error regardless of toast
-      window.alert("Fehler beim Speichern:\n" + e.code + "\n" + e.message);
-      showToast("Speicherfehler: "+e.code,"❌");
+      window.alert("Fehler:\n"+e.code+"\n"+e.message);
     }
     setSaving(false);
   }
 
-  async function handleLogoUpload(file) {
-    if (!file) return;
+  async function saveLogo(file) {
+    if(!file) return;
     setLogoSaving(true);
-    try {
-      await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const dataUrl = ev.target.result;
-            if (dataUrl.length > 900000) {
-              showToast("Bild zu groß (max ~650KB). Bitte kleineres Bild wählen.","❌");
-              setLogoSaving(false);
-              reject();
-              return;
-            }
-            // Logo in separatem Dokument speichern (vermeidet 1MB Limit)
-            await setDoc(doc(db,"config","clubLogo"), {logo: dataUrl});
-            showToast("Vereinswappen gespeichert","🖼️");
-            resolve();
-          } catch(e) { showToast("Fehler beim Speichern: "+e.message,"❌"); reject(e); }
-        };
-        reader.onerror = () => { showToast("Datei konnte nicht gelesen werden","❌"); reject(); };
-        reader.readAsDataURL(file);
-      });
-    } catch(e) {}
-    setLogoSaving(false);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      if(dataUrl.length > 500000) {
+        window.alert("Bild zu groß! Bitte unter 350KB wählen.");
+        setLogoSaving(false);
+        return;
+      }
+      setLogo(dataUrl);
+      try {
+        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo:dataUrl},{merge:false});
+        showToast("Wappen gespeichert 🖼️","🖼️");
+      } catch(e) {
+        window.alert("Fehler:\n"+e.code+"\n"+e.message);
+      }
+      setLogoSaving(false);
+    };
+    reader.onerror = ()=>{ window.alert("Datei konnte nicht gelesen werden"); setLogoSaving(false); };
+    reader.readAsDataURL(file);
   }
 
-  async function removeLogo() {
+  async function deleteLogo() {
+    setLogo("");
     try {
-      await setDoc(doc(db,"config","clubLogo"), {logo: ""});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo:""},{merge:false});
       showToast("Wappen entfernt","✅");
-    } catch(e) { showToast("Fehler: "+e.message,"❌"); }
+    } catch(e) {
+      window.alert("Fehler:\n"+e.code+"\n"+e.message);
+    }
   }
 
-  return <div style={{borderTop:"1px solid var(--border)",paddingTop:12,marginTop:12}}>
-    <div style={{fontSize:11,color:"var(--text2)",fontWeight:700,marginBottom:10}}>🏷️ Vereins-Branding</div>
+  if(!loaded) return <div style={{padding:12,color:"var(--text3)",fontSize:12}}>⏳ Lade...</div>;
 
-    {/* Vereinsname */}
-    <div style={{marginBottom:8}}>
-      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Vereinsname</label>
-      <input type="text" value={name} onChange={e=>setName(e.target.value)}
-        placeholder="TTC Niederzeuzheim"
-        style={{width:"100%",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
-          borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
-    </div>
+  return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:12}}>
+    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:12}}>🏷️ Vereins-Branding</div>
 
-    {/* Untertitel */}
     <div style={{marginBottom:10}}>
-      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Untertitel</label>
-      <input type="text" value={subtitle} onChange={e=>setSubtitle(e.target.value)}
-        placeholder="Trainings-App"
-        style={{width:"100%",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
-          borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"}}/>
+      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Vereinsname</label>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="TTC Niederzeuzheim"
+        style={{width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
+          borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
     </div>
 
-    {/* Speichern-Button Text */}
+    <div style={{marginBottom:12}}>
+      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Untertitel</label>
+      <input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Trainings-App"
+        style={{width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
+          borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+    </div>
+
     <button onClick={saveText} disabled={saving} style={{
-      width:"100%",marginBottom:12,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-      background:saving?"var(--bg3)":"#10b981",border:"none",color:saving?"var(--text3)":"#fff"
-    }}>{saving?"⏳ Speichern...":"💾 Vereinsname & Untertitel speichern"}</button>
+      width:"100%",padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",
+      background:saving?"var(--bg3)":"#10b981",border:"none",color:saving?"var(--text3)":"#fff",
+      marginBottom:14
+    }}>{saving?"⏳ Speichern...":"💾 Name & Untertitel speichern"}</button>
 
-    {/* Logo */}
-    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:6}}>Vereinswappen (JPG/PNG)</label>
-    {clubConfig.logo
-      ? <div style={{textAlign:"center",marginBottom:8}}>
-          <img src={clubConfig.logo} alt="Wappen"
-            style={{width:80,height:80,objectFit:"contain",borderRadius:8,border:"1px solid var(--border2)"}}/>
-        </div>
-      : <div style={{textAlign:"center",fontSize:32,marginBottom:8}}>🏓</div>
-    }
-    <label style={{
-      display:"block",padding:"9px 12px",background:"var(--bg3)",
-      border:"2px dashed var(--border2)",borderRadius:8,textAlign:"center",
-      cursor:logoSaving?"not-allowed":"pointer",fontSize:11,color:"var(--text3)"
-    }}>
-      {logoSaving?"⏳ Wird hochgeladen...":clubConfig.logo?"🖼️ Anderes Bild hochladen":"📎 JPG oder PNG hochladen (max 500KB)"}
-      <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{display:"none"}}
-        disabled={logoSaving}
-        onChange={e=>handleLogoUpload(e.target.files?.[0])}/>
-    </label>
-    {clubConfig.logo&&<button onClick={removeLogo} style={{
-      marginTop:6,width:"100%",padding:"5px",background:"#ef444422",
-      border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"
-    }}>✕ Wappen entfernen</button>}
-    <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
-      Ersetzt das 🏓 im Anmeldebildschirm. Max. 500KB.
+    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:6}}>Vereinswappen</label>
+    <div style={{textAlign:"center",marginBottom:8}}>
+      {logo
+        ? <img src={logo} alt="Wappen" style={{width:80,height:80,objectFit:"contain",borderRadius:8,border:"1px solid var(--border2)"}}/>
+        : <div style={{fontSize:40}}>🏓</div>
+      }
     </div>
+    <label style={{display:"block",padding:"9px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+      borderRadius:8,textAlign:"center",cursor:logoSaving?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
+      {logoSaving?"⏳ Hochladen...":"📎 JPG/PNG hochladen (max 350KB)"}
+      <input type="file" accept="image/*" style={{display:"none"}} disabled={logoSaving}
+        onChange={e=>saveLogo(e.target.files?.[0])}/>
+    </label>
+    {logo&&<button onClick={deleteLogo} style={{marginTop:6,width:"100%",padding:6,
+      background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>
+      ✕ Wappen entfernen
+    </button>}
   </div>;
 }
 
@@ -1738,7 +1722,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
         </div>}
         {/* Whitelabel Branding */}
-        <BrandingEditor clubConfig={clubConfig} showToast={showToast}/>
+        <BrandingEditor showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
