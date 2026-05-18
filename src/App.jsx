@@ -440,7 +440,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
         {/* Vereinswappen oder Standard-Emoji */}
         <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
           {clubLogo
-            ? <img src={clubLogo} alt="Vereinswappen" style={{width:80,height:80,objectFit:"contain",borderRadius:8}}/>
+            ? <img src={clubLogo} alt="Vereinswappen" style={{width:120,height:120,objectFit:"contain",borderRadius:8}}/>
             : <div style={{fontSize:56}}>🏓</div>
           }
         </div>
@@ -3827,9 +3827,11 @@ function EinheitenTab({user, players}) {
       if(filterZeit==="vergangen") return (e.datum||"")<todayFilter;
       return true;
     })
-    .sort((a,b)=>filterZeit==="vergangen"
-      ?(b.datum||"").localeCompare(a.datum||"")
-      :(a.datum||"").localeCompare(b.datum||""));
+    .sort((a,b)=>{
+      const dateCmp=(a.datum||"").localeCompare(b.datum||"");
+      if(dateCmp!==0) return dateCmp;
+      return (a.titel||"").localeCompare(b.titel||"","de",{sensitivity:"base"});
+    });
   const GRUPPEN_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6"};
 
   return <div style={{padding:14,paddingBottom:60}}>
