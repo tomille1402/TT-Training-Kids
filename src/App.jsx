@@ -509,7 +509,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={}}) {
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
@@ -539,6 +539,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
   const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
+  // Wenn RSW adminGroupFilters gesetzt, diese verwenden
+  const effectiveGroupFilters = groupFiltersExt && Object.keys(groupFiltersExt).some(Boolean)
+    ? {Profis:groupFiltersExt["Profis"]||false, Fortgeschrittene:groupFiltersExt["Fortgeschrittene"]||false,
+       Anfänger:groupFiltersExt["Anfänger"]||false, Trainer:groupFiltersExt["Trainer"]||false,
+       Erwachsene:groupFiltersExt["Erwachsene"]||false}
+    : groupFilters;
   const [showOnlyPresentLocal,setShowOnlyPresentLocal]=useState(false);
   const showOnlyPresent = showOnlyPresentExt !== undefined ? showOnlyPresentExt : showOnlyPresentLocal;
   const setShowOnlyPresent = onSetShowOnlyPresent || setShowOnlyPresentLocal;
@@ -555,7 +561,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     .filter(p=>{
       const g = p.group||"Anfänger";
       if (g==="Erwachsene") return false; // Erwachsene immer separat in RoleSwitchWrapper
-      return groupFilters[g] !== false;
+      return effectiveGroupFilters[g] !== false;
     })
     .sort((a,b)=>{
       const fa=(a.firstName||a.name||"").toLowerCase();
@@ -2840,6 +2846,14 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
+
+  // Trainer können Sterne setzen wenn sie Spieler per Chip ausgewählt haben
+  async function setStars(playerId,exId,value) {
+    if (!playerId) return;
+    try {
+      await updateDoc(doc(db,"players",playerId),{[`stars.${exId}`]:value});
+    } catch(e) { console.error("setStars error:",e); }
+  }
   // Punkt 6+7: Nur Spieler der eigenen Gruppe
   const myGroup = myPlayer?.group||"Anfänger";
   const groupPeers = activePlayers.filter(p=>p.group===myGroup);
@@ -2973,7 +2987,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:600,color:"var(--text)",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div>
               </div>
-              <StarRating stars={stars} readonly/>
+              <StarRating stars={stars} readonly={!hideHeader} onRate={hideHeader?v=>setStars(myPlayer.id,ex.id,v):undefined}/>
               <span style={{color:"var(--text3)",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
             </div>
             {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"10px 12px",background:"var(--bg)"}}>
@@ -3351,20 +3365,6 @@ function BeobachtungenAdminTab({players,user,showToast}) {
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:12}}>🔍 Beobachtungen</div>
-
-    {/* Spieler-Auswahl */}
-    <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:14,paddingBottom:4}}>
-      {players.map(p=>{
-        const isActive=p.id===selPlayer?.id;
-        return <button key={p.id} onClick={()=>{setSelPlayerId(p.id);setShowForm(false);}} style={{
-          flexShrink:0,padding:"5px 10px 5px 7px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",
-          border:`2px solid ${isActive?p.color||"#10b981":"var(--border2)"}`,
-          background:isActive?(p.color||"#10b981")+"22":"transparent",
-          color:isActive?p.color||"#10b981":"var(--text2)",
-          display:"flex",alignItems:"center",gap:5,
-        }}><span>{p.avatar||"🏓"}</span>{p.firstName}</button>;
-      })}
-    </div>
 
     {selPlayer&&<>
       {/* Header mit Spieler-Info und Neu-Button */}
@@ -5377,7 +5377,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
       showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
-      clubConfig={clubConfig} {...sharedProps}/>}
+      clubConfig={clubConfig} groupFiltersExt={adminGroupFilters} {...sharedProps}/>}
 
     {/* Admin-View */}
     {activeView==="admin"&&<AdminPanel key="admin"
@@ -5386,7 +5386,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       onPlayerAdded={onPlayerAdded} hideHeader
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
       showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
-      clubConfig={clubConfig} {...sharedProps}/>}
+      clubConfig={clubConfig} groupFiltersExt={adminGroupFilters} {...sharedProps}/>}
   </div>;
 }
 
