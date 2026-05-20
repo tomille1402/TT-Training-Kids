@@ -823,7 +823,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     })()}
 
     {/* ── TRAINING TAB ── */}
-    {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={groupFilters} attendance={attendance} showToast={showToast}/>}
+    {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={effectiveGroupFilters} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB (Punkt 7: klickbar) ── */}
     {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}/>}
