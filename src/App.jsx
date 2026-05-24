@@ -1188,28 +1188,25 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
 
-  // Firestore-Daten laden, Fallback auf eingebettete Konstante
+  // Direkte Abfragen mit bekannten Keys — kein getDocs der alle Docs lädt
   useEffect(()=>{
-    getDocs(collection(db,"config")).then(snap=>{
-      const afs=snap.docs
-        .filter(d=>d.id.startsWith("aufstellung_"))
-        .map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>b.id.localeCompare(a.id));
-      if(afs.length>0){
-        setAufstellungen(afs);
-        setSelId(afs[0].id);
-      } else {
-        // Fallback: eingebettete Daten
-        const fallback=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
-        setAufstellungen(fallback);
-        setSelId(fallback[0].id);
+    const KNOWN_KEYS=[
+      "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
+      "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
+    ];
+    Promise.all(KNOWN_KEYS.map(k=>
+      getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,...s.data()}:null).catch(()=>null)
+    )).then(results=>{
+      const afs=results.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id));
+      if(afs.length>0){ setAufstellungen(afs); setSelId(afs[0].id); }
+      else {
+        const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
+        setAufstellungen(fb); setSelId(fb[0].id);
       }
       setLoading(false);
     }).catch(()=>{
-      const fallback=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
-      setAufstellungen(fallback);
-      setSelId(fallback[0].id);
-      setLoading(false);
+      const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
+      setAufstellungen(fb); setSelId(fb[0].id); setLoading(false);
     });
   },[]);
 
@@ -1270,14 +1267,13 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
           {a.runde==="Rückrunde"?"RR":"VR"} {a.saison}
         </option>)}
       </select>
-      {aufstellungen.find(a=>a.id===selId)?.pdfUrl&&
-        <button onClick={()=>{
-          const pdf=aufstellungen.find(a=>a.id===selId)?.pdfUrl;
-          if(!pdf) return;
-          // Base64 Data-URL → Blob → Blob-URL öffnen
-          const b64=pdf.split(",")[1];
-          const bin=atob(b64);
-          const arr=new Uint8Array(bin.length);
+      {aufstellungen.find(a=>a.id===selId)&&
+        <button onClick={async()=>{
+          const pdfSnap=await getDoc(doc(db,"config","pdf_"+selId)).catch(()=>null);
+          const pdfUrl=pdfSnap?.data()?.pdfUrl;
+          if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung neu hochladen.");return;}
+          const b64=pdfUrl.split(",")[1];
+          const bin=atob(b64);const arr=new Uint8Array(bin.length);
           for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
           const blob=new Blob([arr],{type:"application/pdf"});
           const url=URL.createObjectURL(blob);
@@ -4484,16 +4480,18 @@ function BirthdayBtn({players, attendance}) {
 // AufstellungUpload
 function AufstellungUpload({showToast}) {
   const [uploading,setUploading]=useState(false);
-  const [aufstellungen,setAufstellungen]=useState([]);
+  const [saved,setSaved]=useState([]);
+
+  const KNOWN_KEYS=[
+    "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
+    "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
+  ];
 
   useEffect(()=>{
-    getDocs(collection(db,"config")).then(snap=>{
-      const afs=snap.docs
-        .filter(d=>d.id.startsWith("aufstellung_"))
-        .map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>b.id.localeCompare(a.id));
-      setAufstellungen(afs);
-    }).catch(()=>{});
+    // Direkte Abfragen statt getDocs (vermeidet Laden großer PDF-Daten)
+    Promise.all(KNOWN_KEYS.map(k=>
+      getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,saison:s.data().saison,runde:s.data().runde,count:(s.data().spieler||[]).length}:null).catch(()=>null)
+    )).then(r=>setSaved(r.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id))));
   },[]);
 
   async function handleUpload(file) {
@@ -4506,59 +4504,58 @@ function AufstellungUpload({showToast}) {
       const isRueck=fn.toLowerCase().includes("rueck")||fn.toLowerCase().includes("ruck")||fn.toLowerCase().includes("rück")||fn.toLowerCase().includes("r_ck");
       const runde=isRueck?"Rückrunde":"Vorrunde";
       const key=`aufstellung_${saison.replace("/","_")}_${isRueck?"R":"V"}`;
-
-      // Spielerdaten
       const spielerData=(saison==="2025/2026"&&isRueck)?AUFSTELLUNG_RUECKRUNDE_2025_2026:AUFSTELLUNG_RUECKRUNDE_2025_2026;
 
-      // PDF als Base64 speichern (für direkten Link im UI)
+      // Spielerdaten OHNE PDF speichern (klein, schnell ladbar)
+      await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:Date.now()});
+      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
+
+      // PDF separat in eigenem Dokument (wird nur bei Klick auf "PDF öffnen" geladen)
       const reader=new FileReader();
       reader.onload=async(ev)=>{
-        const pdfBase64=ev.target.result; // data:application/pdf;base64,...
-        try {
-          await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,pdfUrl:pdfBase64,lastUpdated:Date.now()});
-          showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
-          // Reload list
-          getDocs(collection(db,"config")).then(snap=>{
-            const afs=snap.docs.filter(d=>d.id.startsWith("aufstellung_")).map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.id.localeCompare(a.id));
-            setAufstellungen(afs);
-          });
-        } catch(e){showToast("Fehler: "+e.message,"❌");}
+        try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result}); } catch(e){}
         setUploading(false);
       };
-      reader.onerror=()=>{showToast("PDF konnte nicht gelesen werden","❌");setUploading(false);};
+      reader.onerror=()=>setUploading(false);
       reader.readAsDataURL(file);
+
+      // Liste aktualisieren
+      setSaved(prev=>{
+        const next=prev.filter(x=>x.id!==key);
+        next.unshift({id:key,saison,runde,count:spielerData.length});
+        return next;
+      });
     } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
   }
 
   return <div>
-    {aufstellungen.length>0&&<div style={{fontSize:11,color:"#10b981",marginBottom:8}}>
-      ✅ {aufstellungen.length} Aufstellung{aufstellungen.length!==1?"en":""} gespeichert
-    </div>}
     <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
       {uploading?"⏳ Wird verarbeitet...":"📎 Aufstellungs-PDF hochladen"}
       <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
         onChange={e=>handleUpload(e.target.files?.[0])}/>
     </label>
-    <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
-      Dateiname: z.B. "Aufstellung_2025_2026_Rueckrunde.pdf". Saison wird automatisch erkannt.
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:4,marginBottom:8}}>
+      Dateiname: z.B. "Aufstellung_2025_2026_Rueckrunde.pdf"
     </div>
-    {/* P4: Liste aller gespeicherten Aufstellungen */}
-    {aufstellungen.length>0&&<div style={{marginTop:12}}>
+    {saved.length>0&&<div>
       <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Gespeicherte Aufstellungen:</div>
-      {aufstellungen.map(a=><div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
+      {saved.map(a=><div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
         padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
         <span style={{fontSize:11,fontWeight:600,flex:1}}>{a.runde==="Rückrunde"?"RR":"VR"} {a.saison}</span>
-        <span style={{fontSize:10,color:"var(--text4)"}}>{a.spieler?.length||0} Spieler</span>
-        {a.pdfUrl&&<button onClick={()=>{
-          const b64=a.pdfUrl.split(",")[1];
-          const bin=atob(b64); const arr=new Uint8Array(bin.length);
+        <span style={{fontSize:10,color:"var(--text4)"}}>{a.count} Spieler</span>
+        <button onClick={async()=>{
+          const pdfSnap=await getDoc(doc(db,"config","pdf_"+a.id)).catch(()=>null);
+          const pdfUrl=pdfSnap?.data()?.pdfUrl;
+          if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
+          const b64=pdfUrl.split(",")[1];
+          const bin=atob(b64);const arr=new Uint8Array(bin.length);
           for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
           const blob=new Blob([arr],{type:"application/pdf"});
           const url=URL.createObjectURL(blob);
           window.open(url,"_blank");
           setTimeout(()=>URL.revokeObjectURL(url),10000);
-        }} style={{fontSize:11,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:0}}>📄 PDF</button>}
+        }} style={{fontSize:11,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:0}}>📄 PDF</button>
       </div>)}
     </div>}
   </div>;
@@ -5015,27 +5012,23 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
 
-  // Verfügbare Saisons aus Firestore laden
+  // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
-    // Lade alle spielplan_* docs + altes spielplan doc
-    Promise.all([
-      getDocs(collection(db,"config")),
-      getDoc(doc(db,"config","spielplan"))
-    ]).then(([snap,oldSnap])=>{
-      const seas=snap.docs
-        .filter(d=>d.id.startsWith("spielplan_"))
-        .map(d=>({id:d.id,saison:d.data().saison||d.id.replace("spielplan_","").replace(/_/g,"/")}))
-        .sort((a,b)=>b.id.localeCompare(a.id));
-      // Altes "spielplan" Dokument auch einschließen wenn Daten vorhanden
-      if(oldSnap.exists()&&(oldSnap.data().spiele||[]).length>0){
-        const hasOld=seas.find(s=>s.id==="spielplan");
-        if(!hasOld) seas.push({id:"spielplan",saison:"2025/2026 (alt)"});
-      }
+    const KNOWN_SPIELPLAN_KEYS=[
+      "spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan",
+    ];
+    Promise.all(KNOWN_SPIELPLAN_KEYS.map(k=>
+      getDoc(doc(db,"config",k)).then(s=>s.exists()&&(s.data().spiele||[]).length>0
+        ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/")||"2025/2026"}
+        :null
+      ).catch(()=>null)
+    )).then(results=>{
+      const seas=results.filter(Boolean);
       if(seas.length>0){
         setSeasons(seas);
         setSelSeason(seas[0].id);
       } else {
-        // Absoluter Fallback: eingebettete Daten
+        // Absoluter Fallback: eingebettete Daten direkt verwenden
         setSpiele(INITIAL_SPIELPLAN);
         setSeasons([{id:"_local",saison:"2025/2026"}]);
         setSelSeason("_local");
