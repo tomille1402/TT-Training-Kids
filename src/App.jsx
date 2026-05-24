@@ -518,6 +518,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
+    {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
@@ -1182,7 +1183,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
 
 // AufstellungView — zeigt Aufstellungstabelle
-function AufstellungView({players=[]}) {
+function AufstellungView({players=[], nurNachwuchs=false}) {
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
   const [spieler,setSpieler]=useState([]);
@@ -1240,7 +1241,10 @@ function AufstellungView({players=[]}) {
     return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match};
   });
 
-  const mannschaften=[...new Set(enriched.map(s=>s.mannschaft).filter(Boolean))].sort();
+  const NACHWUCHS_MANN=["Mädchen 13","Mädchen 15","Mädchen 11","Jugend 11","Jugend 13","Jugend 15","Mädchen 17"];
+  const mannschaften=[...new Set(enriched.map(s=>s.mannschaft).filter(Boolean))]
+    .filter(m=>!nurNachwuchs||NACHWUCHS_MANN.some(nm=>m===nm||m.startsWith(nm)))
+    .sort();
 
   return <div>
     {/* Saison-Dropdown */}
@@ -2991,7 +2995,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
-    {key:"spielplan",label:"Spielplan",icon:"📅"},{key:"aufstellung",label:"Aufstellung",icon:"🏅"},
+    {key:"aufstellung",label:"Aufstellung",icon:"📋"},
+    {key:"spielplan",label:"Spielplan",icon:"📅"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -5368,6 +5373,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
@@ -5419,7 +5425,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
   </div>;
 }
 
