@@ -1241,27 +1241,49 @@ function AufstellungView({players=[], nurNachwuchs=false}) {
     return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match};
   });
 
-  const NACHWUCHS_MANN=["Mädchen 13","Mädchen 15","Mädchen 11","Jugend 11","Jugend 13","Jugend 15","Mädchen 17"];
+  const NACHWUCHS_MANN=["Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
+  // Mannschaft-Namen: Erwachsene → Herren 1 etc.
+  function mannLabel(m) {
+    const map={"Erwachsene":"Herren 1","Erwachsene II":"Herren 2","Erwachsene III":"Herren 3",
+               "Erwachsene IV":"Herren 4","Erwachsene V":"Herren 5","Erwachsene VI":"Herren 6"};
+    return map[m]||m;
+  }
+  // Sortierung: Herren aufsteigend, dann Nachwuchs absteigend (älteste zuerst = höhere Jahrg.)
+  const MANN_ORDER=["Erwachsene","Erwachsene II","Erwachsene III","Erwachsene IV","Erwachsene V","Erwachsene VI",
+    "Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
   const mannschaften=[...new Set(enriched.map(s=>s.mannschaft).filter(Boolean))]
     .filter(m=>!nurNachwuchs||NACHWUCHS_MANN.some(nm=>m===nm||m.startsWith(nm)))
-    .sort();
+    .sort((a,b)=>{
+      const ia=MANN_ORDER.indexOf(a); const ib=MANN_ORDER.indexOf(b);
+      if(ia>=0&&ib>=0) return ia-ib;
+      if(ia>=0) return -1; if(ib>=0) return 1;
+      return a.localeCompare(b,"de");
+    });
 
   return <div>
-    {/* Saison-Dropdown */}
-    {aufstellungen.length>1&&<div style={{marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
-      <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>📋 Aufstellung:</label>
+    {/* P3: Halbrunden-Dropdown mit PDF-Link */}
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>📋 Halbrunde:</label>
       <select value={selId} onChange={e=>setSelId(e.target.value)}
         style={{padding:"5px 8px",borderRadius:7,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-        {aufstellungen.map(a=><option key={a.id} value={a.id}>{a.saison} {a.runde}</option>)}
+        {aufstellungen.map(a=><option key={a.id} value={a.id}>
+          {a.runde==="Rückrunde"?"RR":"VR"} {a.saison}
+        </option>)}
       </select>
-    </div>}
+      {aufstellungen.find(a=>a.id===selId)?.pdfUrl&&
+        <a href={aufstellungen.find(a=>a.id===selId).pdfUrl} target="_blank" rel="noopener noreferrer"
+          style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",color:"#3b82f6",
+            border:"1px solid #3b82f644",textDecoration:"none",whiteSpace:"nowrap"}}>
+          📄 PDF öffnen
+        </a>}
+    </div>
 
     {spieler.length===0?<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:12}}>
       Keine Spieler in dieser Aufstellung. Bitte in Verwaltung ergänzen.
     </div>:mannschaften.map(mann=>{
       const ms=enriched.filter(s=>s.mannschaft===mann);
       return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
-        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mann}</div>
+        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)}</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:"var(--bg2)"}}>
@@ -1523,7 +1545,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
-        stammErsatz:   (editPlayer.group||"Anfänger")==="Erwachsene"?(editPlayer.stammErsatz||"Stammspieler"):undefined,
+        stammErsatz:   ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)?(editPlayer.stammErsatz||"Stammspieler"):undefined,
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -2095,8 +2117,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
               </div>
-              {/* P4: Stammspieler/Ersatzspieler nur für Erwachsene */}
-              {(editPlayer.group||"Anfänger")==="Erwachsene"&&<div style={{marginBottom:14}}>
+              {/* P4: Stammspieler/Ersatzspieler für alle mit Erwachsene-Funktion */}
+              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)&&<div style={{marginBottom:14}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Stammspieler / Ersatzspieler</label>
                 <select value={editPlayer.stammErsatz||"Stammspieler"} onChange={e=>setEditPlayer(prev=>({...prev,stammErsatz:e.target.value}))}
                   style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
@@ -4469,19 +4491,31 @@ function AufstellungUpload({showToast}) {
       const fn=file.name;
       const saisonMatch=fn.match(/(\d{4})[\-_]?(\d{2,4})/);
       const saison=saisonMatch?`${saisonMatch[1]}/${saisonMatch[2].length===2?"20"+saisonMatch[2]:saisonMatch[2]}`:"2025/2026";
-      const isRueck=fn.toLowerCase().includes("rueck")||fn.toLowerCase().includes("ruck")||fn.toLowerCase().includes("r\u00fcck")||fn.toLowerCase().includes("r_ck");
+      const isRueck=fn.toLowerCase().includes("rueck")||fn.toLowerCase().includes("ruck")||fn.toLowerCase().includes("rück")||fn.toLowerCase().includes("r_ck");
       const runde=isRueck?"Rückrunde":"Vorrunde";
       const key=`aufstellung_${saison.replace("/","_")}_${isRueck?"R":"V"}`;
 
-      // Verwende vorbereitete Daten basierend auf Saison/Runde
-      const spielerData = (saison==="2025/2026"&&isRueck)
-        ? AUFSTELLUNG_RUECKRUNDE_2025_2026
-        : AUFSTELLUNG_RUECKRUNDE_2025_2026; // Fallback bis weitere Saisons verfügbar
+      // Spielerdaten
+      const spielerData=(saison==="2025/2026"&&isRueck)?AUFSTELLUNG_RUECKRUNDE_2025_2026:AUFSTELLUNG_RUECKRUNDE_2025_2026;
 
-      await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:Date.now()});
-      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
-    setUploading(false);
+      // PDF als Base64 speichern (für direkten Link im UI)
+      const reader=new FileReader();
+      reader.onload=async(ev)=>{
+        const pdfBase64=ev.target.result; // data:application/pdf;base64,...
+        try {
+          await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,pdfUrl:pdfBase64,lastUpdated:Date.now()});
+          showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
+          // Reload list
+          getDocs(collection(db,"config")).then(snap=>{
+            const afs=snap.docs.filter(d=>d.id.startsWith("aufstellung_")).map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.id.localeCompare(a.id));
+            setAufstellungen(afs);
+          });
+        } catch(e){showToast("Fehler: "+e.message,"❌");}
+        setUploading(false);
+      };
+      reader.onerror=()=>{showToast("PDF konnte nicht gelesen werden","❌");setUploading(false);};
+      reader.readAsDataURL(file);
+    } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
   }
 
   return <div>
@@ -4495,8 +4529,19 @@ function AufstellungUpload({showToast}) {
         onChange={e=>handleUpload(e.target.files?.[0])}/>
     </label>
     <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
-      Dateiname sollte Saison (z.B. 2025_2026) und optional "Vor" oder "Rueck" enthalten.
+      Dateiname: z.B. "Aufstellung_2025_2026_Rueckrunde.pdf". Saison wird automatisch erkannt.
     </div>
+    {/* P4: Liste aller gespeicherten Aufstellungen */}
+    {aufstellungen.length>0&&<div style={{marginTop:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Gespeicherte Aufstellungen:</div>
+      {aufstellungen.map(a=><div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
+        padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
+        <span style={{fontSize:11,fontWeight:600,flex:1}}>{a.runde==="Rückrunde"?"RR":"VR"} {a.saison}</span>
+        <span style={{fontSize:10,color:"var(--text4)"}}>{a.spieler?.length||0} Spieler</span>
+        {a.pdfUrl&&<a href={a.pdfUrl} target="_blank" rel="noopener noreferrer"
+          style={{fontSize:11,color:"#3b82f6",textDecoration:"none"}}>📄 PDF</a>}
+      </div>)}
+    </div>}
   </div>;
 }
 
