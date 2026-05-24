@@ -886,7 +886,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={!isSuperAdmin}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig}/>}
 
     <style>{`
@@ -1183,7 +1183,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
 
 // AufstellungView — zeigt Aufstellungstabelle
-function AufstellungView({players=[], nurNachwuchs=false}) {
+function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) {
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
   const [spieler,setSpieler]=useState([]);
@@ -1215,9 +1215,9 @@ function AufstellungView({players=[], nurNachwuchs=false}) {
   },[]);
 
   useEffect(()=>{
-    if(!selId) return;
+    if(!selId||aufstellungen.length===0) return;
     const af=aufstellungen.find(a=>a.id===selId);
-    setSpieler(af?.spieler||[]);
+    if(af) setSpieler(af.spieler||[]);
   },[selId,aufstellungen]);
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
@@ -1252,7 +1252,11 @@ function AufstellungView({players=[], nurNachwuchs=false}) {
   const MANN_ORDER=["Erwachsene","Erwachsene II","Erwachsene III","Erwachsene IV","Erwachsene V","Erwachsene VI",
     "Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
   const mannschaften=[...new Set(enriched.map(s=>s.mannschaft).filter(Boolean))]
-    .filter(m=>!nurNachwuchs||NACHWUCHS_MANN.some(nm=>m===nm||m.startsWith(nm)))
+    .filter(m=>{
+      if(nurNachwuchs) return NACHWUCHS_MANN.some(nm=>m===nm||m.startsWith(nm));
+      if(nurErwachsene) return m.startsWith("Erwachsene");
+      return true;
+    })
     .sort((a,b)=>{
       const ia=MANN_ORDER.indexOf(a); const ib=MANN_ORDER.indexOf(b);
       if(ia>=0&&ib>=0) return ia-ib;
@@ -1271,11 +1275,22 @@ function AufstellungView({players=[], nurNachwuchs=false}) {
         </option>)}
       </select>
       {aufstellungen.find(a=>a.id===selId)?.pdfUrl&&
-        <a href={aufstellungen.find(a=>a.id===selId).pdfUrl} target="_blank" rel="noopener noreferrer"
-          style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",color:"#3b82f6",
-            border:"1px solid #3b82f644",textDecoration:"none",whiteSpace:"nowrap"}}>
+        <button onClick={()=>{
+          const pdf=aufstellungen.find(a=>a.id===selId)?.pdfUrl;
+          if(!pdf) return;
+          // Base64 Data-URL → Blob → Blob-URL öffnen
+          const b64=pdf.split(",")[1];
+          const bin=atob(b64);
+          const arr=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+          const blob=new Blob([arr],{type:"application/pdf"});
+          const url=URL.createObjectURL(blob);
+          window.open(url,"_blank");
+          setTimeout(()=>URL.revokeObjectURL(url),10000);
+        }} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",color:"#3b82f6",
+            border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>
           📄 PDF öffnen
-        </a>}
+        </button>}
     </div>
 
     {spieler.length===0?<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:12}}>
@@ -1287,16 +1302,17 @@ function AufstellungView({players=[], nurNachwuchs=false}) {
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:"var(--bg2)"}}>
-              {["Rg","Q-TTR","Name","Stamm/Ersatz","Status"].map(h=>(
-                <th key={h} style={{padding:"6px 8px",textAlign:"left",fontWeight:600,color:"var(--text2)",
-                  borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:0,background:"var(--bg2)"}}>{h}</th>
+              {[{l:"Rg",w:60},{l:"Q-TTR",w:70},{l:"Name",w:200},{l:"Stamm/Ersatz",w:120},{l:"Status",w:70}].map(h=>(
+                <th key={h.l} style={{padding:"6px 8px",textAlign:"left",fontWeight:600,color:"var(--text2)",
+                  borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:0,
+                  background:"var(--bg2)",width:h.w,minWidth:h.w}}>{h.l}</th>
               ))}
             </tr></thead>
             <tbody>{ms.map((s,i)=>(
               <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
-                <td style={{padding:"5px 8px",color:"var(--text2)"}}>{s.rang||"—"}</td>
-                <td style={{padding:"5px 8px"}}>{s.qTtr||"—"}</td>
-                <td style={{padding:"5px 8px",fontWeight:500}}>{s.name||"—"}</td>
+                <td style={{padding:"5px 8px",color:"var(--text2)",width:60}}>{s.rang||"—"}</td>
+                <td style={{padding:"5px 8px",width:70}}>{s.qTtr||"—"}</td>
+                <td style={{padding:"5px 8px",fontWeight:500,width:200}}>{s.name||"—"}</td>
                 <td style={{padding:"5px 8px"}}>
                   <span style={{padding:"2px 7px",borderRadius:10,fontSize:11,
                     background:s.stammErsatz==="Stammspieler"?"#10b98122":"#f59e0b22",
@@ -4538,8 +4554,15 @@ function AufstellungUpload({showToast}) {
         padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
         <span style={{fontSize:11,fontWeight:600,flex:1}}>{a.runde==="Rückrunde"?"RR":"VR"} {a.saison}</span>
         <span style={{fontSize:10,color:"var(--text4)"}}>{a.spieler?.length||0} Spieler</span>
-        {a.pdfUrl&&<a href={a.pdfUrl} target="_blank" rel="noopener noreferrer"
-          style={{fontSize:11,color:"#3b82f6",textDecoration:"none"}}>📄 PDF</a>}
+        {a.pdfUrl&&<button onClick={()=>{
+          const b64=a.pdfUrl.split(",")[1];
+          const bin=atob(b64); const arr=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+          const blob=new Blob([arr],{type:"application/pdf"});
+          const url=URL.createObjectURL(blob);
+          window.open(url,"_blank");
+          setTimeout(()=>URL.revokeObjectURL(url),10000);
+        }} style={{fontSize:11,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:0}}>📄 PDF</button>}
       </div>)}
     </div>}
   </div>;
@@ -5008,8 +5031,19 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         setSelSeason(s=>s||seas[0].id);
       } else {
         // Fallback: altes Dokument "spielplan"
-        setSeasons([{id:"spielplan",saison:"2025/2026"}]);
-        setSelSeason("spielplan");
+        // Fallback: check old "spielplan" doc
+        getDoc(doc(db,"config","spielplan")).then(snap=>{
+          if(snap.exists()&&(snap.data().spiele||[]).length>0){
+            setSeasons([{id:"spielplan",saison:"2025/2026"}]);
+            setSelSeason("spielplan");
+          } else {
+            setSeasons([{id:"spielplan_2025_2026",saison:"2025/2026"}]);
+            setSelSeason("spielplan_2025_2026");
+          }
+        }).catch(()=>{
+          setSeasons([{id:"spielplan",saison:"2025/2026"}]);
+          setSelSeason("spielplan");
+        });
       }
     }).catch(()=>{
       setSeasons([{id:"spielplan",saison:"2025/2026"}]);
@@ -5470,7 +5504,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true}/>}
   </div>;
 }
 
