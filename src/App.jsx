@@ -1186,7 +1186,6 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) {
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
-  const [spieler,setSpieler]=useState([]);
   const [loading,setLoading]=useState(true);
 
   // Firestore-Daten laden, Fallback auf eingebettete Konstante
@@ -1214,11 +1213,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     });
   },[]);
 
-  useEffect(()=>{
-    if(!selId||aufstellungen.length===0) return;
-    const af=aufstellungen.find(a=>a.id===selId);
-    if(af) setSpieler(af.spieler||[]);
-  },[selId,aufstellungen]);
+
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
   if(aufstellungen.length===0) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
@@ -1229,6 +1224,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
 
   // Spieler mit stammErsatz + Status aus Verwaltung anreichern
   // PDF-Name: "Titz, Stefan" → match mit players.lastName="Titz", firstName="Stefan"
+  const spieler=(aufstellungen.find(a=>a.id===selId)?.spieler)||[];
   const enriched=spieler.map(s=>{
     const nameParts=(s.name||"").split(",").map(p=>p.trim());
     const lastName=nameParts[0]||"";
@@ -1300,9 +1296,9 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
       return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
         <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)}</div>
         <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead><tr style={{background:"var(--bg2)"}}>
-              {[{l:"Rg",w:60},{l:"Q-TTR",w:70},{l:"Name",w:200},{l:"Stamm/Ersatz",w:120},{l:"Status",w:70}].map(h=>(
+              {[{l:"Rg",w:36},{l:"TTR",w:52},{l:"Name",w:130},{l:"S/E",w:60},{l:"St.",w:50}].map(h=>(
                 <th key={h.l} style={{padding:"6px 8px",textAlign:"left",fontWeight:600,color:"var(--text2)",
                   borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:0,
                   background:"var(--bg2)",width:h.w,minWidth:h.w}}>{h.l}</th>
@@ -1310,18 +1306,18 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
             </tr></thead>
             <tbody>{ms.map((s,i)=>(
               <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
-                <td style={{padding:"5px 8px",color:"var(--text2)",width:60}}>{s.rang||"—"}</td>
-                <td style={{padding:"5px 8px",width:70}}>{s.qTtr||"—"}</td>
-                <td style={{padding:"5px 8px",fontWeight:500,width:200}}>{s.name||"—"}</td>
-                <td style={{padding:"5px 8px"}}>
-                  <span style={{padding:"2px 7px",borderRadius:10,fontSize:11,
+                <td style={{padding:"4px 5px",color:"var(--text2)",width:36,fontSize:11}}>{s.rang||"—"}</td>
+                <td style={{padding:"4px 5px",width:52,fontSize:11}}>{s.qTtr||"—"}</td>
+                <td style={{padding:"4px 5px",fontWeight:500,width:130,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}</td>
+                <td style={{padding:"4px 5px",width:60}}>
+                  <span style={{padding:"1px 5px",borderRadius:10,fontSize:10,
                     background:s.stammErsatz==="Stammspieler"?"#10b98122":"#f59e0b22",
                     color:s.stammErsatz==="Stammspieler"?"#10b981":"#f59e0b"}}>
                     {s.stammErsatz==="Stammspieler"?"⭐ Stamm":"🔄 Ersatz"}
                   </span>
                 </td>
-                <td style={{padding:"5px 8px"}}>
-                  <span style={{padding:"2px 7px",borderRadius:10,fontSize:11,
+                <td style={{padding:"4px 5px",width:50}}>
+                  <span style={{padding:"1px 5px",borderRadius:10,fontSize:10,
                     background:s.status==="aktiv"?"#3b82f622":"#ef444422",
                     color:s.status==="aktiv"?"#3b82f6":"#ef4444"}}>
                     {s.status||"aktiv"}
@@ -5021,43 +5017,43 @@ function VereinsSpielplan({nurNachwuchs=false}) {
 
   // Verfügbare Saisons aus Firestore laden
   useEffect(()=>{
-    getDocs(collection(db,"config")).then(snap=>{
+    // Lade alle spielplan_* docs + altes spielplan doc
+    Promise.all([
+      getDocs(collection(db,"config")),
+      getDoc(doc(db,"config","spielplan"))
+    ]).then(([snap,oldSnap])=>{
       const seas=snap.docs
         .filter(d=>d.id.startsWith("spielplan_"))
         .map(d=>({id:d.id,saison:d.data().saison||d.id.replace("spielplan_","").replace(/_/g,"/")}))
         .sort((a,b)=>b.id.localeCompare(a.id));
+      // Altes "spielplan" Dokument auch einschließen wenn Daten vorhanden
+      if(oldSnap.exists()&&(oldSnap.data().spiele||[]).length>0){
+        const hasOld=seas.find(s=>s.id==="spielplan");
+        if(!hasOld) seas.push({id:"spielplan",saison:"2025/2026 (alt)"});
+      }
       if(seas.length>0){
         setSeasons(seas);
-        setSelSeason(s=>s||seas[0].id);
+        setSelSeason(seas[0].id);
       } else {
-        // Fallback: altes Dokument "spielplan"
-        // Fallback: check old "spielplan" doc
-        getDoc(doc(db,"config","spielplan")).then(snap=>{
-          if(snap.exists()&&(snap.data().spiele||[]).length>0){
-            setSeasons([{id:"spielplan",saison:"2025/2026"}]);
-            setSelSeason("spielplan");
-          } else {
-            setSeasons([{id:"spielplan_2025_2026",saison:"2025/2026"}]);
-            setSelSeason("spielplan_2025_2026");
-          }
-        }).catch(()=>{
-          setSeasons([{id:"spielplan",saison:"2025/2026"}]);
-          setSelSeason("spielplan");
-        });
+        // Absoluter Fallback: eingebettete Daten
+        setSpiele(INITIAL_SPIELPLAN);
+        setSeasons([{id:"_local",saison:"2025/2026"}]);
+        setSelSeason("_local");
+        setLoading(false);
       }
     }).catch(()=>{
-      setSeasons([{id:"spielplan",saison:"2025/2026"}]);
-      setSelSeason("spielplan");
+      setSpiele(INITIAL_SPIELPLAN);
+      setLoading(false);
     });
   },[]);
 
   // Spielplan für gewählte Saison laden
   useEffect(()=>{
-    if(!selSeason) return;
+    if(!selSeason||selSeason==="_local") return;
     setLoading(true);
     const unsub=onSnapshot(doc(db,"config",selSeason),snap=>{
-      if(snap.exists()) setSpiele(snap.data().spiele||[]);
-      else setSpiele(selSeason==="spielplan"?INITIAL_SPIELPLAN:[]);
+      if(snap.exists()&&(snap.data().spiele||[]).length>0) setSpiele(snap.data().spiele||[]);
+      else setSpiele(INITIAL_SPIELPLAN); // Fallback auf eingebettete Daten
       setLoading(false);
     },()=>{setSpiele(INITIAL_SPIELPLAN);setLoading(false);});
     return unsub;
