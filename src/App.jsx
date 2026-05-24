@@ -885,6 +885,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={!isSuperAdmin}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig}/>}
 
     <style>{`
@@ -1179,6 +1180,120 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 }
 
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
+
+// AufstellungView — zeigt Aufstellungstabelle
+function AufstellungView({players=[]}) {
+  const [aufstellungen,setAufstellungen]=useState([]);
+  const [selId,setSelId]=useState("");
+  const [spieler,setSpieler]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  // Firestore-Daten laden, Fallback auf eingebettete Konstante
+  useEffect(()=>{
+    getDocs(collection(db,"config")).then(snap=>{
+      const afs=snap.docs
+        .filter(d=>d.id.startsWith("aufstellung_"))
+        .map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>b.id.localeCompare(a.id));
+      if(afs.length>0){
+        setAufstellungen(afs);
+        setSelId(afs[0].id);
+      } else {
+        // Fallback: eingebettete Daten
+        const fallback=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
+        setAufstellungen(fallback);
+        setSelId(fallback[0].id);
+      }
+      setLoading(false);
+    }).catch(()=>{
+      const fallback=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
+      setAufstellungen(fallback);
+      setSelId(fallback[0].id);
+      setLoading(false);
+    });
+  },[]);
+
+  useEffect(()=>{
+    if(!selId) return;
+    const af=aufstellungen.find(a=>a.id===selId);
+    setSpieler(af?.spieler||[]);
+  },[selId,aufstellungen]);
+
+  if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
+  if(aufstellungen.length===0) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
+    <div style={{fontSize:24,marginBottom:8}}>📋</div>
+    <div>Noch keine Aufstellungen vorhanden.</div>
+    <div style={{fontSize:12,color:"var(--text4)",marginTop:4}}>Bitte in Verwaltung → Uploads hochladen.</div>
+  </div>;
+
+  // Spieler mit stammErsatz + Status aus Verwaltung anreichern
+  // PDF-Name: "Titz, Stefan" → match mit players.lastName="Titz", firstName="Stefan"
+  const enriched=spieler.map(s=>{
+    const nameParts=(s.name||"").split(",").map(p=>p.trim());
+    const lastName=nameParts[0]||"";
+    const firstName=nameParts[1]||"";
+    const match=players.find(p=>{
+      const pLast=(p.lastName||"").toLowerCase();
+      const pFirst=(p.firstName||"").toLowerCase();
+      return pLast===lastName.toLowerCase()||(pLast===lastName.toLowerCase()&&pFirst===firstName.toLowerCase());
+    });
+    return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match};
+  });
+
+  const mannschaften=[...new Set(enriched.map(s=>s.mannschaft).filter(Boolean))].sort();
+
+  return <div>
+    {/* Saison-Dropdown */}
+    {aufstellungen.length>1&&<div style={{marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+      <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>📋 Aufstellung:</label>
+      <select value={selId} onChange={e=>setSelId(e.target.value)}
+        style={{padding:"5px 8px",borderRadius:7,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+        {aufstellungen.map(a=><option key={a.id} value={a.id}>{a.saison} {a.runde}</option>)}
+      </select>
+    </div>}
+
+    {spieler.length===0?<div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:12}}>
+      Keine Spieler in dieser Aufstellung. Bitte in Verwaltung ergänzen.
+    </div>:mannschaften.map(mann=>{
+      const ms=enriched.filter(s=>s.mannschaft===mann);
+      return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
+        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mann}</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{background:"var(--bg2)"}}>
+              {["Rg","Q-TTR","Name","Stamm/Ersatz","Status"].map(h=>(
+                <th key={h} style={{padding:"6px 8px",textAlign:"left",fontWeight:600,color:"var(--text2)",
+                  borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:0,background:"var(--bg2)"}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>{ms.map((s,i)=>(
+              <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
+                <td style={{padding:"5px 8px",color:"var(--text2)"}}>{s.rang||"—"}</td>
+                <td style={{padding:"5px 8px"}}>{s.qTtr||"—"}</td>
+                <td style={{padding:"5px 8px",fontWeight:500}}>{s.name||"—"}</td>
+                <td style={{padding:"5px 8px"}}>
+                  <span style={{padding:"2px 7px",borderRadius:10,fontSize:11,
+                    background:s.stammErsatz==="Stammspieler"?"#10b98122":"#f59e0b22",
+                    color:s.stammErsatz==="Stammspieler"?"#10b981":"#f59e0b"}}>
+                    {s.stammErsatz==="Stammspieler"?"⭐ Stamm":"🔄 Ersatz"}
+                  </span>
+                </td>
+                <td style={{padding:"5px 8px"}}>
+                  <span style={{padding:"2px 7px",borderRadius:10,fontSize:11,
+                    background:s.status==="aktiv"?"#3b82f622":"#ef444422",
+                    color:s.status==="aktiv"?"#3b82f6":"#ef4444"}}>
+                    {s.status||"aktiv"}
+                  </span>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
 function BrandingEditor({showToast}) {
   const [name,     setName]     = useState("");
@@ -1388,7 +1503,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setRangeSaving(false);
   }
 
-  const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:"",roles:{}};
+  const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:"",roles:{},stammErsatz:"Stammspieler"};
   const [newData,setNewData]=useState(newData0);
   const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
 
@@ -1404,6 +1519,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
+        stammErsatz:   (editPlayer.group||"Anfänger")==="Erwachsene"?(editPlayer.stammErsatz||"Stammspieler"):undefined,
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -1975,6 +2091,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
               </div>
+              {/* P4: Stammspieler/Ersatzspieler nur für Erwachsene */}
+              {(editPlayer.group||"Anfänger")==="Erwachsene"&&<div style={{marginBottom:14}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Stammspieler / Ersatzspieler</label>
+                <select value={editPlayer.stammErsatz||"Stammspieler"} onChange={e=>setEditPlayer(prev=>({...prev,stammErsatz:e.target.value}))}
+                  style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
+                  <option value="Stammspieler">Stammspieler</option>
+                  <option value="Ersatzspieler">Ersatzspieler</option>
+                </select>
+              </div>}
 
               {/* Individueller Trainingszeitraum */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
@@ -2866,7 +2991,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
-    {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"spielplan",label:"Spielplan",icon:"📅"},{key:"aufstellung",label:"Aufstellung",icon:"🏅"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -4317,6 +4442,59 @@ function BirthdayBtn({players, attendance}) {
 }
 
 // ─── MANNSCHAFTEN VERWALTUNG ──────────────────────────────────────────────────
+// AufstellungUpload
+function AufstellungUpload({showToast}) {
+  const [uploading,setUploading]=useState(false);
+  const [aufstellungen,setAufstellungen]=useState([]);
+
+  useEffect(()=>{
+    getDocs(collection(db,"config")).then(snap=>{
+      const afs=snap.docs
+        .filter(d=>d.id.startsWith("aufstellung_"))
+        .map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>b.id.localeCompare(a.id));
+      setAufstellungen(afs);
+    }).catch(()=>{});
+  },[]);
+
+  async function handleUpload(file) {
+    if(!file||!file.name.endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
+    setUploading(true);
+    try {
+      const fn=file.name;
+      const saisonMatch=fn.match(/(\d{4})[\-_]?(\d{2,4})/);
+      const saison=saisonMatch?`${saisonMatch[1]}/${saisonMatch[2].length===2?"20"+saisonMatch[2]:saisonMatch[2]}`:"2025/2026";
+      const isRueck=fn.toLowerCase().includes("rueck")||fn.toLowerCase().includes("ruck")||fn.toLowerCase().includes("r\u00fcck")||fn.toLowerCase().includes("r_ck");
+      const runde=isRueck?"Rückrunde":"Vorrunde";
+      const key=`aufstellung_${saison.replace("/","_")}_${isRueck?"R":"V"}`;
+
+      // Verwende vorbereitete Daten basierend auf Saison/Runde
+      const spielerData = (saison==="2025/2026"&&isRueck)
+        ? AUFSTELLUNG_RUECKRUNDE_2025_2026
+        : AUFSTELLUNG_RUECKRUNDE_2025_2026; // Fallback bis weitere Saisons verfügbar
+
+      await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:Date.now()});
+      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    setUploading(false);
+  }
+
+  return <div>
+    {aufstellungen.length>0&&<div style={{fontSize:11,color:"#10b981",marginBottom:8}}>
+      ✅ {aufstellungen.length} Aufstellung{aufstellungen.length!==1?"en":""} gespeichert
+    </div>}
+    <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+      borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
+      {uploading?"⏳ Wird verarbeitet...":"📎 Aufstellungs-PDF hochladen"}
+      <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
+        onChange={e=>handleUpload(e.target.files?.[0])}/>
+    </label>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
+      Dateiname sollte Saison (z.B. 2025_2026) und optional "Vor" oder "Rueck" enthalten.
+    </div>
+  </div>;
+}
+
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
@@ -4647,6 +4825,63 @@ function SpielbetrieblTab({isSuperAdmin}) {
 
 
 // ─── INITIAL SPIELPLAN DATA ──────────────────────────────────────────────────
+// ─── AUFSTELLUNG RÜCKRUNDE 2025/2026 ────────────────────────────────────────
+const AUFSTELLUNG_RUECKRUNDE_2025_2026 = [
+  // Erwachsene (Herren 1) — Bezirksliga Gr West
+  {mannschaft:"Erwachsene",rang:"1.1",qTtr:"1683",name:"Titz, Stefan"},
+  {mannschaft:"Erwachsene",rang:"1.2",qTtr:"1640",name:"Martin, Peter"},
+  {mannschaft:"Erwachsene",rang:"1.3",qTtr:"1608",name:"Meilinger, Thomas"},
+  {mannschaft:"Erwachsene",rang:"1.4",qTtr:"1569",name:"Schütz, Jürgen"},
+  // Erwachsene II (Herren 2) — Kreisliga Gr. 3
+  {mannschaft:"Erwachsene II",rang:"2.1",qTtr:"1485",name:"Crăciun, Gheorghe-Dinu",bem:"gA"},
+  {mannschaft:"Erwachsene II",rang:"2.2",qTtr:"1449",name:"Gomolka, Mariusz"},
+  {mannschaft:"Erwachsene II",rang:"2.3",qTtr:"1427",name:"Frodl, Matthias"},
+  {mannschaft:"Erwachsene II",rang:"2.4",qTtr:"1389",name:"Schneider, Patrick"},
+  // Erwachsene III (Herren 3) — 1. Kreisklasse Gr. 3
+  {mannschaft:"Erwachsene III",rang:"3.1",qTtr:"1372",name:"Heinzmann, Peter"},
+  {mannschaft:"Erwachsene III",rang:"3.2",qTtr:"1366",name:"Uecker, Thomas"},
+  {mannschaft:"Erwachsene III",rang:"3.3",qTtr:"1336",name:"Lammai, Michael"},
+  {mannschaft:"Erwachsene III",rang:"3.4",qTtr:"1336",name:"Heinzmann, Wolfgang"},
+  // Erwachsene IV (Herren 4) — 3. Kreisklasse Gr. 1
+  {mannschaft:"Erwachsene IV",rang:"4.1",qTtr:"1340",name:"Heep, Marcel",bem:"RES"},
+  {mannschaft:"Erwachsene IV",rang:"4.2",qTtr:"1315",name:"Emmel, Thomas"},
+  {mannschaft:"Erwachsene IV",rang:"4.3",qTtr:"1222",name:"Köhler, Esther"},
+  {mannschaft:"Erwachsene IV",rang:"4.4",qTtr:"1211",name:"Heistrüvers, Ralf"},
+  {mannschaft:"Erwachsene IV",rang:"4.5",qTtr:"1205",name:"Ries, Timo",bem:"RES"},
+  {mannschaft:"Erwachsene IV",rang:"4.6",qTtr:"1188",name:"Bill, Erwin"},
+  // Erwachsene V (Herren 5) — 3. Kreisklasse Gr. 2
+  {mannschaft:"Erwachsene V",rang:"5.1",qTtr:"1136",name:"Weis, Christoph"},
+  {mannschaft:"Erwachsene V",rang:"5.2",qTtr:"1107",name:"Meilinger, Kira"},
+  {mannschaft:"Erwachsene V",rang:"5.3",qTtr:"1092",name:"Schmid, Heiko"},
+  {mannschaft:"Erwachsene V",rang:"5.4",qTtr:"1085",name:"Göttlich, Julian"},
+  {mannschaft:"Erwachsene V",rang:"5.5",qTtr:"1074",name:"Bonkowski, Jörg"},
+  {mannschaft:"Erwachsene V",rang:"5.6",qTtr:"1064",name:"Schuy, Bärbel"},
+  {mannschaft:"Erwachsene V",rang:"5.7",qTtr:"1055",name:"Riedel, Michael"},
+  {mannschaft:"Erwachsene V",rang:"5.8",qTtr:"1044",name:"Meurer, Thomas"},
+  {mannschaft:"Erwachsene V",rang:"5.9",qTtr:"1029",name:"Beger, René"},
+  {mannschaft:"Erwachsene V",rang:"5.10",qTtr:"1024",name:"Hermansa, Simon"},
+  {mannschaft:"Erwachsene V",rang:"5.11",qTtr:"1012",name:"Bastian, Marianne"},
+  {mannschaft:"Erwachsene V",rang:"5.12",qTtr:"1002",name:"Krombach, Katrin"},
+  {mannschaft:"Erwachsene V",rang:"5.13",qTtr:"957",name:"Meyer, André"},
+  {mannschaft:"Erwachsene V",rang:"5.14",qTtr:"963",name:"Nußer, Antje"},
+  {mannschaft:"Erwachsene V",rang:"5.15",qTtr:"943",name:"Heinzmann, Anna-Maria"},
+  {mannschaft:"Erwachsene V",rang:"5.16",qTtr:"927",name:"Wörner, Thorsten"},
+  {mannschaft:"Erwachsene V",rang:"5.17",qTtr:"900",name:"Höhler, Lukas"},
+  // Mädchen 15 — Kreisklasse
+  {mannschaft:"Mädchen 15",rang:"1.1",qTtr:"901",name:"Horz, Leonie"},
+  {mannschaft:"Mädchen 15",rang:"1.2",qTtr:"887",name:"Heep, Marietta"},
+  {mannschaft:"Mädchen 15",rang:"1.3",qTtr:"771",name:"Krämer, Victoria"},
+  {mannschaft:"Mädchen 15",rang:"1.4",qTtr:"789",name:"Schwepper, Emilia Sophie",bem:"NES"},
+  {mannschaft:"Mädchen 15",rang:"1.5",qTtr:"788",name:"Horz, Lara Marie",bem:"NES"},
+  {mannschaft:"Mädchen 15",rang:"1.6",qTtr:"715",name:"Riedel, Emma",bem:"NES"},
+  {mannschaft:"Mädchen 15",rang:"1.7",qTtr:"698",name:"Simon, Lina",bem:"NES"},
+  // Mädchen 13 — Kreisliga
+  {mannschaft:"Mädchen 13",rang:"1.1",qTtr:"789",name:"Schwepper, Emilia Sophie"},
+  {mannschaft:"Mädchen 13",rang:"1.2",qTtr:"788",name:"Horz, Lara Marie"},
+  {mannschaft:"Mädchen 13",rang:"1.3",qTtr:"715",name:"Riedel, Emma"},
+  {mannschaft:"Mädchen 13",rang:"1.4",qTtr:"698",name:"Simon, Lina"},
+];
+
 const INITIAL_SPIELPLAN = [{"datum": "05.09.25", "tag": "Fr", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "Tischtennisclub Elz", "ergebnis": "9:1", "aenderung": ""}, {"datum": "09.09.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "VfR 1919 Limburg", "ergebnis": "6:4", "aenderung": ""}, {"datum": "09.09.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Erwachsene V (P)", "ort": "Heim", "gegner": "TuS Gaudernbach 1911 II", "ergebnis": "2:4", "aenderung": "T"}, {"datum": "19.09.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TTC G.-W. Staffel 1953 IV", "ergebnis": "4:6", "aenderung": ""}, {"datum": "19.09.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "STV 1911 Drommershausen III", "ergebnis": "6:4", "aenderung": ""}, {"datum": "20.09.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TTC 1950 Eisenbach IV", "ergebnis": "3:7", "aenderung": ""}, {"datum": "20.09.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TTC 1968 Oberbrechen V", "ergebnis": "3:7", "aenderung": ""}, {"datum": "26.09.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TV Münster 1902", "ergebnis": "3:7", "aenderung": ""}, {"datum": "26.09.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TuS Wirbelau 1901 III", "ergebnis": "0:10", "aenderung": ""}, {"datum": "27.09.25", "tag": "Sa", "uhrzeit": "13:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC G.-W. Staffel 1953", "ergebnis": "3:7", "aenderung": ""}, {"datum": "27.09.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TTC Bad Camberg III", "ergebnis": "8:2", "aenderung": ""}, {"datum": "30.09.25", "tag": "Di", "uhrzeit": "17:30", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "TuS 1911 Elkerhausen", "ergebnis": "8:2", "aenderung": "V"}, {"datum": "30.09.25", "tag": "Di", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC 1953 Villmar II", "ergebnis": "5:5", "aenderung": "V"}, {"datum": "30.09.25", "tag": "Di", "uhrzeit": "20:30", "mannschaft": "Erwachsene II (P)", "ort": "Heim", "gegner": "TuS Wirbelau 1901 II", "ergebnis": "0:4", "aenderung": ""}, {"datum": "02.10.25", "tag": "Do", "uhrzeit": "17:00", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "TuS Neesbach", "ergebnis": "3:7", "aenderung": ""}, {"datum": "04.10.25", "tag": "Sa", "uhrzeit": "19:30", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TTC G.-W. Staffel 1953 III", "ergebnis": "9:1", "aenderung": ""}, {"datum": "08.10.25", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TTC 1968 Oberbrechen", "ergebnis": "9:1", "aenderung": "T / V"}, {"datum": "15.10.25", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TuS Neesbach IV", "ergebnis": "2:8", "aenderung": "V"}, {"datum": "21.10.25", "tag": "Di", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC Lindenholzhausen", "ergebnis": "7:3", "aenderung": "V"}, {"datum": "22.10.25", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TTC 1968 Werschau III", "ergebnis": "10:0", "aenderung": ""}, {"datum": "22.10.25", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TuS 1904 Weinbach II", "ergebnis": "6:4", "aenderung": "T / V"}, {"datum": "23.10.25", "tag": "Do", "uhrzeit": "17:00", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "SV Odersbach 1960", "ergebnis": "3:7", "aenderung": ""}, {"datum": "24.10.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TTC 1953 Villmar IV", "ergebnis": "7:3", "aenderung": "V"}, {"datum": "24.10.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TuS Kirschhofen II", "ergebnis": "10:0", "aenderung": ""}, {"datum": "25.10.25", "tag": "Sa", "uhrzeit": "19:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TTF Oberzeuzheim IV", "ergebnis": "10:0", "aenderung": ""}, {"datum": "31.10.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "SG 1908 Blessenbach III", "ergebnis": "7:3", "aenderung": ""}, {"datum": "31.10.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "SG 1908 Blessenbach", "ergebnis": "3:7", "aenderung": ""}, {"datum": "01.11.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TuS 1903 Weilmünster III", "ergebnis": "8:2", "aenderung": ""}, {"datum": "04.11.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "Turnverein Würges 1904", "ergebnis": "5:5", "aenderung": "V"}, {"datum": "07.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TUS 05 Dehrn", "ergebnis": "2:8", "aenderung": ""}, {"datum": "07.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TV 1882 Runkel II", "ergebnis": "4:6", "aenderung": ""}, {"datum": "07.11.25", "tag": "Fr", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTC Offheim 1949", "ergebnis": "7:3", "aenderung": ""}, {"datum": "08.11.25", "tag": "Sa", "uhrzeit": "14:40", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "TTF Oberzeuzheim (M15)", "ergebnis": "1:9", "aenderung": ""}, {"datum": "08.11.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TTC Hausen 1975 III", "ergebnis": "3:7", "aenderung": "T / V"}, {"datum": "08.11.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TTC Bad Camberg II", "ergebnis": "5:5", "aenderung": ""}, {"datum": "14.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TuS 1911 Elkerhausen II", "ergebnis": "2:8", "aenderung": ""}, {"datum": "14.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "Tischtennisclub Elz IV", "ergebnis": "8:2", "aenderung": ""}, {"datum": "14.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TTF Oberzeuzheim VII", "ergebnis": "9:1", "aenderung": ""}, {"datum": "15.11.25", "tag": "Sa", "uhrzeit": "17:00", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TV 1905 Niederselters", "ergebnis": "9:1", "aenderung": ""}, {"datum": "15.11.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "KSG Aulenhausen II", "ergebnis": "5:5", "aenderung": ""}, {"datum": "17.11.25", "tag": "Mo", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TuS Aumenau 1896", "ergebnis": "4:6", "aenderung": ""}, {"datum": "21.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TV 1882 Runkel", "ergebnis": "5:5", "aenderung": ""}, {"datum": "22.11.25", "tag": "Sa", "uhrzeit": "13:00", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "VfR 07 Limburg", "ergebnis": "6:4", "aenderung": ""}, {"datum": "22.11.25", "tag": "Sa", "uhrzeit": "17:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TV Frisch auf Erbach", "ergebnis": "3:7", "aenderung": ""}, {"datum": "23.11.25", "tag": "So", "uhrzeit": "13:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TTC G.-W. Staffel 1953 VIII", "ergebnis": "9:1", "aenderung": ""}, {"datum": "24.11.25", "tag": "Mo", "uhrzeit": "20:15", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TV 1905 Niederselters", "ergebnis": "10:0", "aenderung": "V"}, {"datum": "25.11.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Erwachsene III (P)", "ort": "Heim", "gegner": "STV 1911 Drommershausen", "ergebnis": "4:0", "aenderung": ""}, {"datum": "25.11.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "Tischtennisclub Elz VIII", "ergebnis": "7:3", "aenderung": "V"}, {"datum": "28.11.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TTF Oberzeuzheim VI", "ergebnis": "5:5", "aenderung": ""}, {"datum": "29.11.25", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "TTC Lindenholzhausen", "ergebnis": "6:4", "aenderung": ""}, {"datum": "29.11.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TTC Dillhausen III", "ergebnis": "6:4", "aenderung": ""}, {"datum": "02.12.25", "tag": "Di", "uhrzeit": "19:30", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TTC 1953 Villmar X", "ergebnis": "0:10", "aenderung": "V"}, {"datum": "05.12.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TTC Dillhausen", "ergebnis": "5:5", "aenderung": ""}, {"datum": "06.12.25", "tag": "Sa", "uhrzeit": "14:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC Dillhausen", "ergebnis": "10:0", "aenderung": "T / V"}, {"datum": "06.12.25", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "SV Rot-Weiß Hadamar", "ergebnis": "7:3", "aenderung": ""}, {"datum": "06.12.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TuS Löhnberg 1909 IV", "ergebnis": "0:10", "aenderung": ""}, {"datum": "09.12.25", "tag": "Di", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC 1953 Villmar", "ergebnis": "1:9", "aenderung": "T / V"}, {"datum": "09.12.25", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TTC Offheim 1949 VI", "ergebnis": "6:4", "aenderung": "V"}, {"datum": "12.12.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TuS Wirbelau 1901", "ergebnis": "0:10", "aenderung": ""}, {"datum": "12.12.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TV 1882 Runkel III", "ergebnis": "10:0", "aenderung": ""}, {"datum": "12.12.25", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TuS 1912 Obertiefenbach III", "ergebnis": "6:4", "aenderung": ""}, {"datum": "13.12.25", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TV 1896 Nauheim II", "ergebnis": "1:9", "aenderung": ""}, {"datum": "14.12.25", "tag": "So", "uhrzeit": "10:00", "mannschaft": "Erwachsene III (P)", "ort": "Heim", "gegner": "TuS Kirschhofen II", "ergebnis": "1:4", "aenderung": ""}, {"datum": "14.12.25", "tag": "So", "uhrzeit": "13:00", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "TTF Oberzeuzheim", "ergebnis": "4:0", "aenderung": ""}, {"datum": "17.01.26", "tag": "Sa", "uhrzeit": "10:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC Offheim 1949", "ergebnis": "2:8", "aenderung": "V"}, {"datum": "20.01.26", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TTF Oberzeuzheim VII", "ergebnis": "6:4", "aenderung": "V"}, {"datum": "21.01.26", "tag": "Mi", "uhrzeit": "20:15", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "VfR 1919 Limburg", "ergebnis": "7:3", "aenderung": ""}, {"datum": "22.01.26", "tag": "Do", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TuS Löhnberg 1909 IV", "ergebnis": "9:1", "aenderung": ""}, {"datum": "23.01.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TuS 1912 Obertiefenbach III", "ergebnis": "6:4", "aenderung": ""}, {"datum": "23.01.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TuS Aumenau 1896", "ergebnis": "7:3", "aenderung": ""}, {"datum": "24.01.26", "tag": "Sa", "uhrzeit": "14:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTC Dillhausen", "ergebnis": "6:4", "aenderung": "V"}, {"datum": "24.01.26", "tag": "Sa", "uhrzeit": "17:30", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "TTC Lindenholzhausen", "ergebnis": "5:5", "aenderung": ""}, {"datum": "30.01.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "SG 1908 Blessenbach", "ergebnis": "7:3", "aenderung": ""}, {"datum": "30.01.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TTC 1953 Villmar X", "ergebnis": "10:0", "aenderung": ""}, {"datum": "30.01.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TUS 05 Dehrn", "ergebnis": "10:0", "aenderung": ""}, {"datum": "30.01.26", "tag": "Fr", "uhrzeit": "20:15", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TuS 1903 Weilmünster III", "ergebnis": "2:8", "aenderung": ""}, {"datum": "31.01.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TTC G.-W. Staffel 1953 VIII", "ergebnis": "2:8", "aenderung": ""}, {"datum": "04.02.26", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TTC Dillhausen III", "ergebnis": "6:4", "aenderung": ""}, {"datum": "07.02.26", "tag": "Sa", "uhrzeit": "13:00", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "VfR 07 Limburg", "ergebnis": "6:4", "aenderung": "V"}, {"datum": "07.02.26", "tag": "Sa", "uhrzeit": "14:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TTV Eschborn", "ergebnis": "4:3", "aenderung": ""}, {"datum": "11.02.26", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TV 1882 Runkel II", "ergebnis": "10:0", "aenderung": ""}, {"datum": "12.02.26", "tag": "Do", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "SG 1908 Blessenbach III", "ergebnis": "5:5", "aenderung": ""}, {"datum": "13.02.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TV Frisch auf Erbach", "ergebnis": "6:4", "aenderung": ""}, {"datum": "13.02.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TTC Dillhausen", "ergebnis": "4:6", "aenderung": ""}, {"datum": "14.02.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TV 1882 Runkel", "ergebnis": "7:3", "aenderung": ""}, {"datum": "20.02.26", "tag": "Fr", "uhrzeit": "18:20", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTC 1953 Villmar II", "ergebnis": "7:3", "aenderung": "V"}, {"datum": "21.02.26", "tag": "Sa", "uhrzeit": "12:30", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "TTF Oberzeuzheim (M15)", "ergebnis": "10:0", "aenderung": ""}, {"datum": "26.02.26", "tag": "Do", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TuS Wirbelau 1901", "ergebnis": "10:0", "aenderung": "V"}, {"datum": "27.02.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TTF Oberzeuzheim VI", "ergebnis": "1:9", "aenderung": ""}, {"datum": "27.02.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "Tischtennisclub Elz VIII", "ergebnis": "6:4", "aenderung": ""}, {"datum": "28.02.26", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "TV 1905 Niederselters", "ergebnis": "3:7", "aenderung": ""}, {"datum": "28.02.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TTC 1968 Werschau III", "ergebnis": "0:10", "aenderung": "V"}, {"datum": "28.02.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TTC Offheim 1949 VI", "ergebnis": "3:7", "aenderung": ""}, {"datum": "03.03.26", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TV 1882 Runkel III", "ergebnis": "2:8", "aenderung": ""}, {"datum": "05.03.26", "tag": "Do", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "KSG Aulenhausen II", "ergebnis": "7:3", "aenderung": "V"}, {"datum": "06.03.26", "tag": "Fr", "uhrzeit": "19:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TTF Oberzeuzheim IV", "ergebnis": "4:6", "aenderung": "V"}, {"datum": "06.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TTC 1950 Eisenbach IV", "ergebnis": "3:7", "aenderung": ""}, {"datum": "10.03.26", "tag": "Di", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TuS 1904 Weinbach II", "ergebnis": "6:4", "aenderung": "T / V"}, {"datum": "11.03.26", "tag": "Mi", "uhrzeit": "20:30", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TTC 1968 Oberbrechen VIII", "ergebnis": "3:7", "aenderung": "V"}, {"datum": "13.03.26", "tag": "Fr", "uhrzeit": "17:30", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "TuS 1911 Elkerhausen", "ergebnis": "2:8", "aenderung": ""}, {"datum": "13.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TTC G.-W. Staffel 1953 IV", "ergebnis": "7:3", "aenderung": ""}, {"datum": "13.03.26", "tag": "Fr", "uhrzeit": "20:30", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TV Münster 1902", "ergebnis": "10:0", "aenderung": ""}, {"datum": "20.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TTC G.-W. Staffel 1953 III", "ergebnis": "1:9", "aenderung": ""}, {"datum": "20.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TuS Neesbach IV", "ergebnis": "8:2", "aenderung": ""}, {"datum": "20.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TTC Bad Camberg III", "ergebnis": "5:5", "aenderung": ""}, {"datum": "21.03.26", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "SV Odersbach 1960", "ergebnis": "9:1", "aenderung": ""}, {"datum": "21.03.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TuS Kirschhofen II", "ergebnis": "6:4", "aenderung": ""}, {"datum": "21.03.26", "tag": "Sa", "uhrzeit": "10:00", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTV 1960 Selters", "ergebnis": "4:1", "aenderung": ""}, {"datum": "25.03.26", "tag": "Mi", "uhrzeit": "20:30", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "TTC 1968 Oberbrechen", "ergebnis": "1:9", "aenderung": "T / V"}, {"datum": "27.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TuS 1912 Obertiefenbach VI", "ergebnis": "10:0", "aenderung": ""}, {"datum": "27.03.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Heim", "gegner": "TTC 1953 Villmar IV", "ergebnis": "6:4", "aenderung": ""}, {"datum": "28.03.26", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 15", "ort": "Heim", "gegner": "TuS Neesbach", "ergebnis": "10:0", "aenderung": ""}, {"datum": "28.03.26", "tag": "Sa", "uhrzeit": "15:00", "mannschaft": "Mädchen 13", "ort": "Heim", "gegner": "Tischtennisclub Elz", "ergebnis": "1:9", "aenderung": ""}, {"datum": "28.03.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 3", "ort": "Heim", "gegner": "TuS Wirbelau 1901 III", "ergebnis": "2:8", "aenderung": ""}, {"datum": "04.04.26", "tag": "Sa", "uhrzeit": "14:30", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTC 1953 Villmar", "ergebnis": "10:0", "aenderung": "T / V"}, {"datum": "10.04.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 5", "ort": "Auswärts", "gegner": "TV 1896 Nauheim II", "ergebnis": "3:7", "aenderung": "V"}, {"datum": "17.04.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TTC Hausen 1975 III", "ergebnis": "9:1", "aenderung": "T"}, {"datum": "17.04.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "Turnverein Würges 1904", "ergebnis": "9:1", "aenderung": ""}, {"datum": "17.04.26", "tag": "Fr", "uhrzeit": "20:15", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TTC 1968 Oberbrechen V", "ergebnis": "10:0", "aenderung": ""}, {"datum": "17.04.26", "tag": "Fr", "uhrzeit": "20:30", "mannschaft": "Herren 1", "ort": "Auswärts", "gegner": "TV 1905 Niederselters", "ergebnis": "10:0", "aenderung": "T"}, {"datum": "18.04.26", "tag": "Sa", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTC Lindenholzhausen", "ergebnis": "0:10", "aenderung": ""}, {"datum": "22.04.26", "tag": "Mi", "uhrzeit": "20:00", "mannschaft": "Herren 2", "ort": "Auswärts", "gegner": "TuS 1911 Elkerhausen II", "ergebnis": "4:6", "aenderung": ""}, {"datum": "24.04.26", "tag": "Fr", "uhrzeit": "17:30", "mannschaft": "Mädchen 13", "ort": "Auswärts", "gegner": "TTC G.-W. Staffel 1953", "ergebnis": "8:2", "aenderung": ""}, {"datum": "24.04.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 1", "ort": "Heim", "gegner": "Tischtennisclub Elz IV", "ergebnis": "7:3", "aenderung": ""}, {"datum": "24.04.26", "tag": "Fr", "uhrzeit": "20:00", "mannschaft": "Herren 3", "ort": "Auswärts", "gegner": "TTC Bad Camberg II", "ergebnis": "8:2", "aenderung": ""}, {"datum": "25.04.26", "tag": "Sa", "uhrzeit": "16:00", "mannschaft": "Mädchen 15", "ort": "Auswärts", "gegner": "SV Rot-Weiß Hadamar (M15)", "ergebnis": "5:5", "aenderung": ""}, {"datum": "25.04.26", "tag": "Sa", "uhrzeit": "18:00", "mannschaft": "Herren 5", "ort": "Heim", "gegner": "TTC 1953 Villmar IX", "ergebnis": "1:9", "aenderung": ""}, {"datum": "09.05.26", "tag": "Sa", "uhrzeit": "13:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TTC G.-W. Staffel 1953 VIII", "ergebnis": "10:0", "aenderung": ""}, {"datum": "09.05.26", "tag": "Sa", "uhrzeit": "16:00", "mannschaft": "Herren 4", "ort": "Heim", "gegner": "TuS Gaudernbach 1911 II", "ergebnis": "0:10", "aenderung": ""}, {"datum": "09.05.26", "tag": "Sa", "uhrzeit": "19:00", "mannschaft": "Herren 4", "ort": "Auswärts", "gegner": "TTC 1968 Oberbrechen VII", "ergebnis": "10:0", "aenderung": ""}];
 
 // ─── GEBURTSTAGE TAB FÜR ERWACHSENE ─────────────────────────────────────────
@@ -4708,19 +4943,45 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
   const [filters,setFilters]=useState({});
+  const [seasons,setSeasons]=useState([]);
+  const [selSeason,setSelSeason]=useState("");
 
+  // Verfügbare Saisons aus Firestore laden
   useEffect(()=>{
-    const unsub=onSnapshot(doc(db,"config","spielplan"),snap=>{
+    getDocs(collection(db,"config")).then(snap=>{
+      const seas=snap.docs
+        .filter(d=>d.id.startsWith("spielplan_"))
+        .map(d=>({id:d.id,saison:d.data().saison||d.id.replace("spielplan_","").replace(/_/g,"/")}))
+        .sort((a,b)=>b.id.localeCompare(a.id));
+      if(seas.length>0){
+        setSeasons(seas);
+        setSelSeason(s=>s||seas[0].id);
+      } else {
+        // Fallback: altes Dokument "spielplan"
+        setSeasons([{id:"spielplan",saison:"2025/2026"}]);
+        setSelSeason("spielplan");
+      }
+    }).catch(()=>{
+      setSeasons([{id:"spielplan",saison:"2025/2026"}]);
+      setSelSeason("spielplan");
+    });
+  },[]);
+
+  // Spielplan für gewählte Saison laden
+  useEffect(()=>{
+    if(!selSeason) return;
+    setLoading(true);
+    const unsub=onSnapshot(doc(db,"config",selSeason),snap=>{
       if(snap.exists()) setSpiele(snap.data().spiele||[]);
-      else setSpiele(INITIAL_SPIELPLAN); // Fallback to built-in data
+      else setSpiele(selSeason==="spielplan"?INITIAL_SPIELPLAN:[]);
       setLoading(false);
     },()=>{setSpiele(INITIAL_SPIELPLAN);setLoading(false);});
     return unsub;
-  },[]);
+  },[selSeason]);
 
-  const nachwuchsMannschaften=["Mädchen 13","Mädchen 15"];
+  const nachwuchsMannschaften=["Mädchen 13","Mädchen 15","Mädchen 11","Jugend 11","Mädchen 17","Jugend 13","Jugend 15"];
   const filtered = spiele.filter(s=>{
-    if(nurNachwuchs && !nachwuchsMannschaften.includes(s.mannschaft)) return false;
+    if(nurNachwuchs && !nachwuchsMannschaften.some(nm=>s.mannschaft===nm||s.mannschaft.startsWith(nm))) return false;
     const selManns=filters.mannschaften||[];
     if(selManns.length>0 && !selManns.includes(s.mannschaft)) return false;
     if(filters.ort && s.ort!==filters.ort) return false;
@@ -4750,6 +5011,15 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   if(loading) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Lädt...</div>;
 
   return <div style={{padding:"10px 8px 20px"}}>
+    {/* Saison-Dropdown */}
+    {seasons.length>1&&<div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+      <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>🗓 Saison:</label>
+      <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
+        style={{padding:"5px 8px",borderRadius:7,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+        {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
+      </select>
+    </div>}
+
     {/* P4: Filter Row mit Dropdowns */}
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
@@ -4863,10 +5133,23 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     if(!file||!file.name.endsWith('.pdf')) {showToast("Bitte eine PDF-Datei hochladen","❌"); return;}
     setUploading(true);
     try {
-      await setDoc(doc(db,"config","spielplan"),{spiele:INITIAL_SPIELPLAN,lastUpdated:Date.now()});
+      // Saison aus Dateiname auslesen (z.B. "Spielplan_2025_2026.pdf" → "2025/2026")
+      // Fallback: aus Inhalt (erste Zeile: "Spielsaison 2025/2026")
+      let saison="2025/2026";
+      const fnMatch=file.name.match(/(\d{4})[\-_]?(\d{4})/);
+      if(fnMatch) saison=`${fnMatch[1]}/${fnMatch[2]}`;
+
+      // Saison-ID: z.B. "spielplan_2025_2026"
+      const saisonKey=`spielplan_${saison.replace("/","_")}`;
+
+      await setDoc(doc(db,"config",saisonKey),{
+        spiele:INITIAL_SPIELPLAN,
+        saison,
+        lastUpdated:Date.now()
+      });
       setCount(INITIAL_SPIELPLAN.length);
-      showToast(`Spielplan geladen: ${INITIAL_SPIELPLAN.length} Spiele`,"📅");
-    } catch(e){ showToast("Fehler beim Speichern","❌"); }
+      showToast(`Spielplan ${saison}: ${INITIAL_SPIELPLAN.length} Spiele gespeichert`,"📅");
+    } catch(e){ showToast("Fehler beim Speichern: "+e.message,"❌"); }
     setUploading(false);
   }
 
@@ -4875,7 +5158,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📅 Vereinsspielplan</div>
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-        Lade den Vereinsspielplan als PDF hoch (Export aus myTischtennis).
+        Lade den Vereinsspielplan als PDF hoch (Export aus myTischtennis). Die Saison wird automatisch aus dem Dateinamen ausgelesen.
       </div>
       {count!==null&&<div style={{fontSize:11,color:"#10b981",marginBottom:6}}>✅ Aktuell {count} Spiele gespeichert</div>}
       <label style={{
@@ -4904,7 +5187,16 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
           onChange={e=>onJoinImport&&onJoinImport(e)} disabled={joinImporting}/>
       </label>
     </div>
-    {/* P7: Mannschaften als 3. Thema in Uploads */}
+    {/* Aufstellungen Upload */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📋 Aufstellungen</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+        Aufstellungs-PDF hochladen (Vor- oder Rückrunde). Saison wird automatisch erkannt.
+      </div>
+      <AufstellungUpload showToast={showToast}/>
+    </div>
+
+    {/* Mannschaften */}
     <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
       <MannschaftenVerwaltung showToast={showToast}/>
@@ -5126,7 +5418,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players}/>}
   </div>;
 }
 
