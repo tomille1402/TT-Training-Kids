@@ -1197,7 +1197,16 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     Promise.all(KNOWN_KEYS.map(k=>
       getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,...s.data()}:null).catch(()=>null)
     )).then(results=>{
-      const afs=results.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id));
+      // Sortierung: neueste Saison zuerst, bei gleicher Saison RR vor VR
+      const afs=results.filter(Boolean).sort((a,b)=>{
+        // Saison-Teil vergleichen (absteigende Reihenfolge)
+        const saisonA=a.id.replace(/_[RV]$/,"");
+        const saisonB=b.id.replace(/_[RV]$/,"");
+        if(saisonA!==saisonB) return saisonB.localeCompare(saisonA);
+        // Gleiche Saison: R (Rückrunde) vor V (Vorrunde)
+        const rundA=a.id.slice(-1); const rundB=b.id.slice(-1);
+        return rundA==="R"?-1:1;
+      });
       if(afs.length>0){ setAufstellungen(afs); setSelId(afs[0].id); }
       else {
         const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
@@ -1924,16 +1933,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>}
     </div>
 
-    {/* Punkt 3: Mannschaften — ausblendbar */}
-    {(()=>{
-      return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
-        <div onClick={()=>setShowM(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
-          <span style={{fontSize:11,color:"var(--text4)"}}>{showM?"▲":"▼ einblenden"}</span>
-        </div>
-        {showM&&<div style={{padding:"0 14px 14px"}}><MannschaftenVerwaltung showToast={showToast}/></div>}
-      </div>;
-    })()}
+
 
     {/* Add form */}
     {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
@@ -5292,7 +5292,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       </label>
     </div>
 
-    {/* Aufstellungen */}
+    {/* Aufstellungen Upload */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📋 Aufstellungen</div>
+      <AufstellungUpload showToast={showToast}/>
+    </div>
+
+    {/* Mannschaften */}
     <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
       <MannschaftenVerwaltung showToast={showToast}/>
@@ -5515,7 +5521,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true}/>}
   </div>;
 }
