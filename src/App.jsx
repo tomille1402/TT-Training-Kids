@@ -3319,6 +3319,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -5190,54 +5192,83 @@ function VereinsSpielplan({nurNachwuchs=false}) {
 // SpielplanUpload - PDF upload parses and saves to Firestore
 function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   const [uploading,setUploading]=useState(false);
-  const [count,setCount]=useState(null);
+  const [savedSpielpläne,setSavedSpielpläne]=useState([]);
 
-  useEffect(()=>{
-    getDoc(doc(db,"config","spielplan")).then(snap=>{
-      if(!snap.exists()){
-        setDoc(doc(db,"config","spielplan"),{spiele:INITIAL_SPIELPLAN}).then(()=>setCount(INITIAL_SPIELPLAN.length));
-      } else {
-        setCount((snap.data().spiele||[]).length);
-      }
-    }).catch(()=>{});
-  },[]);
+  const SPIELPLAN_KEYS=["spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan"];
+
+  // Lade gespeicherte Spielpläne
+  function reloadSpielpläne(){
+    Promise.all(SPIELPLAN_KEYS.map(k=>
+      getDoc(doc(db,"config",k)).then(s=>s.exists()&&(s.data().spiele||[]).length>0
+        ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/"),count:(s.data().spiele||[]).length,hasPdf:!!s.data().pdfUrl}
+        :null).catch(()=>null)
+    )).then(r=>setSavedSpielpläne(r.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id))));
+  }
+  useEffect(()=>{ reloadSpielpläne(); },[]);
 
   async function handleUpload(file) {
-    if(!file||!file.name.endsWith('.pdf')) {showToast("Bitte eine PDF-Datei hochladen","❌"); return;}
+    if(!file||!file.name.endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
     setUploading(true);
     try {
-      // Saison aus Dateiname auslesen (z.B. "Spielplan_2025_2026.pdf" → "2025/2026")
-      // Fallback: aus Inhalt (erste Zeile: "Spielsaison 2025/2026")
       let saison="2025/2026";
       const fnMatch=file.name.match(/(\d{4})[\-_]?(\d{4})/);
       if(fnMatch) saison=`${fnMatch[1]}/${fnMatch[2]}`;
+      const key=`spielplan_${saison.replace("/","_")}`;
 
-      // Saison-ID: z.B. "spielplan_2025_2026"
-      const saisonKey=`spielplan_${saison.replace("/","_")}`;
+      // Spielplan-Daten speichern
+      await setDoc(doc(db,"config",key),{spiele:INITIAL_SPIELPLAN,saison,lastUpdated:Date.now()});
 
-      await setDoc(doc(db,"config",saisonKey),{
-        spiele:INITIAL_SPIELPLAN,
-        saison,
-        lastUpdated:Date.now()
-      });
-      setCount(INITIAL_SPIELPLAN.length);
+      // PDF separat speichern
+      const reader=new FileReader();
+      reader.onload=async(ev)=>{
+        try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result,name:file.name}); } catch(e){}
+        setUploading(false);
+        reloadSpielpläne();
+      };
+      reader.onerror=()=>setUploading(false);
+      reader.readAsDataURL(file);
       showToast(`Spielplan ${saison}: ${INITIAL_SPIELPLAN.length} Spiele gespeichert`,"📅");
-    } catch(e){ showToast("Fehler beim Speichern: "+e.message,"❌"); }
-    setUploading(false);
+    } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
+  }
+
+  async function openPdf(key) {
+    const snap=await getDoc(doc(db,"config","pdf_"+key)).catch(()=>null);
+    const pdfUrl=snap?.data()?.pdfUrl;
+    if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
+    const b64=pdfUrl.split(",")[1];
+    const bin=atob(b64);const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const blob=new Blob([arr],{type:"application/pdf"});
+    const url=URL.createObjectURL(blob);
+    window.open(url,"_blank");
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+  }
+
+  async function deleteSpielpan(key) {
+    if(!window.confirm("Spielplan wirklich löschen?")) return;
+    try {
+      await deleteDoc(doc(db,"config",key));
+      await deleteDoc(doc(db,"config","pdf_"+key)).catch(()=>{});
+      showToast("Spielplan gelöscht","✅");
+      reloadSpielpläne();
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
   }
 
   return <div>
     {/* Spielplan Upload */}
     <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📅 Vereinsspielplan</div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-        Lade den Vereinsspielplan als PDF hoch (Export aus myTischtennis). Die Saison wird automatisch aus dem Dateinamen ausgelesen.
-      </div>
-      {count!==null&&<div style={{fontSize:11,color:"#10b981",marginBottom:6}}>✅ Aktuell {count} Spiele gespeichert</div>}
-      <label style={{
-        display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
-        borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"
-      }}>
+      {savedSpielpläne.length>0&&<div style={{marginBottom:8}}>
+        {savedSpielpläne.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,
+          padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
+          <span style={{fontSize:11,flex:1,fontWeight:600}}>📅 {s.saison}</span>
+          <span style={{fontSize:10,color:"var(--text4)"}}>{s.count} Spiele</span>
+          {s.hasPdf&&<button onClick={()=>openPdf(s.id)} style={{fontSize:10,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>📄 PDF</button>}
+          <button onClick={()=>deleteSpielpan(s.id)} style={{fontSize:10,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>🗑️</button>
+        </div>)}
+      </div>}
+      <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+        borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
         {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan PDF hochladen"}
         <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
           onChange={e=>handleUpload(e.target.files?.[0])}/>
@@ -5260,16 +5291,8 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
           onChange={e=>onJoinImport&&onJoinImport(e)} disabled={joinImporting}/>
       </label>
     </div>
-    {/* Aufstellungen Upload */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📋 Aufstellungen</div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-        Aufstellungs-PDF hochladen (Vor- oder Rückrunde). Saison wird automatisch erkannt.
-      </div>
-      <AufstellungUpload showToast={showToast}/>
-    </div>
 
-    {/* Mannschaften */}
+    {/* Aufstellungen */}
     <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
       <MannschaftenVerwaltung showToast={showToast}/>
