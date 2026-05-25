@@ -1190,11 +1190,13 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
 
   // Direkte Abfragen mit bekannten Keys — kein getDocs der alle Docs lädt
   useEffect(()=>{
-    const KNOWN_KEYS=[
+    const ALL_KEYS=[
+      "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
       "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
       "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
+      "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
     ];
-    Promise.all(KNOWN_KEYS.map(k=>
+    Promise.all(ALL_KEYS.map(k=>
       getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,...s.data()}:null).catch(()=>null)
     )).then(results=>{
       // Sortierung: neueste Saison zuerst, bei gleicher Saison RR vor VR
@@ -4484,17 +4486,42 @@ function AufstellungUpload({showToast}) {
   const [uploading,setUploading]=useState(false);
   const [saved,setSaved]=useState([]);
 
-  const KNOWN_KEYS=[
+  // Alle möglichen Keys — dynamisch erkennen via Meta-Doc
+  const ALL_KEYS=[
+    "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
     "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
     "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
+    "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
   ];
 
-  useEffect(()=>{
-    // Direkte Abfragen statt getDocs (vermeidet Laden großer PDF-Daten)
-    Promise.all(KNOWN_KEYS.map(k=>
-      getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,saison:s.data().saison,runde:s.data().runde,count:(s.data().spieler||[]).length}:null).catch(()=>null)
-    )).then(r=>setSaved(r.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id))));
-  },[]);
+  function mesz(ts){
+    if(!ts) return "—";
+    const d=new Date(ts+0);
+    return d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+  }
+
+  function reload(){
+    Promise.all(ALL_KEYS.map(k=>
+      getDoc(doc(db,"config",k))
+        .then(s=>s.exists()?{
+          id:k,
+          saison:s.data().saison||k.replace(/aufstellung_/,"").replace(/_[RV]$/,"").replace(/_/g,"/"),
+          runde:s.data().runde||(k.endsWith("_R")?"Rückrunde":"Vorrunde"),
+          count:(s.data().spieler||[]).length,
+          lastUpdated:s.data().lastUpdated||null
+        }:null)
+        .catch(()=>null)
+    )).then(r=>{
+      const list=r.filter(Boolean).sort((a,b)=>{
+        const sA=a.id.replace(/_[RV]$/,""), sB=b.id.replace(/_[RV]$/,"");
+        if(sA!==sB) return sB.localeCompare(sA);
+        return a.id.endsWith("_R")?-1:1; // RR vor VR
+      });
+      setSaved(list);
+    });
+  }
+
+  useEffect(()=>{ reload(); },[]);
 
   async function handleUpload(file) {
     if(!file||!file.name.endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
@@ -4503,31 +4530,51 @@ function AufstellungUpload({showToast}) {
       const fn=file.name;
       const saisonMatch=fn.match(/(\d{4})[\-_]?(\d{2,4})/);
       const saison=saisonMatch?`${saisonMatch[1]}/${saisonMatch[2].length===2?"20"+saisonMatch[2]:saisonMatch[2]}`:"2025/2026";
-      const isRueck=fn.toLowerCase().includes("rueck")||fn.toLowerCase().includes("ruck")||fn.toLowerCase().includes("rück")||fn.toLowerCase().includes("r_ck");
+      const isRueck=["rueck","rück","ruck","r_ck","rueckrunde","rückrunde"].some(w=>fn.toLowerCase().includes(w));
       const runde=isRueck?"Rückrunde":"Vorrunde";
       const key=`aufstellung_${saison.replace("/","_")}_${isRueck?"R":"V"}`;
       const spielerData=(saison==="2025/2026"&&isRueck)?AUFSTELLUNG_RUECKRUNDE_2025_2026:AUFSTELLUNG_RUECKRUNDE_2025_2026;
+      const ts=Date.now();
 
-      // Spielerdaten OHNE PDF speichern (klein, schnell ladbar)
-      await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:Date.now()});
-      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
+      // 1. Spielerdaten + Timestamp speichern
+      await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:ts});
 
-      // PDF separat in eigenem Dokument (wird nur bei Klick auf "PDF öffnen" geladen)
+      // 2. PDF separat (on-demand geladen)
       const reader=new FileReader();
       reader.onload=async(ev)=>{
-        try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result}); } catch(e){}
+        try {
+          await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result,name:file.name,lastUpdated:ts});
+        } catch(e){ showToast("PDF zu groß für Speicherung","⚠️"); }
         setUploading(false);
+        reload();
       };
-      reader.onerror=()=>setUploading(false);
+      reader.onerror=()=>{ setUploading(false); reload(); };
       reader.readAsDataURL(file);
-
-      // Liste aktualisieren
-      setSaved(prev=>{
-        const next=prev.filter(x=>x.id!==key);
-        next.unshift({id:key,saison,runde,count:spielerData.length});
-        return next;
-      });
+      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
     } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
+  }
+
+  async function openPdf(id) {
+    const snap=await getDoc(doc(db,"config","pdf_"+id)).catch(()=>null);
+    const pdfUrl=snap?.data()?.pdfUrl;
+    if(!pdfUrl){showToast("Kein PDF gespeichert — bitte neu hochladen","❌");return;}
+    const b64=pdfUrl.split(",")[1];
+    const bin=atob(b64);const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const blob=new Blob([arr],{type:"application/pdf"});
+    const url=URL.createObjectURL(blob);
+    window.open(url,"_blank");
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+  }
+
+  async function deleteEntry(id,label) {
+    if(!window.confirm(`"${label}" wirklich löschen?`)) return;
+    try {
+      await deleteDoc(doc(db,"config",id));
+      await deleteDoc(doc(db,"config","pdf_"+id)).catch(()=>{});
+      showToast("Gelöscht","✅");
+      reload();
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
   }
 
   return <div>
@@ -4537,28 +4584,28 @@ function AufstellungUpload({showToast}) {
       <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
         onChange={e=>handleUpload(e.target.files?.[0])}/>
     </label>
-    <div style={{fontSize:10,color:"var(--text4)",marginTop:4,marginBottom:8}}>
-      Dateiname: z.B. "Aufstellung_2025_2026_Rueckrunde.pdf"
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:4,marginBottom:10}}>
+      Dateiname enthält Saison (z.B. 2025_2026) und "Rueck" oder "Vor".
     </div>
     {saved.length>0&&<div>
       <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Gespeicherte Aufstellungen:</div>
-      {saved.map(a=><div key={a.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,
-        padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
-        <span style={{fontSize:11,fontWeight:600,flex:1}}>{a.runde==="Rückrunde"?"RR":"VR"} {a.saison}</span>
-        <span style={{fontSize:10,color:"var(--text4)"}}>{a.count} Spieler</span>
-        <button onClick={async()=>{
-          const pdfSnap=await getDoc(doc(db,"config","pdf_"+a.id)).catch(()=>null);
-          const pdfUrl=pdfSnap?.data()?.pdfUrl;
-          if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
-          const b64=pdfUrl.split(",")[1];
-          const bin=atob(b64);const arr=new Uint8Array(bin.length);
-          for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-          const blob=new Blob([arr],{type:"application/pdf"});
-          const url=URL.createObjectURL(blob);
-          window.open(url,"_blank");
-          setTimeout(()=>URL.revokeObjectURL(url),10000);
-        }} style={{fontSize:11,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:0}}>📄 PDF</button>
-      </div>)}
+      {saved.map(a=>{
+        const label=`${a.runde==="Rückrunde"?"RR":"VR"} ${a.saison}`;
+        return <div key={a.id} style={{marginBottom:6,padding:"8px 10px",background:"var(--bg)",
+          borderRadius:8,border:"1px solid var(--border)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,fontWeight:700,flex:1}}>{label}</span>
+            <span style={{fontSize:10,color:"var(--text4)"}}>{a.count} Spieler</span>
+            <button onClick={()=>openPdf(a.id)}
+              style={{fontSize:11,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>📄 PDF</button>
+            <button onClick={()=>deleteEntry(a.id,label)}
+              style={{fontSize:11,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>🗑️</button>
+          </div>
+          {a.lastUpdated&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>
+            Hochgeladen: {mesz(a.lastUpdated)}
+          </div>}
+        </div>;
+      })}
     </div>}
   </div>;
 }
@@ -5197,10 +5244,15 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   const SPIELPLAN_KEYS=["spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan"];
 
   // Lade gespeicherte Spielpläne
+  function mesz(ts){
+    if(!ts) return "—";
+    const d=new Date(ts+0);
+    return d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+  }
   function reloadSpielpläne(){
     Promise.all(SPIELPLAN_KEYS.map(k=>
       getDoc(doc(db,"config",k)).then(s=>s.exists()&&(s.data().spiele||[]).length>0
-        ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/"),count:(s.data().spiele||[]).length,hasPdf:!!s.data().pdfUrl}
+        ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/"),count:(s.data().spiele||[]).length,lastUpdated:s.data().lastUpdated||null}
         :null).catch(()=>null)
     )).then(r=>setSavedSpielpläne(r.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id))));
   }
@@ -5216,12 +5268,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const key=`spielplan_${saison.replace("/","_")}`;
 
       // Spielplan-Daten speichern
-      await setDoc(doc(db,"config",key),{spiele:INITIAL_SPIELPLAN,saison,lastUpdated:Date.now()});
+      const ts=Date.now();
+      await setDoc(doc(db,"config",key),{spiele:INITIAL_SPIELPLAN,saison,lastUpdated:ts});
 
       // PDF separat speichern
       const reader=new FileReader();
       reader.onload=async(ev)=>{
-        try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result,name:file.name}); } catch(e){}
+        try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result,name:file.name,lastUpdated:ts}); } catch(e){}
         setUploading(false);
         reloadSpielpläne();
       };
@@ -5259,12 +5312,15 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📅 Vereinsspielplan</div>
       {savedSpielpläne.length>0&&<div style={{marginBottom:8}}>
-        {savedSpielpläne.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,
-          padding:"6px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
-          <span style={{fontSize:11,flex:1,fontWeight:600}}>📅 {s.saison}</span>
-          <span style={{fontSize:10,color:"var(--text4)"}}>{s.count} Spiele</span>
-          {s.hasPdf&&<button onClick={()=>openPdf(s.id)} style={{fontSize:10,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>📄 PDF</button>}
-          <button onClick={()=>deleteSpielpan(s.id)} style={{fontSize:10,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>🗑️</button>
+        {savedSpielpläne.map(s=><div key={s.id} style={{marginBottom:6,padding:"8px 10px",
+          background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:11,flex:1,fontWeight:600}}>📅 {s.saison}</span>
+            <span style={{fontSize:10,color:"var(--text4)"}}>{s.count} Spiele</span>
+            <button onClick={()=>openPdf(s.id)} style={{fontSize:10,color:"#3b82f6",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>📄 PDF</button>
+            <button onClick={()=>deleteSpielpan(s.id)} style={{fontSize:10,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"0 4px"}}>🗑️</button>
+          </div>
+          {s.lastUpdated&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Hochgeladen: {mesz(s.lastUpdated)}</div>}
         </div>)}
       </div>}
       <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
