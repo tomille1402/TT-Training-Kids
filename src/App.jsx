@@ -1188,7 +1188,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
 
-  // Direkte Abfragen mit bekannten Keys — kein getDocs der alle Docs lädt
+  // Live-Updates via onSnapshot auf alle bekannten Keys
   useEffect(()=>{
     const ALL_KEYS=[
       "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
@@ -1196,29 +1196,35 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
       "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
       "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
     ];
-    Promise.all(ALL_KEYS.map(k=>
-      getDoc(doc(db,"config",k)).then(s=>s.exists()?{id:k,...s.data()}:null).catch(()=>null)
-    )).then(results=>{
-      // Sortierung: neueste Saison zuerst, bei gleicher Saison RR vor VR
-      const afs=results.filter(Boolean).sort((a,b)=>{
-        // Saison-Teil vergleichen (absteigende Reihenfolge)
-        const saisonA=a.id.replace(/_[RV]$/,"");
-        const saisonB=b.id.replace(/_[RV]$/,"");
-        if(saisonA!==saisonB) return saisonB.localeCompare(saisonA);
-        // Gleiche Saison: R (Rückrunde) vor V (Vorrunde)
-        const rundA=a.id.slice(-1); const rundB=b.id.slice(-1);
-        return rundA==="R"?-1:1;
-      });
-      if(afs.length>0){ setAufstellungen(afs); setSelId(afs[0].id); }
-      else {
-        const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
-        setAufstellungen(fb); setSelId(fb[0].id);
-      }
-      setLoading(false);
-    }).catch(()=>{
-      const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
-      setAufstellungen(fb); setSelId(fb[0].id); setLoading(false);
-    });
+    const data={};
+    let loadedCount=0;
+    const unsubs=ALL_KEYS.map(k=>
+      onSnapshot(doc(db,"config",k),snap=>{
+        if(snap.exists()) data[k]={id:k,...snap.data()};
+        else delete data[k];
+        loadedCount++;
+        if(loadedCount>=ALL_KEYS.length||Object.keys(data).length>0){
+          const afs=Object.values(data).sort((a,b)=>{
+            const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
+            if(sA!==sB) return sB.localeCompare(sA);
+            return a.id.endsWith("_R")?-1:1;
+          });
+          if(afs.length>0){
+            setAufstellungen(afs);
+            setSelId(prev=>prev&&data[prev]?prev:afs[0].id);
+          } else {
+            const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_RUECKRUNDE_2025_2026}];
+            setAufstellungen(fb);
+            setSelId(fb[0].id);
+          }
+          setLoading(false);
+        }
+      },()=>{
+        loadedCount++;
+        if(loadedCount>=ALL_KEYS.length) setLoading(false);
+      })
+    );
+    return ()=>unsubs.forEach(u=>u());
   },[]);
 
 
