@@ -1188,43 +1188,50 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
 
-  // Live-Updates via onSnapshot auf alle bekannten Keys
+  // Alle bekannten Keys laden — erst wenn ALLE Antworten da sind state setzen
   useEffect(()=>{
     const ALL_KEYS=[
-      "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
       "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
+      "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
       "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
-      "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
     ];
-    const data={};
-    let loadedCount=0;
-    const unsubs=ALL_KEYS.map(k=>
-      onSnapshot(doc(db,"config",k),snap=>{
-        if(snap.exists()) data[k]={id:k,...snap.data()};
-        else delete data[k];
-        loadedCount++;
-        if(loadedCount>=ALL_KEYS.length||Object.keys(data).length>0){
-          const afs=Object.values(data).sort((a,b)=>{
-            const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
-            if(sA!==sB) return sB.localeCompare(sA);
-            return a.id.endsWith("_R")?-1:1;
-          });
-          if(afs.length>0){
-            setAufstellungen(afs);
-            setSelId(prev=>prev&&data[prev]?prev:afs[0].id);
-          } else {
-            const fb=[{id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R}];
-            setAufstellungen(fb);
-            setSelId(fb[0].id);
-          }
-          setLoading(false);
-        }
-      },()=>{
-        loadedCount++;
-        if(loadedCount>=ALL_KEYS.length) setLoading(false);
-      })
-    );
-    return ()=>unsubs.forEach(u=>u());
+    // getDoc statt onSnapshot — einmalig laden, kein Race-Condition Problem
+    Promise.all(ALL_KEYS.map(k=>
+      getDoc(doc(db,"config",k))
+        .then(s=>s.exists()?{id:k,...s.data()}:null)
+        .catch(()=>null)
+    )).then(results=>{
+      const afs=results.filter(Boolean).sort((a,b)=>{
+        const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
+        if(sA!==sB) return sB.localeCompare(sA);
+        return a.id.endsWith("_R")?-1:1; // RR vor VR
+      });
+      if(afs.length>0){
+        setAufstellungen(afs);
+        setSelId(afs[0].id);
+      } else {
+        // Fallback: eingebettete Daten
+        const fb=[
+          {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
+          {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde",spieler:AUFSTELLUNG_2025_2026_V},
+          {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
+          {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde",spieler:AUFSTELLUNG_2024_2025_V},
+        ];
+        setAufstellungen(fb);
+        setSelId(fb[0].id);
+      }
+      setLoading(false);
+    }).catch(()=>{
+      const fb=[
+        {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
+        {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde",spieler:AUFSTELLUNG_2025_2026_V},
+        {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
+        {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde",spieler:AUFSTELLUNG_2024_2025_V},
+      ];
+      setAufstellungen(fb);
+      setSelId(fb[0].id);
+      setLoading(false);
+    });
   },[]);
 
 
@@ -1286,9 +1293,15 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
       </select>
       {aufstellungen.find(a=>a.id===selId)&&
         <button onClick={async()=>{
+          // Versuche zuerst separates pdf_KEY Dokument, dann pdfUrl im Haupt-Dokument
+          let pdfUrl=null;
           const pdfSnap=await getDoc(doc(db,"config","pdf_"+selId)).catch(()=>null);
-          const pdfUrl=pdfSnap?.data()?.pdfUrl;
-          if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung neu hochladen.");return;}
+          if(pdfSnap?.exists()) pdfUrl=pdfSnap.data().pdfUrl;
+          if(!pdfUrl){
+            const mainSnap=await getDoc(doc(db,"config",selId)).catch(()=>null);
+            if(mainSnap?.exists()) pdfUrl=mainSnap.data().pdfUrl;
+          }
+          if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung erneut hochladen.");return;}
           const b64=pdfUrl.split(",")[1];
           const bin=atob(b64);const arr=new Uint8Array(bin.length);
           for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
@@ -1570,7 +1583,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
-        stammErsatz:   ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)?(editPlayer.stammErsatz||"Stammspieler"):undefined,
+        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
