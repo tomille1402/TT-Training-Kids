@@ -1188,48 +1188,45 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
 
-  // Alle bekannten Keys laden — erst wenn ALLE Antworten da sind state setzen
   useEffect(()=>{
+    // Immer die eingebetteten Konstanten verwenden — zuverlässig und korrekt.
+    // Firestore nur für Metadaten (saison, runde) laden falls vorhanden.
     const ALL_KEYS=[
       "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
       "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
       "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
     ];
-    // getDoc statt onSnapshot — einmalig laden, kein Race-Condition Problem
+
+    // Basis: eingebettete Daten
+    const embedded=[
+      {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
+      {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde", spieler:AUFSTELLUNG_2025_2026_V},
+      {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
+      {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde", spieler:AUFSTELLUNG_2024_2025_V},
+    ];
+
+    // Firestore prüfen ob Docs existieren (für PDF-Link später)
     Promise.all(ALL_KEYS.map(k=>
       getDoc(doc(db,"config",k))
-        .then(s=>s.exists()?{id:k,...s.data()}:null)
+        .then(s=>s.exists()?{id:k,exists:true}:null)
         .catch(()=>null)
     )).then(results=>{
-      const afs=results.filter(Boolean).sort((a,b)=>{
-        const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
-        if(sA!==sB) return sB.localeCompare(sA);
-        return a.id.endsWith("_R")?-1:1; // RR vor VR
-      });
-      if(afs.length>0){
-        setAufstellungen(afs);
-        setSelId(afs[0].id);
-      } else {
-        // Fallback: eingebettete Daten
-        const fb=[
-          {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
-          {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde",spieler:AUFSTELLUNG_2025_2026_V},
-          {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
-          {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde",spieler:AUFSTELLUNG_2024_2025_V},
-        ];
-        setAufstellungen(fb);
-        setSelId(fb[0].id);
-      }
+      // Merge: embedded Daten + Info ob Firestore-Doc existiert
+      const existsSet=new Set(results.filter(Boolean).map(r=>r.id));
+      const afs=embedded
+        .filter(e=>AUFSTELLUNG_DATA[e.id]) // nur die mit eingebetteten Daten
+        .map(e=>({...e, inFirestore:existsSet.has(e.id)}))
+        .sort((a,b)=>{
+          const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
+          if(sA!==sB) return sB.localeCompare(sA);
+          return a.id.endsWith("_R")?-1:1;
+        });
+      setAufstellungen(afs);
+      setSelId(afs[0].id);
       setLoading(false);
     }).catch(()=>{
-      const fb=[
-        {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
-        {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde",spieler:AUFSTELLUNG_2025_2026_V},
-        {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
-        {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde",spieler:AUFSTELLUNG_2024_2025_V},
-      ];
-      setAufstellungen(fb);
-      setSelId(fb[0].id);
+      setAufstellungen(embedded);
+      setSelId(embedded[0].id);
       setLoading(false);
     });
   },[]);
@@ -1302,13 +1299,13 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
             if(mainSnap?.exists()) pdfUrl=mainSnap.data().pdfUrl;
           }
           if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung erneut hochladen.");return;}
-          const b64=pdfUrl.split(",")[1];
-          const bin=atob(b64);const arr=new Uint8Array(bin.length);
-          for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-          const blob=new Blob([arr],{type:"application/pdf"});
-          const url=URL.createObjectURL(blob);
-          window.open(url,"_blank");
-          setTimeout(()=>URL.revokeObjectURL(url),10000);
+          const a=document.createElement("a");
+          a.href=pdfUrl;
+          a.download="Aufstellung_"+selId+".pdf";
+          a.target="_blank";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
         }} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",color:"#3b82f6",
             border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>
           📄 PDF öffnen
@@ -4577,13 +4574,14 @@ function AufstellungUpload({showToast}) {
     const snap=await getDoc(doc(db,"config","pdf_"+id)).catch(()=>null);
     const pdfUrl=snap?.data()?.pdfUrl;
     if(!pdfUrl){showToast("Kein PDF gespeichert — bitte neu hochladen","❌");return;}
-    const b64=pdfUrl.split(",")[1];
-    const bin=atob(b64);const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-    const blob=new Blob([arr],{type:"application/pdf"});
-    const url=URL.createObjectURL(blob);
-    window.open(url,"_blank");
-    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    // Anchor-Download statt window.open (kein Popup-Blocker Problem)
+    const a=document.createElement("a");
+    a.href=pdfUrl;
+    a.download="Aufstellung_"+id+".pdf";
+    a.target="_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function deleteEntry(id,label) {
@@ -5465,12 +5463,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     const pdfUrl=snap?.data()?.pdfUrl;
     if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
     const b64=pdfUrl.split(",")[1];
-    const bin=atob(b64);const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-    const blob=new Blob([arr],{type:"application/pdf"});
-    const url=URL.createObjectURL(blob);
-    window.open(url,"_blank");
-    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    const a=document.createElement("a");
+    a.href=pdfUrl;
+    a.download="Spielplan_"+key+".pdf";
+    a.target="_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function deleteSpielpan(key) {
