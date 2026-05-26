@@ -1250,7 +1250,8 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     const match=players.find(p=>{
       const pLast=(p.lastName||"").toLowerCase();
       const pFirst=(p.firstName||"").toLowerCase();
-      return pLast===lastName.toLowerCase()||(pLast===lastName.toLowerCase()&&pFirst===firstName.toLowerCase());
+      // Immer Vor- UND Nachname prüfen um Verwechslungen zu vermeiden
+      return pLast===lastName.toLowerCase()&&pFirst===firstName.toLowerCase();
     });
     return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match};
   });
@@ -1299,13 +1300,17 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
             if(mainSnap?.exists()) pdfUrl=mainSnap.data().pdfUrl;
           }
           if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung erneut hochladen.");return;}
+          const b64=pdfUrl.split(",")[1];
+          const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+          const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
           const a=document.createElement("a");
-          a.href=pdfUrl;
+          a.href=blobUrl;
           a.download="Aufstellung_"+selId+".pdf";
-          a.target="_blank";
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
+          setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
         }} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",color:"#3b82f6",
             border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>
           📄 PDF öffnen
@@ -4575,13 +4580,17 @@ function AufstellungUpload({showToast}) {
     const pdfUrl=snap?.data()?.pdfUrl;
     if(!pdfUrl){showToast("Kein PDF gespeichert — bitte neu hochladen","❌");return;}
     // Anchor-Download statt window.open (kein Popup-Blocker Problem)
+    const b64=pdfUrl.split(",")[1];
+    const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
     const a=document.createElement("a");
-    a.href=pdfUrl;
+    a.href=blobUrl;
     a.download="Aufstellung_"+id+".pdf";
-    a.target="_blank";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
   }
 
   async function deleteEntry(id,label) {
@@ -5463,13 +5472,17 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     const pdfUrl=snap?.data()?.pdfUrl;
     if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
     const b64=pdfUrl.split(",")[1];
+    const b64=pdfUrl.split(",")[1];
+    const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
     const a=document.createElement("a");
-    a.href=pdfUrl;
+    a.href=blobUrl;
     a.download="Spielplan_"+key+".pdf";
-    a.target="_blank";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
   }
 
   async function deleteSpielpan(key) {
