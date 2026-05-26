@@ -5248,11 +5248,11 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
     const KNOWN_SPIELPLAN_KEYS=[
-      "spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan",
+      "spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan_2023_2024","spielplan_2022_2023","spielplan",
     ];
     Promise.all(KNOWN_SPIELPLAN_KEYS.map(k=>
       getDoc(doc(db,"config",k)).then(s=>s.exists()&&(s.data().spiele||[]).length>0
-        ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/")||"2025/2026"}
+        ?{id:k,saison:s.data().saison||(k==="spielplan"?"2025/2026 (alt)":k.replace("spielplan_","").replace(/_/g,"/"))}
         :null
       ).catch(()=>null)
     )).then(results=>{
@@ -5443,7 +5443,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   const [uploading,setUploading]=useState(false);
   const [savedSpielpläne,setSavedSpielpläne]=useState([]);
 
-  const SPIELPLAN_KEYS=["spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan"];
+  const SPIELPLAN_KEYS=["spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan_2023_2024","spielplan_2022_2023","spielplan"];
 
   // Lade gespeicherte Spielpläne
   function mesz(ts){
@@ -5466,9 +5466,14 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     setUploading(true);
     try {
       let saison="2025/2026";
-      const fnMatch=file.name.match(/(\d{4})[\-_]?(\d{4})/);
-      if(fnMatch) saison=`${fnMatch[1]}/${fnMatch[2]}`;
+      const fn=file.name;
+      // Muster: 2025_2026, 2025-2026, 20252026, 2025_26 (Kurzform)
+      const fnMatch4=fn.match(/(\d{4})[\-_](\d{4})/);
+      const fnMatch2=fn.match(/(\d{4})[\-_](\d{2})(?!\d)/);
+      if(fnMatch4) saison=`${fnMatch4[1]}/${fnMatch4[2]}`;
+      else if(fnMatch2) saison=`${fnMatch2[1]}/${fnMatch2[1].slice(0,2)}${fnMatch2[2]}`;
       const key=`spielplan_${saison.replace("/","_")}`;
+      console.log("Spielplan Upload: Datei=",fn," Saison=",saison," Key=",key);
 
       // Spielplan-Daten speichern
       const ts=Date.now();
