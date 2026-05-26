@@ -5243,6 +5243,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   const [filters,setFilters]=useState({});
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
+  const [pdfUrl,setPdfUrl]=useState(null);
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
@@ -5272,15 +5273,20 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     });
   },[]);
 
-  // Spielplan für gewählte Saison laden
+  // Spielplan + PDF für gewählte Saison laden
   useEffect(()=>{
     if(!selSeason||selSeason==="_local") return;
+    setPdfUrl(null);
     setLoading(true);
     const unsub=onSnapshot(doc(db,"config",selSeason),snap=>{
       if(snap.exists()&&(snap.data().spiele||[]).length>0) setSpiele(snap.data().spiele||[]);
-      else setSpiele(INITIAL_SPIELPLAN); // Fallback auf eingebettete Daten
+      else setSpiele(INITIAL_SPIELPLAN);
       setLoading(false);
     },()=>{setSpiele(INITIAL_SPIELPLAN);setLoading(false);});
+    // PDF separat laden
+    getDoc(doc(db,"config","pdf_"+selSeason)).then(s=>{
+      if(s.exists()&&s.data().pdfUrl) setPdfUrl(s.data().pdfUrl);
+    }).catch(()=>{});
     return unsub;
   },[selSeason]);
 
@@ -5316,14 +5322,27 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   if(loading) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Lädt...</div>;
 
   return <div style={{padding:"10px 8px 20px"}}>
-    {/* Saison-Dropdown */}
-    {seasons.length>1&&<div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+    {/* Saison-Dropdown + PDF-Link */}
+    <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
       <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>🗓 Saison:</label>
       <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
         style={{padding:"5px 8px",borderRadius:7,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
         {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
       </select>
-    </div>}
+      {pdfUrl&&<button onClick={()=>{
+        const b64=pdfUrl.split(",")[1];
+        const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+        const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+        const a=document.createElement("a");
+        a.href=blobUrl; a.download="Spielplan_"+selSeason+".pdf";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
+      }} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",
+        color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>
+        📄 PDF öffnen
+      </button>}
+    </div>
 
     {/* P4: Filter Row mit Dropdowns */}
     {(()=>{
@@ -5438,6 +5457,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         ?{id:k,saison:s.data().saison||k.replace("spielplan_","").replace(/_/g,"/"),count:(s.data().spiele||[]).length,lastUpdated:s.data().lastUpdated||null}
         :null).catch(()=>null)
     )).then(r=>setSavedSpielpläne(r.filter(Boolean).sort((a,b)=>b.id.localeCompare(a.id))));
+    // Reload the spielplan seasons list in VereinsSpielplan is handled by onSnapshot
   }
   useEffect(()=>{ reloadSpielpläne(); },[]);
 
