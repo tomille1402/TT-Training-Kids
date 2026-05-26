@@ -5472,7 +5472,6 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     const pdfUrl=snap?.data()?.pdfUrl;
     if(!pdfUrl){showToast("Kein PDF gespeichert","❌");return;}
     const b64=pdfUrl.split(",")[1];
-    const b64=pdfUrl.split(",")[1];
     const bin=atob(b64);const bytes=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
