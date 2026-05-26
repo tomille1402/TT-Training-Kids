@@ -4607,7 +4607,7 @@ function AufstellungUpload({showToast}) {
     <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
       {uploading?"⏳ Wird verarbeitet...":"📎 Aufstellungs-PDF hochladen"}
-      <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
+      <input type="file" accept=".csv,.pdf" style={{display:"none"}} disabled={uploading}
         onChange={e=>handleUpload(e.target.files?.[0])}/>
     </label>
     <div style={{fontSize:10,color:"var(--text4)",marginTop:4,marginBottom:10}}>
@@ -5223,6 +5223,90 @@ function GeburtstageTabErwachsene({players}) {
   </div>;
 }
 
+const SPIELPLAN_2025_2026 = [
+  {datum:"2025-09-05",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"Tischtennisclub Elz",ergebnis:"9:1"},
+  {datum:"2025-09-09",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Heim",gegner:"VfR 1919 Limburg",ergebnis:"6:4"},
+  {datum:"2025-09-19",uhrzeit:"20:00",mannschaft:"Herren 1",ort:"Heim",gegner:"TTC G.-W. Staffel 1953 IV",ergebnis:"4:6"},
+  {datum:"2025-09-20",uhrzeit:"17:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TTC 1953 Villmar IX",ergebnis:"8:2"},
+  {datum:"2025-09-26",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Auswärts",gegner:"TuS 1912 Obertiefenbach VI",ergebnis:"0:10"},
+  {datum:"2025-09-27",uhrzeit:"13:00",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC G.-W. Staffel 1953",ergebnis:"3:7"},
+  {datum:"2025-09-30",uhrzeit:"17:30",mannschaft:"Mädchen 15",ort:"Heim",gegner:"TuS 1911 Elkerhausen",ergebnis:"8:2"},
+  {datum:"2025-10-01",uhrzeit:"20:15",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TTC 1968 Oberbrechen VIII",ergebnis:"9:1"},
+  {datum:"2025-10-02",uhrzeit:"17:00",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"TuS Neesbach",ergebnis:"3:7"},
+  {datum:"2025-10-04",uhrzeit:"19:30",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TTC G.-W. Staffel 1953 III",ergebnis:"9:1"},
+  {datum:"2025-10-08",uhrzeit:"20:00",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TTC 1968 Oberbrechen",ergebnis:"9:1"},
+  {datum:"2025-10-15",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Auswärts",gegner:"TuS Neesbach IV",ergebnis:"2:8"},
+  {datum:"2025-10-21",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC Lindenholzhausen",ergebnis:"7:3"},
+  {datum:"2025-10-22",uhrzeit:"20:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TTC 1968 Werschau III",ergebnis:"10:0"},
+  {datum:"2025-10-23",uhrzeit:"17:00",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"SV Odersbach 1960",ergebnis:"3:7"},
+  {datum:"2025-10-24",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"TTC 1953 Villmar IV",ergebnis:"7:3"},
+  {datum:"2025-10-25",uhrzeit:"19:00",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TTF Oberzeuzheim IV",ergebnis:"10:0"},
+  {datum:"2025-10-31",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Heim",gegner:"SG 1908 Blessenbach III",ergebnis:"7:3"},
+  {datum:"2025-11-01",uhrzeit:"18:00",mannschaft:"Herren 3",ort:"Heim",gegner:"TuS 1903 Weilmünster III",ergebnis:"8:2"},
+  {datum:"2025-11-04",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Heim",gegner:"Turnverein Würges 1904",ergebnis:"5:5"},
+  {datum:"2025-11-07",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TTC Offheim 1949",ergebnis:"7:3"},
+  {datum:"2025-11-08",uhrzeit:"14:40",mannschaft:"Mädchen 15",ort:"Heim",gegner:"TTF Oberzeuzheim (M15)",ergebnis:"1:9"},
+  {datum:"2025-11-14",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Heim",gegner:"TuS 1911 Elkerhausen II",ergebnis:"2:8"},
+  {datum:"2025-11-15",uhrzeit:"17:00",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TV 1905 Niederselters",ergebnis:"9:1"},
+  {datum:"2025-11-17",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Auswärts",gegner:"TuS Aumenau 1896",ergebnis:"4:6"},
+  {datum:"2025-11-21",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Auswärts",gegner:"TV 1882 Runkel",ergebnis:"5:5"},
+  {datum:"2025-11-22",uhrzeit:"13:00",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"VfR 07 Limburg",ergebnis:"6:4"},
+  {datum:"2025-11-23",uhrzeit:"13:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TTC G.-W. Staffel 1953 VIII",ergebnis:"9:1"},
+  {datum:"2025-11-24",uhrzeit:"20:15",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TV 1905 Niederselters",ergebnis:"10:0"},
+  {datum:"2025-11-25",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Heim",gegner:"STV 1911 Drommershausen",ergebnis:"4:0"},
+  {datum:"2025-11-28",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Heim",gegner:"TTF Oberzeuzheim VI",ergebnis:"5:5"},
+  {datum:"2025-11-29",uhrzeit:"15:00",mannschaft:"Mädchen 15",ort:"Heim",gegner:"TTC Lindenholzhausen",ergebnis:"6:4"},
+  {datum:"2025-12-02",uhrzeit:"19:30",mannschaft:"Herren 4",ort:"Auswärts",gegner:"TTC 1953 Villmar X",ergebnis:"0:10"},
+  {datum:"2025-12-05",uhrzeit:"20:00",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TTC Dillhausen/B…ig-Selbenhausen",ergebnis:"5:5"},
+  {datum:"2025-12-06",uhrzeit:"14:00",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC Dillhausen/B…ig-",ergebnis:"10:0"},
+  {datum:"2025-12-09",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC 1953 Villmar",ergebnis:"1:9"},
+  {datum:"2025-12-12",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"TuS 1912 Obertiefenbach III",ergebnis:"6:4"},
+  {datum:"2025-12-13",uhrzeit:"18:00",mannschaft:"Herren 5",ort:"Heim",gegner:"TV 1896 Nauheim II",ergebnis:"1:9"},
+  {datum:"2026-01-17",uhrzeit:"10:00",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC Offheim 1949",ergebnis:"2:8"},
+  {datum:"2026-01-20",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Heim",gegner:"TTF Oberzeuzheim VII",ergebnis:"6:4"},
+  {datum:"2026-01-21",uhrzeit:"20:15",mannschaft:"Herren 3",ort:"Auswärts",gegner:"VfR 1919 Limburg",ergebnis:"7:3"},
+  {datum:"2026-01-22",uhrzeit:"20:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TuS Löhnberg 1909 IV",ergebnis:"9:1"},
+  {datum:"2026-01-23",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Heim",gegner:"TuS 1912 Obertiefenbach III",ergebnis:"6:4"},
+  {datum:"2026-01-24",uhrzeit:"14:00",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TTC Dillhausen/B…ig-",ergebnis:"6:4"},
+  {datum:"2026-01-30",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"SG 1908 Blessenbach",ergebnis:"7:3"},
+  {datum:"2026-01-31",uhrzeit:"18:00",mannschaft:"Herren 5",ort:"Heim",gegner:"TTC G.-W. Staffel 1953 VIII",ergebnis:"2:8"},
+  {datum:"2026-02-04",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Heim",gegner:"",ergebnis:"6:4"},
+  {datum:"2026-02-07",uhrzeit:"13:00",mannschaft:"Mädchen 15",ort:"Heim",gegner:"VfR 07 Limburg",ergebnis:"6:4"},
+  {datum:"2026-02-11",uhrzeit:"20:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TV 1882 Runkel II",ergebnis:"10:0"},
+  {datum:"2026-02-12",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Auswärts",gegner:"SG 1908 Blessenbach III",ergebnis:"5:5"},
+  {datum:"2026-02-13",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Heim",gegner:"TV 'Frisch auf' Erbach",ergebnis:"6:4"},
+  {datum:"2026-02-14",uhrzeit:"18:00",mannschaft:"Herren 3",ort:"Heim",gegner:"TV 1882 Runkel",ergebnis:"7:3"},
+  {datum:"2026-02-20",uhrzeit:"18:20",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TTC 1953 Villmar II",ergebnis:"7:3"},
+  {datum:"2026-02-21",uhrzeit:"12:30",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"TTF Oberzeuzheim (M15)",ergebnis:"10:0"},
+  {datum:"2026-02-26",uhrzeit:"20:00",mannschaft:"Herren 1",ort:"Auswärts",gegner:"TuS Wirbelau 1901",ergebnis:"10:0"},
+  {datum:"2026-02-27",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"TTF Oberzeuzheim VI",ergebnis:"1:9"},
+  {datum:"2026-02-28",uhrzeit:"15:00",mannschaft:"Mädchen 13",ort:"Heim",gegner:"TV 1905 Niederselters",ergebnis:"3:7"},
+  {datum:"2026-03-03",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Auswärts",gegner:"TV 1882 Runkel III",ergebnis:"2:8"},
+  {datum:"2026-03-05",uhrzeit:"20:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"KSG Aulenhausen II",ergebnis:"7:3"},
+  {datum:"2026-03-06",uhrzeit:"19:00",mannschaft:"Herren 1",ort:"Heim",gegner:"TTF Oberzeuzheim IV",ergebnis:"4:6"},
+  {datum:"2026-03-10",uhrzeit:"20:00",mannschaft:"Herren 3",ort:"Heim",gegner:"TuS 1904 Weinbach II",ergebnis:"6:4"},
+  {datum:"2026-03-11",uhrzeit:"20:30",mannschaft:"Herren 5",ort:"Heim",gegner:"TTC 1968 Oberbrechen VIII",ergebnis:"3:7"},
+  {datum:"2026-03-13",uhrzeit:"17:30",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"TuS 1911 Elkerhausen",ergebnis:"2:8"},
+  {datum:"2026-03-20",uhrzeit:"20:00",mannschaft:"Herren 1",ort:"Heim",gegner:"TTC G.-W. Staffel 1953 III",ergebnis:"1:9"},
+  {datum:"2026-03-25",uhrzeit:"20:30",mannschaft:"Herren 1",ort:"Heim",gegner:"TTC 1968 Oberbrechen",ergebnis:"1:9"},
+  {datum:"2026-03-27",uhrzeit:"20:00",mannschaft:"Herren 4",ort:"Heim",gegner:"TuS 1912 Obertiefenbach VI",ergebnis:"10:0"},
+  {datum:"2026-03-28",uhrzeit:"15:00",mannschaft:"Mädchen 15",ort:"Heim",gegner:"TuS Neesbach",ergebnis:"10:0"},
+  {datum:"2026-04-04",uhrzeit:"14:30",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TTC 1953 Villmar",ergebnis:"10:0"},
+  {datum:"2026-04-10",uhrzeit:"20:00",mannschaft:"Herren 5",ort:"Auswärts",gegner:"TV 1896 Nauheim II",ergebnis:"3:7"},
+  {datum:"2026-04-17",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"TTC Hausen 1975 III",ergebnis:"9:1"},
+  {datum:"2026-04-18",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TTC Lindenholzhausen",ergebnis:"0:10"},
+  {datum:"2026-04-22",uhrzeit:"20:00",mannschaft:"Herren 2",ort:"Auswärts",gegner:"TuS 1911 Elkerhausen II",ergebnis:"4:6"},
+  {datum:"2026-04-24",uhrzeit:"17:30",mannschaft:"Mädchen 13",ort:"Auswärts",gegner:"TTC G.-W. Staffel 1953",ergebnis:"8:2"},
+  {datum:"2026-04-25",uhrzeit:"16:00",mannschaft:"Mädchen 15",ort:"Auswärts",gegner:"SV Rot-Weiß Hadamar (M15)",ergebnis:"5:5"}
+];
+
+// Lookup-Tabelle: Spielplan-Daten pro Saison (eingebettet)
+// Neue Saisons: Konstante hinzufügen und hier eintragen
+const SPIELPLAN_DATA = {
+  "spielplan_2025_2026": SPIELPLAN_2025_2026,
+  // "spielplan_2024_2025": SPIELPLAN_2024_2025,  // wird ergänzt sobald PDF ausgelesen
+};
+
 // ─── VEREINSSPIELPLAN ─────────────────────────────────────────────────────────
 const SPIELPLAN_COLS = [
   {key:"datum",     label:"Datum",       w:"80px"},
@@ -5262,9 +5346,19 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         setSelSeason(seas[0].id);
       } else {
         // Absoluter Fallback: eingebettete Daten direkt verwenden
-        setSpiele(INITIAL_SPIELPLAN);
-        setSeasons([{id:"_local",saison:"2025/2026"}]);
-        setSelSeason("_local");
+        // Embedded data fallback: show all known seasons
+        const embeddedSeasons=Object.keys(SPIELPLAN_DATA).map(k=>({
+          id:k, saison:k.replace("spielplan_","").replace(/_/g,"/")
+        })).sort((a,b)=>b.id.localeCompare(a.id));
+        if(embeddedSeasons.length>0){
+          setSpiele(SPIELPLAN_DATA[embeddedSeasons[0].id]);
+          setSeasons(embeddedSeasons);
+          setSelSeason(embeddedSeasons[0].id);
+        } else {
+          setSpiele(INITIAL_SPIELPLAN);
+          setSeasons([{id:"_local",saison:"2025/2026"}]);
+          setSelSeason("_local");
+        }
         setLoading(false);
       }
     }).catch(()=>{
@@ -5280,9 +5374,9 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     setLoading(true);
     const unsub=onSnapshot(doc(db,"config",selSeason),snap=>{
       if(snap.exists()&&(snap.data().spiele||[]).length>0) setSpiele(snap.data().spiele||[]);
-      else setSpiele(INITIAL_SPIELPLAN);
+      else setSpiele(SPIELPLAN_DATA[selSeason]||INITIAL_SPIELPLAN);
       setLoading(false);
-    },()=>{setSpiele(INITIAL_SPIELPLAN);setLoading(false);});
+    },()=>{setSpiele(SPIELPLAN_DATA[selSeason]||INITIAL_SPIELPLAN);setLoading(false);});
     // PDF separat laden
     getDoc(doc(db,"config","pdf_"+selSeason)).then(s=>{
       if(s.exists()&&s.data().pdfUrl) setPdfUrl(s.data().pdfUrl);
@@ -5461,25 +5555,100 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   }
   useEffect(()=>{ reloadSpielpläne(); },[]);
 
+  // CSV-Parser für myTischtennis Export
+  function parseSpielplanCSV(text) {
+    const lines=text.split(/\r?\n/).filter(Boolean);
+    if(lines.length<2) return [];
+    const sep=lines[0].includes(';')?';':',';
+    const headers=lines[0].split(sep);
+    const idx=(h)=>headers.indexOf(h);
+    const TTC="TTC Niederzeuzheim";
+    const MANN_MAP={
+      [TTC]:"Herren 1",[TTC+" II"]:"Herren 2",[TTC+" III"]:"Herren 3",
+      [TTC+" IV"]:"Herren 4",[TTC+" V"]:"Herren 5",[TTC+" VI"]:"Herren 6",
+    };
+    const spiele=[];
+    for(let i=1;i<lines.length;i++){
+      const cols=lines[i].split(sep);
+      if(cols.length<10) continue;
+      const termin=cols[idx("Termin")]||"";
+      const heimVerein=cols[idx("HeimVereinName")]||"";
+      const gastVerein=cols[idx("GastVereinName")]||"";
+      const heimMann=cols[idx("HeimMannschaft")]||"";
+      const gastMann=cols[idx("GastMannschaft")]||"";
+      const altersklasse=cols[idx("Altersklasse")]||"";
+      const liga=cols[idx("Liga")]||"";
+      const spieleH=cols[idx("SpieleHeim")]||"";
+      const spieleG=cols[idx("SpieleGast")]||"";
+      if(!termin||!termin.trim()) continue;
+      const [datumStr,uhrzeitStr]=(termin+" ").split(" ");
+      const dp=datumStr.split(".");
+      if(dp.length<3) continue;
+      const datum=`${dp[2].substring(0,4)}-${dp[1]}-${dp[0]}`;
+      const uhrzeit=uhrzeitStr?.substring(0,5)||"";
+      let mannschaft="",ort="",gegner="";
+      if(heimVerein===TTC){
+        mannschaft=MANN_MAP[heimMann]||(altersklasse.includes("Mädchen")||altersklasse.includes("Jugend")?altersklasse:heimMann);
+        ort="Heim"; gegner=gastMann;
+      } else if(gastVerein===TTC){
+        mannschaft=MANN_MAP[gastMann]||(altersklasse.includes("Mädchen")||altersklasse.includes("Jugend")?altersklasse:gastMann);
+        ort="Auswärts"; gegner=heimMann;
+      } else continue;
+      const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
+        (ort==="Heim"?`${spieleH}:${spieleG}`:`${spieleG}:${spieleH}`):"";
+      spiele.push({datum,uhrzeit,mannschaft,ort,gegner,liga,ergebnis});
+    }
+    return spiele.sort((a,b)=>a.datum.localeCompare(b.datum)||a.mannschaft.localeCompare(b.mannschaft));
+  }
+
   async function handleUpload(file) {
-    if(!file||!file.name.endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
+    if(!file){showToast("Bitte eine Datei hochladen","❌");return;}
+    const fn=file.name.toLowerCase();
+    const isCSV=fn.endsWith('.csv');
+    const isPDF=fn.endsWith('.pdf');
+    if(!isCSV&&!isPDF){showToast("CSV oder PDF hochladen","❌");return;}
     setUploading(true);
     try {
       let saison="2025/2026";
-      const fn=file.name;
-      // Muster: 2025_2026, 2025-2026, 20252026, 2025_26 (Kurzform)
-      const fnMatch4=fn.match(/(\d{4})[\-_](\d{4})/);
-      const fnMatch2=fn.match(/(\d{4})[\-_](\d{2})(?!\d)/);
+      const fnMatch4=file.name.match(/(\d{4})[\-_](\d{4})/);
+      const fnMatch2=file.name.match(/(\d{4})[\-_](\d{2})(?!\d)/);
       if(fnMatch4) saison=`${fnMatch4[1]}/${fnMatch4[2]}`;
       else if(fnMatch2) saison=`${fnMatch2[1]}/${fnMatch2[1].slice(0,2)}${fnMatch2[2]}`;
-      const key=`spielplan_${saison.replace("/","_")}`;
-      console.log("Spielplan Upload: Datei=",fn," Saison=",saison," Key=",key);
-
-      // Spielplan-Daten speichern
       const ts=Date.now();
-      await setDoc(doc(db,"config",key),{spiele:INITIAL_SPIELPLAN,saison,lastUpdated:ts});
 
-      // PDF separat speichern
+      if(isCSV){
+        const reader=new FileReader();
+        reader.onload=async(ev)=>{
+          try {
+            const text=ev.target.result;
+            // Saison aus CSV-Inhalt lesen
+            const csvLines=text.split(/\r?\n/);
+            const sep=csvLines[0].includes(';')?';':',';
+            const headers=csvLines[0].split(sep);
+            const saisonIdx=headers.indexOf("Saison");
+            if(saisonIdx>=0&&csvLines[1]){
+              const saisonRaw=csvLines[1].split(sep)[saisonIdx]||"";
+              const sm=saisonRaw.match(/(\d{4})\/(\d{2,4})/);
+              if(sm) saison=sm[2].length===2?`${sm[1]}/20${sm[2]}`:`${sm[1]}/${sm[2]}`;
+            }
+            const key=`spielplan_${saison.replace("/","_")}`;
+            const spiele=parseSpielplanCSV(text);
+            if(spiele.length===0){showToast("Keine Spiele gefunden — CSV-Format prüfen","❌");setUploading(false);return;}
+            await setDoc(doc(db,"config",key),{spiele,saison,lastUpdated:ts});
+            showToast(`${saison}: ${spiele.length} Spiele importiert`,"📅");
+            reloadSpielpläne();
+          } catch(e){showToast("Fehler: "+e.message,"❌");}
+          setUploading(false);
+        };
+        reader.onerror=()=>{showToast("Lesefehler","❌");setUploading(false);};
+        reader.readAsText(file,'ISO-8859-1');
+        return;
+      }
+
+      // PDF: eingebettete Konstante + PDF als Download
+      const key=`spielplan_${saison.replace("/","_")}`;
+      const spieleData=SPIELPLAN_DATA[key]||INITIAL_SPIELPLAN;
+      await setDoc(doc(db,"config",key),{spiele:spieleData,saison,lastUpdated:ts});
       const reader=new FileReader();
       reader.onload=async(ev)=>{
         try { await setDoc(doc(db,"config","pdf_"+key),{pdfUrl:ev.target.result,name:file.name,lastUpdated:ts}); } catch(e){}
@@ -5488,7 +5657,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       };
       reader.onerror=()=>setUploading(false);
       reader.readAsDataURL(file);
-      showToast(`Spielplan ${saison}: ${INITIAL_SPIELPLAN.length} Spiele gespeichert`,"📅");
+      showToast(`Spielplan ${saison} gespeichert`,"📅");
     } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
   }
 
@@ -5537,7 +5706,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       </div>}
       <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
         borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
-        {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan PDF hochladen"}
+        {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan CSV oder PDF hochladen"}
         <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
           onChange={e=>handleUpload(e.target.files?.[0])}/>
       </label>
