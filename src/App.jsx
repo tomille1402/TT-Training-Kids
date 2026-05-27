@@ -5461,38 +5461,21 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   if(loading) return <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Lädt...</div>;
 
   return <div style={{padding:"10px 8px 20px"}}>
-    {/* Saison-Dropdown + PDF-Link */}
-    <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <label style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>🗓 Saison:</label>
-      <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
-        style={{padding:"5px 8px",borderRadius:7,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-        {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
-      </select>
-      {pdfUrl&&<button onClick={()=>{
-        const b64=pdfUrl.split(",")[1];
-        const bin=atob(b64);const bytes=new Uint8Array(bin.length);
-        for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-        const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
-        const a=document.createElement("a");
-        a.href=blobUrl; a.download="Spielplan_"+selSeason+".pdf";
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
-      }} style={{padding:"4px 10px",borderRadius:7,fontSize:11,background:"#3b82f622",
-        color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>
-        📄 PDF öffnen
-      </button>}
-    </div>
-
-    {/* P4: Filter Row mit Dropdowns */}
+    {/* Alle Dropdowns + PDF in einer Zeile */}
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
       const selManns=filters.mannschaften||[];
       return <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Saison */}
+        <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
+          style={{padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+          {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
+        </select>
         {/* Mannschaft Multi-Select */}
-        <div style={{position:"relative",minWidth:100}}>
+        <div style={{position:"relative"}}>
           <div onClick={()=>setFilters(p=>({...p,_showMannDrop:!p._showMannDrop}))}
             style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,
-              color:"var(--text)",fontSize:11,cursor:"pointer",display:"flex",gap:4,alignItems:"center"}}>
+              color:"var(--text)",fontSize:11,cursor:"pointer",display:"flex",gap:4,alignItems:"center",whiteSpace:"nowrap"}}>
             <span>Mannschaft{selManns.length>0?` (${selManns.length})`:""}</span><span style={{fontSize:9}}>▼</span>
           </div>
           {filters._showMannDrop&&<div style={{position:"absolute",top:"100%",left:0,zIndex:50,background:"var(--bg2)",
@@ -5509,16 +5492,29 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               style={{width:"100%",marginTop:4,padding:"3px",background:"var(--bg3)",border:"none",borderRadius:4,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Alle</button>
           </div>}
         </div>
-        {/* Ort Dropdown */}
+        {/* Ort */}
         <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,ort:e.target.value}))}
           style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Ort (alle)</option>
           <option value="Heim">Heim</option>
           <option value="Auswärts">Auswärts</option>
         </select>
-        {/* Gegner Freitext */}
+        {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
           style={{flex:1,minWidth:70,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+        {/* PDF */}
+        {pdfUrl&&<button onClick={()=>{
+          const b64=pdfUrl.split(",")[1];
+          const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+          const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+          const a=document.createElement("a");
+          a.href=blobUrl; a.download="Spielplan_"+selSeason+".pdf";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
+        }} style={{padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
+          color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
+        {/* Reset */}
         {(selManns.length>0||filters.ort||filters.gegner)&&
           <button onClick={()=>setFilters({})} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
@@ -5548,7 +5544,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
             const mc=MANN_COLORS[s.mannschaft]||"#6b7280";
             const hasResult=s.ergebnis&&s.ergebnis.trim()!=="";
             return <tr key={i} style={{background:isChange?"#f59e0b09":i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
-              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{s.datum}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{s.datum?(s.datum.split("-").reverse().join(".")):""}</td>
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{s.tag}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{s.uhrzeit}</td>
               <td style={{padding:"5px 6px"}}>
@@ -5632,15 +5628,30 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const datum=`${dp[2].substring(0,4)}-${dp[1]}-${dp[0]}`;
       const uhrzeit=uhrzeitStr?.substring(0,5)||"";
       let mannschaft="",ort="",gegner="";
+      // Mannschaftsname: für TTC-Teams aus Altersklasse bestimmen (Mädchen 13/15, Jugend 13/15, Herren 1-5)
+      // Altersklasse-Spalte enthält z.B. "Erwachsene", "Jugend 13", "Mädchen 13", "Mädchen 15"
+      const heimAlk=cols[idx("HeimMannschaftAltersklasse")]||altersklasse;
+      const gastAlk=cols[idx("GastMannschaftAltersklasse")]||altersklasse;
+      function getMannName(vereinMann, alk){
+        // Zuerst exakter Vereins-Mannschaft-Name (Herren 1-5)
+        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann];
+        // Dann aus Altersklasse (Mädchen 13, Mädchen 15, Jugend 13 etc.)
+        if(alk.includes("Mädchen")) return alk.replace(/\s+/g," ").trim();
+        if(alk.includes("Jugend")) return alk.replace(/\s+/g," ").trim();
+        if(alk.includes("Damen")) return "Damen";
+        // Fallback: Vereinsname
+        return vereinMann;
+      }
       if(heimVerein===TTC){
-        mannschaft=MANN_MAP[heimMann]||(altersklasse.includes("Mädchen")||altersklasse.includes("Jugend")?altersklasse:heimMann);
+        mannschaft=getMannName(heimMann, heimAlk);
         ort="Heim"; gegner=gastMann;
       } else if(gastVerein===TTC){
-        mannschaft=MANN_MAP[gastMann]||(altersklasse.includes("Mädchen")||altersklasse.includes("Jugend")?altersklasse:gastMann);
+        mannschaft=getMannName(gastMann, gastAlk);
         ort="Auswärts"; gegner=heimMann;
       } else continue;
+      // Ergebnis: immer als Heim:Gast speichern (Tabellenanzeige dreht bei Auswärts)
       const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
-        (ort==="Heim"?`${spieleH}:${spieleG}`:`${spieleG}:${spieleH}`):"";
+        `${spieleH}:${spieleG}`:"";
       spiele.push({datum,uhrzeit,mannschaft,ort,gegner,liga,ergebnis});
     }
     return spiele.sort((a,b)=>a.datum.localeCompare(b.datum)||a.mannschaft.localeCompare(b.mannschaft));
