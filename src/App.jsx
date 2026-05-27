@@ -1585,7 +1585,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
-        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
+        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler", anzugSize:editPlayer.anzugSize||""} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -2155,6 +2155,20 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
                   <option value="Stammspieler">Stammspieler</option>
                   <option value="Ersatzspieler">Ersatzspieler</option>
+                </select>
+              </div>}
+              {/* Anzugs-Größe für Erwachsene */}
+              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)&&<div style={{marginBottom:14}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🧥 Anzugs-Größe</label>
+                <select value={editPlayer.anzugSize||""} onChange={e=>setEditPlayer(prev=>({...prev,anzugSize:e.target.value}))}
+                  style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
+                  <option value="">— nicht gesetzt —</option>
+                  <option value="104">104</option><option value="110">110</option><option value="116">116</option>
+                  <option value="128">128</option><option value="140">140</option><option value="152">152</option>
+                  <option value="164">164</option><option value="176">176</option>
+                  <option value="XS">XS</option><option value="S">S</option><option value="M">M</option>
+                  <option value="L">L</option><option value="XL">XL</option><option value="XXL">XXL</option>
+                  <option value="3XL">3XL</option>
                 </select>
               </div>}
 
@@ -2767,7 +2781,28 @@ function SchlaegerTab({rackets,players,showToast}) {
                 </td>
                 <td style={{padding:"4px",whiteSpace:"nowrap"}}>
                   <button onClick={saveRow} disabled={saving} style={{padding:"3px 8px",background:"#10b981",border:"none",borderRadius:4,color:"#fff",fontSize:11,cursor:"pointer",marginRight:3}}>💾</button>
-                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"var(--border2)",border:"none",borderRadius:4,color:"var(--text2)",fontSize:11,cursor:"pointer"}}>✕</button>
+                  <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"var(--border2)",border:"none",borderRadius:4,color:"var(--text2)",fontSize:11,cursor:"pointer",marginRight:3}}>✕</button>
+                  <button onClick={async(e)=>{
+                    e.stopPropagation();
+                    if(!window.confirm(`Schläger Nr. ${String(form.nr).padStart(3,"0")} wirklich löschen?`)) return;
+                    setSaving(true);
+                    try {
+                      // Spieler-Sync: racketNr und racketStart zurücksetzen
+                      if(form.vergebenAn){
+                        const oldP=players.find(p=>`${p.firstName} ${p.lastName}`===form.vergebenAn);
+                        if(oldP) await updateDoc(doc(db,"players",oldP.id),{racketNr:"",racketType:"",racketStart:"",racketEnd:""}).catch(()=>{});
+                      }
+                      // Auch alle anderen Spieler mit dieser racketNr bereinigen (falls inkonsistent)
+                      const withRacket=players.filter(p=>String(p.racketNr)===String(form.nr));
+                      for(const p of withRacket){
+                        await updateDoc(doc(db,"players",p.id),{racketNr:"",racketType:"",racketStart:"",racketEnd:""}).catch(()=>{});
+                      }
+                      await deleteDoc(doc(db,"rackets",String(form.nr)));
+                      showToast(`Schläger Nr. ${String(form.nr).padStart(3,"0")} gelöscht`,"🗑️");
+                      setEditId(null);
+                    } catch(e){showToast("Fehler: "+e.message,"❌");}
+                    setSaving(false);
+                  }} style={{padding:"3px 8px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </td>
               </tr>
             ) : (
