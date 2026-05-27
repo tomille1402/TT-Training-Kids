@@ -1474,6 +1474,18 @@ function BrandingEditor({showToast}) {
 
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={}}) {
   const [editPlayer,setEditPlayer]=useState(null);
+
+  // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
+  useEffect(()=>{
+    if(!editPlayer?.id) return;
+    const updated=players.find(p=>p.id===editPlayer.id);
+    if(!updated) return;
+    // Nur racket-Felder synchronisieren wenn sie sich geändert haben
+    if(String(updated.racketNr||"")!==String(editPlayer.racketNr||"")||
+       (updated.racketType||"")!==(editPlayer.racketType||"")){
+      setEditPlayer(prev=>prev?{...prev,racketNr:updated.racketNr||"",racketType:updated.racketType||"",racketStart:updated.racketStart||"",racketEnd:updated.racketEnd||""}:null);
+    }
+  },[players]);
   const [showAdd,setShowAdd]=useState(false);
   const [showM,setShowM]=useState(false);
   const [showT,setShowT]=useState(false);
@@ -2162,17 +2174,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
                   <option value="Stammspieler">Stammspieler</option>
                   <option value="Ersatzspieler">Ersatzspieler</option>
-                </select>
-              </div>}
-              {/* Anzugs-Größe für Erwachsene */}
-              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)&&<div style={{marginBottom:14}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🧥 Anzugs-Größe</label>
-                <select value={editPlayer.anzugSize||""} onChange={e=>setEditPlayer(prev=>({...prev,anzugSize:e.target.value}))}
-                  style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
-                  <option value="">— nicht gesetzt —</option>
-                  <option value="XS">XS</option><option value="S">S</option><option value="M">M</option>
-                  <option value="L">L</option><option value="XL">XL</option><option value="XXL">XXL</option>
-                  <option value="3XL">3XL</option><option value="4XL">4XL</option>
                 </select>
               </div>}
 
@@ -5751,7 +5752,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
         borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
         {uploading?"⏳ Wird verarbeitet...":"📎 Spielplan CSV oder PDF hochladen"}
-        <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
+        <input type="file" accept=".csv,.pdf" style={{display:"none"}} disabled={uploading}
           onChange={e=>handleUpload(e.target.files?.[0])}/>
       </label>
     </div>
