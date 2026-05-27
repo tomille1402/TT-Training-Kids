@@ -2086,11 +2086,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <input type="text" value={editPlayer.lastName||""} onChange={e=>setEditPlayer(prev=>({...prev,lastName:e.target.value}))}
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
               </div>
-              {/* 2a Geburtstag nach Nachname - für Erwachsene mit T-Shirt Größe daneben */}
+              {/* 2a Geburtstag nach Nachname - für Erwachsene mit T-Shirt + Anzug Größe daneben */}
               {(()=>{
                 const isErw=(editPlayer.group||"Anfänger")==="Erwachsene";
                 const erwSizes=["XS","S","M","L","XL","XXL","3XL","4XL"];
-                if(isErw) return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                if(isErw) return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
                   <div>
                     <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎂 Geburtstag</label>
                     <div style={{display:"flex",gap:4}}>
@@ -2101,7 +2101,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   </div>
                   <div>
                     <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👕 T-Shirt Größe</label>
-                    <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))} style={{fontSize:12}}>
+                    <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))} style={{fontSize:12,width:"100%",padding:"9px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)"}}>
+                      <option value="">—</option>
+                      {erwSizes.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🧥 Anzugs-Größe</label>
+                    <select value={editPlayer.anzugSize||""} onChange={e=>setEditPlayer(prev=>({...prev,anzugSize:e.target.value}))} style={{fontSize:12,width:"100%",padding:"9px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)"}}>
                       <option value="">—</option>
                       {erwSizes.map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
@@ -2163,12 +2170,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <select value={editPlayer.anzugSize||""} onChange={e=>setEditPlayer(prev=>({...prev,anzugSize:e.target.value}))}
                   style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
                   <option value="">— nicht gesetzt —</option>
-                  <option value="104">104</option><option value="110">110</option><option value="116">116</option>
-                  <option value="128">128</option><option value="140">140</option><option value="152">152</option>
-                  <option value="164">164</option><option value="176">176</option>
                   <option value="XS">XS</option><option value="S">S</option><option value="M">M</option>
                   <option value="L">L</option><option value="XL">XL</option><option value="XXL">XXL</option>
-                  <option value="3XL">3XL</option>
+                  <option value="3XL">3XL</option><option value="4XL">4XL</option>
                 </select>
               </div>}
 
@@ -2820,11 +2824,16 @@ function SchlaegerTab({rackets,players,showToast}) {
                       <span style={{color:"var(--text)"}}>{r.vergebenAn}</span>
                       <button onClick={async(e)=>{
                         e.stopPropagation();
-                        // Punkt 6: Vergabe löschen — Schläger freigeben + Spieler aktualisieren
                         const oldName=r.vergebenAn;
                         await setDoc(doc(db,"rackets",String(r.nr)),{...r,status:"frei",vergebenAn:""}).catch(()=>{});
-                        const oldP=players.find(pl=>`${pl.firstName} ${pl.lastName}`===oldName);
-                        if(oldP) await updateDoc(doc(db,"players",oldP.id),{racketType:"",racketNr:"",racketStart:"",racketEnd:""}).catch(()=>{});
+                        // Spieler per Name ODER per racketNr finden und bereinigen
+                        const toReset=players.filter(pl=>
+                          `${pl.firstName} ${pl.lastName}`===oldName ||
+                          String(pl.racketNr)===String(r.nr)
+                        );
+                        for(const pl of toReset){
+                          await updateDoc(doc(db,"players",pl.id),{racketType:"",racketNr:"",racketStart:"",racketEnd:""}).catch(()=>{});
+                        }
                         showToast("Vergabe gelöscht","🏓");
                       }} style={{padding:"1px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer",flexShrink:0}}>✕</button>
                     </div>
