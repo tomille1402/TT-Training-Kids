@@ -5632,12 +5632,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       // Diese enthält exakt: "Mädchen 13", "Mädchen 15", "Jugend 13", "Erwachsene" etc.
       const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
       const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
+      // WICHTIG: Altersklasse ZUERST prüfen! Nachwuchs-Teams haben denselben
+      // Vereinsnamen "TTC Niederzeuzheim" wie Herren 1 — nur die Altersklasse unterscheidet sie.
       function resolveMann(vereinMann, alk){
-        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann]; // Herren 1-5
         if(alk==="Mädchen 13"||alk==="Mädchen 15"||alk==="Mädchen 11"||alk==="Mädchen 17") return alk;
         if(alk.startsWith("Jugend")) return alk;
         if(alk==="Damen") return "Damen";
-        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann];
+        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann]; // Herren 1-5
         return vereinMann; // Fallback
       }
       if(heimVerein===TTC){
