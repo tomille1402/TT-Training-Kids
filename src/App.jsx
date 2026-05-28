@@ -5465,7 +5465,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
       const selManns=filters.mannschaften||[];
-      return <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+      return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",overflowX:"auto",paddingBottom:2}}>
         {/* Saison */}
         <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
           style={{padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
@@ -5628,28 +5628,27 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const datum=`${dp[2].substring(0,4)}-${dp[1]}-${dp[0]}`;
       const uhrzeit=uhrzeitStr?.substring(0,5)||"";
       let mannschaft="",ort="",gegner="";
-      // Mannschaftsname: für TTC-Teams aus Altersklasse bestimmen (Mädchen 13/15, Jugend 13/15, Herren 1-5)
-      // Altersklasse-Spalte enthält z.B. "Erwachsene", "Jugend 13", "Mädchen 13", "Mädchen 15"
-      const heimAlk=cols[idx("HeimMannschaftAltersklasse")]||altersklasse;
-      const gastAlk=cols[idx("GastMannschaftAltersklasse")]||altersklasse;
-      function getMannName(vereinMann, alk){
-        // Zuerst exakter Vereins-Mannschaft-Name (Herren 1-5)
+      // Mannschaftsname direkt aus *MannschaftAltersklasse Spalte lesen
+      // Diese enthält exakt: "Mädchen 13", "Mädchen 15", "Jugend 13", "Erwachsene" etc.
+      const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
+      const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
+      function resolveMann(vereinMann, alk){
+        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann]; // Herren 1-5
+        if(alk==="Mädchen 13"||alk==="Mädchen 15"||alk==="Mädchen 11"||alk==="Mädchen 17") return alk;
+        if(alk.startsWith("Jugend")) return alk;
+        if(alk==="Damen") return "Damen";
         if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann];
-        // Dann aus Altersklasse (Mädchen 13, Mädchen 15, Jugend 13 etc.)
-        if(alk.includes("Mädchen")) return alk.replace(/\s+/g," ").trim();
-        if(alk.includes("Jugend")) return alk.replace(/\s+/g," ").trim();
-        if(alk.includes("Damen")) return "Damen";
-        // Fallback: Vereinsname
-        return vereinMann;
+        return vereinMann; // Fallback
       }
       if(heimVerein===TTC){
-        mannschaft=getMannName(heimMann, heimAlk);
+        mannschaft=resolveMann(heimMann, heimAlk);
         ort="Heim"; gegner=gastMann;
       } else if(gastVerein===TTC){
-        mannschaft=getMannName(gastMann, gastAlk);
+        mannschaft=resolveMann(gastMann, gastAlk);
         ort="Auswärts"; gegner=heimMann;
       } else continue;
-      // Ergebnis: immer als Heim:Gast speichern (Tabellenanzeige dreht bei Auswärts)
+      // Ergebnis immer als CSV-Wert (SpieleHeim:SpieleGast) speichern
+      // Tabelle dreht bei Auswärtsspielen automatisch
       const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
         `${spieleH}:${spieleG}`:"";
       spiele.push({datum,uhrzeit,mannschaft,ort,gegner,liga,ergebnis});
