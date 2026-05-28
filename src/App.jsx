@@ -5465,7 +5465,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
       const selManns=filters.mannschaften||[];
-      return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",overflowX:"auto",paddingBottom:2}}>
+      return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
         {/* Saison */}
         <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
           style={{padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
