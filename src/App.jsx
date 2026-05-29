@@ -5467,10 +5467,10 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
       const selManns=filters.mannschaften||[];
-      return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+      return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"nowrap",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:3}}>
         {/* Saison */}
         <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
-          style={{padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+          style={{flexShrink:0,padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
           {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
         </select>
         {/* Mannschaft Multi-Select als natives Dropdown */}
@@ -5478,20 +5478,20 @@ function VereinsSpielplan({nurNachwuchs=false}) {
             const m=e.target.value; if(!m) return;
             setFilters(p=>{const sel=p.mannschaften||[];return {...p,mannschaften:sel.includes(m)?sel.filter(x=>x!==m):[...sel,m]};});
           }}
-          style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,maxWidth:130}}>
+          style={{flexShrink:0,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,maxWidth:130}}>
           <option value="">Mannschaft{selManns.length>0?` (${selManns.length})`:" (alle)"}</option>
           {MANNS.map(m=><option key={m} value={m}>{selManns.includes(m)?"☑ ":"☐ "}{m}</option>)}
         </select>
         {/* Ort */}
         <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,ort:e.target.value}))}
-          style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          style={{flexShrink:0,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Ort (alle)</option>
           <option value="Heim">Heim</option>
           <option value="Auswärts">Auswärts</option>
         </select>
         {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
-          style={{width:90,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+          style={{flexShrink:0,width:90,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
         {/* PDF */}
         {pdfUrl&&<button onClick={()=>{
           const b64=pdfUrl.split(",")[1];
@@ -5502,11 +5502,11 @@ function VereinsSpielplan({nurNachwuchs=false}) {
           a.href=blobUrl; a.download="Spielplan_"+selSeason+".pdf";
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
           setTimeout(()=>URL.revokeObjectURL(blobUrl),5000);
-        }} style={{padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
+        }} style={{flexShrink:0,padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
         {(selManns.length>0||filters.ort||filters.gegner)&&
-          <button onClick={()=>setFilters({})} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+          <button onClick={()=>setFilters({})} style={{flexShrink:0,padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
     {/* Ausgewählte Mannschaften als Chips */}
