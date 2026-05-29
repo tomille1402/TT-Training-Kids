@@ -885,7 +885,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={!isSuperAdmin}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig}/>}
 
@@ -3388,7 +3388,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={true}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -5501,7 +5501,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         </select>
         {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
-          style={{flex:1,minWidth:70,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+          style={{width:90,padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
         {/* PDF */}
         {pdfUrl&&<button onClick={()=>{
           const b64=pdfUrl.split(",")[1];
