@@ -5358,6 +5358,7 @@ const SPIELPLAN_COLS = [
   {key:"tag",       label:"Tag",         w:"36px"},
   {key:"uhrzeit",   label:"Uhrzeit",     w:"56px"},
   {key:"mannschaft",label:"Mannschaft",  w:"100px"},
+  {key:"art",       label:"Art",         w:"56px"},
   {key:"ort",       label:"Ort",         w:"72px"},
   {key:"gegner",    label:"Gegner",      w:"auto"},
   {key:"ergebnis",  label:"Ergebnis",    w:"64px"},
@@ -5431,6 +5432,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
 
   const nachwuchsMannschaften=["Mädchen 13","Mädchen 15","Mädchen 11","Jugend 11","Mädchen 17","Jugend 13","Jugend 15"];
   const filtered = spiele.filter(s=>{
+    if(String(s.gegner||"").toLowerCase().includes("spielfrei")||String(s.mannschaft||"").toLowerCase().includes("spielfrei")) return false;
     if(nurNachwuchs && !nachwuchsMannschaften.some(nm=>s.mannschaft===nm||s.mannschaft.startsWith(nm))) return false;
     const selManns=filters.mannschaften||[];
     if(selManns.length>0 && !selManns.includes(s.mannschaft)) return false;
@@ -5471,27 +5473,15 @@ function VereinsSpielplan({nurNachwuchs=false}) {
           style={{padding:"5px 7px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
           {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
         </select>
-        {/* Mannschaft Multi-Select */}
-        <div style={{position:"relative"}}>
-          <div onClick={()=>setFilters(p=>({...p,_showMannDrop:!p._showMannDrop}))}
-            style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,
-              color:"var(--text)",fontSize:11,cursor:"pointer",display:"flex",gap:4,alignItems:"center",whiteSpace:"nowrap"}}>
-            <span>Mannschaft{selManns.length>0?` (${selManns.length})`:""}</span><span style={{fontSize:9}}>▼</span>
-          </div>
-          {filters._showMannDrop&&<div style={{position:"absolute",top:"100%",left:0,zIndex:50,background:"var(--bg2)",
-            border:"1px solid var(--border2)",borderRadius:8,padding:6,minWidth:140,boxShadow:"0 4px 12px #0004"}}>
-            {MANNS.map(m=>{
-              const on=selManns.includes(m);
-              return <div key={m} onClick={()=>setFilters(p=>({...p,mannschaften:on?selManns.filter(x=>x!==m):[...selManns,m]}))}
-                style={{padding:"4px 8px",borderRadius:5,fontSize:11,cursor:"pointer",
-                  background:on?"#10b98122":"transparent",color:on?"#10b981":"var(--text)"}}>
-                {on?"☑":"☐"} {m}
-              </div>;
-            })}
-            <button onClick={()=>setFilters(p=>({...p,mannschaften:[],_showMannDrop:false}))}
-              style={{width:"100%",marginTop:4,padding:"3px",background:"var(--bg3)",border:"none",borderRadius:4,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Alle</button>
-          </div>}
-        </div>
+        {/* Mannschaft Multi-Select als natives Dropdown */}
+        <select value="" onChange={e=>{
+            const m=e.target.value; if(!m) return;
+            setFilters(p=>{const sel=p.mannschaften||[];return {...p,mannschaften:sel.includes(m)?sel.filter(x=>x!==m):[...sel,m]};});
+          }}
+          style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,maxWidth:130}}>
+          <option value="">Mannschaft{selManns.length>0?` (${selManns.length})`:" (alle)"}</option>
+          {MANNS.map(m=><option key={m} value={m}>{selManns.includes(m)?"☑ ":"☐ "}{m}</option>)}
+        </select>
         {/* Ort */}
         <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,ort:e.target.value}))}
           style={{padding:"5px 7px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
@@ -5519,6 +5509,14 @@ function VereinsSpielplan({nurNachwuchs=false}) {
           <button onClick={()=>setFilters({})} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
+    {/* Ausgewählte Mannschaften als Chips */}
+    {(filters.mannschaften||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+      {(filters.mannschaften||[]).map(m=>
+        <span key={m} onClick={()=>setFilters(p=>({...p,mannschaften:(p.mannschaften||[]).filter(x=>x!==m)}))}
+          style={{background:"#10b98122",color:"#10b981",borderRadius:5,padding:"2px 7px",fontSize:10,cursor:"pointer",fontWeight:600}}>
+          {m} ✕
+        </span>)}
+    </div>}
     <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Spiele{nurNachwuchs?" (Nachwuchs)":""} · T=Terminänderung, V=Verlegung</div>
     {/* Table */}
     {/* Sticky header wie Schlägerverwaltung: Container mit maxHeight+overflowY:auto, th mit top:0 */}
@@ -5551,6 +5549,9 @@ function VereinsSpielplan({nurNachwuchs=false}) {
                 <span style={{background:mc+"22",color:mc,borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.mannschaft}</span>
               </td>
               <td style={{padding:"5px 6px"}}>
+                <span style={{color:s.art==="Pokal"?"#f59e0b":"var(--text3)",fontSize:10,fontWeight:600}}>{s.art||"Runde"}</span>
+              </td>
+              <td style={{padding:"5px 6px"}}>
                 <span style={{color:s.ort==="Heim"?"#10b981":"#3b82f6",fontWeight:600,fontSize:10}}>{s.ort}</span>
               </td>
               <td style={{padding:"5px 6px",fontSize:11}}>{s.gegner}</td>
@@ -5566,7 +5567,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -5619,17 +5620,25 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const gastMann=cols[idx("GastMannschaft")]||"";
       const altersklasse=cols[idx("Altersklasse")]||"";
       const liga=cols[idx("Liga")]||"";
+      const saisonCol=cols[idx("Saison")]||"";
       const spieleH=cols[idx("SpieleHeim")]||"";
       const spieleG=cols[idx("SpieleGast")]||"";
       if(!termin||!termin.trim()) continue;
+      // P3: Spielfreie Spiele überspringen
+      if(heimMann.toLowerCase().includes("spielfrei")||gastMann.toLowerCase().includes("spielfrei")) continue;
       const [datumStr,uhrzeitStr]=(termin+" ").split(" ");
       const dp=datumStr.split(".");
       if(dp.length<3) continue;
       const datum=`${dp[2].substring(0,4)}-${dp[1]}-${dp[0]}`;
       const uhrzeit=uhrzeitStr?.substring(0,5)||"";
+      // P2: Wochentag aus Datum berechnen
+      const TAGE=["So","Mo","Di","Mi","Do","Fr","Sa"];
+      const dObj=new Date(parseInt(dp[2].substring(0,4)),parseInt(dp[1])-1,parseInt(dp[0]));
+      const tag=isNaN(dObj.getTime())?"":TAGE[dObj.getDay()];
+      // P4: Art bestimmen — "Pokal" wenn Saison-Spalte "Pokal" enthält, sonst "Runde"
+      const art=saisonCol.toLowerCase().includes("pokal")?"Pokal":"Runde";
       let mannschaft="",ort="",gegner="";
       // Mannschaftsname direkt aus *MannschaftAltersklasse Spalte lesen
-      // Diese enthält exakt: "Mädchen 13", "Mädchen 15", "Jugend 13", "Erwachsene" etc.
       const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
       const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
       // WICHTIG: Altersklasse ZUERST prüfen! Nachwuchs-Teams haben denselben
@@ -5649,10 +5658,9 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         ort="Auswärts"; gegner=heimMann;
       } else continue;
       // Ergebnis immer als CSV-Wert (SpieleHeim:SpieleGast) speichern
-      // Tabelle dreht bei Auswärtsspielen automatisch
       const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
         `${spieleH}:${spieleG}`:"";
-      spiele.push({datum,uhrzeit,mannschaft,ort,gegner,liga,ergebnis});
+      spiele.push({datum,tag,uhrzeit,mannschaft,art,ort,gegner,liga,ergebnis});
     }
     return spiele.sort((a,b)=>a.datum.localeCompare(b.datum)||a.mannschaft.localeCompare(b.mannschaft));
   }
