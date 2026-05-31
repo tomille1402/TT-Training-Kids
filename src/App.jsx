@@ -9,11 +9,16 @@ import {
   getFirestore, doc, setDoc, collection, addDoc,
   onSnapshot, deleteDoc, updateDoc, getDoc, getDocs
 } from "firebase/firestore";
+import {
+  getStorage, ref as storageRef, uploadBytes,
+  getDownloadURL, deleteObject
+} from "firebase/storage";
 import { firebaseConfig } from "./firebaseConfig";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
 const db         = getFirestore(app);
+const storage    = getStorage(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
@@ -530,6 +535,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
   const [expandedEx,setExpandedEx]=useState(null);
+  const [uebungsvideos,setUebungsvideos]=useState({});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","uebungsvideos"),snap=>{
+      setUebungsvideos(snap.exists()?(snap.data().urls||{}):{});
+    },()=>{});
+    return unsub;
+  },[]);
   // Sync external player selection from RSW chips
   useEffect(()=>{
     if(externalPlayer){
@@ -801,6 +813,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
                 </div>
               </div>
               {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:13,background:"var(--bg)"}}>
+                {uebungsvideos[ex.id]&&<div style={{marginBottom:13}}>
+                  <UebungsvideoPlayer url={uebungsvideos[ex.id]} exName={ex.name}/>
+                </div>}
                 <div style={{marginBottom:11,fontSize:12,color:"var(--text2)"}}>⚙️ Sterne vergeben:</div>
                 <div style={{marginBottom:13}}><StarRating stars={stars} onRate={v=>setStars(curPlayer.id,ex.id,v)}/></div>
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
@@ -3073,6 +3088,13 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
+  const [uebungsvideos,setUebungsvideos]=useState({});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","uebungsvideos"),snap=>{
+      setUebungsvideos(snap.exists()?(snap.data().urls||{}):{});
+    },()=>{});
+    return unsub;
+  },[]);
 
   // Trainer können Sterne setzen wenn sie Spieler per Chip ausgewählt haben
   async function setStars(playerId,exId,value) {
@@ -3219,6 +3241,10 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
               <span style={{color:"var(--text3)",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
             </div>
             {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"10px 12px",background:"var(--bg)"}}>
+              {/* Übungsvideo */}
+              {uebungsvideos[ex.id]&&<div style={{marginBottom:10}}>
+                <UebungsvideoPlayer url={uebungsvideos[ex.id]} exName={ex.name}/>
+              </div>}
               {/* Beschreibung aus Trainingsheft */}
               {ex.description&&<div style={{
                 fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:10,
@@ -5574,6 +5600,106 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   </div>;
 }
 
+// ─── ÜBUNGSVIDEO UPLOAD (nur Admin) ──────────────────────────────────────────
+function UebungsvideoUpload({showToast}) {
+  const [videos,setVideos]=useState({});
+  const [uploadingId,setUploadingId]=useState(null);
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","uebungsvideos"),snap=>{
+      setVideos(snap.exists()?(snap.data().urls||{}):{});
+    },()=>{});
+    return unsub;
+  },[]);
+
+  async function handleVideoUpload(exId,file) {
+    if(!file) return;
+    if(!file.type.startsWith("video/")){showToast("Bitte eine Videodatei wählen","❌");return;}
+    if(file.size>50*1024*1024){showToast("Video zu groß (max. 50 MB)","❌");return;}
+    setUploadingId(exId);
+    try {
+      const sRef=storageRef(storage,`uebungsvideos/${exId}.mp4`);
+      await uploadBytes(sRef,file);
+      const url=await getDownloadURL(sRef);
+      const snap=await getDoc(doc(db,"config","uebungsvideos")).catch(()=>null);
+      const urls=snap?.exists()?(snap.data().urls||{}):{};
+      urls[exId]=url;
+      await setDoc(doc(db,"config","uebungsvideos"),{urls,lastUpdated:Date.now()});
+      showToast("Video hochgeladen","🎬");
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    setUploadingId(null);
+  }
+
+  async function deleteVideo(exId,name) {
+    if(!window.confirm(`Video für "${name}" löschen?`)) return;
+    try {
+      await deleteObject(storageRef(storage,`uebungsvideos/${exId}.mp4`)).catch(()=>{});
+      const snap=await getDoc(doc(db,"config","uebungsvideos")).catch(()=>null);
+      const urls=snap?.exists()?(snap.data().urls||{}):{};
+      delete urls[exId];
+      await setDoc(doc(db,"config","uebungsvideos"),{urls,lastUpdated:Date.now()});
+      showToast("Video gelöscht","🗑️");
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
+  }
+
+  const videoCount=Object.keys(videos).length;
+
+  return <div>
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
+      Pro Übung ein kurzes Video (5-10 Sek., max. 50 MB). {videoCount} von {ALL_EXERCISES.length} Übungen haben ein Video.
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:340,overflowY:"auto"}}>
+      {ALL_EXERCISES.map(ex=>{
+        const hasVid=!!videos[ex.id];
+        const isUp=uploadingId===ex.id;
+        return <div key={ex.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",
+          background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
+          <span style={{width:22,height:22,borderRadius:6,flexShrink:0,background:ex.id<=10?"#10b98122":"#3b82f622",
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,
+            color:ex.id<=10?"#10b981":"#3b82f6"}}>{ex.id}</span>
+          <span style={{flex:1,fontSize:11,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.name}</span>
+          {hasVid&&<span style={{fontSize:14}}>🎬</span>}
+          <label style={{fontSize:10,color:"#3b82f6",cursor:isUp?"wait":"pointer",padding:"2px 6px",
+            background:"#3b82f615",borderRadius:6,whiteSpace:"nowrap"}}>
+            {isUp?"⏳":(hasVid?"Ersetzen":"Hochladen")}
+            <input type="file" accept="video/*" style={{display:"none"}} disabled={isUp}
+              onChange={e=>handleVideoUpload(ex.id,e.target.files?.[0])}/>
+          </label>
+          {hasVid&&<button onClick={()=>deleteVideo(ex.id,ex.name)}
+            style={{fontSize:11,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:"0 2px"}}>🗑️</button>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+// ─── ÜBUNGSVIDEO PLAYER (für alle sichtbar) ──────────────────────────────────
+function UebungsvideoPlayer({url,exName}) {
+  const [showBig,setShowBig]=useState(false);
+  if(!url) return null;
+  return <>
+    <div onClick={(e)=>{e.stopPropagation();setShowBig(true);}}
+      style={{position:"relative",width:120,height:68,borderRadius:8,overflow:"hidden",
+      cursor:"pointer",background:"#000",flexShrink:0,border:"1px solid var(--border2)"}}>
+      <video src={url} style={{width:"100%",height:"100%",objectFit:"cover"}} muted preload="metadata"/>
+      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#0003"}}>
+        <span style={{fontSize:24}}>▶️</span>
+      </div>
+    </div>
+    {showBig&&<div onClick={(e)=>{e.stopPropagation();setShowBig(false);}}
+      style={{position:"fixed",inset:0,zIndex:9999,background:"#000d",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{color:"#fff",fontSize:14,fontWeight:700}}>{exName}</span>
+          <button onClick={()=>setShowBig(false)} style={{background:"none",border:"none",color:"#fff",fontSize:24,cursor:"pointer",lineHeight:1}}>✕</button>
+        </div>
+        <video src={url} controls autoPlay loop playsInline
+          style={{maxWidth:"90vw",maxHeight:"75vh",borderRadius:10,background:"#000"}}/>
+      </div>
+    </div>}
+  </>;
+}
+
 // SpielplanUpload - PDF upload parses and saves to Firestore
 function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   const [uploading,setUploading]=useState(false);
@@ -5797,6 +5923,12 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
     <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📋 Aufstellungen</div>
       <AufstellungUpload showToast={showToast}/>
+    </div>
+
+    {/* Übungsvideos Upload */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>🎬 Übungsvideos</div>
+      <UebungsvideoUpload showToast={showToast}/>
     </div>
 
     {/* Mannschaften */}
