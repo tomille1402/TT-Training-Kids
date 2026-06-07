@@ -1642,7 +1642,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const wb=XLSX.read(ab,{type:"array",cellDates:false});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{raw:true});
-      let updated=0,created=0,errors=[];
+      let updated=0,created=0,errors=[],createdWithLogin=0;
       for(const row of rows){
         const fn=String(row["Vorname"]||"").trim();
         const ln=String(row["Nachname"]||"").trim();
@@ -1678,25 +1678,30 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         } else {
           // Neu anlegen — Login-loser Account mit interner Email
           try {
+            const hasEmail=!!(data.email&&data.email.includes("@"));
             const safeName=(fn+"."+ln).toLowerCase().replace(/[^a-z0-9.]/g,"");
             const rand=Math.random().toString(36).slice(2,8);
             const intMail=`${safeName||"person"}.${rand}@ttc-intern.de`;
+            // Bei echter E-Mail: Account mit dieser anlegen → Passwort-Reset per Mail möglich.
+            // Sonst: interne Login-lose Adresse.
+            const authMail=hasEmail?data.email.trim():intMail;
             const dummyPass="Tt"+Math.random().toString(36).slice(2,12)+"1!";
-            const {user:nu}=await createUserWithEmailAndPassword(authHelper,intMail,dummyPass);
+            const {user:nu}=await createUserWithEmailAndPassword(authHelper,authMail,dummyPass);
             await signOut(authHelper);
             const color=PLAYER_COLORS[(players.length+created)%PLAYER_COLORS.length];
             await setDoc(doc(db,"players",nu.uid),{
               id:nu.uid, firstName:fn, lastName:ln, name:`${fn} ${ln}`,
-              gender:data.gender||"m", email:data.email||intMail, noLogin:!data.email,
+              gender:data.gender||"m", email:authMail, noLogin:!hasEmail,
               avatar:data.avatar||"🏓", group:data.group||"Anfänger", status:data.status||"aktiv",
               roles:hasRoleCol?roles:{player:true}, color, stars:{}, createdAt:Date.now(),
-              ...data,
+              ...data, email:authMail,
             });
             created++;
+            if(hasEmail) createdWithLogin++;
           } catch(err){errors.push(`${fn} ${ln}: ${err.message}`);}
         }
       }
-      setPersonImportLog({updated,created,errors});
+      setPersonImportLog({updated,created,errors,withLogin:createdWithLogin});
       showToast(`${updated} aktualisiert, ${created} neu angelegt`,"✅");
     } catch(err){showToast("Fehler: "+err.message,"❌");}
     setPersonImporting(false); e.target.value="";
@@ -2128,6 +2133,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           </div>
           {personImportLog&&<div style={{marginTop:10,padding:10,background:"var(--bg)",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
             <div style={{color:"#10b981",fontWeight:700}}>✅ {personImportLog.updated} aktualisiert · {personImportLog.created} neu angelegt</div>
+            {personImportLog.withLogin>0&&<div style={{marginTop:4,color:"var(--text3)"}}>
+              🔑 {personImportLog.withLogin} davon mit E-Mail → können sich per „Passwort vergessen?" auf der Login-Seite ein Passwort setzen.
+            </div>}
             {personImportLog.errors.length>0&&<div style={{marginTop:6,color:"#ef4444"}}>
               {personImportLog.errors.length} Fehler:
               <ul style={{margin:"4px 0 0 16px",padding:0}}>
