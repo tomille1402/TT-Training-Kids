@@ -1580,6 +1580,128 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setJoinImporting(false); e.target.value="";
   }
 
+  // ── Personen-Datenfelder: deutsche Spalte ↔ Firestore-Key ──
+  const PERSON_FIELDS=[
+    ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
+    ["E-Mail","email"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
+    ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
+    ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
+    ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],
+    ["Stamm/Ersatz","stammErsatz"],["Anzugs-Groesse","anzugSize"],
+    ["T-Shirt Groesse","tshirtSize"],["T-Shirt DTTB","tshirtDTTB"],["T-Shirt TTC","tshirtTTC"],
+    ["Trainingstage","trainingDays"],["Trainingsstart","trainingStart"],["Trainingsende","trainingEnd"],
+    ["Trainingsheft","trainingsheft"],
+    ["Schlaeger-Typ","racketType"],["Schlaeger-Nr","racketNr"],
+    ["Schlaeger-Start","racketStart"],["Schlaeger-Ende","racketEnd"],
+    ["Avatar","avatar"],
+  ];
+
+  async function loadXLSX() {
+    if(window.XLSX) return window.XLSX;
+    return new Promise((res,rej)=>{
+      const sc=document.createElement("script");
+      sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+      document.head.appendChild(sc);
+    });
+  }
+
+  // Export: alle Personen als Excel
+  async function handlePersonExport() {
+    try {
+      const XLSX=await loadXLSX();
+      const rows=players.map(p=>{
+        const r={};
+        PERSON_FIELDS.forEach(([label,key])=>{
+          if(key==="_rolePlayer") r[label]=p.roles?.player?"ja":"";
+          else if(key==="_roleTrainer") r[label]=p.roles?.trainer?"ja":"";
+          else if(key==="_roleAdmin") r[label]=p.roles?.admin?"ja":"";
+          else if(key==="_roleErwachsene") r[label]=p.roles?.erwachsene?"ja":"";
+          else r[label]=p[key]??"";
+        });
+        return r;
+      });
+      const ws=XLSX.utils.json_to_sheet(rows,{header:PERSON_FIELDS.map(f=>f[0])});
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,"Personen");
+      const today=new Date().toLocaleDateString("sv");
+      XLSX.writeFile(wb,`TTC_Personen_${today}.xlsx`);
+      showToast(`${rows.length} Personen exportiert`,"📊");
+    } catch(e){showToast("Fehler: "+e.message,"❌");}
+  }
+
+  // Import: Personen anreichern ODER neu anlegen
+  const [personImporting,setPersonImporting]=useState(false);
+  const [personImportLog,setPersonImportLog]=useState(null);
+  async function handlePersonImport(e) {
+    const file=e.target.files?.[0]; if(!file) return;
+    setPersonImporting(true); setPersonImportLog(null);
+    try {
+      const XLSX=await loadXLSX();
+      const ab=await file.arrayBuffer();
+      const wb=XLSX.read(ab,{type:"array",cellDates:false});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{raw:true});
+      let updated=0,created=0,errors=[];
+      for(const row of rows){
+        const fn=String(row["Vorname"]||"").trim();
+        const ln=String(row["Nachname"]||"").trim();
+        if(!fn||!ln){continue;}
+        // Felder aus Zeile sammeln (nur gesetzte Werte)
+        const data={};
+        PERSON_FIELDS.forEach(([label,key])=>{
+          if(key.startsWith("_role")) return; // Rollen separat
+          let val=row[label];
+          if(val===undefined||val===null||String(val).trim()==="") return;
+          val=String(val).trim();
+          if(["birthdate","joinDate","leaveDate","trainingStart","trainingEnd","racketStart","racketEnd"].includes(key))
+            val=parseDateStr(val)||val;
+          data[key]=val;
+        });
+        // Rollen zusammenbauen (nur wenn Spalte vorhanden)
+        const roles={};
+        let hasRoleCol=false;
+        [["Rolle Spieler","player"],["Rolle Trainer","trainer"],["Rolle Admin","admin"],["Rolle Erwachsene","erwachsene"]].forEach(([label,rk])=>{
+          if(row[label]!==undefined){hasRoleCol=true; roles[rk]=String(row[label]).trim().toLowerCase()==="ja";}
+        });
+        const existing=players.find(pl=>
+          (pl.firstName||"").toLowerCase()===fn.toLowerCase()&&
+          (pl.lastName||"").toLowerCase()===ln.toLowerCase());
+        if(existing){
+          // Anreichern: nur gesetzte Felder überschreiben
+          const upd={...data};
+          if(hasRoleCol) upd.roles={...(existing.roles||{}),...roles};
+          if(Object.keys(upd).length){
+            await updateDoc(doc(db,"players",existing.id),upd).catch(err=>errors.push(`${fn} ${ln}: ${err.message}`));
+            updated++;
+          }
+        } else {
+          // Neu anlegen — Login-loser Account mit interner Email
+          try {
+            const safeName=(fn+"."+ln).toLowerCase().replace(/[^a-z0-9.]/g,"");
+            const rand=Math.random().toString(36).slice(2,8);
+            const intMail=`${safeName||"person"}.${rand}@ttc-intern.de`;
+            const dummyPass="Tt"+Math.random().toString(36).slice(2,12)+"1!";
+            const {user:nu}=await createUserWithEmailAndPassword(authHelper,intMail,dummyPass);
+            await signOut(authHelper);
+            const color=PLAYER_COLORS[(players.length+created)%PLAYER_COLORS.length];
+            await setDoc(doc(db,"players",nu.uid),{
+              id:nu.uid, firstName:fn, lastName:ln, name:`${fn} ${ln}`,
+              gender:data.gender||"m", email:data.email||intMail, noLogin:!data.email,
+              avatar:data.avatar||"🏓", group:data.group||"Anfänger", status:data.status||"aktiv",
+              roles:hasRoleCol?roles:{player:true}, color, stars:{}, createdAt:Date.now(),
+              ...data,
+            });
+            created++;
+          } catch(err){errors.push(`${fn} ${ln}: ${err.message}`);}
+        }
+      }
+      setPersonImportLog({updated,created,errors});
+      showToast(`${updated} aktualisiert, ${created} neu angelegt`,"✅");
+    } catch(err){showToast("Fehler: "+err.message,"❌");}
+    setPersonImporting(false); e.target.value="";
+  }
+
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","trainingRange"),snap=>{
       if (snap.exists()) setTrainingRange(snap.data());
@@ -1980,6 +2102,40 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
       {showUploads&&<div style={{padding:"0 14px 14px"}}>
         <SpielplanUpload showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>
+
+        {/* Personen Export/Import */}
+        <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>👥 Personen Export / Import</div>
+          <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+            Exportiert alle Personen mit allen Feldern als Excel. Beim Import werden bestehende
+            Personen (Vorname + Nachname) angereichert, neue Personen angelegt. Leere Zellen
+            überschreiben nichts.
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={handlePersonExport} style={{flex:1,minWidth:140,padding:"9px 12px",
+              background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",
+              fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              📊 Personen exportieren
+            </button>
+            <label style={{flex:1,minWidth:140,padding:"9px 12px",background:"var(--bg3)",
+              border:"2px dashed var(--border2)",borderRadius:9,textAlign:"center",
+              cursor:personImporting?"not-allowed":"pointer",fontSize:12,
+              color:personImporting?"#6b7280":"var(--text3)"}}>
+              {personImporting?"⏳ Importiere...":"📎 Personen importieren"}
+              <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+                onChange={handlePersonImport} disabled={personImporting}/>
+            </label>
+          </div>
+          {personImportLog&&<div style={{marginTop:10,padding:10,background:"var(--bg)",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
+            <div style={{color:"#10b981",fontWeight:700}}>✅ {personImportLog.updated} aktualisiert · {personImportLog.created} neu angelegt</div>
+            {personImportLog.errors.length>0&&<div style={{marginTop:6,color:"#ef4444"}}>
+              {personImportLog.errors.length} Fehler:
+              <ul style={{margin:"4px 0 0 16px",padding:0}}>
+                {personImportLog.errors.slice(0,8).map((er,i)=><li key={i}>{er}</li>)}
+              </ul>
+            </div>}
+          </div>}
+        </div>
       </div>}
     </div>
 
