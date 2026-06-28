@@ -1594,6 +1594,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     ["Schlaeger-Typ","racketType"],["Schlaeger-Nr","racketNr"],
     ["Schlaeger-Start","racketStart"],["Schlaeger-Ende","racketEnd"],
     ["Avatar","avatar"],
+    ["Datum Datenschutz-Erklärung","datenschutzAccepted"],
   ];
 
   async function loadXLSX() {
@@ -1654,7 +1655,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           let val=row[label];
           if(val===undefined||val===null||String(val).trim()==="") return;
           val=String(val).trim();
-          if(["birthdate","joinDate","leaveDate","trainingStart","trainingEnd","racketStart","racketEnd"].includes(key))
+          if(["birthdate","joinDate","leaveDate","trainingStart","trainingEnd","racketStart","racketEnd","datenschutzAccepted"].includes(key))
             val=parseDateStr(val)||val;
           data[key]=val;
         });
@@ -2397,6 +2398,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                       style={{flex:1,padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
                     {editPlayer.leaveDate&&<button onClick={()=>setEditPlayer(p=>({...p,leaveDate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
                   </div>
+                </div>
+              </div>
+              {/* Datum Datenschutz-Erklärung (automatisch gesetzt, nicht editierbar) */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🔒 Datum Datenschutz-Erklärung</label>
+                <div style={{padding:"9px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,
+                  color:editPlayer.datenschutzAccepted?"var(--text)":"var(--text4)",fontSize:13}}>
+                  {editPlayer.datenschutzAccepted
+                    ? editPlayer.datenschutzAccepted.split("-").reverse().join(".")
+                    : "— noch nicht akzeptiert —"}
                 </div>
               </div>
               {/* Trainingstage (nur für Trainer-Gruppe) */}
@@ -6585,6 +6596,100 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
+// ─── DATENSCHUTZ-ERKLÄRUNG (Volltext + Zustimmungs-Gate) ─────────────────────
+const DATENSCHUTZ_TEXT = [
+  {h:"1. Verantwortlicher", t:[
+    "Verantwortlich für die Verarbeitung personenbezogener Daten im Sinne von Art. 4 Nr. 7 DSGVO ist:",
+    "TTC Niederzeuzheim, vertreten durch den Vereinsvorsitzenden Thomas Meilinger, Mühlenstraße 33, 65620 Waldbrunn-Hausen, E-Mail: thomas@meilinger.net.",
+    "Ein Datenschutzbeauftragter ist gesetzlich nicht verpflichtend bestellt. Bei Fragen zum Datenschutz wenden Sie sich bitte an den oben genannten Verantwortlichen.",
+  ]},
+  {h:"2. Zweck und Gegenstand der Verarbeitung", t:[
+    "Der TTC Niederzeuzheim betreibt eine digitale Trainings-App zur Organisation und Unterstützung des Tischtennis-Trainingsbetriebs. Die App dient der Verwaltung der Mitglieder und Trainingsgruppen, der Erfassung der Trainingsanwesenheit, der Dokumentation von Trainingsfortschritten (Übungssterne, Beobachtungen), der Anzeige von Mannschaftsaufstellungen, Spielplänen und Ranglisten, der Verwaltung der Vereinsausstattung sowie der Bereitstellung von Übungsvideos.",
+  ]},
+  {h:"3. Welche Daten werden verarbeitet?", t:[
+    "Je nach Rolle werden folgende Kategorien verarbeitet: Stammdaten (Name, Geschlecht, Geburtsdatum), Kontaktdaten (E-Mail, Telefon), Vereinsdaten (Mannschaft, Vereinsbeitritt, Status, Rolle), Trainingsdaten (Anwesenheit, Übungssterne, Beobachtungen), Ausstattungsdaten (Trikot-/Anzugsgröße, Schlägernummer), Nutzungsdaten (Login-Daten, verschlüsseltes Passwort, Avatar) sowie Bild-/Videodaten (Fotos und kurze Übungsvideos).",
+    "Es werden nur die Daten erhoben, die für den Trainings- und Vereinsbetrieb erforderlich sind.",
+  ]},
+  {h:"4. Rechtsgrundlagen", t:[
+    "Die Verarbeitung erfolgt auf Grundlage von Art. 6 Abs. 1 lit. b DSGVO (Erfüllung der Mitgliedschaft), Art. 6 Abs. 1 lit. a DSGVO (Ihre Einwilligung) sowie Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen des Vereins).",
+    "Bei Minderjährigen unter 16 Jahren erfolgt die Einwilligung durch die Erziehungsberechtigten (Art. 8 DSGVO).",
+  ]},
+  {h:"5. Fotos und Videos", t:[
+    "Fotos und kurze Videos (z. B. Mannschaftsfotos, Übungsvideos) werden ausschließlich innerhalb der vereinsinternen Trainings-App verarbeitet und sind nur für angemeldete Mitglieder sichtbar. Eine Veröffentlichung außerhalb der App erfolgt nicht ohne gesonderte, ausdrückliche Einwilligung.",
+  ]},
+  {h:"6. Speicherung und technische Verarbeitung", t:[
+    "Die Daten werden über Google Firebase (Google Ireland Limited) gespeichert; es besteht eine Auftragsverarbeitung gemäß Art. 28 DSGVO. Die Server befinden sich vorzugsweise innerhalb der EU. Die App wird über Netlify bereitgestellt, Zugriffe erfolgen verschlüsselt (HTTPS). Passwörter werden ausschließlich verschlüsselt gespeichert.",
+  ]},
+  {h:"7. Speicherdauer", t:[
+    "Daten werden nur so lange gespeichert, wie es für die genannten Zwecke erforderlich ist – in der Regel für die Dauer der Vereinsmitgliedschaft. Nach Austritt werden die Daten gelöscht, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen.",
+  ]},
+  {h:"8. Ihre Rechte", t:[
+    "Sie haben das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20), Widerspruch (Art. 21) sowie auf Widerruf einer Einwilligung mit Wirkung für die Zukunft (Art. 7 Abs. 3).",
+    "Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist der Hessische Beauftragte für Datenschutz und Informationsfreiheit.",
+  ]},
+  {h:"9. Einwilligung", t:[
+    "Die Nutzung der Trainings-App des TTC Niederzeuzheim setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.",
+  ]},
+];
+
+function DatenschutzGate({playerId, onAccepted, onSignOut}) {
+  const [saving,setSaving]=useState(false);
+  function druckenPDF(){
+    const w=window.open("","_blank");
+    if(!w){alert("Bitte Popups erlauben, um die Erklärung zu drucken.");return;}
+    const html=`<html><head><meta charset="utf-8"><title>Datenschutzerklärung TTC Niederzeuzheim</title>
+      <style>body{font-family:Arial,sans-serif;max-width:800px;margin:30px auto;padding:0 20px;color:#222;line-height:1.5}
+      h1{color:#1F4E79;font-size:22px;text-align:center}h2{color:#1F4E79;font-size:15px;margin-top:20px}
+      p{font-size:13px}.sub{text-align:center;color:#666;font-style:italic}</style></head><body>
+      <h1>TTC Niederzeuzheim</h1>
+      <p class="sub">Datenschutzerklärung und Einwilligung zur Nutzung der Trainings-App<br>gemäß DSGVO (EU 2016/679)</p>
+      ${DATENSCHUTZ_TEXT.map(s=>`<h2>${s.h}</h2>${s.t.map(x=>`<p>${x}</p>`).join("")}`).join("")}
+      </body></html>`;
+    w.document.write(html); w.document.close();
+    setTimeout(()=>w.print(),400);
+  }
+  async function akzeptieren(){
+    setSaving(true);
+    try {
+      const heute=new Date().toLocaleDateString("sv"); // YYYY-MM-DD
+      await updateDoc(doc(db,"players",playerId),{datenschutzAccepted:heute});
+      onAccepted(heute);
+    } catch(e){alert("Fehler beim Speichern: "+e.message); setSaving(false);}
+  }
+  return <div style={{position:"fixed",inset:0,zIndex:99999,background:"var(--bg)",display:"flex",
+    flexDirection:"column",padding:0}}>
+    <div style={{padding:"16px 18px",borderBottom:"1px solid var(--border2)",background:"var(--bg2)"}}>
+      <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>🔒 Datenschutzerklärung</div>
+      <div style={{fontSize:12,color:"var(--text3)",marginTop:3}}>Bitte lies die Erklärung und stimme zu, um die App zu nutzen.</div>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#1F4E79",textAlign:"center",marginBottom:4}}>TTC Niederzeuzheim</div>
+      <div style={{fontSize:11,color:"var(--text3)",textAlign:"center",fontStyle:"italic",marginBottom:16}}>
+        Datenschutzerklärung gemäß DSGVO (EU 2016/679)</div>
+      {DATENSCHUTZ_TEXT.map((s,i)=><div key={i} style={{marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:5}}>{s.h}</div>
+        {s.t.map((x,j)=><div key={j} style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:6}}>{x}</div>)}
+      </div>)}
+    </div>
+    <div style={{padding:"14px 18px",borderTop:"1px solid var(--border2)",background:"var(--bg2)",
+      display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button onClick={druckenPDF} style={{flex:"0 0 auto",padding:"11px 14px",background:"var(--bg3)",
+        border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>
+        📄 Drucken / als PDF speichern
+      </button>
+      <button onClick={akzeptieren} disabled={saving} style={{flex:1,minWidth:160,padding:"11px 14px",
+        background:saving?"var(--border2)":"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,
+        color:"#fff",fontSize:14,fontWeight:700,cursor:saving?"wait":"pointer"}}>
+        {saving?"Speichern…":"✅ Ich akzeptiere die Datenschutzerklärung"}
+      </button>
+      <button onClick={onSignOut} style={{flex:"0 0 auto",padding:"11px 14px",background:"transparent",
+        border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>
+        Abmelden
+      </button>
+    </div>
+  </div>;
+}
+
 export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [players,      setPlayers]      = useState([]);
@@ -6598,6 +6703,7 @@ export default function App() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [adminReady,   setAdminReady]   = useState(false);
   const [loginSuccess, setLoginSuccess] = useState("");
+  const [datenschutzOk, setDatenschutzOk] = useState(false);
   // Punkt 4: Theme (dark/light)
   const [globalTheme,  setGlobalTheme]  = useState("dark");
   const [userTheme,    setUserTheme]    = useState(()=>localStorage.getItem("ttc_theme")||"");
@@ -6800,6 +6906,12 @@ export default function App() {
 
   // ── Spieler-Profil suchen ──
   const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
+
+  // ── Datenschutz-Gate: Profil ohne Akzeptanz-Datum muss zuerst zustimmen ──
+  if (myPlayer && !myPlayer.datenschutzAccepted && !datenschutzOk) {
+    return <DatenschutzGate playerId={myPlayer.id}
+      onAccepted={()=>setDatenschutzOk(true)} onSignOut={handleSignOut}/>;
+  }
 
   // Rollen aus Spieler-Profil ermitteln
   const playerRoles = myPlayer?.roles || {};
