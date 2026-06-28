@@ -606,7 +606,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
   function getBirthdaysSince(since) {
     const result = [];
-    const allPeople = players.filter(p=>p.birthdate);
+    const allPeople = players.filter(p=>p.birthdate && p.status!=="passiv");
     for (const p of allPeople) {
       const bd = new Date(p.birthdate);
       // Geburtstag dieses Jahr
@@ -1586,7 +1586,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     ["E-Mail","email"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
-    ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],
+    ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
     ["Stamm/Ersatz","stammErsatz"],["Anzugs-Groesse","anzugSize"],
     ["T-Shirt Groesse","tshirtSize"],["T-Shirt DTTB","tshirtDTTB"],["T-Shirt TTC","tshirtTTC"],
     ["Trainingstage","trainingDays"],["Trainingsstart","trainingStart"],["Trainingsende","trainingEnd"],
@@ -1618,6 +1618,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           else if(key==="_roleTrainer") r[label]=p.roles?.trainer?"ja":"";
           else if(key==="_roleAdmin") r[label]=p.roles?.admin?"ja":"";
           else if(key==="_roleErwachsene") r[label]=p.roles?.erwachsene?"ja":"";
+          else if(key==="_roleMF") r[label]=p.roles?.mannschaftsfuehrer?"ja":"";
           else r[label]=p[key]??"";
         });
         return r;
@@ -1662,7 +1663,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
         const roles={};
         let hasRoleCol=false;
-        [["Rolle Spieler","player"],["Rolle Trainer","trainer"],["Rolle Admin","admin"],["Rolle Erwachsene","erwachsene"]].forEach(([label,rk])=>{
+        [["Rolle Spieler","player"],["Rolle Trainer","trainer"],["Rolle Admin","admin"],["Rolle Erwachsene","erwachsene"],["Rolle Mannschaftsführer","mannschaftsfuehrer"]].forEach(([label,rk])=>{
           if(row[label]!==undefined){hasRoleCol=true; roles[rk]=String(row[label]).trim().toLowerCase()==="ja";}
         });
         const existing=players.find(pl=>
@@ -1740,6 +1741,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
+        mfClickTT:     editPlayer.mfClickTT||[],
+        mannschaftsfuehrerTeam: editPlayer.mannschaftsfuehrerTeam||"",
         ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler", anzugSize:editPlayer.anzugSize||""} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
@@ -2189,7 +2192,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
         <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"}].map(role=>{
+          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},{key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}].map(role=>{
             const isOn=(newData.roles||{})[role.key]===true;
             return <button key={role.key} onClick={()=>setNewData(p=>({...p,roles:{...(p.roles||{}),[role.key]:!isOn}}))} style={{
               padding:"6px 11px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -2256,7 +2259,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
-                    {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"}].map(role=>{
+                    {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
+                    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}].map(role=>{
                     const isOn=(editPlayer.roles||{})[role.key]===true;
                     return <button key={role.key} onClick={()=>setEditPlayer(prev=>({...prev,roles:{...(prev.roles||{}),[role.key]:!isOn}}))} style={{
                       padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -2346,6 +2350,33 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))}>
                   <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
                 </select>
+              </div>
+              {/* MF Click-tt (Mehrfachauswahl) + Mannschaftsführer (Einzelauswahl) — nebeneinander */}
+              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:150}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>MF Click-tt (Mehrfachauswahl)</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:160,overflowY:"auto",
+                    background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,padding:"7px 9px"}}>
+                    {AKTUELLE_MANNSCHAFTEN.map(m=>{
+                      const sel=(editPlayer.mfClickTT||[]).includes(m);
+                      return <label key={m} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"var(--text)",cursor:"pointer"}}>
+                        <input type="checkbox" checked={sel} onChange={()=>setEditPlayer(prev=>{
+                          const cur=prev.mfClickTT||[];
+                          return {...prev,mfClickTT:sel?cur.filter(x=>x!==m):[...cur,m]};
+                        })}/>
+                        {m}
+                      </label>;
+                    })}
+                  </div>
+                </div>
+                <div style={{flex:1,minWidth:150}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Mannschaftsführer (eine Mannschaft)</label>
+                  <select value={editPlayer.mannschaftsfuehrerTeam||""} onChange={e=>setEditPlayer(prev=>({...prev,mannschaftsfuehrerTeam:e.target.value}))}
+                    style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
+                    <option value="">— keine —</option>
+                    {AKTUELLE_MANNSCHAFTEN.map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
               </div>
               {/* P4: Stammspieler/Ersatzspieler für alle mit Erwachsene-Funktion */}
               {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true)&&<div style={{marginBottom:14}}>
@@ -4975,84 +5006,46 @@ function dataURLtoBlob(dataUrl) {
 // ─── SPIELBETRIEB TAB ─────────────────────────────────────────────────────────
 const BASE = "https://www.mytischtennis.de/click-tt/HeTTV";
 const CLUB = "verein/33053/TTC_Niederzeuzheim";
-const S = "25--26"; // Saison
+const S = "25--26"; // Saison-Code für Links (aktuelle Spielsaison in click-tt)
 
-const TEAMS = [
-  {
-    id:"erw1",
-    name:"Erwachsene I",
-    liga:"West Bezirksliga Gr. West",
-    gruppe:"496021",
-    mannschaft:"2966286",
-    mName:"Erwachsene",
-    rang:10, punkte:"3:33",
-    color:"#3b82f6",
-  },
-  {
-    id:"erw2",
-    name:"Erwachsene II",
-    liga:"Kreisliga Gr. 3",
-    gruppe:"496580",
-    mannschaft:"2967555",
-    mName:"Erwachsene_II_(4er)",
-    rang:7, punkte:"15:21",
-    color:"#10b981",
-  },
-  {
-    id:"erw3",
-    name:"Erwachsene III",
-    liga:"1. Kreisklasse Gr. 3",
-    gruppe:"496295",
-    mannschaft:"2968581",
-    mName:"Erwachsene_III_(4er)",
-    rang:10, punkte:"18:26",
-    color:"#f59e0b",
-  },
-  {
-    id:"erw4",
-    name:"Erwachsene IV",
-    liga:"3. Kreisklasse Gr. 1",
-    gruppe:"496366",
-    mannschaft:"2969119",
-    mName:"Erwachsene_IV_(4er)",
-    rang:2, punkte:"26:6",
-    color:"#ef4444",
-  },
-  {
-    id:"erw5",
-    name:"Erwachsene V",
-    liga:"3. Kreisklasse Gr. 2",
-    gruppe:"496450",
-    mannschaft:"2966072",
-    mName:"Erwachsene_V_(4er)",
-    rang:9, punkte:"6:30",
-    color:"#8b5cf6",
-  },
-  {
-    id:"maed13",
-    name:"Mädchen 13",
-    liga:"Jugend 13 Kreisliga",
-    gruppe:"496458",
-    mannschaft:"2993877",
-    mName:"M%C3%A4dchen_13",
-    rang:7, punkte:"9:23",
-    color:"#ec4899",
-  },
-  {
-    id:"maed15",
-    name:"Mädchen 15",
-    liga:"Jugend 15 Kreisklasse",
-    gruppe:"496479",
-    mannschaft:"2993878",
-    mName:"M%C3%A4dchen_15",
-    rang:2, punkte:"20:8",
-    color:"#14b8a6",
-  },
+// Mannschaften pro Saison. 2026/27 ist die kommende Saison — Platzierung/Punkte
+// sind noch nicht final veröffentlicht und werden daher ausgeblendet (showStandings:false).
+const TEAMS_2025_26 = [
+  {id:"erw1",name:"Erwachsene I",liga:"West Bezirksliga Gr. West",gruppe:"496021",mannschaft:"2966286",mName:"Erwachsene",rang:10,punkte:"3:33",color:"#3b82f6"},
+  {id:"erw2",name:"Erwachsene II",liga:"Kreisliga Gr. 3",gruppe:"496580",mannschaft:"2967555",mName:"Erwachsene_II_(4er)",rang:7,punkte:"15:21",color:"#10b981"},
+  {id:"erw3",name:"Erwachsene III",liga:"1. Kreisklasse Gr. 3",gruppe:"496295",mannschaft:"2968581",mName:"Erwachsene_III_(4er)",rang:10,punkte:"18:26",color:"#f59e0b"},
+  {id:"erw4",name:"Erwachsene IV",liga:"3. Kreisklasse Gr. 1",gruppe:"496366",mannschaft:"2969119",mName:"Erwachsene_IV_(4er)",rang:2,punkte:"26:6",color:"#ef4444"},
+  {id:"erw5",name:"Erwachsene V",liga:"3. Kreisklasse Gr. 2",gruppe:"496450",mannschaft:"2966072",mName:"Erwachsene_V_(4er)",rang:9,punkte:"6:30",color:"#8b5cf6"},
+  {id:"maed13",name:"Mädchen 13",liga:"Jugend 13 Kreisliga",gruppe:"496458",mannschaft:"2993877",mName:"M%C3%A4dchen_13",rang:7,punkte:"9:23",color:"#ec4899"},
+  {id:"maed15",name:"Mädchen 15",liga:"Jugend 15 Kreisklasse",gruppe:"496479",mannschaft:"2993878",mName:"M%C3%A4dchen_15",rang:2,punkte:"20:8",color:"#14b8a6"},
 ];
 
-function teamLinks(t) {
-  const g = `${BASE}/${S}/ligen`;
-  const liga = t.liga.replace(/ /g,"_").replace(/\./g,"");
+// 2026/27: gleiche Mannschaftsstruktur, aber ohne Platzierung/Punkte (noch nicht final)
+const TEAMS_2026_27 = [
+  {id:"erw1",name:"Erwachsene I",liga:"",color:"#3b82f6"},
+  {id:"erw2",name:"Erwachsene II",liga:"",color:"#10b981"},
+  {id:"erw3",name:"Erwachsene III",liga:"",color:"#f59e0b"},
+  {id:"erw4",name:"Erwachsene IV",liga:"",color:"#ef4444"},
+  {id:"erw5",name:"Erwachsene V",liga:"",color:"#8b5cf6"},
+  {id:"maed13",name:"Mädchen 13",liga:"",color:"#ec4899"},
+  {id:"maed15",name:"Mädchen 15",liga:"",color:"#14b8a6"},
+];
+
+const SEASONS = [
+  {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, current:true},
+  {key:"2025/26", code:"25--26", teams:TEAMS_2025_26, showStandings:true,  current:false},
+];
+
+// Mannschaftsnamen der aktuellen Saison (für Verwaltungs-Dropdowns)
+const AKTUELLE_MANNSCHAFTEN = (SEASONS.find(s=>s.current)||SEASONS[0]).teams.map(t=>t.name);
+
+// Rückwärtskompatibel: TEAMS zeigt auf die aktuelle Saison
+const TEAMS = TEAMS_2025_26;
+
+function teamLinks(t, seasonCode) {
+  const sc = seasonCode || S;
+  const g = `${BASE}/${sc}/ligen`;
+  const liga = (t.liga||"").replace(/ /g,"_").replace(/\./g,"");
   const mBase = `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}`;
   const gBase = `${g}/${liga}/gruppe/${t.gruppe}`;
   return {
@@ -5068,6 +5061,10 @@ function SpielbetrieblTab({isSuperAdmin}) {
   const [teamPhotos,setTeamPhotos] = useState({});
   const [teamFiles,setTeamFiles] = useState({});
   const [uploadingFor,setUploadingFor] = useState(null);
+  // Saison-Auswahl: standardmäßig die aktuelle Saison
+  const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
+  const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
+  const seasonTeams = season.teams;
 
   useEffect(()=>{
     const u1 = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
@@ -5082,7 +5079,6 @@ function SpielbetrieblTab({isSuperAdmin}) {
   async function handlePhotoUpload(teamId, file) {
     if (!file) return;
     setUploadingFor(teamId);
-    // Store as base64 in Firestore (small images only)
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target.result;
@@ -5105,15 +5101,28 @@ function SpielbetrieblTab({isSuperAdmin}) {
   );
 
   return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📋 Spielbetrieb</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>📋 Spielbetrieb</div>
+
+    {/* Saison-Auswahl */}
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      <span style={{fontSize:12,color:"var(--text3)"}}>Saison:</span>
+      <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
+        style={{padding:"6px 10px",borderRadius:8,fontSize:13,fontWeight:700,
+          background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+        {SEASONS.map(s=><option key={s.key} value={s.key}>{s.key}{s.current?" (aktuell)":""}</option>)}
+      </select>
+    </div>
+
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
-      TTC Niederzeuzheim · Saison 2025/26 · Hessischer Tischtennis-Verband
+      TTC Niederzeuzheim · Saison {season.key} · Hessischer Tischtennis-Verband
+      {!season.showStandings&&<span style={{color:"#f59e0b"}}> · Platzierungen noch nicht verfügbar</span>}
     </div>
 
     <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12}}>
-      {TEAMS.map(t=>{
-        const links = teamLinks(t);
+      {seasonTeams.map(t=>{
+        const links = teamLinks(t, season.code);
         const photo = teamPhotos[t.id];
+        const hasStandings = season.showStandings && t.rang!=null;
         return <div key={t.id} style={{
           background:"var(--bg2)",borderRadius:14,overflow:"hidden",
           border:`1px solid var(--border)`,
@@ -5147,22 +5156,22 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <div style={{flex:1,padding:"10px 12px"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
                 <div style={{fontSize:14,fontWeight:800,color:t.color}}>{t.name}</div>
-                <div style={{
+                {hasStandings&&<div style={{
                   fontSize:11,fontWeight:700,
                   color:t.rang<=3?"#10b981":t.rang<=6?"#f59e0b":"var(--text3)",
                   background:t.rang<=3?"#10b98122":t.rang<=6?"#f59e0b22":"var(--bg3)",
                   padding:"2px 7px",borderRadius:20,
-                }}>Platz {t.rang}</div>
+                }}>Platz {t.rang}</div>}
               </div>
-              <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{t.liga}</div>
-              <div style={{fontSize:11,color:"var(--text2)"}}>
-                Punkte: <b style={{color:"var(--text)"}}>{t.punkte}</b>
-              </div>
+              {t.liga&&<div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{t.liga}</div>}
+              {hasStandings
+                ? <div style={{fontSize:11,color:"var(--text2)"}}>Punkte: <b style={{color:"var(--text)"}}>{t.punkte}</b></div>
+                : <div style={{fontSize:11,color:"var(--text4)",fontStyle:"italic"}}>Saison läuft noch nicht</div>}
             </div>
           </div>
 
-          {/* Links */}
-          <div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {/* Links — nur bei Saison mit veröffentlichten Ligadaten */}
+          {hasStandings&&<div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
             <LinkBtn href={links.tabelle}    label="Tabelle"    icon="📊"/>
             <LinkBtn href={links.spielplan}  label="Spielplan"  icon="📅"/>
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
@@ -5196,7 +5205,7 @@ function SpielbetrieblTab({isSuperAdmin}) {
               return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
                 style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🎫 Spielcodes</a>;
             })()}
-          </div>
+          </div>}
         </div>;
       })}
     </div>
@@ -6405,6 +6414,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     trainer:    {icon:"🛡️", label:"Trainer",    color:"#3b82f6"},
     admin:      {icon:"⚙️", label:"Admin",      color:"#f59e0b"},
     erwachsene: {icon:"👪", label:"Erwachsene", color:"#ec4899"},
+    mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
@@ -6423,12 +6433,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const spielerPlayers = allActive.filter(p=>(p.group||"Anfänger")!=="Erwachsene");
   const erwachsenePlayers = allActive.filter(p=>(p.group||"Anfänger")==="Erwachsene");
+  const mfPlayers = allActive.filter(p=>p.roles?.mannschaftsfuehrer===true);
 
   // Erwachsene-only: only see own data, no chip selection
   const isErwachseneOnly = availableViews.length===1 && availableViews[0]==="erwachsene";
 
   const chipPlayers = activeView==="erwachsene"
     ? (isErwachseneOnly ? [] : erwachsenePlayers)
+    : activeView==="mannschaftsfuehrer"
+    ? mfPlayers
     : groupFilter==="all" ? spielerPlayers
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
@@ -6436,9 +6449,11 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   const selectedPlayer = isErwachseneOnly
     ? myPlayer
     : players.find(p=>p.id===viewAsPlayer)
-      || (activeView==="erwachsene" ? erwachsenePlayers[0] : (myPlayer||spielerPlayers[0]));
+      || (activeView==="erwachsene" ? erwachsenePlayers[0]
+        : activeView==="mannschaftsfuehrer" ? (mfPlayers[0]||myPlayer)
+        : (myPlayer||spielerPlayers[0]));
 
-  const showChips = (activeView==="player" || activeView==="erwachsene" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
+  const showChips = (activeView==="player" || activeView==="erwachsene" || activeView==="mannschaftsfuehrer" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:1024,margin:"0 auto"}}>
     {/* Header-Container — misst seine eigene Höhe */}
@@ -6487,10 +6502,11 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
               }}>{g}</button>;
             })}
           {activeView==="erwachsene"&&<span style={{fontSize:11,color:"var(--text3)",padding:"3px 0",flexShrink:0}}>👪 Erwachsene</span>}
+          {activeView==="mannschaftsfuehrer"&&<span style={{fontSize:11,color:"var(--text3)",padding:"3px 0",flexShrink:0}}>📋 Mannschaftsführer</span>}
         </div>
         {/* Menü 3: Personen-Chips — einzeilig, scrollbar */}
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,flexWrap:"nowrap"}}>
-          {(activeView==="player"||activeView==="erwachsene")&&<>
+          {(activeView==="player"||activeView==="erwachsene"||activeView==="mannschaftsfuehrer")&&<>
             {chipPlayers.length===0&&<span style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen</span>}
             {chipPlayers.map(p=>{
               const isActive=p.id===selectedPlayer?.id;
@@ -6574,6 +6590,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
         <div style={{fontSize:32,marginBottom:8}}>👪</div>
         <div>Keine Erwachsene vorhanden oder Person auswählen</div>
+      </div>}
+    {/* Mannschaftsführer-View — gleiche Ansicht wie Erwachsene */}
+    {activeView==="mannschaftsfuehrer"&&selectedPlayer&&
+      <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer} isMF
+        isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>}
+    {activeView==="mannschaftsfuehrer"&&!selectedPlayer&&
+      <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
+        <div style={{fontSize:32,marginBottom:8}}>📋</div>
+        <div>Keine Mannschaftsführer vorhanden oder Person auswählen</div>
       </div>}
     {activeView==="trainer"&&<AdminPanel key="trainer"
       user={user} players={players} attendance={attendance} rackets={rackets}
@@ -6918,17 +6943,21 @@ export default function App() {
   const hasTrainerRole = isAdmin || playerRoles.trainer === true;
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
   const hasErwachseneRole = playerRoles.erwachsene === true;
-  // hasPlayerRole: explicit player-role, OR admin, OR has profile but NOT purely erwachsene
+  const hasMFRole = playerRoles.mannschaftsfuehrer === true;
+  // hasPlayerRole: explicit player-role, OR admin, OR has profile but NOT purely erwachsene/MF
   const hasPlayerRole  = playerRoles.player === true || (isAdmin && !hasErwachseneRole) ||
-    (!!myPlayer && !hasErwachseneRole && !playerRoles.trainer && !playerRoles.admin);
+    (!!myPlayer && !hasErwachseneRole && !hasMFRole && !playerRoles.trainer && !playerRoles.admin);
 
   // Erwachsene-only: nur eigene Daten
-  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player;
+  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player && !hasMFRole;
+  // MF-only: sieht dieselbe Ansicht wie Erwachsene (sukzessive mehr Reiter/Rechte)
+  const isMFOnly = hasMFRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player && !hasErwachseneRole;
   const availableViews = [];
   if (hasAdminRole)                 availableViews.push("admin");
   if (hasTrainerRole)               availableViews.push("trainer");
   if (hasPlayerRole && myPlayer)    availableViews.push("player");
   if (hasErwachseneRole)            availableViews.push("erwachsene");
+  if (hasMFRole)                    availableViews.push("mannschaftsfuehrer");
   if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
@@ -6966,6 +6995,11 @@ export default function App() {
     // Punkt 3: Erwachsene-only → ErwachseneView (nicht PlayerView)
     if (isErwachseneOnly) return (
       <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer}
+        globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
+    );
+    // Mannschaftsführer-only → gleiche Ansicht wie Erwachsene (vorerst)
+    if (isMFOnly) return (
+      <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer} isMF
         globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
     );
     return <PlayerView user={authUser} players={players} attendance={attendance} {...sharedProps}/>;
