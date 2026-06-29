@@ -5020,20 +5020,25 @@ const TEAMS_2025_26 = [
   {id:"maed15",name:"Mädchen 15",liga:"Jugend 15 Kreisklasse",gruppe:"496479",mannschaft:"2993878",mName:"M%C3%A4dchen_15",rang:2,punkte:"20:8",color:"#14b8a6"},
 ];
 
-// 2026/27: gleiche Mannschaftsstruktur, aber ohne Platzierung/Punkte (noch nicht final)
+// 2026/27: echte Mannschaften aus click-tt (mit IDs für Links), aber OHNE Platz/Punkte.
+// showLinks:true → Tabelle/Spielplan/Aufstellung-Links werden angezeigt.
+// rang/punkte fehlen bewusst → Platzierung & Punkte werden ausgeblendet.
 const TEAMS_2026_27 = [
-  {id:"erw1",name:"Erwachsene I",liga:"",color:"#3b82f6"},
-  {id:"erw2",name:"Erwachsene II",liga:"",color:"#10b981"},
-  {id:"erw3",name:"Erwachsene III",liga:"",color:"#f59e0b"},
-  {id:"erw4",name:"Erwachsene IV",liga:"",color:"#ef4444"},
-  {id:"erw5",name:"Erwachsene V",liga:"",color:"#8b5cf6"},
-  {id:"maed13",name:"Mädchen 13",liga:"",color:"#ec4899"},
-  {id:"maed15",name:"Mädchen 15",liga:"",color:"#14b8a6"},
+  {id:"erw1",name:"Erwachsene I",liga:"Bezirksklasse Gr. West 2",ligaPath:"Bezirksklasse_Gr_West_2",gruppe:"518962",mannschaft:"3086822",mName:"Erwachsene",color:"#3b82f6"},
+  {id:"erw2",name:"Erwachsene II",liga:"Kreisliga Gr. 3",ligaPath:"Kreisliga_Gr._3",gruppe:"519422",mannschaft:"3087568",mName:"Erwachsene_II_(4er)",color:"#10b981"},
+  {id:"erw3",name:"Erwachsene III",liga:"1. Kreisklasse Gr. 3",ligaPath:"1._Kreisklasse_Gr._3",gruppe:"518858",mannschaft:"3083721",mName:"Erwachsene_III_(4er)",color:"#f59e0b"},
+  {id:"erw4",name:"Erwachsene IV",liga:"1. Kreisklasse Gr. 1",ligaPath:"1._Kreisklasse_Gr._1",gruppe:"519131",mannschaft:"3142865",mName:"Erwachsene_IV_(4er)",color:"#ef4444"},
+  {id:"erw5",name:"Erwachsene V",liga:"3. Kreisklasse Gr. 1",ligaPath:"_3._Kreisklasse_Gr._1",gruppe:"519435",mannschaft:"3086509",mName:"Erwachsene_V_(4er)",color:"#8b5cf6"},
+  {id:"erw6",name:"Erwachsene VI",liga:"3. Kreisklasse Gr. 2",ligaPath:"_3._Kreisklasse_Gr._2",gruppe:"519203",mannschaft:"3087714",mName:"Erwachsene_VI_(4er)",color:"#06b6d4"},
+  {id:"jug11",name:"Jugend 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151351",mName:"Jugend_11",color:"#f97316"},
+  {id:"maed11",name:"Mädchen 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151353",mName:"M%C3%A4dchen_11",color:"#d946ef"},
+  {id:"maed13",name:"Mädchen 13",liga:"Jugend 13 Kreisliga",ligaPath:"Jugend_13_Kreisliga",gruppe:"519427",mannschaft:"3151352",mName:"M%C3%A4dchen_13",color:"#ec4899"},
+  {id:"maed15",name:"Mädchen 15",liga:"Jugend 15 Kreisliga",ligaPath:"Jugend_15_Kreisliga",gruppe:"518943",mannschaft:"3151350",mName:"M%C3%A4dchen_15",color:"#14b8a6"},
 ];
 
 const SEASONS = [
-  {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, current:true},
-  {key:"2025/26", code:"25--26", teams:TEAMS_2025_26, showStandings:true,  current:false},
+  {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, showLinks:true,  current:true},
+  {key:"2025/26", code:"25--26", teams:TEAMS_2025_26, showStandings:true,  showLinks:true,  current:false},
 ];
 
 // Mannschaftsnamen der aktuellen Saison (für Verwaltungs-Dropdowns)
@@ -5045,7 +5050,8 @@ const TEAMS = TEAMS_2025_26;
 function teamLinks(t, seasonCode) {
   const sc = seasonCode || S;
   const g = `${BASE}/${sc}/ligen`;
-  const liga = (t.liga||"").replace(/ /g,"_").replace(/\./g,"");
+  // ligaPath: exaktes URL-Segment (falls gesetzt), sonst aus liga generiert
+  const liga = t.ligaPath || (t.liga||"").replace(/ /g,"_").replace(/\./g,"");
   const mBase = `${g}/${liga}/gruppe/${t.gruppe}/mannschaft/${t.mannschaft}/${t.mName}`;
   const gBase = `${g}/${liga}/gruppe/${t.gruppe}`;
   return {
@@ -5123,6 +5129,7 @@ function SpielbetrieblTab({isSuperAdmin}) {
         const links = teamLinks(t, season.code);
         const photo = teamPhotos[t.id];
         const hasStandings = season.showStandings && t.rang!=null;
+        const showLinks = season.showLinks && t.gruppe;
         return <div key={t.id} style={{
           background:"var(--bg2)",borderRadius:14,overflow:"hidden",
           border:`1px solid var(--border)`,
@@ -5166,12 +5173,12 @@ function SpielbetrieblTab({isSuperAdmin}) {
               {t.liga&&<div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{t.liga}</div>}
               {hasStandings
                 ? <div style={{fontSize:11,color:"var(--text2)"}}>Punkte: <b style={{color:"var(--text)"}}>{t.punkte}</b></div>
-                : <div style={{fontSize:11,color:"var(--text4)",fontStyle:"italic"}}>Saison läuft noch nicht</div>}
+                : <div style={{fontSize:11,color:"var(--text4)",fontStyle:"italic"}}>Saison läuft noch — Tabelle siehe Links</div>}
             </div>
           </div>
 
-          {/* Links — nur bei Saison mit veröffentlichten Ligadaten */}
-          {hasStandings&&<div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
+          {/* Links — bei Saisons mit veröffentlichten Liga-/Gruppendaten */}
+          {showLinks&&<div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
             <LinkBtn href={links.tabelle}    label="Tabelle"    icon="📊"/>
             <LinkBtn href={links.spielplan}  label="Spielplan"  icon="📅"/>
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
