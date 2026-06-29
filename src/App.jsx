@@ -5370,11 +5370,15 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       // Aufklappen nur in der Voll-Sicht (Admin/Trainer/MF); Spieler sehen ihre Zeile immer.
       const isOpen = viewerCanEditAll ? !!expandedGames[sk] : true;
       const showRows = isOpen;
+      // Self-View (Spieler/Erwachsene): eigener Eintrag für Inline-Buttons im Kopf
+      const selfPlayer = !viewerCanEditAll ? rows[0] : null;
+      const selfEntry = selfPlayer ? (entries[selfPlayer.id]||{}) : null;
+      const selfEditable = selfPlayer ? canEdit(selfPlayer.id) : false;
       return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
         <div onClick={viewerCanEditAll?()=>setExpandedGames(g=>({...g,[sk]:!g[sk]})):undefined}
-          style={{padding:"10px 12px",borderBottom:(showRows&&rows.length)?"1px solid var(--border)":"none",
+          style={{padding:"10px 12px",borderBottom:(viewerCanEditAll&&showRows&&rows.length)?"1px solid var(--border)":"none",
             background:"var(--bg3)",cursor:viewerCanEditAll?"pointer":"default"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               {viewerCanEditAll&&<span style={{fontSize:12,color:"var(--text3)",transform:isOpen?"rotate(90deg)":"none",transition:"transform .15s",display:"inline-block"}}>▶</span>}
               <div>
@@ -5385,17 +5389,34 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                 <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
               </div>
             </div>
+            {/* Voll-Sicht: Zählung. Self-View: die 4 Buttons direkt im Kopf. */}
             {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
               <span style={{color:"#10b981"}}>✅{counts.ja}</span>
               <span style={{color:"#ef4444"}}>❌{counts.nein}</span>
               <span style={{color:"#f59e0b"}}>❓{counts.vielleicht}</span>
               <span style={{color:"#8b5cf6"}}>🤕{counts.verletzt}</span>
             </div>}
+            {!viewerCanEditAll&&selfPlayer&&<div style={{display:"flex",gap:4,flexShrink:0}}>
+              {EINSATZ_OPTS.map(opt=>{
+                const active=selfEntry.status===opt.key;
+                return <button key={opt.key} disabled={!selfEditable}
+                  onClick={()=>selfEditable&&setStatus(spiel,selfPlayer.id,opt.key)}
+                  title={opt.label}
+                  style={{padding:"4px 7px",borderRadius:7,fontSize:13,
+                    border:`1.5px solid ${active?opt.color:"var(--border2)"}`,
+                    background:active?opt.color+"22":"transparent",
+                    cursor:selfEditable?"pointer":"default",opacity:selfEditable?1:0.5}}>
+                  {opt.icon}
+                </button>;
+              })}
+            </div>}
           </div>
         </div>
-        {showRows&&<div style={{padding:rows.length?"6px 10px 10px":"0"}}>
-          {viewerCanEditAll&&spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
-          {!viewerCanEditAll&&rows.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 2px 10px"}}>Für dieses Spiel bist du nicht spielberechtigt.</div>}
+        {/* Self-View ohne Spielberechtigung: Hinweis */}
+        {!viewerCanEditAll&&!selfPlayer&&<div style={{padding:"8px 12px 10px",fontSize:12,color:"var(--text4)"}}>Für dieses Spiel bist du nicht spielberechtigt.</div>}
+        {/* Voll-Sicht: Spielerliste (aufklappbar) */}
+        {viewerCanEditAll&&showRows&&<div style={{padding:rows.length?"6px 10px 10px":"0"}}>
+          {spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
           {rows.map(p=>{
             const entry=entries[p.id]||{};
             const editable=canEdit(p.id);
@@ -5964,6 +5985,24 @@ function terminTag(isoDatum){
   return isNaN(d.getTime())?"":TERMIN_TAGE[d.getDay()];
 }
 
+// Eine Saison läuft vom 16.05. bis 15.05. des Folgejahres.
+// Liefert das Startjahr der Saison, zu der ein ISO-Datum gehört.
+// Beispiel: 2026-05-15 → Saison 2025/26 (Startjahr 2025); 2026-05-16 → 2026/27 (Startjahr 2026).
+function terminSaisonStartjahr(isoDatum){
+  if(!isoDatum) return null;
+  const d=new Date(isoDatum+"T12:00:00");
+  if(isNaN(d.getTime())) return null;
+  const y=d.getFullYear(), m=d.getMonth()+1, day=d.getDate();
+  // bis einschließlich 15. Mai gehört der Termin noch zur Saison, die im Vorjahr begann
+  const vorSaisongrenze = (m<5) || (m===5 && day<=15);
+  return vorSaisongrenze ? y-1 : y;
+}
+// Startjahr einer Saison aus dem Spielplan-Key (config-Doc-ID), z.B. "spielplan_2025_2026" → 2025
+function spielplanKeyStartjahr(key){
+  const m=String(key||"").match(/(\d{4})_(\d{4})/);
+  return m?parseInt(m[1]):null;
+}
+
 // TerminVerwaltung — Admin erfasst Vereinstermine (im Verwaltung-Bereich)
 function TerminVerwaltung({showToast}) {
   const [termine,setTermine]=useState([]);
@@ -6266,21 +6305,28 @@ function VereinsSpielplan({nurNachwuchs=false}) {
 
   // Punkt 4: Vereinstermine als eigene Zeilen einfügen (nur ohne aktive Mannschafts-/Ort-/Gegner-Filter,
   // damit sie nicht weggefiltert wirken; bei Nachwuchs-Ansicht ausgeblendet).
+  // Punkt 2: Eine Saison läuft 16.05.–15.05.; nur Termine der gewählten Saison anzeigen.
   const filtersAktiv = (filters.mannschaften||[]).length>0 || filters.ort || filters.gegner;
-  const terminRows = (nurNachwuchs||filtersAktiv) ? [] : vereinstermine.map(t=>({
-    _istTermin:true,
-    datum:t.datumStart||"",
-    tag:terminTag(t.datumStart),
-    uhrzeit:t.uhrzeitStart||"",
-    mannschaft:"Termin",
-    art:"",
-    ort:t.ort||"",
-    gegner:t.veranstaltung||"",
-    ergebnis:"",
-    aenderung:"",
-    _datumEnde:t.datumEnde,
-    _uhrzeitEnde:t.uhrzeitEnde,
-  }));
+  const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
+  const terminRows = (nurNachwuchs||filtersAktiv) ? [] : vereinstermine
+    .filter(t=>{
+      if(selSeasonStartjahr==null) return true; // keine Saison erkennbar → alle zeigen
+      return terminSaisonStartjahr(t.datumStart)===selSeasonStartjahr;
+    })
+    .map(t=>({
+      _istTermin:true,
+      datum:t.datumStart||"",
+      tag:terminTag(t.datumStart),
+      uhrzeit:t.uhrzeitStart||"",
+      mannschaft:"Termin",
+      art:"",
+      ort:t.ort||"",
+      gegner:t.veranstaltung||"",
+      ergebnis:"",
+      aenderung:"",
+      _datumEnde:t.datumEnde,
+      _uhrzeitEnde:t.uhrzeitEnde,
+    }));
   // zusammenführen und nach Datum sortieren wenn nach Datum sortiert wird
   const sorted = (()=>{
     if(terminRows.length===0) return sorted0;
