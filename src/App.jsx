@@ -525,6 +525,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
+    {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
@@ -901,6 +902,11 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="einsaetze"&&<EinsaetzeView players={players}
+      myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
+      isAdmin={isSuperAdmin}
+      roles={isSuperAdmin?{admin:true}:{trainer:true}}
+      viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig}/>}
 
@@ -3323,6 +3329,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -3621,6 +3628,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="einsaetze"&&<EinsaetzeView players={players}
+      myPlayer={forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
+      isAdmin={false}
+      roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
+      viewerCanEditAll={false}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -5063,6 +5075,266 @@ function teamLinks(t, seasonCode) {
   };
 }
 
+// ─── EINSÄTZE (Doodle-Verfügbarkeit pro Spiel) ───────────────────────────────
+// Mapping Spielplan-Name (Herren N / Mädchen N) → Aufstellungs-Name (Erwachsene…)
+const SPIELPLAN_TO_AUFSTELLUNG = {
+  "Herren 1":"Erwachsene", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
+  "Herren 4":"Erwachsene IV", "Herren 5":"Erwachsene V", "Herren 6":"Erwachsene VI",
+  "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
+  "Jugend 11":"Jugend 11",
+};
+// Erwachsenen-Mannschaftsnummer aus Aufstellungs-Name (Erwachsene=1, Erwachsene II=2, …)
+const ERW_NUM = {"Erwachsene":1,"Erwachsene II":2,"Erwachsene III":3,"Erwachsene IV":4,"Erwachsene V":5,"Erwachsene VI":6};
+function istErwachsenenMannschaft(aufName){ return aufName in ERW_NUM; }
+function istNachwuchsMannschaft(aufName){ return /^(Mädchen|Jugend)/.test(aufName); }
+
+// Normalisiere Namen für Vergleich (Aufstellung: "Nachname, Vorname" ↔ player: firstName/lastName)
+function normName(s){ return (s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,""); }
+function playerMatchesAufName(player, aufName){
+  const a=normName(aufName);
+  const full1=normName(`${player.lastName},${player.firstName}`);
+  const full2=normName(`${player.firstName}${player.lastName}`);
+  const full3=normName(`${player.lastName}${player.firstName}`);
+  return a===full1||a===full2||a===full3;
+}
+
+// Welche Aufstellungs-Mannschaften sind dem Spieler zugeordnet (aus Aufstellung)?
+function teamsOfPlayer(player, aufstellungSpieler){
+  const teams=new Set();
+  for(const row of aufstellungSpieler){
+    if(playerMatchesAufName(player,row.name)) teams.add(row.mannschaft);
+  }
+  return [...teams];
+}
+
+// Erlaubte Mannschaften je nach Rolle (gibt Aufstellungs-Namen zurück)
+function erlaubteMannschaften({player, roles, isAdmin, aufstellungSpieler, allTeams}){
+  if(isAdmin || roles?.admin) return allTeams; // Admin: alle
+  const result=new Set();
+  // Trainer: alle Nachwuchsmannschaften
+  if(roles?.trainer){ allTeams.filter(istNachwuchsMannschaft).forEach(t=>result.add(t)); }
+  // Mannschaftsführer: seine Mannschaft(en) — aus mannschaftsfuehrerTeam + mfClickTT
+  if(roles?.mannschaftsfuehrer && player){
+    const mfTeams=[player.mannschaftsfuehrerTeam, ...(player.mfClickTT||[])].filter(Boolean);
+    for(const mt of mfTeams){
+      const mapped = mt==="Erwachsene I"?"Erwachsene"
+        : mt.startsWith("Erwachsene ")? mt
+        : mt;
+      if(allTeams.includes(mapped)) result.add(mapped);
+      else if(allTeams.includes(mt)) result.add(mt);
+    }
+  }
+  // Spieler selbst: eigene gemeldete Mannschaften + (bei Erwachsenen) alle höheren
+  if(player){
+    const own=teamsOfPlayer(player, aufstellungSpieler);
+    for(const t of own){
+      if(istErwachsenenMannschaft(t)){
+        const n=ERW_NUM[t];
+        for(const [name,num] of Object.entries(ERW_NUM)){
+          if(num<=n && allTeams.includes(name)) result.add(name);
+        }
+      } else {
+        result.add(t);
+      }
+    }
+  }
+  return allTeams.filter(t=>result.has(t));
+}
+
+const EINSATZ_OPTS = [
+  {key:"ja",       label:"Ja",       icon:"✅", color:"#10b981"},
+  {key:"nein",     label:"Nein",     icon:"❌", color:"#ef4444"},
+  {key:"vielleicht",label:"Vielleicht",icon:"❓", color:"#f59e0b"},
+  {key:"verletzt", label:"Verletzt", icon:"🤕", color:"#8b5cf6"},
+];
+
+function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) {
+  const [spielplaene,setSpielplaene] = useState({});
+  const [aufstellungen,setAufstellungen] = useState({});
+  const [einsaetze,setEinsaetze] = useState({});
+  const [selSeasonId,setSelSeasonId] = useState("spielplan_2026_2027");
+  const [selTeam,setSelTeam] = useState("");
+
+  const SEASON_OPTS = [
+    {id:"spielplan_2026_2027", label:"2026/27", auf:"aufstellung_2026_2027_V"},
+    {id:"spielplan_2025_2026", label:"2025/26", auf:"aufstellung_2025_2026_R"},
+  ];
+
+  useEffect(()=>{
+    const unsubs=[];
+    for(const so of SEASON_OPTS){
+      unsubs.push(onSnapshot(doc(db,"config",so.id),snap=>{
+        const data = snap.exists()&&(snap.data().spiele||[]).length>0
+          ? snap.data().spiele : (SPIELPLAN_DATA[so.id]||[]);
+        setSpielplaene(p=>({...p,[so.id]:data}));
+      },()=>{ setSpielplaene(p=>({...p,[so.id]:SPIELPLAN_DATA[so.id]||[]})); }));
+      unsubs.push(onSnapshot(doc(db,"config",so.auf),snap=>{
+        const data = snap.exists()&&(snap.data().spieler||[]).length>0
+          ? snap.data().spieler : (AUFSTELLUNG_DATA[so.auf]||[]);
+        setAufstellungen(p=>({...p,[so.auf]:data}));
+      },()=>{ setAufstellungen(p=>({...p,[so.auf]:AUFSTELLUNG_DATA[so.auf]||[]})); }));
+    }
+    return ()=>unsubs.forEach(u=>u());
+  },[]);
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"einsaetze",selSeasonId),snap=>{
+      setEinsaetze(snap.exists()?(snap.data().data||{}):{});
+    },()=>setEinsaetze({}));
+    return unsub;
+  },[selSeasonId]);
+
+  const curSeasonOpt = SEASON_OPTS.find(s=>s.id===selSeasonId)||SEASON_OPTS[0];
+  const spiele = spielplaene[selSeasonId]||[];
+  const aufSpieler = aufstellungen[curSeasonOpt.auf]||[];
+  const allTeams = [...new Set(aufSpieler.map(r=>r.mannschaft))];
+
+  const allowed = erlaubteMannschaften({player:myPlayer, roles, isAdmin, aufstellungSpieler:aufSpieler, allTeams});
+
+  useEffect(()=>{
+    if(allowed.length>0 && !allowed.includes(selTeam)) setSelTeam(allowed[0]);
+    if(allowed.length===0) setSelTeam("");
+  },[selSeasonId, allowed.join("|")]);
+
+  const teamSpiele = spiele.filter(s=>{
+    const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft;
+    return aufName===selTeam;
+  }).sort((a,b)=>a.datum.localeCompare(b.datum));
+
+  const spielberechtigt = (()=>{
+    if(!selTeam) return [];
+    const result=[];
+    for(const p of players){
+      if(p.status==="passiv") continue;
+      const own = teamsOfPlayer(p, aufSpieler);
+      let ok=false;
+      if(istErwachsenenMannschaft(selTeam)){
+        const target=ERW_NUM[selTeam];
+        for(const t of own){ if(istErwachsenenMannschaft(t) && ERW_NUM[t]>=target){ ok=true; break; } }
+      } else {
+        ok = own.includes(selTeam);
+      }
+      if(ok) result.push(p);
+    }
+    return result;
+  })();
+
+  function spielKey(s){ return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_"); }
+
+  function canEdit(targetPlayerId){
+    if(viewerCanEditAll) return true;
+    return myPlayer && targetPlayerId===myPlayer.id;
+  }
+
+  async function setStatus(spiel, targetPlayerId, statusKey){
+    const sk=spielKey(spiel);
+    const cur = einsaetze[sk]||{};
+    const prevEntry = cur[targetPlayerId]||{};
+    const newEntry = (prevEntry.status===statusKey)
+      ? {...prevEntry, status:""}
+      : {...prevEntry, status:statusKey};
+    const updated = {...einsaetze, [sk]:{...cur, [targetPlayerId]:newEntry}};
+    setEinsaetze(updated);
+    try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+  }
+  async function setNote(spiel, targetPlayerId, note){
+    const sk=spielKey(spiel);
+    const cur = einsaetze[sk]||{};
+    const prevEntry = cur[targetPlayerId]||{};
+    const updated = {...einsaetze, [sk]:{...cur, [targetPlayerId]:{...prevEntry,note}}};
+    setEinsaetze(updated);
+    try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+  }
+
+  const heuteStr=new Date().toLocaleDateString("sv");
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>🗓️ Einsätze</div>
+
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <select value={selSeasonId} onChange={e=>setSelSeasonId(e.target.value)}
+        style={{padding:"7px 10px",borderRadius:8,fontSize:13,fontWeight:700,background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+        {SEASON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}{s.id==="spielplan_2026_2027"?" (aktuell)":""}</option>)}
+      </select>
+      <select value={selTeam} onChange={e=>setSelTeam(e.target.value)}
+        style={{padding:"7px 10px",borderRadius:8,fontSize:13,fontWeight:700,background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)",flex:1,minWidth:140}}>
+        {allowed.length===0&&<option value="">Keine Mannschaft verfügbar</option>}
+        {allowed.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>
+    </div>
+
+    {allowed.length===0&&<div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>
+      Für deine Rolle sind aktuell keine Mannschaften hinterlegt.
+    </div>}
+
+    {selTeam&&teamSpiele.length===0&&<div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>
+      Keine Spiele für {selTeam} in dieser Saison gefunden.
+    </div>}
+
+    {selTeam&&teamSpiele.map(spiel=>{
+      const sk=spielKey(spiel);
+      const entries=einsaetze[sk]||{};
+      const past = spiel.datum < heuteStr;
+      const counts={ja:0,nein:0,vielleicht:0,verletzt:0};
+      spielberechtigt.forEach(p=>{ const st=entries[p.id]?.status; if(st&&counts[st]!=null) counts[st]++; });
+      return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
+        <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border)",background:"var(--bg3)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+                {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
+              </div>
+              <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
+            </div>
+            <div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
+              <span style={{color:"#10b981"}}>✅{counts.ja}</span>
+              <span style={{color:"#ef4444"}}>❌{counts.nein}</span>
+              <span style={{color:"#f59e0b"}}>❓{counts.vielleicht}</span>
+              <span style={{color:"#8b5cf6"}}>🤕{counts.verletzt}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{padding:"6px 10px 10px"}}>
+          {spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
+          {spielberechtigt.map(p=>{
+            const entry=entries[p.id]||{};
+            const editable=canEdit(p.id);
+            const isMe = myPlayer && p.id===myPlayer.id;
+            return <div key={p.id} style={{padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?"var(--text)":"var(--text2)",minWidth:120,flex:1}}>
+                  {p.avatar||"🏓"} {p.firstName} {p.lastName}{isMe?" (ich)":""}
+                </span>
+                <div style={{display:"flex",gap:4}}>
+                  {EINSATZ_OPTS.map(opt=>{
+                    const active=entry.status===opt.key;
+                    return <button key={opt.key} disabled={!editable}
+                      onClick={()=>editable&&setStatus(spiel,p.id,opt.key)}
+                      title={opt.label}
+                      style={{padding:"4px 7px",borderRadius:7,fontSize:13,
+                        border:`1.5px solid ${active?opt.color:"var(--border2)"}`,
+                        background:active?opt.color+"22":"transparent",
+                        cursor:editable?"pointer":"default",opacity:editable?1:0.5}}>
+                      {opt.icon}
+                    </button>;
+                  })}
+                </div>
+              </div>
+              {(editable||entry.note)&&<input
+                value={entry.note||""} disabled={!editable}
+                onChange={e=>setNote(spiel,p.id,e.target.value)}
+                placeholder="Notiz (optional)…"
+                style={{marginTop:5,width:"100%",padding:"5px 8px",fontSize:11,
+                  background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,
+                  color:"var(--text2)",outline:"none"}}/>}
+            </div>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 function SpielbetrieblTab({isSuperAdmin}) {
   const [teamPhotos,setTeamPhotos] = useState({});
   const [teamFiles,setTeamFiles] = useState({});
@@ -6287,7 +6559,7 @@ function EhrungenView({player}) {
 }
 
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
-function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false}) {
+function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const [toast,setToast]=useState(null);
@@ -6296,6 +6568,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
@@ -6346,6 +6619,11 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="einsaetze"&&<EinsaetzeView players={players}
+      myPlayer={forcePlayer||null}
+      isAdmin={false}
+      roles={isMF?{...((forcePlayer&&forcePlayer.roles)||{}),mannschaftsfuehrer:true}:((forcePlayer&&forcePlayer.roles)||{erwachsene:true})}
+      viewerCanEditAll={!!isMF}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true}/>}
   </div>;
 }
