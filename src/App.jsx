@@ -5225,12 +5225,20 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     return allowed[0]||null;
   })();
 
+  const lastKeyRef = useRef("");
   useEffect(()=>{
-    if(allowed.length===0){ setSelTeam(""); return; }
-    if(!allowed.includes(selTeam)){
-      setSelTeam(eigeneMannschaft && allowed.includes(eigeneMannschaft) ? eigeneMannschaft : allowed[0]);
+    if(allowed.length===0){ setSelTeam(""); lastKeyRef.current=""; return; }
+    const target = (eigeneMannschaft && allowed.includes(eigeneMannschaft)) ? eigeneMannschaft : allowed[0];
+    const key = `${selSeasonId}|${myPlayer?.id||""}`;
+    if(lastKeyRef.current !== key){
+      // Spieler oder Saison gewechselt → gemeldete Mannschaft neu wählen
+      lastKeyRef.current = key;
+      setSelTeam(target);
+    } else if(!allowed.includes(selTeam)){
+      // gleiche Person, aber aktuelle Auswahl nicht mehr gültig
+      setSelTeam(target);
     }
-  },[selSeasonId, allowed.join("|"), eigeneMannschaft]);
+  },[selSeasonId, allowed.join("|"), eigeneMannschaft, myPlayer?.id]);
 
   const teamSpiele = spiele.filter(s=>{
     const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft;
