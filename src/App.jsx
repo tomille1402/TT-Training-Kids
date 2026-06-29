@@ -5207,16 +5207,22 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 
   const allowed = erlaubteMannschaften({player:myPlayer, roles, isAdmin, aufstellungSpieler:aufSpieler, allTeams});
 
-  // Bevorzugte Vorauswahl: die Mannschaft, in der die Person selbst gemeldet ist.
-  // Bei Erwachsenen mit mehreren Meldungen die tiefste (eigene Stammmannschaft, höchste Nummer).
+  // Bevorzugte Vorauswahl: die Mannschaft, in der die Person gemeldet ist.
+  // Bei Erwachsenen ist die Person in genau EINER Mannschaft gemeldet und darf
+  // in höheren als Ersatz spielen → die gemeldete Mannschaft ist die mit der
+  // höchsten Nummer. Primär über Aufstellungs-Match; falls der Name nicht sauber
+  // matcht, zuverlässiger Fallback über die erlaubten Mannschaften (deren höchste
+  // Nummer = eigene Meldung, da "eigene + höhere" erlaubt sind).
   const eigeneMannschaft = (()=>{
     if(!myPlayer) return null;
     const own = teamsOfPlayer(myPlayer, aufSpieler).filter(t=>allowed.includes(t));
-    if(own.length===0) return null;
-    // Erwachsene: höchste Nummer (Stammmannschaft); Nachwuchs: erste gefundene
-    const erw = own.filter(istErwachsenenMannschaft);
-    if(erw.length>0) return erw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
-    return own[0];
+    const ownErw = own.filter(istErwachsenenMannschaft);
+    if(ownErw.length>0) return ownErw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0]; // tiefste gemeldete
+    if(own.length>0) return own[0]; // Nachwuchs
+    // Fallback: höchste Erwachsenen-Nummer unter den erlaubten = Stammmannschaft
+    const allowedErw = allowed.filter(istErwachsenenMannschaft);
+    if(allowedErw.length>0) return allowedErw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
+    return allowed[0]||null;
   })();
 
   useEffect(()=>{
