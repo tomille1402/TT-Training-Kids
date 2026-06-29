@@ -525,6 +525,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
+    {key:"termine",      label:"Termine",       icon:"📌"},
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
@@ -902,6 +903,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="termine"&&<TermineView/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={isSuperAdmin}
@@ -1515,6 +1517,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
+  const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -2741,6 +2744,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         ))}
       </div>;
     })}
+
+    {/* ─── Termin-Verwaltung (ganz unten, analog Personen-Verwaltung) ─── */}
+    <div style={{marginTop:18,background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
+      <div onClick={()=>setShowTermine(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>📌 Termin-Verwaltung · Vereins-Termine</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showTermine?"▲":"▼"}</span>
+      </div>
+      {showTermine&&<div style={{padding:"0 14px 16px"}}>
+        <TerminVerwaltung showToast={showToast}/>
+      </div>}
+    </div>
   </div>;
 }
 
@@ -3329,6 +3343,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"termine",label:"Termine",icon:"📌"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
   ];
 
@@ -3628,6 +3643,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="termine"&&<TermineView/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={false}
@@ -5939,8 +5955,221 @@ const SPIELPLAN_COLS = [
   {key:"aenderung", label:"Änd.",        w:"50px"},
 ];
 
+// ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
+const TERMIN_ORTE = ["Feuerwehr-Gerätehaus","Gasthaus Horn","Mehrzweckhalle"];
+const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
+function terminTag(isoDatum){
+  if(!isoDatum) return "";
+  const d=new Date(isoDatum+"T12:00:00");
+  return isNaN(d.getTime())?"":TERMIN_TAGE[d.getDay()];
+}
+
+// TerminVerwaltung — Admin erfasst Vereinstermine (im Verwaltung-Bereich)
+function TerminVerwaltung({showToast}) {
+  const [termine,setTermine]=useState([]);
+  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",veranstaltung:"",ort:""};
+  const [form,setForm]=useState(leer);
+  const [editId,setEditId]=useState(null);
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
+      setTermine(snap.exists()?(snap.data().termine||[]):[]);
+    },()=>{});
+    return unsub;
+  },[]);
+
+  // Datum (Start) belegt Datum (Ende) vor, solange Ende leer/gleich
+  function setDatumStart(v){
+    setForm(f=>({...f,datumStart:v, datumEnde:(!f.datumEnde||f.datumEnde===f.datumStart)?v:f.datumEnde}));
+  }
+
+  async function save(){
+    if(!form.datumStart||!form.veranstaltung){showToast("Datum und Veranstaltung sind Pflicht","❌");return;}
+    const entry={...form, id:editId||("t"+Date.now()+Math.random().toString(36).slice(2,6))};
+    let next;
+    if(editId) next=termine.map(t=>t.id===editId?entry:t);
+    else next=[...termine,entry];
+    next.sort((a,b)=>(a.datumStart+a.uhrzeitStart).localeCompare(b.datumStart+b.uhrzeitStart));
+    try{ await setDoc(doc(db,"config","vereinstermine"),{termine:next,lastUpdated:Date.now()});
+      showToast(editId?"Termin aktualisiert":"Termin angelegt","📌"); setForm(leer); setEditId(null);
+    }catch(e){showToast("Fehler: "+e.message,"❌");}
+  }
+  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
+  async function del(id){
+    if(!window.confirm("Diesen Termin löschen?")) return;
+    const next=termine.filter(t=>t.id!==id);
+    try{ await setDoc(doc(db,"config","vereinstermine"),{termine:next,lastUpdated:Date.now()}); showToast("Termin gelöscht","🗑️"); if(editId===id){setForm(leer);setEditId(null);} }
+    catch(e){showToast("Fehler: "+e.message,"❌");}
+  }
+
+  const lab={fontSize:11,color:"var(--text2)",display:"block",marginBottom:3};
+  const inp={width:"100%",padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"};
+
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+      Vereinstermine erfassen — erscheinen im Reiter „Termine" und im Gesamtspielplan.
+    </div>
+
+    {/* Eingabeformular: Start-/Ende-Felder nebeneinander */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
+      {/* Datum Start/Ende + Tag */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={lab}>Datum (Start)</label>
+          <input type="date" value={form.datumStart} onChange={e=>setDatumStart(e.target.value)} style={inp}/>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Tag: {terminTag(form.datumStart)||"—"}</div>
+        </div>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={lab}>Datum (Ende)</label>
+          <input type="date" value={form.datumEnde} min={form.datumStart} onChange={e=>setForm(f=>({...f,datumEnde:e.target.value}))} style={inp}/>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Tag: {terminTag(form.datumEnde)||"—"}</div>
+        </div>
+      </div>
+      {/* Uhrzeit Start/Ende */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={lab}>Uhrzeit (Start)</label>
+          <input type="time" value={form.uhrzeitStart} onChange={e=>setForm(f=>({...f,uhrzeitStart:e.target.value}))} style={inp}/>
+        </div>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={lab}>Uhrzeit (Ende)</label>
+          <input type="time" value={form.uhrzeitEnde} onChange={e=>setForm(f=>({...f,uhrzeitEnde:e.target.value}))} style={inp}/>
+        </div>
+      </div>
+      {/* Veranstaltung */}
+      <div style={{marginBottom:10}}>
+        <label style={lab}>Veranstaltung</label>
+        <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
+      </div>
+      {/* Ort: Dropdown + freie Eingabe via datalist */}
+      <div style={{marginBottom:12}}>
+        <label style={lab}>Ort</label>
+        <input list="termin-orte" value={form.ort} onChange={e=>setForm(f=>({...f,ort:e.target.value}))} placeholder="Ort wählen oder eingeben" style={inp}/>
+        <datalist id="termin-orte">
+          {TERMIN_ORTE.map(o=><option key={o} value={o}/>)}
+        </datalist>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={save} style={{flex:1,padding:"9px 12px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+          {editId?"✓ Aktualisieren":"+ Termin anlegen"}
+        </button>
+        {editId&&<button onClick={()=>{setForm(leer);setEditId(null);}} style={{padding:"9px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>Abbrechen</button>}
+      </div>
+    </div>
+
+    {/* Liste vorhandener Termine */}
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{termine.length} Termin(e)</div>
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      {termine.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"var(--bg)",borderRadius:8,border:"1px solid var(--border)"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{t.veranstaltung}</div>
+          <div style={{fontSize:10,color:"var(--text3)"}}>
+            {terminTag(t.datumStart)} {t.datumStart?t.datumStart.split("-").reverse().join("."):""}
+            {t.uhrzeitStart?` ${t.uhrzeitStart}`:""}
+            {(t.datumEnde&&t.datumEnde!==t.datumStart)?` – ${terminTag(t.datumEnde)} ${t.datumEnde.split("-").reverse().join(".")}`:(t.uhrzeitEnde?` – ${t.uhrzeitEnde}`:"")}
+            {t.ort?` · ${t.ort}`:""}
+          </div>
+        </div>
+        <button onClick={()=>edit(t)} style={{fontSize:12,background:"none",border:"none",cursor:"pointer",color:"#3b82f6"}}>✏️</button>
+        <button onClick={()=>del(t.id)} style={{fontSize:12,background:"none",border:"none",cursor:"pointer",color:"#ef4444"}}>🗑️</button>
+      </div>)}
+      {termine.length===0&&<div style={{fontSize:11,color:"var(--text4)",padding:"8px 0"}}>Noch keine Termine erfasst.</div>}
+    </div>
+  </div>;
+}
+
+// TermineView — Reiter „Termine" (filterbare, sortierbare Liste für alle)
+const TERMIN_COLS=[
+  {key:"datumStart",   label:"Datum (Start)", w:"92px"},
+  {key:"tagStart",     label:"Tag",           w:"40px"},
+  {key:"datumEnde",    label:"Datum (Ende)",  w:"92px"},
+  {key:"tagEnde",      label:"Tag",           w:"40px"},
+  {key:"uhrzeitStart", label:"Start",         w:"56px"},
+  {key:"uhrzeitEnde",  label:"Ende",          w:"56px"},
+  {key:"veranstaltung",label:"Veranstaltung", w:"auto"},
+  {key:"ort",          label:"Ort",           w:"140px"},
+];
+function TermineView() {
+  const [termine,setTermine]=useState([]);
+  const [sortKey,setSortKey]=useState("datumStart");
+  const [sortAsc,setSortAsc]=useState(true);
+  const [fVeranst,setFVeranst]=useState("");
+  const [fOrt,setFOrt]=useState("");
+
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
+      setTermine(snap.exists()?(snap.data().termine||[]):[]);
+    },()=>{});
+    return unsub;
+  },[]);
+
+  function toggleSort(k){ if(sortKey===k) setSortAsc(a=>!a); else {setSortKey(k);setSortAsc(true);} }
+
+  const enriched=termine.map(t=>({...t, tagStart:terminTag(t.datumStart), tagEnde:terminTag(t.datumEnde)}));
+  const orte=[...new Set(termine.map(t=>t.ort).filter(Boolean))];
+  const filtered=enriched.filter(t=>{
+    if(fVeranst&&!String(t.veranstaltung||"").toLowerCase().includes(fVeranst.toLowerCase())) return false;
+    if(fOrt&&t.ort!==fOrt) return false;
+    return true;
+  });
+  const sorted=[...filtered].sort((a,b)=>{
+    const va=String(a[sortKey]||""), vb=String(b[sortKey]||"");
+    return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+  });
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>📌 Termine</div>
+    {/* Filter */}
+    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+      <input placeholder="Veranstaltung suchen" value={fVeranst} onChange={e=>setFVeranst(e.target.value)}
+        style={{flex:"0 0 auto",width:170,padding:"5px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+      <select value={fOrt} onChange={e=>setFOrt(e.target.value)}
+        style={{flex:"0 0 auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+        <option value="">Alle Orte</option>
+        {orte.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+      {(fVeranst||fOrt)&&<button onClick={()=>{setFVeranst("");setFOrt("");}} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Termin(e)</div>
+    {/* Tabelle */}
+    <div style={{maxHeight:"calc(100vh - var(--rsw-height, 88px) - 90px)",overflowY:"auto",overflowX:"auto",borderRadius:12,border:"1px solid var(--border)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:560}}>
+        <thead>
+          <tr style={{background:"var(--bg2)"}}>
+            {TERMIN_COLS.map(col=>(
+              <th key={col.key} onClick={()=>toggleSort(col.key)}
+                style={{padding:"6px 6px",textAlign:"left",cursor:"pointer",fontWeight:700,
+                  color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
+                  borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none",
+                  background:"var(--bg2)",position:"sticky",top:0,zIndex:4}}>
+                {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((t,i)=>(
+            <tr key={t.id||i} style={{background:i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{t.datumStart?t.datumStart.split("-").reverse().join("."):""}</td>
+              <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{t.tagStart}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.datumEnde.split("-").reverse().join("."):""}</td>
+              <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.tagEnde:""}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{t.uhrzeitStart}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:11}}>{t.uhrzeitEnde}</td>
+              <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}}>{t.veranstaltung}</td>
+              <td style={{padding:"5px 6px",fontSize:11}}>{t.ort}</td>
+            </tr>
+          ))}
+          {sorted.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+
 function VereinsSpielplan({nurNachwuchs=false}) {
   const [spiele,setSpiele]=useState([]);
+  const [vereinstermine,setVereinstermine]=useState([]);
   const [loading,setLoading]=useState(true);
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
@@ -5948,6 +6177,14 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
   const [pdfUrl,setPdfUrl]=useState(null);
+
+  // Vereinstermine laden (für eigene Zeilen im Gesamtspielplan)
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
+      setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
+    },()=>{});
+    return unsub;
+  },[]);
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
@@ -6021,11 +6258,42 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     const y=p[2].length===2?`20${p[2]}`:p[2];
     return `${y}${p[1].padStart(2,"0")}${p[0].padStart(2,"0")}`;
   }
-  const sorted = [...filtered].sort((a,b)=>{
+  const sorted0 = [...filtered].sort((a,b)=>{
     let va=a[sortKey]||""; let vb=b[sortKey]||"";
     if(sortKey==="datum"){va=datumSort(va); vb=datumSort(vb);}
     return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
   });
+
+  // Punkt 4: Vereinstermine als eigene Zeilen einfügen (nur ohne aktive Mannschafts-/Ort-/Gegner-Filter,
+  // damit sie nicht weggefiltert wirken; bei Nachwuchs-Ansicht ausgeblendet).
+  const filtersAktiv = (filters.mannschaften||[]).length>0 || filters.ort || filters.gegner;
+  const terminRows = (nurNachwuchs||filtersAktiv) ? [] : vereinstermine.map(t=>({
+    _istTermin:true,
+    datum:t.datumStart||"",
+    tag:terminTag(t.datumStart),
+    uhrzeit:t.uhrzeitStart||"",
+    mannschaft:"Termin",
+    art:"",
+    ort:t.ort||"",
+    gegner:t.veranstaltung||"",
+    ergebnis:"",
+    aenderung:"",
+    _datumEnde:t.datumEnde,
+    _uhrzeitEnde:t.uhrzeitEnde,
+  }));
+  // zusammenführen und nach Datum sortieren wenn nach Datum sortiert wird
+  const sorted = (()=>{
+    if(terminRows.length===0) return sorted0;
+    const all=[...sorted0,...terminRows];
+    if(sortKey==="datum"){
+      all.sort((a,b)=>{
+        const va=datumSort((a.datum||"").includes("-")?a.datum.split("-").reverse().join("."):a.datum);
+        const vb=datumSort((b.datum||"").includes("-")?b.datum.split("-").reverse().join("."):b.datum);
+        return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
+      });
+    }
+    return all;
+  })();
 
   function toggleSort(key){
     if(sortKey===key) setSortAsc(p=>!p);
@@ -6112,6 +6380,20 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         </thead>
         <tbody>
           {sorted.map((s,i)=>{
+            if(s._istTermin){
+              const endeAnders=s._datumEnde&&s._datumEnde!==s.datum;
+              return <tr key={"t"+i} style={{background:"#8b5cf612",borderBottom:"1px solid var(--border)"}}>
+                <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{s.datum?s.datum.split("-").reverse().join("."):""}</td>
+                <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{s.tag}</td>
+                <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{s.uhrzeit}</td>
+                <td style={{padding:"5px 6px"}}>
+                  <span style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>📌 Termin</span>
+                </td>
+                <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
+                <td style={{padding:"5px 6px"}}></td>
+                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={3}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
+              </tr>;
+            }
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
             const mc=MANN_COLORS[s.mannschaft]||"#6b7280";
             const hasResult=s.ergebnis&&s.ergebnis.trim()!=="";
@@ -6653,6 +6935,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"termine",label:"Termine",icon:"📌"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
@@ -6704,6 +6987,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="termine"&&<TermineView/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||null}
       isAdmin={false}
