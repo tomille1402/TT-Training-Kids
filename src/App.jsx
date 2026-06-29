@@ -5042,10 +5042,10 @@ const TEAMS_2026_27 = [
   {id:"erw4",name:"Erwachsene IV",liga:"1. Kreisklasse Gr. 1",ligaPath:"1._Kreisklasse_Gr._1",gruppe:"519131",mannschaft:"3142865",mName:"Erwachsene_IV_(4er)",color:"#ef4444"},
   {id:"erw5",name:"Erwachsene V",liga:"3. Kreisklasse Gr. 1",ligaPath:"_3._Kreisklasse_Gr._1",gruppe:"519435",mannschaft:"3086509",mName:"Erwachsene_V_(4er)",color:"#8b5cf6"},
   {id:"erw6",name:"Erwachsene VI",liga:"3. Kreisklasse Gr. 2",ligaPath:"_3._Kreisklasse_Gr._2",gruppe:"519203",mannschaft:"3087714",mName:"Erwachsene_VI_(4er)",color:"#06b6d4"},
-  {id:"jug11",name:"Jugend 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151351",mName:"Jugend_11",color:"#f97316"},
-  {id:"maed11",name:"Mädchen 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151353",mName:"M%C3%A4dchen_11",color:"#d946ef"},
-  {id:"maed13",name:"Mädchen 13",liga:"Jugend 13 Kreisliga",ligaPath:"Jugend_13_Kreisliga",gruppe:"519427",mannschaft:"3151352",mName:"M%C3%A4dchen_13",color:"#ec4899"},
   {id:"maed15",name:"Mädchen 15",liga:"Jugend 15 Kreisliga",ligaPath:"Jugend_15_Kreisliga",gruppe:"518943",mannschaft:"3151350",mName:"M%C3%A4dchen_15",color:"#14b8a6"},
+  {id:"maed13",name:"Mädchen 13",liga:"Jugend 13 Kreisliga",ligaPath:"Jugend_13_Kreisliga",gruppe:"519427",mannschaft:"3151352",mName:"M%C3%A4dchen_13",color:"#ec4899"},
+  {id:"maed11",name:"Mädchen 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151353",mName:"M%C3%A4dchen_11",color:"#d946ef"},
+  {id:"jug11",name:"Jugend 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151351",mName:"Jugend_11",color:"#f97316"},
 ];
 
 const SEASONS = [
@@ -5169,6 +5169,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const [einsaetze,setEinsaetze] = useState({});
   const [selSeasonId,setSelSeasonId] = useState("spielplan_2026_2027");
   const [selTeam,setSelTeam] = useState("");
+  const [expandedGames,setExpandedGames] = useState({}); // {spielKey: true} — aufgeklappte Spieltage
 
   const SEASON_OPTS = [
     {id:"spielplan_2026_2027", label:"2026/27", auf:"aufstellung_2026_2027_V"},
@@ -5206,10 +5207,24 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 
   const allowed = erlaubteMannschaften({player:myPlayer, roles, isAdmin, aufstellungSpieler:aufSpieler, allTeams});
 
+  // Bevorzugte Vorauswahl: die Mannschaft, in der die Person selbst gemeldet ist.
+  // Bei Erwachsenen mit mehreren Meldungen die tiefste (eigene Stammmannschaft, höchste Nummer).
+  const eigeneMannschaft = (()=>{
+    if(!myPlayer) return null;
+    const own = teamsOfPlayer(myPlayer, aufSpieler).filter(t=>allowed.includes(t));
+    if(own.length===0) return null;
+    // Erwachsene: höchste Nummer (Stammmannschaft); Nachwuchs: erste gefundene
+    const erw = own.filter(istErwachsenenMannschaft);
+    if(erw.length>0) return erw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
+    return own[0];
+  })();
+
   useEffect(()=>{
-    if(allowed.length>0 && !allowed.includes(selTeam)) setSelTeam(allowed[0]);
-    if(allowed.length===0) setSelTeam("");
-  },[selSeasonId, allowed.join("|")]);
+    if(allowed.length===0){ setSelTeam(""); return; }
+    if(!allowed.includes(selTeam)){
+      setSelTeam(eigeneMannschaft && allowed.includes(eigeneMannschaft) ? eigeneMannschaft : allowed[0]);
+    }
+  },[selSeasonId, allowed.join("|"), eigeneMannschaft]);
 
   const teamSpiele = spiele.filter(s=>{
     const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft;
@@ -5300,6 +5315,15 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       Keine Spiele für {selTeam} in dieser Saison gefunden.
     </div>}
 
+    {viewerCanEditAll&&selTeam&&teamSpiele.length>0&&<div style={{display:"flex",gap:8,marginBottom:10}}>
+      <button onClick={()=>{
+        const all={}; teamSpiele.forEach(s=>{all[spielKey(s)]=true;}); setExpandedGames(g=>({...g,...all}));
+      }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>▼ Alle aufklappen</button>
+      <button onClick={()=>{
+        const all={...expandedGames}; teamSpiele.forEach(s=>{all[spielKey(s)]=false;}); setExpandedGames(all);
+      }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>▶ Alle zuklappen</button>
+    </div>}
+
     {selTeam&&teamSpiele.map(spiel=>{
       const sk=spielKey(spiel);
       const entries=einsaetze[sk]||{};
@@ -5313,15 +5337,23 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const rows = viewerCanEditAll
         ? spielberechtigt
         : spielberechtigt.filter(p=>myPlayer && p.id===myPlayer.id);
+      // Aufklappen nur in der Voll-Sicht (Admin/Trainer/MF); Spieler sehen ihre Zeile immer.
+      const isOpen = viewerCanEditAll ? !!expandedGames[sk] : true;
+      const showRows = isOpen;
       return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
-        <div style={{padding:"10px 12px",borderBottom:rows.length?"1px solid var(--border)":"none",background:"var(--bg3)"}}>
+        <div onClick={viewerCanEditAll?()=>setExpandedGames(g=>({...g,[sk]:!g[sk]})):undefined}
+          style={{padding:"10px 12px",borderBottom:(showRows&&rows.length)?"1px solid var(--border)":"none",
+            background:"var(--bg3)",cursor:viewerCanEditAll?"pointer":"default"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-            <div>
-              <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
-                {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
-                {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {viewerCanEditAll&&<span style={{fontSize:12,color:"var(--text3)",transform:isOpen?"rotate(90deg)":"none",transition:"transform .15s",display:"inline-block"}}>▶</span>}
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+                  {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
+                  {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
+                </div>
+                <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
               </div>
-              <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
             </div>
             {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
               <span style={{color:"#10b981"}}>✅{counts.ja}</span>
@@ -5331,7 +5363,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
             </div>}
           </div>
         </div>
-        <div style={{padding:rows.length?"6px 10px 10px":"0"}}>
+        {showRows&&<div style={{padding:rows.length?"6px 10px 10px":"0"}}>
           {viewerCanEditAll&&spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
           {!viewerCanEditAll&&rows.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 2px 10px"}}>Für dieses Spiel bist du nicht spielberechtigt.</div>}
           {rows.map(p=>{
@@ -5368,7 +5400,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   color:"var(--text2)",outline:"none"}}/>}
             </div>;
           })}
-        </div>
+        </div>}
       </div>;
     })}
   </div>;
