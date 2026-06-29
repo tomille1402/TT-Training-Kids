@@ -5107,6 +5107,21 @@ function teamsOfPlayer(player, aufstellungSpieler){
   return [...teams];
 }
 
+// Aufstellungs-Rang (z.B. "1.5") eines Spielers in einer bestimmten Mannschaft
+function rangOfPlayerInTeam(player, aufName, aufstellungSpieler){
+  for(const row of aufstellungSpieler){
+    if(row.mannschaft===aufName && playerMatchesAufName(player,row.name)) return row.rang||"";
+  }
+  return "";
+}
+
+// Wochentag-Kurzform (2 Buchstaben) aus ISO-Datum
+const EINSATZ_TAGE=["So","Mo","Di","Mi","Do","Fr","Sa"];
+function wochentagKurz(isoDatum){
+  const d=new Date(isoDatum+"T12:00:00");
+  return isNaN(d.getTime())?"":EINSATZ_TAGE[d.getDay()];
+}
+
 // Erlaubte Mannschaften je nach Rolle (gibt Aufstellungs-Namen zurück)
 function erlaubteMannschaften({player, roles, isAdmin, aufstellungSpieler, allTeams}){
   if(isAdmin || roles?.admin) return allTeams; // Admin: alle
@@ -5214,8 +5229,22 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       } else {
         ok = own.includes(selTeam);
       }
-      if(ok) result.push(p);
+      if(ok){
+        // Rang aus der eigenen (gemeldeten) Mannschaft — bei Hochspielern bleibt z.B. "5.2"
+        let rang="";
+        if(istErwachsenenMannschaft(selTeam)){
+          // tiefste eigene Erwachsenen-Mannschaft (höchste Nummer)
+          let bestNum=-1;
+          for(const t of own){ if(istErwachsenenMannschaft(t)&&ERW_NUM[t]>bestNum){bestNum=ERW_NUM[t]; rang=rangOfPlayerInTeam(p,t,aufSpieler);} }
+        } else {
+          rang=rangOfPlayerInTeam(p,selTeam,aufSpieler);
+        }
+        result.push({...p, _rang:rang});
+      }
     }
+    // nach Rang sortieren (numerisch: "2.3" → 2.03)
+    const rv=r=>{const m=(r||"").split(".");return m.length===2?parseInt(m[0])*100+parseInt(m[1]):9999;};
+    result.sort((a,b)=>rv(a._rang)-rv(b._rang));
     return result;
   })();
 
@@ -5277,32 +5306,42 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const past = spiel.datum < heuteStr;
       const counts={ja:0,nein:0,vielleicht:0,verletzt:0};
       spielberechtigt.forEach(p=>{ const st=entries[p.id]?.status; if(st&&counts[st]!=null) counts[st]++; });
+      const tag=wochentagKurz(spiel.datum);
+      // Welche Spieler-Zeilen werden gezeigt?
+      // Admin/Trainer/MF (viewerCanEditAll): alle spielberechtigten.
+      // Spieler/Erwachsene: nur die eigene Zeile (falls spielberechtigt).
+      const rows = viewerCanEditAll
+        ? spielberechtigt
+        : spielberechtigt.filter(p=>myPlayer && p.id===myPlayer.id);
       return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
-        <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border)",background:"var(--bg3)"}}>
+        <div style={{padding:"10px 12px",borderBottom:rows.length?"1px solid var(--border)":"none",background:"var(--bg3)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+                {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
                 {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
               </div>
               <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
             </div>
-            <div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
+            {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
               <span style={{color:"#10b981"}}>✅{counts.ja}</span>
               <span style={{color:"#ef4444"}}>❌{counts.nein}</span>
               <span style={{color:"#f59e0b"}}>❓{counts.vielleicht}</span>
               <span style={{color:"#8b5cf6"}}>🤕{counts.verletzt}</span>
-            </div>
+            </div>}
           </div>
         </div>
-        <div style={{padding:"6px 10px 10px"}}>
-          {spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
-          {spielberechtigt.map(p=>{
+        <div style={{padding:rows.length?"6px 10px 10px":"0"}}>
+          {viewerCanEditAll&&spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
+          {!viewerCanEditAll&&rows.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 2px 10px"}}>Für dieses Spiel bist du nicht spielberechtigt.</div>}
+          {rows.map(p=>{
             const entry=entries[p.id]||{};
             const editable=canEdit(p.id);
             const isMe = myPlayer && p.id===myPlayer.id;
             return <div key={p.id} style={{padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <span style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?"var(--text)":"var(--text2)",minWidth:120,flex:1}}>
+                  {p._rang&&<span style={{color:"var(--text4)",fontWeight:700,marginRight:5}}>{p._rang}</span>}
                   {p.avatar||"🏓"} {p.firstName} {p.lastName}{isMe?" (ich)":""}
                 </span>
                 <div style={{display:"flex",gap:4}}>
