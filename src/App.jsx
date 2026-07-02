@@ -1212,44 +1212,58 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    // Immer die eingebetteten Konstanten verwenden — zuverlässig und korrekt.
-    // Firestore nur für Metadaten (saison, runde) laden falls vorhanden.
+    // Alle möglichen Aufstellungs-Keys (neueste Saisons zuerst)
     const ALL_KEYS=[
+      "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
+      "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
       "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
       "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
-      "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
     ];
+    function saisonFromKey(k){
+      const m=k.match(/(\d{4})_(\d{4})/);
+      return m?`${m[1]}/${m[2]}`:k;
+    }
+    function rundeFromKey(k){ return k.endsWith("_R")?"Rückrunde":"Vorrunde"; }
 
-    // Basis: eingebettete Daten
-    const embedded=[
-      {id:"aufstellung_2025_2026_R",saison:"2025/2026",runde:"Rückrunde",spieler:AUFSTELLUNG_2025_2026_R},
-      {id:"aufstellung_2025_2026_V",saison:"2025/2026",runde:"Vorrunde", spieler:AUFSTELLUNG_2025_2026_V},
-      {id:"aufstellung_2024_2025_R",saison:"2024/2025",runde:"Rückrunde",spieler:AUFSTELLUNG_2024_2025_R},
-      {id:"aufstellung_2024_2025_V",saison:"2024/2025",runde:"Vorrunde", spieler:AUFSTELLUNG_2024_2025_V},
-    ];
-
-    // Firestore prüfen ob Docs existieren (für PDF-Link später)
+    // Firestore-Daten laden; wo vorhanden diese nutzen, sonst eingebettete als Fallback.
     Promise.all(ALL_KEYS.map(k=>
       getDoc(doc(db,"config",k))
-        .then(s=>s.exists()?{id:k,exists:true}:null)
-        .catch(()=>null)
+        .then(s=>{
+          const fsSpieler = s.exists()?(s.data().spieler||[]):null;
+          const embedded = AUFSTELLUNG_DATA[k]||null;
+          // Firestore hat Vorrang (echte hochgeladene Daten), sonst eingebettet
+          const spieler = (fsSpieler && fsSpieler.length>0) ? fsSpieler : embedded;
+          if(!spieler || spieler.length===0) return null;
+          return {
+            id:k,
+            saison: (s.exists()&&s.data().saison) || saisonFromKey(k),
+            runde:  (s.exists()&&s.data().runde)  || rundeFromKey(k),
+            spieler,
+            inFirestore: s.exists(),
+            source: (fsSpieler&&fsSpieler.length>0)?"firestore":"embedded",
+          };
+        })
+        .catch(()=>{
+          const embedded = AUFSTELLUNG_DATA[k]||null;
+          if(!embedded) return null;
+          return {id:k,saison:saisonFromKey(k),runde:rundeFromKey(k),spieler:embedded,inFirestore:false,source:"embedded"};
+        })
     )).then(results=>{
-      // Merge: embedded Daten + Info ob Firestore-Doc existiert
-      const existsSet=new Set(results.filter(Boolean).map(r=>r.id));
-      const afs=embedded
-        .filter(e=>AUFSTELLUNG_DATA[e.id]) // nur die mit eingebetteten Daten
-        .map(e=>({...e, inFirestore:existsSet.has(e.id)}))
-        .sort((a,b)=>{
-          const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
-          if(sA!==sB) return sB.localeCompare(sA);
-          return a.id.endsWith("_R")?-1:1;
-        });
+      const afs=results.filter(Boolean).sort((a,b)=>{
+        const sA=a.id.replace(/_[RV]$/,""),sB=b.id.replace(/_[RV]$/,"");
+        if(sA!==sB) return sB.localeCompare(sA); // neuere Saison zuerst
+        return a.id.endsWith("_R")?-1:1;         // Rückrunde vor Vorrunde
+      });
       setAufstellungen(afs);
-      setSelId(afs[0].id);
+      if(afs.length>0) setSelId(afs[0].id);
       setLoading(false);
     }).catch(()=>{
+      // Absoluter Fallback: eingebettete Daten
+      const embedded=Object.keys(AUFSTELLUNG_DATA).map(k=>({
+        id:k,saison:saisonFromKey(k),runde:rundeFromKey(k),spieler:AUFSTELLUNG_DATA[k],inFirestore:false,source:"embedded"
+      }));
       setAufstellungen(embedded);
-      setSelId(embedded[0].id);
+      if(embedded.length>0) setSelId(embedded[0].id);
       setLoading(false);
     });
   },[]);
@@ -4849,18 +4863,113 @@ function AufstellungUpload({showToast}) {
 
   useEffect(()=>{ reload(); },[]);
 
+  // pdf.js dynamisch laden (CDN, wie bei xlsx) — kein Build-Setup nötig
+  async function loadPdfJs(){
+    if(window.pdfjsLib) return window.pdfjsLib;
+    await new Promise((res,rej)=>{
+      const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+      document.head.appendChild(s);
+    });
+    if(window.pdfjsLib){
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+    return window.pdfjsLib;
+  }
+
+  // click-tt Aufstellungs-PDF auslesen → [{mannschaft,rang,qTtr,name}]
+  // withRaw=true → {rows, rawText} für Saison/Runde-Erkennung
+  async function parseAufstellungPdf(file, withRaw){
+    const pdfjs=await loadPdfJs();
+    if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;
+    const pages=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const tc=await page.getTextContent();
+      const lines={};
+      for(const it of tc.items){
+        const y=Math.round(it.transform[5]); const x=it.transform[4];
+        (lines[y]=lines[y]||[]).push({x,s:it.str});
+      }
+      const ys=Object.keys(lines).map(Number).sort((a,b)=>b-a);
+      pages.push(ys.map(y=>lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")).join("\n"));
+    }
+    const ERW_MANN={1:"Erwachsene",2:"Erwachsene II",3:"Erwachsene III",4:"Erwachsene IV",5:"Erwachsene V",6:"Erwachsene VI"};
+    const RANG_RE=/\b([1-6])\.(\d{1,2})\s+(\d{3,4}|-)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-]+,\s*[A-Za-zÄÖÜäöüß.\- ]+?)\s*(?:\(\d{4}\/|\((\d{4})|GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|Nat\b)/g;
+    const NW_HEAD=/Kontaktadresse\s+(Mädchen \d+|Jugend \d+)/;
+    const rows=[]; const seen=new Set();
+    for(const t of pages){
+      const nw=t.match(NW_HEAD); const nwTeam=nw?nw[1]:null;
+      let m; RANG_RE.lastIndex=0;
+      while((m=RANG_RE.exec(t))!==null){
+        const d1=parseInt(m[1]); const rang=`${m[1]}.${m[2]}`;
+        const qttr=m[3]==='-'?'':m[3]; const name=m[4].trim().replace(/\s+/g,' ');
+        const mann=nwTeam?nwTeam:ERW_MANN[d1]; if(!mann) continue;
+        const k=mann+"|"+name; if(seen.has(k)) continue; seen.add(k);
+        rows.push({mannschaft:mann,rang,qTtr:qttr,name});
+      }
+    }
+    if(withRaw) return {rows, rawText:pages.join("\n")};
+    return rows;
+  }
+
   async function handleUpload(file) {
-    if(!file||!file.name.endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
+    if(!file||!file.name.toLowerCase().endsWith('.pdf')){showToast("Bitte eine PDF-Datei hochladen","❌");return;}
     setUploading(true);
     try {
       const fn=file.name;
-      const saisonMatch=fn.match(/(\d{4})[\-_]?(\d{2,4})/);
-      const saison=saisonMatch?`${saisonMatch[1]}/${saisonMatch[2].length===2?"20"+saisonMatch[2]:saisonMatch[2]}`:"2025/2026";
-      const isRueck=["rueck","rück","ruck","r_ck","rueckrunde","rückrunde"].some(w=>fn.toLowerCase().includes(w));
+
+      // Aufstellung aus dem PDF auslesen (liefert auch den Rohtext für Saison/Runde-Erkennung)
+      let parsed;
+      try {
+        parsed=await parseAufstellungPdf(file, true); // {rows, rawText}
+      } catch(perr){
+        parsed=null;
+        showToast("PDF konnte nicht ausgelesen werden — Format prüfen","⚠️");
+      }
+      const rawText = parsed?.rawText || "";
+      let spielerData = parsed?.rows || [];
+
+      // ── Saison bestimmen: zuerst aus PDF-Inhalt (zuverlässig), sonst Dateiname ──
+      // PDF enthält z.B. "2025/26" oder "2026/27"
+      let saison=null;
+      const inhaltMatch = rawText.match(/\b(20\d{2})\/(\d{2})\b/);
+      if(inhaltMatch){
+        saison=`${inhaltMatch[1]}/20${inhaltMatch[2]}`;
+      } else {
+        // Dateiname: "2026_2027", "2026-27", "2026_27", "26_27"
+        const fnFull = fn.match(/(20\d{2})[\-_]?(20\d{2})/);      // 2026_2027
+        const fnShort = fn.match(/(20\d{2})[\-_](\d{2})\b/);      // 2026_27
+        const fnVeryShort = fn.match(/\b(\d{2})[\-_](\d{2})\b/);  // 26_27
+        if(fnFull) saison=`${fnFull[1]}/${fnFull[2]}`;
+        else if(fnShort) saison=`${fnShort[1]}/20${fnShort[2]}`;
+        else if(fnVeryShort) saison=`20${fnVeryShort[1]}/20${fnVeryShort[2]}`;
+      }
+      if(!saison){ showToast("Saison nicht erkennbar — Dateiname sollte z.B. 2026_2027 enthalten","❌"); setUploading(false); return; }
+
+      // ── Runde bestimmen: PDF-Inhalt ("(Vorrunde)"/"(Rückrunde)") hat Vorrang ──
+      let isRueck;
+      if(/\(Rückrunde\)|\(Rueckrunde\)/i.test(rawText)) isRueck=true;
+      else if(/\(Vorrunde\)/i.test(rawText)) isRueck=false;
+      else isRueck=["rueck","rück","ruck","r_ck","rueckrunde","rückrunde"].some(w=>fn.toLowerCase().includes(w));
       const runde=isRueck?"Rückrunde":"Vorrunde";
       const key=`aufstellung_${saison.replace("/","_")}_${isRueck?"R":"V"}`;
-      const spielerData = AUFSTELLUNG_DATA[key] || AUFSTELLUNG_2025_2026_R;
       const ts=Date.now();
+
+      if(!spielerData || spielerData.length===0){
+        spielerData = AUFSTELLUNG_DATA[key] || [];
+        if(spielerData.length===0){ showToast("Keine Aufstellungsdaten im PDF erkannt","❌"); setUploading(false); return; }
+      }
+
+      // ── Sicherheitsabfrage: bestätigen, welche Aufstellung überschrieben/angelegt wird ──
+      const ok=window.confirm(
+        `Erkannt: Saison ${saison}, ${runde}\n${spielerData.length} Spieler ausgelesen.\n\n`+
+        `Diese Aufstellung (${key}) jetzt speichern?`
+      );
+      if(!ok){ setUploading(false); return; }
 
       // 1. Spielerdaten + Timestamp speichern
       await setDoc(doc(db,"config",key),{saison,runde,spieler:spielerData,lastUpdated:ts});
@@ -4912,11 +5021,11 @@ function AufstellungUpload({showToast}) {
     <label style={{display:"block",padding:"9px 12px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:9,textAlign:"center",cursor:uploading?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
       {uploading?"⏳ Wird verarbeitet...":"📎 Aufstellungs-PDF hochladen"}
-      <input type="file" accept=".csv,.pdf" style={{display:"none"}} disabled={uploading}
+      <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploading}
         onChange={e=>handleUpload(e.target.files?.[0])}/>
     </label>
     <div style={{fontSize:10,color:"var(--text4)",marginTop:4,marginBottom:10}}>
-      Dateiname enthält Saison (z.B. 2025_2026) und "Rueck" oder "Vor".
+      click-tt Mannschaftsmeldung als PDF. Dateiname enthält Saison (z.B. 2026_2027) und "Rueck" oder "Vor".
     </div>
     {saved.length>0&&<div>
       <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Gespeicherte Aufstellungen:</div>
