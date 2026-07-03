@@ -4898,7 +4898,9 @@ function AufstellungUpload({showToast}) {
       pages.push(ys.map(y=>lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")).join("\n"));
     }
     const ERW_MANN={1:"Erwachsene",2:"Erwachsene II",3:"Erwachsene III",4:"Erwachsene IV",5:"Erwachsene V",6:"Erwachsene VI"};
-    const RANG_RE=/\b([1-6])\.(\d{1,2})\s+(\d{3,4}|-)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-]+,\s*[A-Za-zÄÖÜäöüß.\- ]+?)\s*(?:\(\d{4}\/|\((\d{4})|GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|Nat\b)/g;
+    // Namen mit Unicode-Buchstaben (é, è, á, ñ, ć …) korrekt erfassen (u-Flag + \p{L})
+    // Q-TTR kann Zahl, Zahl mit "*" (vorläufig) oder "-" sein
+    const RANG_RE=/([1-6])\.(\d{1,2})\s+(\d{3,4}\*?|-)\s+(\p{Lu}[\p{L}.\-]+,\s*[\p{L}.\- ]+?)\s*(?:\(\d{4}\/|\((\d{4})|GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|Nat\b)/gu;
     const NW_HEAD=/Kontaktadresse\s+(Mädchen \d+|Jugend \d+)/;
     const rows=[]; const seen=new Set();
     for(const t of pages){
@@ -4906,7 +4908,7 @@ function AufstellungUpload({showToast}) {
       let m; RANG_RE.lastIndex=0;
       while((m=RANG_RE.exec(t))!==null){
         const d1=parseInt(m[1]); const rang=`${m[1]}.${m[2]}`;
-        const qttr=m[3]==='-'?'':m[3]; const name=m[4].trim().replace(/\s+/g,' ');
+        const qttr=(m[3]==='-')?'':m[3].replace('*',''); const name=m[4].trim().replace(/\s+/g,' ');
         const mann=nwTeam?nwTeam:ERW_MANN[d1]; if(!mann) continue;
         const k=mann+"|"+name; if(seen.has(k)) continue; seen.add(k);
         rows.push({mannschaft:mann,rang,qTtr:qttr,name});
