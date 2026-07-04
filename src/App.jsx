@@ -663,7 +663,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
             <div>
-              <div style={{fontSize:15,fontWeight:800}}>TTC Niederzeuzheim</div>
+              <div style={{fontSize:15,fontWeight:800}}>{clubConfig.name||"TTC Niederzeuzheim"}</div>
               <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
             </div>
           </div>
@@ -3324,7 +3324,7 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer}) {
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
@@ -3410,7 +3410,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"} · Rang #{myRank} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -7653,7 +7653,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
   };
 
-  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
+  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
   const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
 
   // All active players sorted alphabetically
@@ -8218,7 +8218,7 @@ export default function App() {
   // Gemeinsame Props
   const sharedProps = {
     isDark, onSetUserTheme:handleSetUserTheme, userTheme,
-    onSignOut:handleSignOut,
+    onSignOut:handleSignOut, clubConfig,
   };
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
