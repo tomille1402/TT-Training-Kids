@@ -6110,7 +6110,7 @@ function buildICS(options){
   const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[],
     puffer=false,
     heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
-    auswVor=60, auswNach=60,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
+    auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
   }=options;
   const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
   const L=[];
@@ -6381,10 +6381,10 @@ function KalenderExport(){
         Der Kalendereintrag beginnt dann vor dem Spiel und endet danach — der eigentliche Spielbeginn steht in der Beschreibung.
         <div style={{marginTop:6,paddingLeft:6,borderLeft:"2px solid var(--border2)"}}>
           <b>Heimspiel:</b> 1 Std Aufbau vorher, 30 Min Abbau nachher<br/>
-          <b>Auswärts:</b> 1 Std Hinfahrt, 1 Std Rückfahrt
+          <b>Auswärts:</b> 1 Std Hinfahrt, 30 Min Rückfahrt
         </div>
         <div style={{marginTop:6,fontStyle:"italic"}}>
-          Beispiel Nachwuchs 14:00 Uhr: Heim 13:00–16:00, Auswärts 13:00–16:30.
+          Beispiel Nachwuchs 14:00 Uhr: Heim 13:00–16:00, Auswärts 13:00–16:00.
         </div>
       </div>
     </div>
