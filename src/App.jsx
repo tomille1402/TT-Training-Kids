@@ -526,6 +526,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"termine",      label:"Termine",       icon:"📌"},
+    {key:"kalender",     label:"Kalender",      icon:"📅"},
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
@@ -904,6 +905,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
+    {activeTab==="kalender"&&<KalenderExport/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={isSuperAdmin}
@@ -3358,6 +3360,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"termine",label:"Termine",icon:"📌"},
+    {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
   ];
 
@@ -3658,6 +3661,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
+    {activeTab==="kalender"&&<KalenderExport/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={false}
@@ -6074,6 +6078,266 @@ const SPIELPLAN_DATA = {
   // "spielplan_2024_2025": SPIELPLAN_2024_2025,  // wird ergänzt sobald PDF ausgelesen
 };
 
+// ─── KALENDER-EXPORT (iCalendar / .ics) ──────────────────────────────────────
+// Erzeugt einen gültigen ICS-Text aus Spielen + optionalen Vereinsterminen.
+// Dieselbe Logik läuft (nahezu identisch) in der Netlify-Function calendar.ics.
+function icsEscape(s){
+  return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+}
+function icsDateTime(isoDate, uhrzeit){
+  // lokale Zeit ohne Z (floating) → Kalender interpretiert in lokaler TZ
+  const [y,m,d]=(isoDate||"").split("-");
+  const [hh,mi]=((uhrzeit||"00:00").split(":"));
+  if(!y||!m||!d) return null;
+  return `${y}${m}${d}T${(hh||"00").padStart(2,"0")}${(mi||"00").padStart(2,"0")}00`;
+}
+function icsAddMinutes(isoDate, uhrzeit, minutes){
+  const [y,m,d]=(isoDate||"").split("-").map(Number);
+  const [hh,mi]=((uhrzeit||"00:00").split(":")).map(Number);
+  const dt=new Date(y,(m||1)-1,d||1,hh||0,mi||0);
+  dt.setMinutes(dt.getMinutes()+minutes);
+  const p=n=>String(n).padStart(2,"0");
+  return `${dt.getFullYear()}${p(dt.getMonth()+1)}${p(dt.getDate())}T${p(dt.getHours())}${p(dt.getMinutes())}00`;
+}
+// stabile UID pro Spiel/Termin (damit Updates keine Dubletten erzeugen)
+function icsUid(parts){
+  const base=parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g,"")).join("-");
+  return `${base}@ttc-niederzeuzheim`;
+}
+
+// options: {teams:[...], vorlaufMin, dauerMin, includeTermine, spiele:[], vereinstermine:[]}
+function buildICS(options){
+  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[]}=options;
+  const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
+  const L=[];
+  L.push("BEGIN:VCALENDAR");
+  L.push("VERSION:2.0");
+  L.push("PRODID:-//TTC Niederzeuzheim//Trainings-App//DE");
+  L.push("CALSCALE:GREGORIAN");
+  L.push("METHOD:PUBLISH");
+  L.push("X-WR-CALNAME:TTC Niederzeuzheim – Spieltermine");
+  L.push("X-WR-TIMEZONE:Europe/Berlin");
+
+  const stamp=(()=>{const d=new Date();const p=n=>String(n).padStart(2,"0");
+    return `${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;})();
+
+  // Spiele
+  for(const s of spiele){
+    if(teamSet && !teamSet.has(s.mannschaft)) continue;
+    const start=icsDateTime(s.datum, s.uhrzeit);
+    if(!start) continue;
+    const end=icsAddMinutes(s.datum, s.uhrzeit, dauerMin);
+    const heim = /heim/i.test(s.ort||"");
+    const titel=`🏓 ${s.mannschaft} vs. ${s.gegner||"?"}`;
+    const ortText = s.ort && !/heim|ausw/i.test(s.ort) ? s.ort : (heim?"Heimspiel":"Auswärtsspiel");
+    L.push("BEGIN:VEVENT");
+    L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
+    L.push(`DTSTAMP:${stamp}`);
+    L.push(`DTSTART:${start}`);
+    L.push(`DTEND:${end}`);
+    L.push(`SUMMARY:${icsEscape(titel)}`);
+    L.push(`LOCATION:${icsEscape(ortText)}`);
+    L.push(`CATEGORIES:${icsEscape(s.mannschaft)}`);
+    if(s.ergebnis) L.push(`DESCRIPTION:${icsEscape("Ergebnis: "+s.ergebnis)}`);
+    if(vorlaufMin>0){
+      L.push("BEGIN:VALARM");
+      L.push("ACTION:DISPLAY");
+      L.push(`DESCRIPTION:${icsEscape(titel)}`);
+      L.push(`TRIGGER:-PT${vorlaufMin}M`);
+      L.push("END:VALARM");
+    }
+    L.push("END:VEVENT");
+  }
+
+  // Optional: Vereinstermine
+  if(includeTermine){
+    for(const t of vereinstermine){
+      const start=icsDateTime(t.datumStart, t.uhrzeitStart||"00:00");
+      if(!start) continue;
+      let end;
+      if(t.datumEnde && t.uhrzeitEnde) end=icsDateTime(t.datumEnde, t.uhrzeitEnde);
+      else if(t.uhrzeitEnde) end=icsDateTime(t.datumStart, t.uhrzeitEnde);
+      else end=icsAddMinutes(t.datumStart, t.uhrzeitStart||"00:00", dauerMin);
+      const titel=`📌 ${t.veranstaltung||"Vereinstermin"}`;
+      L.push("BEGIN:VEVENT");
+      L.push(`UID:${icsUid([t.datumStart,t.uhrzeitStart,t.veranstaltung])}`);
+      L.push(`DTSTAMP:${stamp}`);
+      L.push(`DTSTART:${start}`);
+      if(end) L.push(`DTEND:${end}`);
+      L.push(`SUMMARY:${icsEscape(titel)}`);
+      if(t.ort) L.push(`LOCATION:${icsEscape(t.ort)}`);
+      L.push("CATEGORIES:Vereinstermin");
+      if(vorlaufMin>0){
+        L.push("BEGIN:VALARM");
+        L.push("ACTION:DISPLAY");
+        L.push(`DESCRIPTION:${icsEscape(titel)}`);
+        L.push(`TRIGGER:-PT${vorlaufMin}M`);
+        L.push("END:VALARM");
+      }
+      L.push("END:VEVENT");
+    }
+  }
+
+  L.push("END:VCALENDAR");
+  // CRLF-Zeilenenden gemäß RFC 5545
+  return L.join("\r\n");
+}
+
+// ─── KALENDER-EXPORT UI (Download + Abo-Link) ────────────────────────────────
+// Basis-URL des Abo-Feeds (Netlify Function). Bei Bedarf an echte Domain anpassen.
+const KALENDER_FEED_BASE = "/.netlify/functions/calendar";
+
+function KalenderExport(){
+  const [spiele,setSpiele]=useState([]);
+  const [vereinstermine,setVereinstermine]=useState([]);
+  // aktuelle Saison + Vereinstermine laden
+  useEffect(()=>{
+    const cur=(SEASONS.find(s=>s.current)||SEASONS[0]);
+    const spielplanKey="spielplan_"+cur.key.replace("/","_");
+    const u1=onSnapshot(doc(db,"config",spielplanKey),snap=>{
+      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[spielplanKey]||[]);
+      setSpiele(data);
+    },()=>{ setSpiele(SPIELPLAN_DATA[spielplanKey]||[]); });
+    const u2=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
+      setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
+    },()=>{});
+    return ()=>{u1();u2();};
+  },[]);
+  // Mannschaften aus den Spielen ableiten (echte Spielplan-Namen wie "Herren 1", "Mädchen 13")
+  const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
+
+  const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
+  const [selTeams,setSelTeams]=useState([]);
+  const [vorlauf,setVorlauf]=useState(60);
+  const [dauer,setDauer]=useState(180);
+  const [mitTermine,setMitTermine]=useState(true);
+  const [copied,setCopied]=useState(false);
+
+  function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
+  function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
+  function selectAlle(){ setSelTeams(alleMannschaften); }
+  function selectKeine(){ setSelTeams([]); }
+
+  function download(){
+    const ics=buildICS({teams:selTeams,vorlaufMin:vorlauf,dauerMin:dauer,includeTermine:mitTermine,spiele,vereinstermine});
+    const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download="ttc-termine.ics"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  // Abo-Link mit Parametern zusammenbauen
+  const aboUrl=(()=>{
+    const params=new URLSearchParams();
+    if(selTeams.length>0) params.set("teams",selTeams.join(","));
+    params.set("vorlauf",String(vorlauf));
+    params.set("dauer",String(dauer));
+    if(mitTermine) params.set("termine","1");
+    const origin=typeof window!=="undefined"?window.location.origin:"";
+    return `${origin}${KALENDER_FEED_BASE}.ics?${params.toString()}`;
+  })();
+  // webcal:// sorgt dafür, dass Kalender-Apps direkt "Abonnieren" anbieten
+  const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
+
+  function copyLink(){
+    navigator.clipboard?.writeText(aboUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
+  }
+
+  const box={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:14};
+  const lab={fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:8};
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📅 Kalender-Export</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
+      Spieltermine in deinen Kalender übernehmen — als Abo (bleibt automatisch aktuell) oder Download.
+    </div>
+
+    {/* Mannschaftsauswahl */}
+    <div style={box}>
+      <div style={lab}>Welche Mannschaften?</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length)}>Alle</button>
+        <button onClick={selectNachwuchs} style={chip(false)}>Alle Nachwuchs</button>
+        <button onClick={selectKeine} style={chip(false)}>Keine</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {alleMannschaften.map(t=>(
+          <label key={t} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
+            <input type="checkbox" checked={selTeams.includes(t)} onChange={()=>toggleTeam(t)}/>
+            {t}
+          </label>
+        ))}
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
+        {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
+      </div>
+    </div>
+
+    {/* Vorlauf + Dauer */}
+    <div style={box}>
+      <div style={lab}>Erinnerung & Dauer</div>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Erinnerung vorher</label>
+          <select value={vorlauf} onChange={e=>setVorlauf(Number(e.target.value))} style={sel}>
+            <option value={0}>keine</option><option value={15}>15 Min</option>
+            <option value={30}>30 Min</option><option value={60}>1 Stunde</option>
+            <option value={120}>2 Stunden</option><option value={1440}>1 Tag</option>
+          </select>
+        </div>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Dauer pro Spiel</label>
+          <select value={dauer} onChange={e=>setDauer(Number(e.target.value))} style={sel}>
+            <option value={120}>2 Stunden</option><option value={150}>2,5 Stunden</option>
+            <option value={180}>3 Stunden</option><option value={210}>3,5 Stunden</option>
+            <option value={240}>4 Stunden</option>
+          </select>
+        </div>
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",marginTop:12}}>
+        <input type="checkbox" checked={mitTermine} onChange={e=>setMitTermine(e.target.checked)}/>
+        Vereinstermine (z. B. Versammlungen) einbeziehen
+      </label>
+    </div>
+
+    {/* Abo-Weg */}
+    <div style={box}>
+      <div style={lab}>📲 Kalender abonnieren <span style={{fontWeight:400,color:"var(--text3)"}}>(bleibt aktuell)</span></div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+        Einmal abonnieren — neue und geänderte Spiele erscheinen automatisch.
+      </div>
+      <a href={webcalUrl} style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
+        color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+        + In Kalender abonnieren
+      </a>
+      <button onClick={copyLink} style={{width:"100%",padding:"9px",background:"var(--bg3)",border:"1px solid var(--border2)",
+        borderRadius:9,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>
+        {copied?"✓ Link kopiert":"🔗 Abo-Link kopieren"}
+      </button>
+    </div>
+
+    {/* Download-Weg */}
+    <div style={box}>
+      <div style={lab}>💾 Als Datei herunterladen <span style={{fontWeight:400,color:"var(--text3)"}}>(einmalig)</span></div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+        Sofort nutzbar, ohne Einrichtung. Aktualisiert sich nicht automatisch.
+      </div>
+      <button onClick={download} style={{width:"100%",padding:"10px",background:"linear-gradient(135deg,#10b981,#059669)",
+        border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+        ⬇️ .ics-Datei herunterladen
+      </button>
+    </div>
+  </div>;
+
+  function chip(active){
+    return {padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
+      border:`1px solid ${active?"#3b82f6":"var(--border2)"}`,
+      background:active?"#3b82f622":"var(--bg3)",color:active?"#3b82f6":"var(--text2)"};
+  }
+}
+const sel={width:"100%",padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13};
+
 // ─── VEREINSSPIELPLAN ─────────────────────────────────────────────────────────
 const SPIELPLAN_COLS = [
   {key:"datum",     label:"Datum",       w:"80px"},
@@ -7093,6 +7357,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"termine",label:"Termine",icon:"📌"},
+    {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
@@ -7145,6 +7410,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
+    {activeTab==="kalender"&&<KalenderExport/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||null}
       isAdmin={false}
