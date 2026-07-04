@@ -6107,7 +6107,11 @@ function icsUid(parts){
 
 // options: {teams:[...], vorlaufMin, dauerMin, includeTermine, spiele:[], vereinstermine:[]}
 function buildICS(options){
-  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[]}=options;
+  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[],
+    puffer=false,
+    heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
+    auswVor=60, auswNach=60,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
+  }=options;
   const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
   const L=[];
   L.push("BEGIN:VCALENDAR");
@@ -6124,12 +6128,26 @@ function buildICS(options){
   // Spiele
   for(const s of spiele){
     if(teamSet && !teamSet.has(s.mannschaft)) continue;
-    const start=icsDateTime(s.datum, s.uhrzeit);
-    if(!start) continue;
-    const end=icsAddMinutes(s.datum, s.uhrzeit, dauerMin);
+    const spielStart=icsDateTime(s.datum, s.uhrzeit);
+    if(!spielStart) continue;
     const heim = /heim/i.test(s.ort||"");
+    const auswaerts = /ausw/i.test(s.ort||"");
+    // Puffer: Kalendereintrag beginnt vor Spielbeginn und endet nach Spielende
+    let vorMin=0, nachMin=0;
+    if(puffer){
+      if(heim){ vorMin=heimVor; nachMin=heimNach; }
+      else if(auswaerts){ vorMin=auswVor; nachMin=auswNach; }
+      // wenn Ort weder klar Heim noch Auswärts: kein Puffer
+    }
+    const start = vorMin>0 ? icsAddMinutes(s.datum, s.uhrzeit, -vorMin) : spielStart;
+    const end   = icsAddMinutes(s.datum, s.uhrzeit, dauerMin + nachMin);
     const titel=`🏓 ${s.mannschaft} vs. ${s.gegner||"?"}`;
     const ortText = s.ort && !/heim|ausw/i.test(s.ort) ? s.ort : (heim?"Heimspiel":"Auswärtsspiel");
+    // Beschreibung: Spielbeginn explizit nennen + Puffer erläutern
+    const descParts=[`Spielbeginn: ${s.uhrzeit} Uhr`];
+    if(puffer && heim && (vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
+    if(puffer && auswaerts && (vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
+    if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
     L.push("BEGIN:VEVENT");
     L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
     L.push(`DTSTAMP:${stamp}`);
@@ -6138,8 +6156,9 @@ function buildICS(options){
     L.push(`SUMMARY:${icsEscape(titel)}`);
     L.push(`LOCATION:${icsEscape(ortText)}`);
     L.push(`CATEGORIES:${icsEscape(s.mannschaft)}`);
-    if(s.ergebnis) L.push(`DESCRIPTION:${icsEscape("Ergebnis: "+s.ergebnis)}`);
+    L.push(`DESCRIPTION:${icsEscape(descParts.join(" · "))}`);
     if(vorlaufMin>0){
+      // Erinnerung bezieht sich auf den Kalender-Start (also inkl. Puffer)
       L.push("BEGIN:VALARM");
       L.push("ACTION:DISPLAY");
       L.push(`DESCRIPTION:${icsEscape(titel)}`);
@@ -6188,38 +6207,70 @@ function buildICS(options){
 const KALENDER_FEED_BASE = "/.netlify/functions/calendar";
 
 function KalenderExport(){
+  // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
+  const SAISON_OPTS=[
+    {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
+    {id:"spielplan_2025_2026", label:"2025/26"},
+    {id:"spielplan_2024_2025", label:"2024/25"},
+  ];
+  const [selSaison,setSelSaison]=useState((SEASONS.find(s=>s.current)||SEASONS[0]).key.startsWith("2026")?"spielplan_2026_2027":"spielplan_"+(SEASONS.find(s=>s.current)||SEASONS[0]).key.replace("/","_"));
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
-  // aktuelle Saison + Vereinstermine laden
+
+  // Spiele der gewählten Saison + Vereinstermine laden
   useEffect(()=>{
-    const cur=(SEASONS.find(s=>s.current)||SEASONS[0]);
-    const spielplanKey="spielplan_"+cur.key.replace("/","_");
-    const u1=onSnapshot(doc(db,"config",spielplanKey),snap=>{
-      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[spielplanKey]||[]);
+    const u1=onSnapshot(doc(db,"config",selSaison),snap=>{
+      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[selSaison]||[]);
       setSpiele(data);
-    },()=>{ setSpiele(SPIELPLAN_DATA[spielplanKey]||[]); });
+    },()=>{ setSpiele(SPIELPLAN_DATA[selSaison]||[]); });
+    return ()=>u1();
+  },[selSaison]);
+  useEffect(()=>{
     const u2=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
       setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
     },()=>{});
-    return ()=>{u1();u2();};
+    return ()=>u2();
   },[]);
-  // Mannschaften aus den Spielen ableiten (echte Spielplan-Namen wie "Herren 1", "Mädchen 13")
-  const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
 
+  // Mannschaften aus den Spielen der gewählten Saison ableiten
+  const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
   const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
+
   const [selTeams,setSelTeams]=useState([]);
   const [vorlauf,setVorlauf]=useState(60);
-  const [dauer,setDauer]=useState(180);
+  const [dauer,setDauer]=useState(120);
+  const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
   const [mitTermine,setMitTermine]=useState(true);
+  const [puffer,setPuffer]=useState(false);
   const [copied,setCopied]=useState(false);
+
+  // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften)
+  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); },[selSaison]);
+
+  // Punkt 3: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2h),
+  // solange der Nutzer die Dauer nicht manuell geändert hat.
+  useEffect(()=>{
+    if(dauerManuell) return;
+    if(selTeams.length===0){ setDauer(120); return; } // Standard 2h
+    const nurNachwuchs = selTeams.every(istNachwuchsMannschaft);
+    const nurErwachsene = selTeams.every(t=>!istNachwuchsMannschaft(t));
+    if(nurNachwuchs) setDauer(90);        // 1,5 Stunden
+    else if(nurErwachsene) setDauer(120); // 2 Stunden
+    else setDauer(120);                   // gemischt → 2 Stunden
+  },[selTeams, dauerManuell]);
 
   function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
   function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
   function selectAlle(){ setSelTeams(alleMannschaften); }
   function selectKeine(){ setSelTeams([]); }
 
+  const icsOptions=()=>({
+    teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
+    puffer, spiele, vereinstermine,
+  });
+
   function download(){
-    const ics=buildICS({teams:selTeams,vorlaufMin:vorlauf,dauerMin:dauer,includeTermine:mitTermine,spiele,vereinstermine});
+    const ics=buildICS(icsOptions());
     const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -6230,14 +6281,15 @@ function KalenderExport(){
   // Abo-Link mit Parametern zusammenbauen
   const aboUrl=(()=>{
     const params=new URLSearchParams();
+    params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
     if(mitTermine) params.set("termine","1");
+    if(puffer) params.set("puffer","1");
     const origin=typeof window!=="undefined"?window.location.origin:"";
     return `${origin}${KALENDER_FEED_BASE}.ics?${params.toString()}`;
   })();
-  // webcal:// sorgt dafür, dass Kalender-Apps direkt "Abonnieren" anbieten
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
 
   function copyLink(){
@@ -6247,17 +6299,31 @@ function KalenderExport(){
   const box={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:14};
   const lab={fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:8};
 
+  // Dauer-Label für Anzeige
+  const dauerLabel={90:"1,5 Stunden",120:"2 Stunden",150:"2,5 Stunden",180:"3 Stunden",210:"3,5 Stunden",240:"4 Stunden"}[dauer]||`${dauer} Min`;
+
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📅 Kalender-Export</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
       Spieltermine in deinen Kalender übernehmen — als Abo (bleibt automatisch aktuell) oder Download.
     </div>
 
+    {/* Saison-Auswahl (Punkt 1) */}
+    <div style={box}>
+      <div style={lab}>Saison</div>
+      <select value={selSaison} onChange={e=>setSelSaison(e.target.value)} style={sel}>
+        {SAISON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>
+        {spiele.length>0?`${spiele.length} Spiele · ${alleMannschaften.length} Mannschaften`:"Für diese Saison sind noch keine Spiele hinterlegt."}
+      </div>
+    </div>
+
     {/* Mannschaftsauswahl */}
     <div style={box}>
       <div style={lab}>Welche Mannschaften?</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length)}>Alle</button>
+        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length&&alleMannschaften.length>0)}>Alle</button>
         <button onClick={selectNachwuchs} style={chip(false)}>Alle Nachwuchs</button>
         <button onClick={selectKeine} style={chip(false)}>Keine</button>
       </div>
@@ -6265,16 +6331,17 @@ function KalenderExport(){
         {alleMannschaften.map(t=>(
           <label key={t} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
             <input type="checkbox" checked={selTeams.includes(t)} onChange={()=>toggleTeam(t)}/>
-            {t}
+            {t}{istNachwuchsMannschaft(t)?<span style={{fontSize:10,color:"var(--text4)"}}> (Nachwuchs)</span>:null}
           </label>
         ))}
+        {alleMannschaften.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Keine Mannschaften in dieser Saison.</div>}
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
       </div>
     </div>
 
-    {/* Vorlauf + Dauer */}
+    {/* Erinnerung + Dauer */}
     <div style={box}>
       <div style={lab}>Erinnerung & Dauer</div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -6288,17 +6355,38 @@ function KalenderExport(){
         </div>
         <div style={{flex:1,minWidth:130}}>
           <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Dauer pro Spiel</label>
-          <select value={dauer} onChange={e=>setDauer(Number(e.target.value))} style={sel}>
-            <option value={120}>2 Stunden</option><option value={150}>2,5 Stunden</option>
-            <option value={180}>3 Stunden</option><option value={210}>3,5 Stunden</option>
-            <option value={240}>4 Stunden</option>
+          <select value={dauer} onChange={e=>{setDauer(Number(e.target.value));setDauerManuell(true);}} style={sel}>
+            <option value={90}>1,5 Stunden</option><option value={120}>2 Stunden</option>
+            <option value={150}>2,5 Stunden</option><option value={180}>3 Stunden</option>
+            <option value={210}>3,5 Stunden</option><option value={240}>4 Stunden</option>
           </select>
         </div>
       </div>
+      {!dauerManuell&&selTeams.length>0&&<div style={{fontSize:10,color:"#10b981",marginTop:6}}>
+        Automatisch vorbelegt: {dauerLabel} ({selTeams.every(istNachwuchsMannschaft)?"Nachwuchs":selTeams.every(t=>!istNachwuchsMannschaft(t))?"Erwachsene":"gemischt"})
+      </div>}
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",marginTop:12}}>
         <input type="checkbox" checked={mitTermine} onChange={e=>setMitTermine(e.target.checked)}/>
         Vereinstermine (z. B. Versammlungen) einbeziehen
       </label>
+    </div>
+
+    {/* Fahrt-/Auf-/Abbauzeiten (Punkt 4) */}
+    <div style={box}>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:700,color:"var(--text)",cursor:"pointer"}}>
+        <input type="checkbox" checked={puffer} onChange={e=>setPuffer(e.target.checked)}/>
+        Fahrt- & Auf-/Abbauzeit einrechnen
+      </label>
+      <div style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.5}}>
+        Der Kalendereintrag beginnt dann vor dem Spiel und endet danach — der eigentliche Spielbeginn steht in der Beschreibung.
+        <div style={{marginTop:6,paddingLeft:6,borderLeft:"2px solid var(--border2)"}}>
+          <b>Heimspiel:</b> 1 Std Aufbau vorher, 30 Min Abbau nachher<br/>
+          <b>Auswärts:</b> 1 Std Hinfahrt, 1 Std Rückfahrt
+        </div>
+        <div style={{marginTop:6,fontStyle:"italic"}}>
+          Beispiel Nachwuchs 14:00 Uhr: Heim 13:00–16:00, Auswärts 13:00–16:30.
+        </div>
+      </div>
     </div>
 
     {/* Abo-Weg */}
