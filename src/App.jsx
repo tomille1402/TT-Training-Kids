@@ -5059,6 +5059,12 @@ function AufstellungUpload({showToast}) {
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
+  // Saison-Auswahl: Standard = aktuelle Saison
+  const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
+  const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
+  const seasonTeams = season.teams;
+  // eindeutiges Saison-Kürzel für den Datei-Key (z.B. "2026/27" → "2026_27")
+  const seasonSlug = selSeasonKey.replace("/","_");
 
   useEffect(()=>{
     const unsub = onSnapshot(doc(db,"config","teamFiles"),snap=>{
@@ -5067,26 +5073,24 @@ function MannschaftenVerwaltung({showToast}) {
     return unsub;
   },[]);
 
-  async function handleUpload(teamId, type, file) {
+  async function handleUpload(fileKey, file) {
     if(!file) return;
-    setUploading(p=>({...p,[teamId+type]:true}));
+    setUploading(p=>({...p,[fileKey]:true}));
     const reader = new FileReader();
     reader.onload = async(e)=>{
       const dataUrl = e.target.result;
-      const key = `${teamId}_${type}`;
-      const updated = {...teamFiles, [key]:dataUrl, [`${key}_name`]:file.name};
+      const updated = {...teamFiles, [fileKey]:dataUrl, [`${fileKey}_name`]:file.name};
       await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
       setTeamFiles(updated);
       showToast(`${file.name} hochgeladen`,"📎");
-      setUploading(p=>({...p,[teamId+type]:false}));
+      setUploading(p=>({...p,[fileKey]:false}));
     };
     reader.readAsDataURL(file);
   }
 
-  async function handleDelete(teamId, type) {
-    const key = `${teamId}_${type}`;
+  async function handleDelete(fileKey) {
     const updated = {...teamFiles};
-    delete updated[key]; delete updated[`${key}_name`];
+    delete updated[fileKey]; delete updated[`${fileKey}_name`];
     await setDoc(doc(db,"config","teamFiles"),updated).catch(()=>{});
     setTeamFiles(updated);
     showToast("Gelöscht","🗑️");
@@ -5094,14 +5098,31 @@ function MannschaftenVerwaltung({showToast}) {
 
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
     <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
       Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
     </div>
 
-    {TEAMS.map(t=>{
-      const pinKey = `${t.id}_pin`; const codeKey = `${t.id}_code`;
-      const pinFile = teamFiles[pinKey]; const codFile = teamFiles[codeKey];
-      const pinName = teamFiles[`${pinKey}_name`]; const codName = teamFiles[`${codeKey}_name`];
+    {/* Saison-Auswahl */}
+    <div style={{marginBottom:14}}>
+      <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4,fontWeight:700}}>Saison</label>
+      <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
+        style={{width:"100%",padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
+        {SEASONS.map(s=><option key={s.key} value={s.key}>{s.key}{s.current?" (aktuell)":""}</option>)}
+      </select>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>{seasonTeams.length} Mannschaften in dieser Saison</div>
+    </div>
+
+    {seasonTeams.map(t=>{
+      // Saison-spezifischer Key; Fallback auf alten Key (ohne Saison) für Altdaten
+      const pinKey = `${seasonSlug}_${t.id}_pin`;   const codeKey = `${seasonSlug}_${t.id}_code`;
+      const oldPinKey = `${t.id}_pin`;              const oldCodeKey = `${t.id}_code`;
+      const pinFile = teamFiles[pinKey] ?? teamFiles[oldPinKey];
+      const codFile = teamFiles[codeKey] ?? teamFiles[oldCodeKey];
+      const pinName = teamFiles[`${pinKey}_name`] ?? teamFiles[`${oldPinKey}_name`];
+      const codName = teamFiles[`${codeKey}_name`] ?? teamFiles[`${oldCodeKey}_name`];
+      // Für Löschen den tatsächlich belegten Key verwenden
+      const pinDelKey = teamFiles[pinKey]!==undefined ? pinKey : (teamFiles[oldPinKey]!==undefined ? oldPinKey : pinKey);
+      const codDelKey = teamFiles[codeKey]!==undefined ? codeKey : (teamFiles[oldCodeKey]!==undefined ? oldCodeKey : codeKey);
       return <div key={t.id} style={{borderTop:"1px solid var(--border)",paddingTop:10,marginBottom:10}}>
         <div style={{fontSize:12,fontWeight:700,color:t.color,marginBottom:6}}>{t.name}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -5111,12 +5132,12 @@ function MannschaftenVerwaltung({showToast}) {
             {pinFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pinName}</span>
-                  <button onClick={()=>handleDelete(t.id,"pin")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(pinDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"pin"]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[t.id+"pin"]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[pinKey]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[pinKey]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(t.id,"pin",e.target.files?.[0])} disabled={uploading[t.id+"pin"]}/>
+                    onChange={e=>handleUpload(pinKey,e.target.files?.[0])} disabled={uploading[pinKey]}/>
                 </label>}
           </div>
           {/* Spielcodes */}
@@ -5125,12 +5146,12 @@ function MannschaftenVerwaltung({showToast}) {
             {codFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{codName}</span>
-                  <button onClick={()=>handleDelete(t.id,"code")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(codDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"code"]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[t.id+"code"]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[codeKey]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[codeKey]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(t.id,"code",e.target.files?.[0])} disabled={uploading[t.id+"code"]}/>
+                    onChange={e=>handleUpload(codeKey,e.target.files?.[0])} disabled={uploading[codeKey]}/>
                 </label>}
           </div>
         </div>
@@ -5693,9 +5714,11 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {teamFiles[`${t.id}_pin`]&&(()=>{
-              const dataUrl=teamFiles[`${t.id}_pin`];
-              const name=teamFiles[`${t.id}_pin_name`]||"spiel-pins";
+            {(()=>{
+              const slug=selSeasonKey.replace("/","_");
+              const dataUrl=teamFiles[`${slug}_${t.id}_pin`] ?? teamFiles[`${t.id}_pin`];
+              if(!dataUrl) return null;
+              const name=teamFiles[`${slug}_${t.id}_pin_name`] ?? teamFiles[`${t.id}_pin_name`] ?? "spiel-pins";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
@@ -5707,9 +5730,11 @@ function SpielbetrieblTab({isSuperAdmin}) {
               return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
                 style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>;
             })()}
-            {teamFiles[`${t.id}_code`]&&(()=>{
-              const dataUrl=teamFiles[`${t.id}_code`];
-              const name=teamFiles[`${t.id}_code_name`]||"spielcodes";
+            {(()=>{
+              const slug=selSeasonKey.replace("/","_");
+              const dataUrl=teamFiles[`${slug}_${t.id}_code`] ?? teamFiles[`${t.id}_code`];
+              if(!dataUrl) return null;
+              const name=teamFiles[`${slug}_${t.id}_code_name`] ?? teamFiles[`${t.id}_code_name`] ?? "spielcodes";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
