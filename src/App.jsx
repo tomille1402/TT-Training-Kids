@@ -6236,11 +6236,15 @@ function KalenderExport(){
   const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
   const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
 
+  // Verfügbare Rubriken: Standard-Liste + alle, die tatsächlich in Terminen vorkommen
+  const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
+  const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
+
   const [selTeams,setSelTeams]=useState([]);
   const [vorlauf,setVorlauf]=useState(60);
   const [dauer,setDauer]=useState(120);
   const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
-  const [mitTermine,setMitTermine]=useState(true);
+  const [selRubriken,setSelRubriken]=useState([...TERMIN_RUBRIKEN]); // Standard: alle Rubriken an
   const [puffer,setPuffer]=useState(false);
   const [copied,setCopied]=useState(false);
 
@@ -6263,10 +6267,15 @@ function KalenderExport(){
   function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
   function selectAlle(){ setSelTeams(alleMannschaften); }
   function selectKeine(){ setSelTeams([]); }
+  function toggleRubrik(r){ setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
+
+  // Vereinstermine nach ausgewählten Rubriken filtern (Termin ohne Rubrik zählt als "Alle")
+  const gefilterteTermine = vereinstermine.filter(t=>selRubriken.includes(t.rubrik||"Alle"));
+  const mitTermine = selRubriken.length>0;
 
   const icsOptions=()=>({
     teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
-    puffer, spiele, vereinstermine,
+    puffer, spiele, vereinstermine:gefilterteTermine,
   });
 
   function download(){
@@ -6285,6 +6294,12 @@ function KalenderExport(){
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
+    // Rubriken: nur setzen wenn nicht alle Standard-Rubriken gewählt sind
+    if(selRubriken.length>0 && !TERMIN_RUBRIKEN.every(r=>selRubriken.includes(r))){
+      params.set("rubriken",selRubriken.join(","));
+    } else if(selRubriken.length===0){
+      params.set("rubriken","");  // keine Termine
+    }
     if(mitTermine) params.set("termine","1");
     if(puffer) params.set("puffer","1");
     const origin=typeof window!=="undefined"?window.location.origin:"";
@@ -6341,6 +6356,29 @@ function KalenderExport(){
       </div>
     </div>
 
+    {/* Welche (Vereins-)Termine? — Rubriken als Ankreuzfelder (Punkt 2) */}
+    <div style={box}>
+      <div style={lab}>Welche (Vereins-)Termine?</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+        Wähle die Rubriken, deren Termine in deinen Kalender sollen.
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        <button onClick={()=>setSelRubriken([...alleRubriken])} style={chip(selRubriken.length===alleRubriken.length)}>Alle</button>
+        <button onClick={()=>setSelRubriken([])} style={chip(false)}>Keine</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {alleRubriken.map(r=>(
+          <label key={r} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
+            <input type="checkbox" checked={selRubriken.includes(r)} onChange={()=>toggleRubrik(r)}/>
+            {r}
+          </label>
+        ))}
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
+        {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
+      </div>
+    </div>
+
     {/* Erinnerung + Dauer */}
     <div style={box}>
       <div style={lab}>Erinnerung & Dauer</div>
@@ -6365,10 +6403,6 @@ function KalenderExport(){
       {!dauerManuell&&selTeams.length>0&&<div style={{fontSize:10,color:"#10b981",marginTop:6}}>
         Automatisch vorbelegt: {dauerLabel} ({selTeams.every(istNachwuchsMannschaft)?"Nachwuchs":selTeams.every(t=>!istNachwuchsMannschaft(t))?"Erwachsene":"gemischt"})
       </div>}
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",marginTop:12}}>
-        <input type="checkbox" checked={mitTermine} onChange={e=>setMitTermine(e.target.checked)}/>
-        Vereinstermine (z. B. Versammlungen) einbeziehen
-      </label>
     </div>
 
     {/* Fahrt-/Auf-/Abbauzeiten (Punkt 4) */}
@@ -6441,6 +6475,7 @@ const SPIELPLAN_COLS = [
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
 const TERMIN_ORTE = ["Feuerwehr-Gerätehaus","Gasthaus Horn","Mehrzweckhalle"];
+const TERMIN_RUBRIKEN = ["Alle","Erwachsene","Nachwuchs","Halle zu","Vorstand","Grenzau-Spiele"];
 const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 function terminTag(isoDatum){
   if(!isoDatum) return "";
@@ -6469,7 +6504,7 @@ function spielplanKeyStartjahr(key){
 // TerminVerwaltung — Admin erfasst Vereinstermine (im Verwaltung-Bereich)
 function TerminVerwaltung({showToast}) {
   const [termine,setTermine]=useState([]);
-  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",veranstaltung:"",ort:""};
+  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",rubrik:"Alle",veranstaltung:"",ort:""};
   const [form,setForm]=useState(leer);
   const [editId,setEditId]=useState(null);
 
@@ -6496,7 +6531,7 @@ function TerminVerwaltung({showToast}) {
       showToast(editId?"Termin aktualisiert":"Termin angelegt","📌"); setForm(leer); setEditId(null);
     }catch(e){showToast("Fehler: "+e.message,"❌");}
   }
-  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
+  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",rubrik:t.rubrik||"Alle",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
   async function del(id){
     if(!window.confirm("Diesen Termin löschen?")) return;
     const next=termine.filter(t=>t.id!==id);
@@ -6538,10 +6573,19 @@ function TerminVerwaltung({showToast}) {
           <input type="time" value={form.uhrzeitEnde} onChange={e=>setForm(f=>({...f,uhrzeitEnde:e.target.value}))} style={inp}/>
         </div>
       </div>
-      {/* Veranstaltung */}
-      <div style={{marginBottom:10}}>
-        <label style={lab}>Veranstaltung</label>
-        <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
+      {/* Rubrik (Dropdown mit Freieingabe) + Veranstaltung nebeneinander */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <div style={{flex:"0 0 auto",width:150}}>
+          <label style={lab}>Rubrik</label>
+          <input list="termin-rubriken" value={form.rubrik} onChange={e=>setForm(f=>({...f,rubrik:e.target.value}))} placeholder="Rubrik wählen" style={inp}/>
+          <datalist id="termin-rubriken">
+            {TERMIN_RUBRIKEN.map(r=><option key={r} value={r}/>)}
+          </datalist>
+        </div>
+        <div style={{flex:1,minWidth:150}}>
+          <label style={lab}>Veranstaltung</label>
+          <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
+        </div>
       </div>
       {/* Ort: Dropdown + freie Eingabe via datalist */}
       <div style={{marginBottom:12}}>
@@ -6588,6 +6632,7 @@ const TERMIN_COLS=[
   {key:"tagEnde",      label:"Tag",           w:"40px"},
   {key:"uhrzeitStart", label:"Start",         w:"56px"},
   {key:"uhrzeitEnde",  label:"Ende",          w:"56px"},
+  {key:"rubrik",       label:"Rubrik",        w:"100px"},
   {key:"veranstaltung",label:"Veranstaltung", w:"auto"},
   {key:"ort",          label:"Ort",           w:"140px"},
 ];
@@ -6658,11 +6703,12 @@ function TermineView() {
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.tagEnde:""}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{t.uhrzeitStart}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:11}}>{t.uhrzeitEnde}</td>
+              <td style={{padding:"5px 6px",fontSize:11}}>{t.rubrik&&t.rubrik!=="Alle"?<span style={{background:"var(--bg3)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"var(--text2)"}}>{t.rubrik}</span>:<span style={{color:"var(--text4)",fontSize:10}}>{t.rubrik||""}</span>}</td>
               <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}}>{t.veranstaltung}</td>
               <td style={{padding:"5px 6px",fontSize:11}}>{t.ort}</td>
             </tr>
           ))}
-          {sorted.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
