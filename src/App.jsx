@@ -302,7 +302,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -491,7 +491,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
           )}
         </div>
       )}
-      <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>Noch kein Konto? Wende dich an deinen Trainer.</div>
+      <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>{clubConfig.loginFooter||"Noch kein Konto? Wende dich an deinen Trainer."}</div>
     </div>
   </div>;
 }
@@ -530,10 +530,15 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
+    {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
-  // Nur Super-Admins sehen Verwaltung
-  const TABS = ALL_TABS.filter(t=>!t.superAdminOnly || isSuperAdmin);
+  // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
+  const TABS = ALL_TABS.filter(t=>{
+    if(t.superAdminOnly && !isSuperAdmin) return false;
+    if(t.nonSuperAdminOnly && isSuperAdmin) return false;
+    return true;
+  });
   const [activeTab,setActiveTab]=useState("training");
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
@@ -554,11 +559,11 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   },[externalPlayer?.id]);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
-  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Trainer:true});
+  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Gast:true,Trainer:true});
   // Wenn RSW adminGroupFilters gesetzt, diese verwenden
   const effectiveGroupFilters = groupFiltersExt && Object.keys(groupFiltersExt).some(Boolean)
     ? {Profis:groupFiltersExt["Profis"]||false, Fortgeschrittene:groupFiltersExt["Fortgeschrittene"]||false,
-       Anfänger:groupFiltersExt["Anfänger"]||false, Trainer:groupFiltersExt["Trainer"]||false,
+       Anfänger:groupFiltersExt["Anfänger"]||false, Gast:groupFiltersExt["Gast"]||false, Trainer:groupFiltersExt["Trainer"]||false,
        Erwachsene:groupFiltersExt["Erwachsene"]||false}
     : groupFilters;
   const [showOnlyPresentLocal,setShowOnlyPresentLocal]=useState(false);
@@ -587,7 +592,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     });
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
-  const sortedRanking = [...visiblePlayers].filter(p=>(p.group||"Anfänger")!=="Erwachsene").sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  const sortedRanking = [...visiblePlayers].filter(p=>{const g=p.group||"Anfänger"; return g!=="Erwachsene"&&g!=="Gast";}).sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
 
   async function setStars(playerId,exId,value) {
     setSaving(true);
@@ -663,7 +668,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
             <div>
-              <div style={{fontSize:15,fontWeight:800}}>TTC Niederzeuzheim</div>
+              <div style={{fontSize:15,fontWeight:800}}>{clubConfig.name||"TTC Niederzeuzheim"}</div>
               <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
             </div>
           </div>
@@ -677,8 +682,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       </div>
       <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px"}}>
         <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-          {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
-            const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+          {["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>{
+            const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
             const c=colors[g]; const on=groupFilters[g];
             return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
               padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
@@ -899,6 +904,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
@@ -1115,7 +1121,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
-  const allActive = players.filter(p=>p.status!=="passiv" && (p.group||"Anfänger")!=="Erwachsene");
+  const allActive = players.filter(p=>{const g=p.group||"Anfänger"; return p.status!=="passiv" && g!=="Erwachsene" && g!=="Gast";});
 
   // Punkt 4: Trainingszeitraum aus Firestore lesen
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
@@ -1302,6 +1308,16 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
                "Erwachsene IV":"Herren 4","Erwachsene V":"Herren 5","Erwachsene VI":"Herren 6"};
     return map[m]||m;
   }
+  // Mannschaftsführer für einen (Spielplan-)Mannschaftsnamen ermitteln.
+  // Quelle: Spieler-Feld mannschaftsfuehrerTeam (enthält Spielplan-Namen wie "Herren 1").
+  function mfName(spielplanName) {
+    const mf = players.find(p=>p.mannschaftsfuehrerTeam===spielplanName);
+    if(!mf) return "noch offen";
+    const vn = mf.firstName || "";
+    const nn = mf.lastName || "";
+    const full = `${vn} ${nn}`.trim();
+    return full || (mf.name||"noch offen");
+  }
   // Sortierung: Herren aufsteigend, dann Nachwuchs absteigend (älteste zuerst = höhere Jahrg.)
   const MANN_ORDER=["Erwachsene","Erwachsene II","Erwachsene III","Erwachsene IV","Erwachsene V","Erwachsene VI",
     "Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
@@ -1361,7 +1377,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     </div>:mannschaften.map(mann=>{
       const ms=enriched.filter(s=>s.mannschaft===mann);
       return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
-        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)}</div>
+        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} (MF: {mfName(mannLabel(mann))})</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead><tr style={{background:"var(--bg2)"}}>
@@ -1403,6 +1419,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
 function BrandingEditor({showToast}) {
   const [name,     setName]     = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [loginFooter, setLoginFooter] = useState("");
   const [logo,     setLogo]     = useState("");
   const [saving,   setSaving]   = useState(false);
   const [logoSaving,setLogoSaving] = useState(false);
@@ -1415,6 +1432,7 @@ function BrandingEditor({showToast}) {
         const d=snap.data();
         setName(d.name||"");
         setSubtitle(d.subtitle||"");
+        setLoginFooter(d.loginFooter||"");
         setLogo(d.logo||"");
       }
       setLoaded(true);
@@ -1424,7 +1442,7 @@ function BrandingEditor({showToast}) {
   async function saveText() {
     setSaving(true);
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo},{merge:false});
       showToast("Gespeichert ✅","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -1445,7 +1463,7 @@ function BrandingEditor({showToast}) {
       }
       setLogo(dataUrl);
       try {
-        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo:dataUrl},{merge:false});
+        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl},{merge:false});
         showToast("Wappen gespeichert 🖼️","🖼️");
       } catch(e) {
         window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -1459,7 +1477,7 @@ function BrandingEditor({showToast}) {
   async function deleteLogo() {
     setLogo("");
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),logo:""},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:""},{merge:false});
       showToast("Wappen entfernt","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -1481,6 +1499,13 @@ function BrandingEditor({showToast}) {
     <div style={{marginBottom:12}}>
       <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Untertitel</label>
       <input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Trainings-App"
+        style={{width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
+          borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+    </div>
+
+    <div style={{marginBottom:12}}>
+      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Login-Hinweis (unten am Login-Bildschirm)</label>
+      <input value={loginFooter} onChange={e=>setLoginFooter(e.target.value)} placeholder="Noch kein Konto? Wende dich an deinen Trainer."
         style={{width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
     </div>
@@ -1752,7 +1777,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
   const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:"",roles:{},stammErsatz:"Stammspieler"};
   const [newData,setNewData]=useState(newData0);
-  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
+  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
 
   async function saveEdit() {
     if (!editPlayer) return;
@@ -2262,7 +2287,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const passiveGroupPlayers = allGroupPlayers.filter(p=>p.status==="passiv");
       const groupPlayers = [...activeGroupPlayers, ...passiveGroupPlayers];
       const grpOpen = showGrp[group]===true;
-      const GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+      const GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
       const gc = GRP_COL[group]||"#6b7280";
       return <div key={group} style={{marginBottom:8,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden",borderLeft:`4px solid ${gc}`}}>
         <div onClick={()=>setShowGrp(p=>({...p,[group]:!grpOpen}))} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -3107,6 +3132,111 @@ function SchlaegerTab({rackets,players,showToast}) {
   </div>;
 }
 
+// ─── MEINE VERWALTUNG (Selbstauskunft, nur eigene Daten) ─────────────────────
+// Zeigt die eigenen Stammdaten read-only. Editierbar nur: Handynummer,
+// T-Shirt-Größe, Anzugs-Größe. Alles andere kann nur der Admin ändern.
+function MeineVerwaltung({me, showToast}) {
+  const [phone,setPhone]     = useState(me?.phone||"");
+  const [tshirt,setTshirt]   = useState(me?.tshirtSize||"");
+  const [anzug,setAnzug]     = useState(me?.anzugSize||"");
+  const [saving,setSaving]   = useState(false);
+  const [dirty,setDirty]     = useState(false);
+
+  // Bei Wechsel der Person / Neuladen aus Firestore die Felder aktualisieren
+  useEffect(()=>{
+    setPhone(me?.phone||""); setTshirt(me?.tshirtSize||""); setAnzug(me?.anzugSize||"");
+    setDirty(false);
+  },[me?.id, me?.phone, me?.tshirtSize, me?.anzugSize]);
+
+  if(!me) return <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>
+    Keine persönlichen Daten gefunden.
+  </div>;
+
+  // Rollen/Funktionen als lesbare Liste
+  const ROLE_DEF=[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
+    {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
+    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}];
+  const funktionen = ROLE_DEF.filter(r=>me.roles?.[r.key]).map(r=>`${r.icon} ${r.label}`).join(", ")||"—";
+
+  const istErw = (me.group||"Anfänger")==="Erwachsene" || me.roles?.erwachsene===true;
+
+  async function save(){
+    setSaving(true);
+    try{
+      await updateDoc(doc(db,"players",me.id),{
+        phone:phone.trim(), tshirtSize:tshirt.trim(), anzugSize:anzug.trim(),
+      });
+      showToast("Gespeichert ✅","✅");
+      setDirty(false);
+    }catch(e){
+      window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||""));
+    }
+    setSaving(false);
+  }
+
+  const fmtDate=(d)=> d? d.split("-").reverse().join(".") : "—";
+  const box={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:12};
+  const roLabel={fontSize:11,color:"var(--text3)",marginBottom:2};
+  const roVal={fontSize:13,color:"var(--text)",fontWeight:600,marginBottom:10};
+  const editLab={fontSize:11,color:"var(--text2)",fontWeight:700,display:"block",marginBottom:4};
+  const inpStyle={width:"100%",padding:"9px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
+    borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
+
+  // Read-only-Zeile
+  const RO=({label,value})=><div><div style={roLabel}>{label}</div><div style={roVal}>{value||"—"}</div></div>;
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🗂️ Meine Verwaltung</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Deine beim Verein hinterlegten Daten. Ändern kannst du selbst nur Handynummer, T-Shirt- und Anzugs-Größe.
+      Für alle anderen Änderungen wende dich bitte an den Admin.
+    </div>
+
+    {/* Editierbarer Bereich */}
+    <div style={{...box,borderColor:"#10b98155"}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#10b981",marginBottom:10}}>✏️ Selbst änderbar</div>
+      <div style={{marginBottom:12}}>
+        <label style={editLab}>Handynummer</label>
+        <input value={phone} onChange={e=>{setPhone(e.target.value);setDirty(true);}} placeholder="z. B. 0170 1234567"
+          inputMode="tel" style={inpStyle}/>
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={editLab}>T-Shirt-Größe</label>
+          <input value={tshirt} onChange={e=>{setTshirt(e.target.value);setDirty(true);}} placeholder="z. B. L" style={inpStyle}/>
+        </div>
+        <div style={{flex:1,minWidth:130}}>
+          <label style={editLab}>Anzugs-Größe</label>
+          <input value={anzug} onChange={e=>{setAnzug(e.target.value);setDirty(true);}} placeholder="z. B. 52" style={inpStyle}/>
+        </div>
+      </div>
+      <button onClick={save} disabled={saving||!dirty} style={{
+        width:"100%",marginTop:14,padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,
+        cursor:(saving||!dirty)?"default":"pointer",border:"none",
+        background:(saving||!dirty)?"var(--bg3)":"#10b981",color:(saving||!dirty)?"var(--text3)":"#fff",
+      }}>{saving?"⏳ Speichern…":dirty?"💾 Änderungen speichern":"✓ Gespeichert"}</button>
+    </div>
+
+    {/* Read-only-Bereich */}
+    <div style={box}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:12}}>🔒 Nur durch Admin änderbar</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
+        <RO label="Funktionen" value={funktionen}/>
+        <RO label="Gruppe" value={me.group||"—"}/>
+        <RO label="Vorname" value={me.firstName}/>
+        <RO label="Nachname" value={me.lastName}/>
+        <RO label="Geburtstag" value={fmtDate(me.birthdate)}/>
+        <RO label="Geschlecht" value={me.gender==="w"?"weiblich":me.gender==="m"?"männlich":me.gender||"—"}/>
+        <RO label="E-Mail-Adresse" value={me.email}/>
+        <RO label="Status" value={me.status||"—"}/>
+        <RO label="Vereinsbeitritt" value={fmtDate(me.joinDate)}/>
+        {istErw && <RO label="Stammspieler/Ersatzspieler" value={me.stammErsatz||"—"}/>}
+        {me.mannschaftsfuehrerTeam && <RO label="Mannschaftsführer" value={me.mannschaftsfuehrerTeam}/>}
+      </div>
+    </div>
+  </div>;
+}
+
 // ─── GEBURTSTAGE TAB ─────────────────────────────────────────────────────────
 function GeburtstageTab({players,showToast}) {
   const [uploading,setUploading]=useState(false);
@@ -3324,7 +3454,7 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer}) {
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
@@ -3362,6 +3492,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
+    {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
 
   // Punkt 6: Avatar selbst ändern
@@ -3410,7 +3541,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"} · Rang #{myRank} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3667,6 +3798,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       isAdmin={false}
       roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
       viewerCanEditAll={false}/>}
+
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -5059,6 +5192,12 @@ function AufstellungUpload({showToast}) {
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
+  // Saison-Auswahl: Standard = aktuelle Saison
+  const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
+  const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
+  const seasonTeams = season.teams;
+  // eindeutiges Saison-Kürzel für den Datei-Key (z.B. "2026/27" → "2026_27")
+  const seasonSlug = selSeasonKey.replace("/","_");
 
   useEffect(()=>{
     const unsub = onSnapshot(doc(db,"config","teamFiles"),snap=>{
@@ -5067,26 +5206,24 @@ function MannschaftenVerwaltung({showToast}) {
     return unsub;
   },[]);
 
-  async function handleUpload(teamId, type, file) {
+  async function handleUpload(fileKey, file) {
     if(!file) return;
-    setUploading(p=>({...p,[teamId+type]:true}));
+    setUploading(p=>({...p,[fileKey]:true}));
     const reader = new FileReader();
     reader.onload = async(e)=>{
       const dataUrl = e.target.result;
-      const key = `${teamId}_${type}`;
-      const updated = {...teamFiles, [key]:dataUrl, [`${key}_name`]:file.name};
+      const updated = {...teamFiles, [fileKey]:dataUrl, [`${fileKey}_name`]:file.name};
       await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
       setTeamFiles(updated);
       showToast(`${file.name} hochgeladen`,"📎");
-      setUploading(p=>({...p,[teamId+type]:false}));
+      setUploading(p=>({...p,[fileKey]:false}));
     };
     reader.readAsDataURL(file);
   }
 
-  async function handleDelete(teamId, type) {
-    const key = `${teamId}_${type}`;
+  async function handleDelete(fileKey) {
     const updated = {...teamFiles};
-    delete updated[key]; delete updated[`${key}_name`];
+    delete updated[fileKey]; delete updated[`${fileKey}_name`];
     await setDoc(doc(db,"config","teamFiles"),updated).catch(()=>{});
     setTeamFiles(updated);
     showToast("Gelöscht","🗑️");
@@ -5094,14 +5231,31 @@ function MannschaftenVerwaltung({showToast}) {
 
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
     <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
       Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
     </div>
 
-    {TEAMS.map(t=>{
-      const pinKey = `${t.id}_pin`; const codeKey = `${t.id}_code`;
-      const pinFile = teamFiles[pinKey]; const codFile = teamFiles[codeKey];
-      const pinName = teamFiles[`${pinKey}_name`]; const codName = teamFiles[`${codeKey}_name`];
+    {/* Saison-Auswahl */}
+    <div style={{marginBottom:14}}>
+      <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4,fontWeight:700}}>Saison</label>
+      <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
+        style={{width:"100%",padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
+        {SEASONS.map(s=><option key={s.key} value={s.key}>{s.key}{s.current?" (aktuell)":""}</option>)}
+      </select>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>{seasonTeams.length} Mannschaften in dieser Saison</div>
+    </div>
+
+    {seasonTeams.map(t=>{
+      // Saison-spezifischer Key; Fallback auf alten Key (ohne Saison) für Altdaten
+      const pinKey = `${seasonSlug}_${t.id}_pin`;   const codeKey = `${seasonSlug}_${t.id}_code`;
+      const oldPinKey = `${t.id}_pin`;              const oldCodeKey = `${t.id}_code`;
+      const pinFile = teamFiles[pinKey] ?? teamFiles[oldPinKey];
+      const codFile = teamFiles[codeKey] ?? teamFiles[oldCodeKey];
+      const pinName = teamFiles[`${pinKey}_name`] ?? teamFiles[`${oldPinKey}_name`];
+      const codName = teamFiles[`${codeKey}_name`] ?? teamFiles[`${oldCodeKey}_name`];
+      // Für Löschen den tatsächlich belegten Key verwenden
+      const pinDelKey = teamFiles[pinKey]!==undefined ? pinKey : (teamFiles[oldPinKey]!==undefined ? oldPinKey : pinKey);
+      const codDelKey = teamFiles[codeKey]!==undefined ? codeKey : (teamFiles[oldCodeKey]!==undefined ? oldCodeKey : codeKey);
       return <div key={t.id} style={{borderTop:"1px solid var(--border)",paddingTop:10,marginBottom:10}}>
         <div style={{fontSize:12,fontWeight:700,color:t.color,marginBottom:6}}>{t.name}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -5111,12 +5265,12 @@ function MannschaftenVerwaltung({showToast}) {
             {pinFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pinName}</span>
-                  <button onClick={()=>handleDelete(t.id,"pin")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(pinDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"pin"]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[t.id+"pin"]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[pinKey]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[pinKey]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(t.id,"pin",e.target.files?.[0])} disabled={uploading[t.id+"pin"]}/>
+                    onChange={e=>handleUpload(pinKey,e.target.files?.[0])} disabled={uploading[pinKey]}/>
                 </label>}
           </div>
           {/* Spielcodes */}
@@ -5125,12 +5279,12 @@ function MannschaftenVerwaltung({showToast}) {
             {codFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{codName}</span>
-                  <button onClick={()=>handleDelete(t.id,"code")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(codDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"code"]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[t.id+"code"]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[codeKey]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[codeKey]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(t.id,"code",e.target.files?.[0])} disabled={uploading[t.id+"code"]}/>
+                    onChange={e=>handleUpload(codeKey,e.target.files?.[0])} disabled={uploading[codeKey]}/>
                 </label>}
           </div>
         </div>
@@ -5693,9 +5847,11 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {teamFiles[`${t.id}_pin`]&&(()=>{
-              const dataUrl=teamFiles[`${t.id}_pin`];
-              const name=teamFiles[`${t.id}_pin_name`]||"spiel-pins";
+            {(()=>{
+              const slug=selSeasonKey.replace("/","_");
+              const dataUrl=teamFiles[`${slug}_${t.id}_pin`] ?? teamFiles[`${t.id}_pin`];
+              if(!dataUrl) return null;
+              const name=teamFiles[`${slug}_${t.id}_pin_name`] ?? teamFiles[`${t.id}_pin_name`] ?? "spiel-pins";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
@@ -5707,9 +5863,11 @@ function SpielbetrieblTab({isSuperAdmin}) {
               return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
                 style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>;
             })()}
-            {teamFiles[`${t.id}_code`]&&(()=>{
-              const dataUrl=teamFiles[`${t.id}_code`];
-              const name=teamFiles[`${t.id}_code_name`]||"spielcodes";
+            {(()=>{
+              const slug=selSeasonKey.replace("/","_");
+              const dataUrl=teamFiles[`${slug}_${t.id}_code`] ?? teamFiles[`${t.id}_code`];
+              if(!dataUrl) return null;
+              const name=teamFiles[`${slug}_${t.id}_code_name`] ?? teamFiles[`${t.id}_code_name`] ?? "spielcodes";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
@@ -6107,7 +6265,11 @@ function icsUid(parts){
 
 // options: {teams:[...], vorlaufMin, dauerMin, includeTermine, spiele:[], vereinstermine:[]}
 function buildICS(options){
-  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[]}=options;
+  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[],
+    puffer=false,
+    heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
+    auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
+  }=options;
   const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
   const L=[];
   L.push("BEGIN:VCALENDAR");
@@ -6124,12 +6286,26 @@ function buildICS(options){
   // Spiele
   for(const s of spiele){
     if(teamSet && !teamSet.has(s.mannschaft)) continue;
-    const start=icsDateTime(s.datum, s.uhrzeit);
-    if(!start) continue;
-    const end=icsAddMinutes(s.datum, s.uhrzeit, dauerMin);
+    const spielStart=icsDateTime(s.datum, s.uhrzeit);
+    if(!spielStart) continue;
     const heim = /heim/i.test(s.ort||"");
+    const auswaerts = /ausw/i.test(s.ort||"");
+    // Puffer: Kalendereintrag beginnt vor Spielbeginn und endet nach Spielende
+    let vorMin=0, nachMin=0;
+    if(puffer){
+      if(heim){ vorMin=heimVor; nachMin=heimNach; }
+      else if(auswaerts){ vorMin=auswVor; nachMin=auswNach; }
+      // wenn Ort weder klar Heim noch Auswärts: kein Puffer
+    }
+    const start = vorMin>0 ? icsAddMinutes(s.datum, s.uhrzeit, -vorMin) : spielStart;
+    const end   = icsAddMinutes(s.datum, s.uhrzeit, dauerMin + nachMin);
     const titel=`🏓 ${s.mannschaft} vs. ${s.gegner||"?"}`;
     const ortText = s.ort && !/heim|ausw/i.test(s.ort) ? s.ort : (heim?"Heimspiel":"Auswärtsspiel");
+    // Beschreibung: Spielbeginn explizit nennen + Puffer erläutern
+    const descParts=[`Spielbeginn: ${s.uhrzeit} Uhr`];
+    if(puffer && heim && (vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
+    if(puffer && auswaerts && (vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
+    if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
     L.push("BEGIN:VEVENT");
     L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
     L.push(`DTSTAMP:${stamp}`);
@@ -6138,8 +6314,9 @@ function buildICS(options){
     L.push(`SUMMARY:${icsEscape(titel)}`);
     L.push(`LOCATION:${icsEscape(ortText)}`);
     L.push(`CATEGORIES:${icsEscape(s.mannschaft)}`);
-    if(s.ergebnis) L.push(`DESCRIPTION:${icsEscape("Ergebnis: "+s.ergebnis)}`);
+    L.push(`DESCRIPTION:${icsEscape(descParts.join(" · "))}`);
     if(vorlaufMin>0){
+      // Erinnerung bezieht sich auf den Kalender-Start (also inkl. Puffer)
       L.push("BEGIN:VALARM");
       L.push("ACTION:DISPLAY");
       L.push(`DESCRIPTION:${icsEscape(titel)}`);
@@ -6188,38 +6365,79 @@ function buildICS(options){
 const KALENDER_FEED_BASE = "/.netlify/functions/calendar";
 
 function KalenderExport(){
+  // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
+  const SAISON_OPTS=[
+    {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
+    {id:"spielplan_2025_2026", label:"2025/26"},
+    {id:"spielplan_2024_2025", label:"2024/25"},
+  ];
+  const [selSaison,setSelSaison]=useState((SEASONS.find(s=>s.current)||SEASONS[0]).key.startsWith("2026")?"spielplan_2026_2027":"spielplan_"+(SEASONS.find(s=>s.current)||SEASONS[0]).key.replace("/","_"));
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
-  // aktuelle Saison + Vereinstermine laden
+
+  // Spiele der gewählten Saison + Vereinstermine laden
   useEffect(()=>{
-    const cur=(SEASONS.find(s=>s.current)||SEASONS[0]);
-    const spielplanKey="spielplan_"+cur.key.replace("/","_");
-    const u1=onSnapshot(doc(db,"config",spielplanKey),snap=>{
-      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[spielplanKey]||[]);
+    const u1=onSnapshot(doc(db,"config",selSaison),snap=>{
+      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[selSaison]||[]);
       setSpiele(data);
-    },()=>{ setSpiele(SPIELPLAN_DATA[spielplanKey]||[]); });
+    },()=>{ setSpiele(SPIELPLAN_DATA[selSaison]||[]); });
+    return ()=>u1();
+  },[selSaison]);
+  useEffect(()=>{
     const u2=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
       setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
     },()=>{});
-    return ()=>{u1();u2();};
+    return ()=>u2();
   },[]);
-  // Mannschaften aus den Spielen ableiten (echte Spielplan-Namen wie "Herren 1", "Mädchen 13")
-  const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
 
+  // Mannschaften aus den Spielen der gewählten Saison ableiten
+  const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
   const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
+
+  // Verfügbare Rubriken: Standard-Liste + alle, die tatsächlich in Terminen vorkommen
+  const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
+  const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
+
   const [selTeams,setSelTeams]=useState([]);
   const [vorlauf,setVorlauf]=useState(60);
-  const [dauer,setDauer]=useState(180);
-  const [mitTermine,setMitTermine]=useState(true);
+  const [dauer,setDauer]=useState(120);
+  const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
+  const [selRubriken,setSelRubriken]=useState([...TERMIN_RUBRIKEN]); // Standard: alle Rubriken an
+  const [puffer,setPuffer]=useState(false);
   const [copied,setCopied]=useState(false);
+
+  // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften)
+  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); },[selSaison]);
+
+  // Punkt 3: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2h),
+  // solange der Nutzer die Dauer nicht manuell geändert hat.
+  useEffect(()=>{
+    if(dauerManuell) return;
+    if(selTeams.length===0){ setDauer(120); return; } // Standard 2h
+    const nurNachwuchs = selTeams.every(istNachwuchsMannschaft);
+    const nurErwachsene = selTeams.every(t=>!istNachwuchsMannschaft(t));
+    if(nurNachwuchs) setDauer(90);        // 1,5 Stunden
+    else if(nurErwachsene) setDauer(120); // 2 Stunden
+    else setDauer(120);                   // gemischt → 2 Stunden
+  },[selTeams, dauerManuell]);
 
   function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
   function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
   function selectAlle(){ setSelTeams(alleMannschaften); }
   function selectKeine(){ setSelTeams([]); }
+  function toggleRubrik(r){ setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
+
+  // Vereinstermine nach ausgewählten Rubriken filtern (Termin ohne Rubrik zählt als "Alle")
+  const gefilterteTermine = vereinstermine.filter(t=>selRubriken.includes(t.rubrik||"Alle"));
+  const mitTermine = selRubriken.length>0;
+
+  const icsOptions=()=>({
+    teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
+    puffer, spiele, vereinstermine:gefilterteTermine,
+  });
 
   function download(){
-    const ics=buildICS({teams:selTeams,vorlaufMin:vorlauf,dauerMin:dauer,includeTermine:mitTermine,spiele,vereinstermine});
+    const ics=buildICS(icsOptions());
     const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -6230,14 +6448,21 @@ function KalenderExport(){
   // Abo-Link mit Parametern zusammenbauen
   const aboUrl=(()=>{
     const params=new URLSearchParams();
+    params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
+    // Rubriken: nur setzen wenn nicht alle Standard-Rubriken gewählt sind
+    if(selRubriken.length>0 && !TERMIN_RUBRIKEN.every(r=>selRubriken.includes(r))){
+      params.set("rubriken",selRubriken.join(","));
+    } else if(selRubriken.length===0){
+      params.set("rubriken","");  // keine Termine
+    }
     if(mitTermine) params.set("termine","1");
+    if(puffer) params.set("puffer","1");
     const origin=typeof window!=="undefined"?window.location.origin:"";
     return `${origin}${KALENDER_FEED_BASE}.ics?${params.toString()}`;
   })();
-  // webcal:// sorgt dafür, dass Kalender-Apps direkt "Abonnieren" anbieten
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
 
   function copyLink(){
@@ -6247,17 +6472,31 @@ function KalenderExport(){
   const box={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:14};
   const lab={fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:8};
 
+  // Dauer-Label für Anzeige
+  const dauerLabel={90:"1,5 Stunden",120:"2 Stunden",150:"2,5 Stunden",180:"3 Stunden",210:"3,5 Stunden",240:"4 Stunden"}[dauer]||`${dauer} Min`;
+
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📅 Kalender-Export</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
       Spieltermine in deinen Kalender übernehmen — als Abo (bleibt automatisch aktuell) oder Download.
     </div>
 
+    {/* Saison-Auswahl (Punkt 1) */}
+    <div style={box}>
+      <div style={lab}>Saison</div>
+      <select value={selSaison} onChange={e=>setSelSaison(e.target.value)} style={sel}>
+        {SAISON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>
+        {spiele.length>0?`${spiele.length} Spiele · ${alleMannschaften.length} Mannschaften`:"Für diese Saison sind noch keine Spiele hinterlegt."}
+      </div>
+    </div>
+
     {/* Mannschaftsauswahl */}
     <div style={box}>
       <div style={lab}>Welche Mannschaften?</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length)}>Alle</button>
+        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length&&alleMannschaften.length>0)}>Alle</button>
         <button onClick={selectNachwuchs} style={chip(false)}>Alle Nachwuchs</button>
         <button onClick={selectKeine} style={chip(false)}>Keine</button>
       </div>
@@ -6265,16 +6504,40 @@ function KalenderExport(){
         {alleMannschaften.map(t=>(
           <label key={t} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
             <input type="checkbox" checked={selTeams.includes(t)} onChange={()=>toggleTeam(t)}/>
-            {t}
+            {t}{istNachwuchsMannschaft(t)?<span style={{fontSize:10,color:"var(--text4)"}}> (Nachwuchs)</span>:null}
           </label>
         ))}
+        {alleMannschaften.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Keine Mannschaften in dieser Saison.</div>}
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
       </div>
     </div>
 
-    {/* Vorlauf + Dauer */}
+    {/* Welche (Vereins-)Termine? — Rubriken als Ankreuzfelder (Punkt 2) */}
+    <div style={box}>
+      <div style={lab}>Welche (Vereins-)Termine?</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+        Wähle die Rubriken, deren Termine in deinen Kalender sollen.
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        <button onClick={()=>setSelRubriken([...alleRubriken])} style={chip(selRubriken.length===alleRubriken.length)}>Alle</button>
+        <button onClick={()=>setSelRubriken([])} style={chip(false)}>Keine</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {alleRubriken.map(r=>(
+          <label key={r} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
+            <input type="checkbox" checked={selRubriken.includes(r)} onChange={()=>toggleRubrik(r)}/>
+            {r}
+          </label>
+        ))}
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
+        {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
+      </div>
+    </div>
+
+    {/* Erinnerung + Dauer */}
     <div style={box}>
       <div style={lab}>Erinnerung & Dauer</div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -6288,17 +6551,34 @@ function KalenderExport(){
         </div>
         <div style={{flex:1,minWidth:130}}>
           <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Dauer pro Spiel</label>
-          <select value={dauer} onChange={e=>setDauer(Number(e.target.value))} style={sel}>
-            <option value={120}>2 Stunden</option><option value={150}>2,5 Stunden</option>
-            <option value={180}>3 Stunden</option><option value={210}>3,5 Stunden</option>
-            <option value={240}>4 Stunden</option>
+          <select value={dauer} onChange={e=>{setDauer(Number(e.target.value));setDauerManuell(true);}} style={sel}>
+            <option value={90}>1,5 Stunden</option><option value={120}>2 Stunden</option>
+            <option value={150}>2,5 Stunden</option><option value={180}>3 Stunden</option>
+            <option value={210}>3,5 Stunden</option><option value={240}>4 Stunden</option>
           </select>
         </div>
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",marginTop:12}}>
-        <input type="checkbox" checked={mitTermine} onChange={e=>setMitTermine(e.target.checked)}/>
-        Vereinstermine (z. B. Versammlungen) einbeziehen
+      {!dauerManuell&&selTeams.length>0&&<div style={{fontSize:10,color:"#10b981",marginTop:6}}>
+        Automatisch vorbelegt: {dauerLabel} ({selTeams.every(istNachwuchsMannschaft)?"Nachwuchs":selTeams.every(t=>!istNachwuchsMannschaft(t))?"Erwachsene":"gemischt"})
+      </div>}
+    </div>
+
+    {/* Fahrt-/Auf-/Abbauzeiten (Punkt 4) */}
+    <div style={box}>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:700,color:"var(--text)",cursor:"pointer"}}>
+        <input type="checkbox" checked={puffer} onChange={e=>setPuffer(e.target.checked)}/>
+        Fahrt- & Auf-/Abbauzeit einrechnen
       </label>
+      <div style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.5}}>
+        Der Kalendereintrag beginnt dann vor dem Spiel und endet danach — der eigentliche Spielbeginn steht in der Beschreibung.
+        <div style={{marginTop:6,paddingLeft:6,borderLeft:"2px solid var(--border2)"}}>
+          <b>Heimspiel:</b> 1 Std Aufbau vorher, 30 Min Abbau nachher<br/>
+          <b>Auswärts:</b> 1 Std Hinfahrt, 30 Min Rückfahrt
+        </div>
+        <div style={{marginTop:6,fontStyle:"italic"}}>
+          Beispiel Nachwuchs 14:00 Uhr: Heim 13:00–16:00, Auswärts 13:00–16:00.
+        </div>
+      </div>
     </div>
 
     {/* Abo-Weg */}
@@ -6353,6 +6633,7 @@ const SPIELPLAN_COLS = [
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
 const TERMIN_ORTE = ["Feuerwehr-Gerätehaus","Gasthaus Horn","Mehrzweckhalle"];
+const TERMIN_RUBRIKEN = ["Alle","Erwachsene","Nachwuchs","Halle zu","Vorstand","Grenzau-Spiele"];
 const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 function terminTag(isoDatum){
   if(!isoDatum) return "";
@@ -6381,9 +6662,11 @@ function spielplanKeyStartjahr(key){
 // TerminVerwaltung — Admin erfasst Vereinstermine (im Verwaltung-Bereich)
 function TerminVerwaltung({showToast}) {
   const [termine,setTermine]=useState([]);
-  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",veranstaltung:"",ort:""};
+  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",rubrik:"Alle",veranstaltung:"",ort:""};
   const [form,setForm]=useState(leer);
   const [editId,setEditId]=useState(null);
+  const formRef=useRef(null);
+  const datumStartRef=useRef(null);
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
@@ -6408,7 +6691,13 @@ function TerminVerwaltung({showToast}) {
       showToast(editId?"Termin aktualisiert":"Termin angelegt","📌"); setForm(leer); setEditId(null);
     }catch(e){showToast("Fehler: "+e.message,"❌");}
   }
-  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
+  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",rubrik:t.rubrik||"Alle",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id);
+    // Cursor nach oben ins erste Feld "Datum (Start)"
+    setTimeout(()=>{
+      if(formRef.current) formRef.current.scrollIntoView({behavior:"smooth",block:"start"});
+      if(datumStartRef.current) datumStartRef.current.focus();
+    },50);
+  }
   async function del(id){
     if(!window.confirm("Diesen Termin löschen?")) return;
     const next=termine.filter(t=>t.id!==id);
@@ -6425,12 +6714,12 @@ function TerminVerwaltung({showToast}) {
     </div>
 
     {/* Eingabeformular: Start-/Ende-Felder nebeneinander */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
+    <div ref={formRef} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
       {/* Datum Start/Ende + Tag */}
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:130}}>
           <label style={lab}>Datum (Start)</label>
-          <input type="date" value={form.datumStart} onChange={e=>setDatumStart(e.target.value)} style={inp}/>
+          <input ref={datumStartRef} type="date" value={form.datumStart} onChange={e=>setDatumStart(e.target.value)} style={inp}/>
           <div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Tag: {terminTag(form.datumStart)||"—"}</div>
         </div>
         <div style={{flex:1,minWidth:130}}>
@@ -6450,10 +6739,34 @@ function TerminVerwaltung({showToast}) {
           <input type="time" value={form.uhrzeitEnde} onChange={e=>setForm(f=>({...f,uhrzeitEnde:e.target.value}))} style={inp}/>
         </div>
       </div>
-      {/* Veranstaltung */}
-      <div style={{marginBottom:10}}>
-        <label style={lab}>Veranstaltung</label>
-        <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
+      {/* Rubrik (echtes Dropdown, sichtbar; Freieingabe via "Andere…") + Veranstaltung nebeneinander */}
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <div style={{flex:"0 0 auto",width:150}}>
+          <label style={lab}>Rubrik</label>
+          <select
+            value={TERMIN_RUBRIKEN.includes(form.rubrik)||!form.rubrik ? (form.rubrik||"Alle") : "__frei__"}
+            onChange={e=>{
+              if(e.target.value==="__frei__") setForm(f=>({...f,rubrik:""}));
+              else setForm(f=>({...f,rubrik:e.target.value}));
+            }}
+            style={inp}>
+            {TERMIN_RUBRIKEN.map(r=><option key={r} value={r}>{r}</option>)}
+            <option value="__frei__">➕ Andere…</option>
+          </select>
+          {/* Freies Eingabefeld, wenn Rubrik nicht in der Standardliste ist */}
+          {!TERMIN_RUBRIKEN.includes(form.rubrik) && form.rubrik!=="" && (
+            <input value={form.rubrik} onChange={e=>setForm(f=>({...f,rubrik:e.target.value}))}
+              placeholder="Eigene Rubrik" style={{...inp,marginTop:6}}/>
+          )}
+          {form.rubrik==="" && (
+            <input value="" onChange={e=>setForm(f=>({...f,rubrik:e.target.value}))}
+              placeholder="Eigene Rubrik eingeben" style={{...inp,marginTop:6}} autoFocus/>
+          )}
+        </div>
+        <div style={{flex:1,minWidth:150}}>
+          <label style={lab}>Veranstaltung</label>
+          <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
+        </div>
       </div>
       {/* Ort: Dropdown + freie Eingabe via datalist */}
       <div style={{marginBottom:12}}>
@@ -6500,6 +6813,7 @@ const TERMIN_COLS=[
   {key:"tagEnde",      label:"Tag",           w:"40px"},
   {key:"uhrzeitStart", label:"Start",         w:"56px"},
   {key:"uhrzeitEnde",  label:"Ende",          w:"56px"},
+  {key:"rubrik",       label:"Rubrik",        w:"100px"},
   {key:"veranstaltung",label:"Veranstaltung", w:"auto"},
   {key:"ort",          label:"Ort",           w:"140px"},
 ];
@@ -6550,12 +6864,13 @@ function TermineView() {
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:560}}>
         <thead>
           <tr style={{background:"var(--bg2)"}}>
-            {TERMIN_COLS.map(col=>(
+            {TERMIN_COLS.map((col,ci)=>(
               <th key={col.key} onClick={()=>toggleSort(col.key)}
                 style={{padding:"6px 6px",textAlign:"left",cursor:"pointer",fontWeight:700,
                   color:sortKey===col.key?"#10b981":"var(--text2)",whiteSpace:"nowrap",
                   borderBottom:"2px solid var(--border2)",width:col.w,userSelect:"none",
-                  background:"var(--bg2)",position:"sticky",top:0,zIndex:4}}>
+                  background:"var(--bg2)",position:"sticky",top:0,
+                  ...(ci===0?{left:0,zIndex:6,borderRight:"1px solid var(--border2)"}:{zIndex:4})}}>
                 {col.label}{sortKey===col.key?(sortAsc?" ▲":" ▼"):""}
               </th>
             ))}
@@ -6564,17 +6879,19 @@ function TermineView() {
         <tbody>
           {sorted.map((t,i)=>(
             <tr key={t.id||i} style={{background:i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
-              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{t.datumStart?t.datumStart.split("-").reverse().join("."):""}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10,position:"sticky",left:0,zIndex:2,
+                background:i%2===0?"var(--bg2)":"var(--bg)",borderRight:"1px solid var(--border2)"}}>{t.datumStart?t.datumStart.split("-").reverse().join("."):""}</td>
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{t.tagStart}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.datumEnde.split("-").reverse().join("."):""}</td>
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.tagEnde:""}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{t.uhrzeitStart}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:11}}>{t.uhrzeitEnde}</td>
+              <td style={{padding:"5px 6px",fontSize:11}}>{t.rubrik&&t.rubrik!=="Alle"?<span style={{background:"var(--bg3)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"var(--text2)"}}>{t.rubrik}</span>:<span style={{color:"var(--text4)",fontSize:10}}>{t.rubrik||""}</span>}</td>
               <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}}>{t.veranstaltung}</td>
               <td style={{padding:"5px 6px",fontSize:11}}>{t.ort}</td>
             </tr>
           ))}
-          {sorted.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -7363,6 +7680,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
+    {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
@@ -7408,6 +7726,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport/>}
@@ -7494,7 +7813,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
   };
 
-  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
+  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
   const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
 
   // All active players sorted alphabetically
@@ -7796,7 +8115,7 @@ export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [players,      setPlayers]      = useState([]);
   const [attendance,   setAttendance]   = useState({});
-  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",logo:""});
+  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:""});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
@@ -7855,6 +8174,7 @@ export default function App() {
         setClubConfig({
           name:d.name||"TTC Niederzeuzheim",
           subtitle:d.subtitle||"Trainings-App",
+          loginFooter:d.loginFooter||"",
           logo:d.logo||""
         });
       }
@@ -7867,6 +8187,7 @@ export default function App() {
         setClubConfig({
           name:d.name||"TTC Niederzeuzheim",
           subtitle:d.subtitle||"Trainings-App",
+          loginFooter:d.loginFooter||"",
           logo:d.logo||""
         });
       }
@@ -8059,7 +8380,7 @@ export default function App() {
   // Gemeinsame Props
   const sharedProps = {
     isDark, onSetUserTheme:handleSetUserTheme, userTheme,
-    onSignOut:handleSignOut,
+    onSignOut:handleSignOut, clubConfig,
   };
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
