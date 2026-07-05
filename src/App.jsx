@@ -303,6 +303,17 @@ const AVATARS = [
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
 const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+// Größen für T-Shirt/Anzug: Kindergrößen und Erwachsenengrößen
+const KINDER_SIZES = ["128","134","140","146","152","158","164"];
+const ERW_SIZES = ["XS","S","M","L","XL","XXL","3XL","4XL"];
+// Profis/Fortgeschrittene: Kinder- UND Erwachsenengrößen (Erwachsene ans Ende).
+// Anfänger: nur Kindergrößen. Erwachsene: nur Erwachsenengrößen.
+function sizesForGroup(group){
+  const g = group||"Anfänger";
+  if(g==="Erwachsene") return ERW_SIZES;
+  if(g==="Profis"||g==="Fortgeschrittene") return [...KINDER_SIZES, ...ERW_SIZES];
+  return KINDER_SIZES; // Anfänger, Gast
+}
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -582,6 +593,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     .filter(p=>{
       const g = p.group||"Anfänger";
       if (g==="Erwachsene") return false; // Erwachsene immer separat in RoleSwitchWrapper
+      if (g==="Gast" && !isSuperAdmin) return false; // Gäste nur für Admins sichtbar
       return effectiveGroupFilters[g] !== false;
     })
     .sort((a,b)=>{
@@ -682,7 +694,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       </div>
       <div style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 14px 6px"}}>
         <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-          {["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>{
+          {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene",...(isSuperAdmin?["Gast"]:[])].map(g=>{
             const colors={Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
             const c=colors[g]; const on=groupFilters[g];
             return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
@@ -1302,16 +1314,23 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   });
 
   const NACHWUCHS_MANN=["Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
-  // Mannschaft-Namen: Erwachsene → Herren 1 etc.
+  // Anzeige-Name der Mannschaft: durchgängig "Erwachsene" (erste Mannschaft = "Erwachsene I").
   function mannLabel(m) {
-    const map={"Erwachsene":"Herren 1","Erwachsene II":"Herren 2","Erwachsene III":"Herren 3",
-               "Erwachsene IV":"Herren 4","Erwachsene V":"Herren 5","Erwachsene VI":"Herren 6"};
-    return map[m]||m;
+    if(m==="Erwachsene") return "Erwachsene I";
+    return m;
   }
-  // Mannschaftsführer für einen (Spielplan-)Mannschaftsnamen ermitteln.
-  // Quelle: Spieler-Feld mannschaftsfuehrerTeam (enthält Spielplan-Namen wie "Herren 1").
-  function mfName(spielplanName) {
-    const mf = players.find(p=>p.mannschaftsfuehrerTeam===spielplanName);
+  // Normalisiert Mannschaftsnamen für den Vergleich, sodass "Erwachsene" und
+  // "Erwachsene I" als identisch gelten.
+  function normMann(x){
+    const s=(x||"").trim();
+    if(s==="Erwachsene"||s==="Erwachsene I") return "Erwachsene I";
+    return s;
+  }
+  // Mannschaftsführer für einen (internen) Mannschaftsnamen ermitteln.
+  // Quelle: Spieler-Feld mannschaftsfuehrerTeam (aus AKTUELLE_MANNSCHAFTEN, z.B. "Erwachsene I").
+  function mfName(mannName) {
+    const ziel = normMann(mannName);
+    const mf = players.find(p=>normMann(p.mannschaftsfuehrerTeam)===ziel);
     if(!mf) return "noch offen";
     const vn = mf.firstName || "";
     const nn = mf.lastName || "";
@@ -1377,7 +1396,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     </div>:mannschaften.map(mann=>{
       const ms=enriched.filter(s=>s.mannschaft===mann);
       return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
-        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} (MF: {mfName(mannLabel(mann))})</div>
+        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} (MF: {mfName(mann)})</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead><tr style={{background:"var(--bg2)"}}>
@@ -1793,7 +1812,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         status:        editPlayer.status||"aktiv",
         mfClickTT:     editPlayer.mfClickTT||[],
         mannschaftsfuehrerTeam: editPlayer.mannschaftsfuehrerTeam||"",
-        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler", anzugSize:editPlayer.anzugSize||""} : {} ),
+        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -1804,6 +1823,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         trainingDays:  editPlayer.trainingDays||"Di",
         phone:         editPlayer.phone||"",
         tshirtSize:    editPlayer.tshirtSize||"",
+        anzugSize:     editPlayer.anzugSize||"",
         tshirtDTTB:    editPlayer.tshirtDTTB||"nein",
         tshirtTTC:     editPlayer.tshirtTTC||"nein",
         racketType:    editPlayer.racketType||"",
@@ -2526,27 +2546,35 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 const isEOnly=roles.erwachsene===true&&!roles.player&&!roles.trainer&&!roles.admin;
                 if(isEOnly) return null;
                 return <>
-              {/* T-Shirt Größe + Trainingsheft */}
+              {/* T-Shirt Größe + Anzugs-Größe (Punkt 4) + Trainingsheft */}
               {(()=>{
                 const grp=editPlayer.group||"Anfänger";
-                const isErw=grp==="Erwachsene";
-                const sizes=isErw?["XS","S","M","L","XL","XXL","3XL","4XL"]:["128","134","140","146","152","158","164"];
-                return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                  <div>
-                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👕 T-Shirt Größe</label>
-                    <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))}>
-                      <option value="">—</option>
-                      {sizes.map(s=><option key={s} value={s}>{s}</option>)}
-                    </select>
+                const sizes=sizesForGroup(grp);
+                return <>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                    <div>
+                      <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👕 T-Shirt Größe</label>
+                      <select value={editPlayer.tshirtSize||""} onChange={e=>setEditPlayer(prev=>({...prev,tshirtSize:e.target.value}))}>
+                        <option value="">—</option>
+                        {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🧥 Anzugs-Größe</label>
+                      <select value={editPlayer.anzugSize||""} onChange={e=>setEditPlayer(prev=>({...prev,anzugSize:e.target.value}))}>
+                        <option value="">—</option>
+                        {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <div>
+                  <div style={{marginBottom:10}}>
                     <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Trainingsheft erhalten</label>
                     <select value={editPlayer.trainingsheft||"ja"} onChange={e=>setEditPlayer(prev=>({...prev,trainingsheft:e.target.value}))}>
                       <option value="ja">Ja</option>
                       <option value="nein">Nein</option>
                     </select>
                   </div>
-                </div>;
+                </>;
               })()}
 
 
@@ -3135,7 +3163,8 @@ function SchlaegerTab({rackets,players,showToast}) {
 // ─── MEINE VERWALTUNG (Selbstauskunft, nur eigene Daten) ─────────────────────
 // Zeigt die eigenen Stammdaten read-only. Editierbar nur: Handynummer,
 // T-Shirt-Größe, Anzugs-Größe. Alles andere kann nur der Admin ändern.
-function MeineVerwaltung({me, showToast}) {
+function MeineVerwaltung({me, showToast, group}) {
+  const notify = typeof showToast==="function" ? showToast : (()=>{});
   const [phone,setPhone]     = useState(me?.phone||"");
   const [tshirt,setTshirt]   = useState(me?.tshirtSize||"");
   const [anzug,setAnzug]     = useState(me?.anzugSize||"");
@@ -3166,7 +3195,7 @@ function MeineVerwaltung({me, showToast}) {
       await updateDoc(doc(db,"players",me.id),{
         phone:phone.trim(), tshirtSize:tshirt.trim(), anzugSize:anzug.trim(),
       });
-      showToast("Gespeichert ✅","✅");
+      notify("Gespeichert ✅","✅");
       setDirty(false);
     }catch(e){
       window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||""));
@@ -3200,16 +3229,27 @@ function MeineVerwaltung({me, showToast}) {
         <input value={phone} onChange={e=>{setPhone(e.target.value);setDirty(true);}} placeholder="z. B. 0170 1234567"
           inputMode="tel" style={inpStyle}/>
       </div>
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        <div style={{flex:1,minWidth:130}}>
-          <label style={editLab}>T-Shirt-Größe</label>
-          <input value={tshirt} onChange={e=>{setTshirt(e.target.value);setDirty(true);}} placeholder="z. B. L" style={inpStyle}/>
-        </div>
-        <div style={{flex:1,minWidth:130}}>
-          <label style={editLab}>Anzugs-Größe</label>
-          <input value={anzug} onChange={e=>{setAnzug(e.target.value);setDirty(true);}} placeholder="z. B. 52" style={inpStyle}/>
-        </div>
-      </div>
+      {(()=>{
+        // Gruppe für Größenauswahl bestimmen; reine Erwachsene (Rolle) → Erwachsenengrößen
+        const grpForSizes = ((me.group||"Anfänger")==="Erwachsene"||me.roles?.erwachsene===true) ? "Erwachsene" : (me.group||"Anfänger");
+        const sizes = sizesForGroup(grpForSizes);
+        return <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:130}}>
+            <label style={editLab}>T-Shirt-Größe</label>
+            <select value={tshirt} onChange={e=>{setTshirt(e.target.value);setDirty(true);}} style={inpStyle}>
+              <option value="">—</option>
+              {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{flex:1,minWidth:130}}>
+            <label style={editLab}>Anzugs-Größe</label>
+            <select value={anzug} onChange={e=>{setAnzug(e.target.value);setDirty(true);}} style={inpStyle}>
+              <option value="">—</option>
+              {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>;
+      })()}
       <button onClick={save} disabled={saving||!dirty} style={{
         width:"100%",marginTop:14,padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,
         cursor:(saving||!dirty)?"default":"pointer",border:"none",
@@ -3613,7 +3653,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:600,color:"var(--text)",lineHeight:1.4,wordBreak:"break-word"}}>{ex.name}</div>
               </div>
-              <StarRating stars={stars} readonly={!hideHeader} onRate={hideHeader?v=>setStars(myPlayer.id,ex.id,v):undefined}/>
+              <StarRating stars={stars} readonly={true}/>
               <span style={{color:"var(--text3)",fontSize:12,marginLeft:4}}>{isExp?"▲":"▼"}</span>
             </div>
             {isExp&&<div style={{borderTop:"1px solid var(--border)",padding:"10px 12px",background:"var(--bg)"}}>
