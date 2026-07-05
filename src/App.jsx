@@ -314,6 +314,38 @@ function sizesForGroup(group){
   if(g==="Profis"||g==="Fortgeschrittene") return [...KINDER_SIZES, ...ERW_SIZES];
   return KINDER_SIZES; // Anfänger, Gast
 }
+// ─── BESTELLUNGEN: Katalog, Preise, Kontodaten ───────────────────────────────
+// preisKatalog / preisSpin (Spin & Speed) / preisTTC in Euro.
+// druck=true → obligatorischer Druck (keine Größe, feste Zeile, Menge einstellbar).
+// groesse=true → Größenauswahl nötig. geschlecht: "h"/"d"/null (nur Info).
+const BESTELL_ARTIKEL = [
+  {id:1,  name:"Polo Donic Nuvon Herren",            preisKatalog:44.90, preisSpin:31.43, preisTTC:30.00, groesse:true,  druck:false},
+  {id:2,  name:"Polo Donic Nuvon Damen",             preisKatalog:43.90, preisSpin:30.73, preisTTC:30.00, groesse:true,  druck:false},
+  {id:3,  name:"Short Donic Velora Herren",          preisKatalog:38.90, preisSpin:27.23, preisTTC:25.00, groesse:true,  druck:false},
+  {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false},
+  {id:5,  name:"Anzug Hose Andro Salivan unisex",    preisKatalog:44.95, preisSpin:31.47, preisTTC:30.00, groesse:true,  druck:false},
+  {id:6,  name:"Anzug Jacke Andro Salivan unisex",   preisKatalog:54.95, preisSpin:38.47, preisTTC:35.00, groesse:true,  druck:false},
+  {id:7,  name:"Druck Vorname vorne Polo",           preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
+  {id:8,  name:"Druck Vereinsname hinten Polo",      preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true},
+  {id:9,  name:"Druck Vorname vorne Anzug Jacke",    preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
+  {id:10, name:"Druck Vorname vorne Anzug Hose",     preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
+  {id:11, name:"Druck Vereinsname hinten Anzug Jacke",preisKatalog:6.50, preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true},
+  {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false},
+];
+// Anfänger dürfen nur Artikel 12, alle anderen Spielgruppen die Artikel 1–11.
+function bestellArtikelForGroup(group){
+  const g = group||"Anfänger";
+  if(g==="Anfänger"||g==="Gast") return BESTELL_ARTIKEL.filter(a=>a.id===12);
+  return BESTELL_ARTIKEL.filter(a=>a.id>=1 && a.id<=11);
+}
+const VEREIN_KONTO = {
+  inhaber:"TTC 1979 Niederzeuzheim e. V.",
+  iban:"DE78 5105 0015 0520 0127 61",
+  bic:"NASSDE55XXX",
+  bank:"Naspa",
+};
+function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -541,6 +573,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
+    {key:"bestellungen", label:"Bestellungen",  icon:"🛒"},
+    {key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", superAdminOnly:true},
     {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
@@ -917,6 +951,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} isAdmin={isSuperAdmin} showToast={showToast}/>}
+    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
@@ -3160,6 +3196,361 @@ function SchlaegerTab({rackets,players,showToast}) {
   </div>;
 }
 
+// ─── BESTELLUNGEN (eigene Bestellung aufgeben) ───────────────────────────────
+// Speichert unter bestellungen/{playerId}. Felder pro Artikel: {anzahl, groesse}.
+// Zusätzlich: final (verbindlich), bezahlt (Überweisung veranlasst), geldeingang (nur Admin).
+function BestellungenView({me, isAdmin=false, showToast}) {
+  const notify = typeof showToast==="function" ? showToast : (()=>{});
+  const [best,setBest]     = useState(null);   // Firestore-Daten der Bestellung
+  const [fotos,setFotos]   = useState({});     // config/bestellungKatalog: {artikelId: dataUrl}
+  const [saving,setSaving] = useState(false);
+  const [dirty,setDirty]   = useState(false);
+  const [items,setItems]   = useState({});     // lokaler Bearbeitungsstand {id:{anzahl,groesse}}
+
+  const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger") : [];
+  const sizes   = me ? sizesForGroup(me.group||"Anfänger") : [];
+
+  // Bestellung laden
+  useEffect(()=>{
+    if(!me?.id) return;
+    const u=onSnapshot(doc(db,"bestellungen",me.id),snap=>{
+      const d = snap.exists()?snap.data():null;
+      setBest(d);
+      setItems(d?.items||{});
+      setDirty(false);
+    },()=>{});
+    return u;
+  },[me?.id]);
+
+  // Produktfotos laden (config/bestellungKatalog)
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","bestellungKatalog"),snap=>{
+      setFotos(snap.exists()?(snap.data().fotos||{}):{});
+    },()=>{});
+    return u;
+  },[]);
+
+  if(!me) return <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Keine Daten gefunden.</div>;
+
+  const isFinal = best?.final===true;
+  const locked  = isFinal && !isAdmin; // nach "verbindlich" gesperrt, nur Admin kann öffnen
+
+  function setAnzahl(id,val){
+    if(locked) return;
+    const n=Math.max(0,parseInt(val)||0);
+    setItems(p=>({...p,[id]:{...(p[id]||{}),anzahl:n}}));
+    setDirty(true);
+  }
+  function setGroesse(id,val){
+    if(locked) return;
+    setItems(p=>({...p,[id]:{...(p[id]||{}),groesse:val}}));
+    setDirty(true);
+  }
+
+  // Summe Preis TTC gesamt
+  const summe = artikel.reduce((s,a)=>{
+    const anz=items[a.id]?.anzahl||0;
+    return s + anz*a.preisTTC;
+  },0);
+
+  async function speichern(finalisieren){
+    if(!me?.id) return;
+    // Validierung bei Finalisierung: bestellte Größen-Artikel brauchen eine Größe
+    if(finalisieren){
+      for(const a of artikel){
+        const anz=items[a.id]?.anzahl||0;
+        if(anz>0 && a.groesse && !items[a.id]?.groesse){
+          window.alert(`Bitte eine Größe für "${a.name}" wählen.`);
+          return;
+        }
+      }
+    }
+    setSaving(true);
+    try{
+      const payload = {
+        items,
+        playerId: me.id,
+        playerName: `${me.firstName||""} ${me.lastName||""}`.trim()||me.name||"",
+        group: me.group||"",
+        mannschaft: me.mannschaftsfuehrerTeam||me.mannschaft||"",
+        summeTTC: summe,
+        updatedAt: Date.now(),
+      };
+      if(finalisieren){ payload.final=true; payload.bezahlt=true; payload.finalAt=Date.now(); }
+      await setDoc(doc(db,"bestellungen",me.id),payload,{merge:true});
+      notify(finalisieren?"Bestellung verbindlich aufgegeben ✅":"Gespeichert ✅","✅");
+      setDirty(false);
+    }catch(e){ window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||"")); }
+    setSaving(false);
+  }
+
+  // Admin: Bestellung wieder öffnen (final zurücknehmen)
+  async function wiederOeffnen(){
+    if(!isAdmin||!me?.id) return;
+    await setDoc(doc(db,"bestellungen",me.id),{final:false},{merge:true}).catch(()=>{});
+    notify("Bestellung wieder geöffnet","🔓");
+  }
+
+  // Admin: Foto zu einem Artikel hochladen
+  async function uploadFoto(artikelId,file){
+    if(!isAdmin||!file) return;
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      const updated={...fotos,[artikelId]:e.target.result};
+      await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated},{merge:true}).catch(()=>{});
+      notify("Foto gespeichert 🖼️","🖼️");
+    };
+    reader.readAsDataURL(file);
+  }
+  async function deleteFoto(artikelId){
+    if(!isAdmin) return;
+    const updated={...fotos}; delete updated[artikelId];
+    await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated}).catch(()=>{});
+    notify("Foto entfernt","🗑️");
+  }
+
+  const th={padding:"6px 5px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap"};
+  const td={padding:"5px 5px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🛒 Bestellungen</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
+      Trainingsanzug, T-Shirts und Röcke bestellen. Trage Anzahl und Größe ein. Der Vereinsdruck ist obligatorisch.
+    </div>
+
+    {isFinal && <div style={{background:"#10b98115",border:"1px solid #10b98155",borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12,color:"var(--text)"}}>
+      ✅ Diese Bestellung wurde <b>verbindlich aufgegeben</b>{best?.geldeingang?" · Geldeingang bestätigt":best?.bezahlt?" · als überwiesen markiert":""}.
+      {isAdmin && <button onClick={wiederOeffnen} style={{marginLeft:10,padding:"3px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text2)",fontSize:11,cursor:"pointer"}}>🔓 Wieder öffnen</button>}
+    </div>}
+
+    <div style={{overflowX:"auto",marginBottom:14,border:"1px solid var(--border)",borderRadius:10}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
+        <thead><tr>
+          <th style={th}>Artikel</th>
+          <th style={{...th,textAlign:"center"}}>Anzahl</th>
+          <th style={{...th,textAlign:"center"}}>Größe</th>
+          <th style={{...th,textAlign:"right"}}>Preis Katalog</th>
+          <th style={{...th,textAlign:"right"}}>Preis TTC</th>
+          <th style={{...th,textAlign:"right"}}>Preis TTC gesamt</th>
+          <th style={{...th,textAlign:"center"}}>Foto</th>
+        </tr></thead>
+        <tbody>
+          {artikel.map(a=>{
+            const anz=items[a.id]?.anzahl||0;
+            const gesamt=anz*a.preisTTC;
+            return <tr key={a.id}>
+              <td style={{...td,fontWeight:600,minWidth:150}}>{a.name}{a.druck&&<span style={{fontSize:9,color:"#f59e0b",marginLeft:4}}>(Druck)</span>}</td>
+              <td style={{...td,textAlign:"center"}}>
+                <input type="number" min={0} value={anz} disabled={locked}
+                  onChange={e=>setAnzahl(a.id,e.target.value)}
+                  style={{width:48,padding:"4px",textAlign:"center",background:locked?"var(--bg2)":"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:12}}/>
+              </td>
+              <td style={{...td,textAlign:"center"}}>
+                {a.groesse
+                  ? <select value={items[a.id]?.groesse||""} disabled={locked} onChange={e=>setGroesse(a.id,e.target.value)}
+                      style={{padding:"4px",background:locked?"var(--bg2)":"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11}}>
+                      <option value="">—</option>
+                      {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  : <span style={{color:"var(--text4)",fontSize:11}}>—</span>}
+              </td>
+              <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
+              <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(a.preisTTC)}</td>
+              <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(gesamt)}</td>
+              <td style={{...td,textAlign:"center"}}>
+                {fotos[a.id]
+                  ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                      <img src={fotos[a.id]} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)"}}/>
+                      {isAdmin && <button onClick={()=>deleteFoto(a.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>entfernen</button>}
+                    </div>
+                  : isAdmin
+                    ? <label style={{fontSize:9,color:"var(--text3)",cursor:"pointer",display:"inline-block",padding:"3px 5px",border:"1px dashed var(--border2)",borderRadius:5}}>
+                        📷<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadFoto(a.id,e.target.files?.[0])}/>
+                      </label>
+                    : <span style={{color:"var(--text4)",fontSize:10}}>—</span>}
+              </td>
+            </tr>;
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={5}>Summe (Preis TTC gesamt)</td>
+            <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(summe)}</td>
+            <td style={{...td,borderTop:"2px solid var(--border2)"}}></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {/* Kontoverbindung */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>💶 Überweisung</div>
+      <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.7}}>
+        Bitte überweise den Gesamtbetrag von <b>{eur(summe)}</b> auf das Vereinskonto:
+        <div style={{marginTop:8,padding:"10px 12px",background:"var(--bg3)",borderRadius:8,fontSize:12}}>
+          <div><b>Kontoinhaber:</b> {VEREIN_KONTO.inhaber}</div>
+          <div><b>IBAN ({VEREIN_KONTO.bank}):</b> {VEREIN_KONTO.iban}</div>
+          <div><b>BIC ({VEREIN_KONTO.bank}):</b> {VEREIN_KONTO.bic}</div>
+          <div><b>Betreff:</b> Bestellung Textilien für {me.firstName} {me.lastName}</div>
+        </div>
+      </div>
+    </div>
+
+    {/* Aktionen */}
+    {!locked && <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <button onClick={()=>speichern(false)} disabled={saving||!dirty} style={{
+        padding:"10px",borderRadius:9,fontSize:13,fontWeight:700,border:"1px solid var(--border2)",
+        cursor:(saving||!dirty)?"default":"pointer",background:(saving||!dirty)?"var(--bg3)":"var(--bg2)",
+        color:(saving||!dirty)?"var(--text3)":"var(--text)"}}>
+        {saving?"⏳ Speichern…":dirty?"💾 Zwischenspeichern":"✓ Gespeichert"}</button>
+      <button onClick={()=>{
+          if(window.confirm("Bestellung verbindlich aufgeben und als überwiesen markieren?\nDanach ist keine Änderung mehr möglich.")) speichern(true);
+        }} disabled={saving||summe<=0} style={{
+        padding:"11px",borderRadius:9,fontSize:13,fontWeight:800,border:"none",
+        cursor:(saving||summe<=0)?"default":"pointer",
+        background:(saving||summe<=0)?"var(--bg3)":"linear-gradient(135deg,#10b981,#059669)",
+        color:(saving||summe<=0)?"var(--text3)":"#fff"}}>
+        ✅ Verbindlich bestellen &amp; als überwiesen markieren</button>
+      <div style={{fontSize:10,color:"var(--text4)",textAlign:"center"}}>
+        Mit „Verbindlich bestellen" wird die Bestellung final gesetzt und als bezahlt markiert. Der Geldeingang wird vom Verein separat bestätigt.
+      </div>
+    </div>}
+  </div>;
+}
+
+// ─── BESTELLUNGEN ÜBERSICHT (Admin: alle · MF: eigene Mannschaft) ────────────
+function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToast}) {
+  const notify = typeof showToast==="function" ? showToast : (()=>{});
+  const [alle,setAlle]=useState([]); // Array von Bestell-Dokumenten
+  const [editPlayerId,setEditPlayerId]=useState(null); // Spieler, dessen Bestellung bearbeitet wird
+
+  useEffect(()=>{
+    const u=onSnapshot(collection(db,"bestellungen"),snap=>{
+      setAlle(snap.docs.map(d=>({id:d.id,...d.data()})));
+    },()=>{});
+    return u;
+  },[]);
+
+  // MF: nur Bestellungen der eigenen Mannschaft. Admin: alle.
+  const meineMannschaft = me?.mannschaftsfuehrerTeam||"";
+
+  // Spieler, für die MF/Admin eine Bestellung anlegen/bearbeiten dürfen
+  const bearbeitbarePersonen = players.filter(p=>{
+    if(isAdmin) return (p.group||"")!=="Trainer"; // alle Spieler & Erwachsene
+    if(isMF && meineMannschaft) return p.mannschaftsfuehrerTeam===meineMannschaft;
+    return false;
+  }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
+
+  // Wenn eine Person zum Bearbeiten gewählt ist: BestellungenView für diese Person zeigen
+  if(editPlayerId){
+    const ziel = players.find(p=>p.id===editPlayerId);
+    return <div style={{padding:13}}>
+      <button onClick={()=>setEditPlayerId(null)} style={{marginBottom:12,padding:"7px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>← Zurück zur Übersicht</button>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:8}}>Bestellung für <b>{ziel?`${ziel.firstName} ${ziel.lastName}`:"?"}</b> {isAdmin?"(als Admin)":"(als Mannschaftsführer)"}</div>
+      <BestellungenView me={ziel} isAdmin={isAdmin} showToast={showToast}/>
+    </div>;
+  }
+  const sichtbar = alle.filter(b=>{
+    if(isAdmin) return true;
+    if(isMF && meineMannschaft) {
+      // Spieler der Mannschaft ermitteln (über players)
+      const pl = players.find(p=>p.id===b.playerId);
+      return pl && (pl.mannschaftsfuehrerTeam===meineMannschaft || b.mannschaft===meineMannschaft);
+    }
+    return false;
+  });
+
+  async function toggleGeldeingang(b){
+    if(!isAdmin) return;
+    await setDoc(doc(db,"bestellungen",b.id),{geldeingang:!b.geldeingang},{merge:true}).catch(()=>{});
+    notify(!b.geldeingang?"Geldeingang bestätigt ✅":"Geldeingang zurückgenommen","💶");
+  }
+
+  // Alle Bestellzeilen über alle Personen für die Detailtabelle aufbereiten
+  const th={padding:"6px 6px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",background:"var(--bg2)",position:"sticky",top:0};
+  const td={padding:"5px 6px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
+
+  // Gesamtsummen
+  const gesamtTTC = sichtbar.reduce((s,b)=>s+(b.summeTTC||0),0);
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📦 Bestellungen Übersicht</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
+      {isAdmin?"Alle Bestellungen der Spieler und Erwachsenen.":`Bestellungen deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}
+    </div>
+
+    {/* Bestellung für eine Person anlegen/bearbeiten (MF + Admin) */}
+    {bearbeitbarePersonen.length>0 && <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
+      <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>✏️ Bestellung für eine Person eingeben/bearbeiten</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <select id="best-person-sel" defaultValue="" style={{flex:1,minWidth:180,padding:"8px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
+          <option value="">Person wählen…</option>
+          {bearbeitbarePersonen.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.mannschaftsfuehrerTeam?` · ${p.mannschaftsfuehrerTeam}`:""}</option>)}
+        </select>
+        <button onClick={()=>{const v=document.getElementById("best-person-sel").value; if(v) setEditPlayerId(v);}}
+          style={{padding:"8px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>Öffnen</button>
+      </div>
+    </div>}
+
+    {sichtbar.length===0
+      ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Bestellungen vorhanden.</div>
+      : <div style={{overflowX:"auto",border:"1px solid var(--border)",borderRadius:10}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+          <thead><tr>
+            <th style={th}>Person</th>
+            <th style={th}>Artikel</th>
+            <th style={{...th,textAlign:"center"}}>Anzahl</th>
+            <th style={{...th,textAlign:"center"}}>Größe</th>
+            <th style={{...th,textAlign:"right"}}>Preis Katalog</th>
+            <th style={{...th,textAlign:"right"}}>Preis Spin &amp; Speed</th>
+            <th style={{...th,textAlign:"right"}}>Preis TTC</th>
+            <th style={{...th,textAlign:"right"}}>Preis TTC gesamt</th>
+            <th style={{...th,textAlign:"center"}}>bestellt</th>
+            <th style={{...th,textAlign:"center"}}>bezahlt</th>
+            <th style={{...th,textAlign:"center"}}>Geldeingang</th>
+          </tr></thead>
+          <tbody>
+            {sichtbar.map(b=>{
+              const pl=players.find(p=>p.id===b.playerId);
+              const grp=pl?.group||b.group||"";
+              const art=bestellArtikelForGroup(grp).filter(a=>(b.items?.[a.id]?.anzahl||0)>0);
+              if(art.length===0) return null;
+              return art.map((a,idx)=>{
+                const it=b.items[a.id];
+                const gesamt=(it.anzahl||0)*a.preisTTC;
+                return <tr key={b.id+"_"+a.id}>
+                  {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={art.length}>{b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:"?")}</td>}
+                  <td style={td}>{a.name}</td>
+                  <td style={{...td,textAlign:"center"}}>{it.anzahl}</td>
+                  <td style={{...td,textAlign:"center"}}>{it.groesse||"—"}</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisSpin)}</td>
+                  <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(a.preisTTC)}</td>
+                  <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(gesamt)}</td>
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>{b.final?"✅":"—"}</td>}
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>{b.bezahlt?"✅":"—"}</td>}
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>
+                    {isAdmin
+                      ? <input type="checkbox" checked={!!b.geldeingang} onChange={()=>toggleGeldeingang(b)} title="Geldeingang bestätigen"/>
+                      : (b.geldeingang?"✅":"—")}
+                  </td>}
+                </tr>;
+              });
+            })}
+          </tbody>
+          <tfoot><tr>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={7}>Gesamtsumme (Preis TTC)</td>
+            <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtTTC)}</td>
+            <td style={{...td,borderTop:"2px solid var(--border2)"}} colSpan={3}></td>
+          </tr></tfoot>
+        </table>
+      </div>}
+    {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
+      „bestellt" und „bezahlt" werden gesetzt, sobald die Person verbindlich bestellt. „Geldeingang" hakst nur du ab, wenn das Geld auf dem Vereinskonto ist.
+    </div>}
+  </div>;
+}
+
 // ─── MEINE VERWALTUNG (Selbstauskunft, nur eigene Daten) ─────────────────────
 // Zeigt die eigenen Stammdaten read-only. Editierbar nur: Handynummer,
 // T-Shirt-Größe, Anzugs-Größe. Alles andere kann nur der Admin ändern.
@@ -3532,6 +3923,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
+    {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
 
@@ -3839,6 +4231,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
       viewerCanEditAll={false}/>}
 
+    {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
 
     <style>{`
@@ -7720,6 +8113,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
+    {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
+    ...(isMF?[{key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
@@ -7766,6 +8161,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false} showToast={showToast}/>}
+    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
