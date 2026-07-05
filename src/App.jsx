@@ -3839,7 +3839,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
       viewerCanEditAll={false}/>}
 
-    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -7854,7 +7854,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
-  const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+  const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
 
   // All active players sorted alphabetically
   const allActive = [...players.filter(p=>p.status!=="passiv")]
@@ -7930,8 +7930,8 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             })}
           </>}
           {(activeView==="admin"||activeView==="trainer")&&
-            ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
-              const col=GROUP_COLORS[g]; const on=adminGroupFilters[g];
+            ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene",...((activeView==="admin"&&hasAdminRole)?["Gast"]:[])].map(g=>{
+              const col=GROUP_COLORS[g]||"#64748b"; const on=adminGroupFilters[g];
               return <button key={g} onClick={()=>setAdminGroupFilters(p=>({...p,[g]:!on}))} style={{
                 flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
                 border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
