@@ -318,25 +318,52 @@ function sizesForGroup(group){
 // preisKatalog / preisSpin (Spin & Speed) / preisTTC in Euro.
 // druck=true → obligatorischer Druck (keine Größe, feste Zeile, Menge einstellbar).
 // groesse=true → Größenauswahl nötig. geschlecht: "h"/"d"/null (nur Info).
+// Größenlisten für Bestellungen
+// Trikots (Polo, Short, Rock): XXS–5XL + Kindergrößen 140 & 152
+const TRIKOT_SIZES = ["140","152","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
+// Anzüge (Hose, Jacke): 3XS–5XL
+const ANZUG_SIZES  = ["3XS","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
+
+// Katalog. geschlecht: "h"=Herren, "d"=Damen, "u"=unisex.
+// sizeType: "trikot" | "anzug" | null (Druck ohne Größe).
+// sizeQuelle: aus welchem Verwaltungsfeld die Größe vorbelegt wird ("tshirt"/"anzug").
+// folgtArtikel: (nur Druck) Menge = Menge dieses Hauptartikels; bei Array = Summe.
 const BESTELL_ARTIKEL = [
-  {id:1,  name:"Polo Donic Nuvon Herren",            preisKatalog:44.90, preisSpin:31.43, preisTTC:30.00, groesse:true,  druck:false},
-  {id:2,  name:"Polo Donic Nuvon Damen",             preisKatalog:43.90, preisSpin:30.73, preisTTC:30.00, groesse:true,  druck:false},
-  {id:3,  name:"Short Donic Velora Herren",          preisKatalog:38.90, preisSpin:27.23, preisTTC:25.00, groesse:true,  druck:false},
-  {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false},
-  {id:5,  name:"Anzug Hose Andro Salivan unisex",    preisKatalog:44.95, preisSpin:31.47, preisTTC:30.00, groesse:true,  druck:false},
-  {id:6,  name:"Anzug Jacke Andro Salivan unisex",   preisKatalog:54.95, preisSpin:38.47, preisTTC:35.00, groesse:true,  druck:false},
-  {id:7,  name:"Druck Vorname vorne Polo",           preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
-  {id:8,  name:"Druck Vereinsname hinten Polo",      preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true},
-  {id:9,  name:"Druck Vorname vorne Anzug Jacke",    preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
-  {id:10, name:"Druck Vorname vorne Anzug Hose",     preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true},
-  {id:11, name:"Druck Vereinsname hinten Anzug Jacke",preisKatalog:6.50, preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true},
-  {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false},
+  {id:1,  name:"Polo Donic Nuvon Herren",            preisKatalog:44.90, preisSpin:31.43, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"h", sizeType:"trikot", sizeQuelle:"tshirt"},
+  {id:2,  name:"Polo Donic Nuvon Damen",             preisKatalog:43.90, preisSpin:30.73, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot", sizeQuelle:"tshirt"},
+  {id:3,  name:"Short Donic Velora Herren",          preisKatalog:38.90, preisSpin:27.23, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"h", sizeType:"trikot"},
+  {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot"},
+  {id:5,  name:"Anzug Hose Andro Salivan unisex",    preisKatalog:44.95, preisSpin:31.47, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
+  {id:6,  name:"Anzug Jacke Andro Salivan unisex",   preisKatalog:54.95, preisSpin:38.47, preisTTC:35.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
+  {id:7,  name:"Druck Vorname vorne Polo",           preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[1,2]},
+  {id:8,  name:"Druck Vereinsname hinten Polo",      preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[1,2]},
+  {id:9,  name:"Druck Vorname vorne Anzug Jacke",    preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
+  {id:10, name:"Druck Vorname vorne Anzug Hose",     preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[5]},
+  {id:11, name:"Druck Vereinsname hinten Anzug Jacke",preisKatalog:6.50, preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
+  {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"trikot", sizeQuelle:"tshirt"},
 ];
-// Anfänger dürfen nur Artikel 12, alle anderen Spielgruppen die Artikel 1–11.
-function bestellArtikelForGroup(group){
+// Größenliste je Artikel
+function sizesForArtikel(a){
+  if(a.sizeType==="anzug") return ANZUG_SIZES;
+  if(a.sizeType==="trikot") return TRIKOT_SIZES;
+  return [];
+}
+// Anfänger/Gast dürfen nur Artikel 12, alle anderen die Artikel 1–11.
+// Zusätzlich Filter nach Geschlecht: männlich → Herren+unisex, weiblich → Damen+unisex.
+function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
-  if(g==="Anfänger"||g==="Gast") return BESTELL_ARTIKEL.filter(a=>a.id===12);
-  return BESTELL_ARTIKEL.filter(a=>a.id>=1 && a.id<=11);
+  let list = (g==="Anfänger"||g==="Gast") ? BESTELL_ARTIKEL.filter(a=>a.id===12)
+                                          : BESTELL_ARTIKEL.filter(a=>a.id>=1 && a.id<=11);
+  if(gender==="m") list = list.filter(a=>a.geschlecht==="h"||a.geschlecht==="u");
+  else if(gender==="w") list = list.filter(a=>a.geschlecht==="d"||a.geschlecht==="u");
+  return list;
+}
+// Menge eines (Druck-)Artikels: folgt der Summe seiner gekoppelten Hauptartikel.
+function anzahlForArtikel(a, items){
+  if(a.druck && Array.isArray(a.folgtArtikel)){
+    return a.folgtArtikel.reduce((s,hid)=>s+(items[hid]?.anzahl||0),0);
+  }
+  return items[a.id]?.anzahl||0;
 }
 const VEREIN_KONTO = {
   inhaber:"TTC 1979 Niederzeuzheim e. V.",
@@ -3207,16 +3234,28 @@ function BestellungenView({me, isAdmin=false, showToast}) {
   const [dirty,setDirty]   = useState(false);
   const [items,setItems]   = useState({});     // lokaler Bearbeitungsstand {id:{anzahl,groesse}}
 
-  const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger") : [];
-  const sizes   = me ? sizesForGroup(me.group||"Anfänger") : [];
+  const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger", me.gender) : [];
 
-  // Bestellung laden
+  // Bestellung laden; Größen ggf. aus Verwaltung (tshirtSize/anzugSize) vorbelegen
   useEffect(()=>{
     if(!me?.id) return;
     const u=onSnapshot(doc(db,"bestellungen",me.id),snap=>{
       const d = snap.exists()?snap.data():null;
       setBest(d);
-      setItems(d?.items||{});
+      const geladen = d?.items||{};
+      // Vorbelegung der Größen aus dem Reiter Verwaltung, sofern noch nicht gesetzt
+      const arts = bestellArtikelForGroup(me.group||"Anfänger", me.gender);
+      const merged = {...geladen};
+      for(const a of arts){
+        if(a.groesse && a.sizeQuelle){
+          const quelle = a.sizeQuelle==="anzug" ? me.anzugSize : me.tshirtSize;
+          const vorhandeneGroesse = merged[a.id]?.groesse;
+          if(quelle && !vorhandeneGroesse && sizesForArtikel(a).includes(quelle)){
+            merged[a.id] = {...(merged[a.id]||{}), groesse:quelle};
+          }
+        }
+      }
+      setItems(merged);
       setDirty(false);
     },()=>{});
     return u;
@@ -3247,9 +3286,9 @@ function BestellungenView({me, isAdmin=false, showToast}) {
     setDirty(true);
   }
 
-  // Summe Preis TTC gesamt
+  // Summe Preis TTC gesamt (Druck-Mengen folgen automatisch ihren Hauptartikeln)
   const summe = artikel.reduce((s,a)=>{
-    const anz=items[a.id]?.anzahl||0;
+    const anz=anzahlForArtikel(a, items);
     return s + anz*a.preisTTC;
   },0);
 
@@ -3258,8 +3297,8 @@ function BestellungenView({me, isAdmin=false, showToast}) {
     // Validierung bei Finalisierung: bestellte Größen-Artikel brauchen eine Größe
     if(finalisieren){
       for(const a of artikel){
-        const anz=items[a.id]?.anzahl||0;
-        if(anz>0 && a.groesse && !items[a.id]?.groesse){
+        const anz=anzahlForArtikel(a, items);
+        if(anz>0 && a.groesse && !a.druck && !items[a.id]?.groesse){
           window.alert(`Bitte eine Größe für "${a.name}" wählen.`);
           return;
         }
@@ -3336,21 +3375,25 @@ function BestellungenView({me, isAdmin=false, showToast}) {
         </tr></thead>
         <tbody>
           {artikel.map(a=>{
-            const anz=items[a.id]?.anzahl||0;
+            const anz=anzahlForArtikel(a, items);
             const gesamt=anz*a.preisTTC;
+            const artSizes=sizesForArtikel(a);
             return <tr key={a.id}>
-              <td style={{...td,fontWeight:600,minWidth:150}}>{a.name}{a.druck&&<span style={{fontSize:9,color:"#f59e0b",marginLeft:4}}>(Druck)</span>}</td>
+              <td style={{...td,fontWeight:600,minWidth:150}}>{a.name}{a.druck&&<span style={{fontSize:9,color:"#f59e0b",marginLeft:4}}>(Druck, autom.)</span>}</td>
               <td style={{...td,textAlign:"center"}}>
-                <input type="number" min={0} value={anz} disabled={locked}
-                  onChange={e=>setAnzahl(a.id,e.target.value)}
-                  style={{width:48,padding:"4px",textAlign:"center",background:locked?"var(--bg2)":"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:12}}/>
+                {a.druck
+                  ? <span style={{fontWeight:700}}>{anz}</span>
+                  : <select value={anz} disabled={locked} onChange={e=>setAnzahl(a.id,e.target.value)}
+                      style={{padding:"4px 6px",background:locked?"var(--bg2)":"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:12}}>
+                      {[0,1,2,3].map(n=><option key={n} value={n}>{n}</option>)}
+                    </select>}
               </td>
               <td style={{...td,textAlign:"center"}}>
                 {a.groesse
                   ? <select value={items[a.id]?.groesse||""} disabled={locked} onChange={e=>setGroesse(a.id,e.target.value)}
                       style={{padding:"4px",background:locked?"var(--bg2)":"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11}}>
                       <option value="">—</option>
-                      {sizes.map(s=><option key={s} value={s}>{s}</option>)}
+                      {artSizes.map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
                   : <span style={{color:"var(--text4)",fontSize:11}}>—</span>}
               </td>
@@ -3513,15 +3556,17 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             {sichtbar.map(b=>{
               const pl=players.find(p=>p.id===b.playerId);
               const grp=pl?.group||b.group||"";
-              const art=bestellArtikelForGroup(grp).filter(a=>(b.items?.[a.id]?.anzahl||0)>0);
+              const it0=b.items||{};
+              const art=bestellArtikelForGroup(grp, pl?.gender).filter(a=>anzahlForArtikel(a,it0)>0);
               if(art.length===0) return null;
               return art.map((a,idx)=>{
-                const it=b.items[a.id];
-                const gesamt=(it.anzahl||0)*a.preisTTC;
+                const anz=anzahlForArtikel(a, it0);
+                const it=b.items[a.id]||{};
+                const gesamt=anz*a.preisTTC;
                 return <tr key={b.id+"_"+a.id}>
                   {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={art.length}>{b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:"?")}</td>}
                   <td style={td}>{a.name}</td>
-                  <td style={{...td,textAlign:"center"}}>{it.anzahl}</td>
+                  <td style={{...td,textAlign:"center"}}>{anz}</td>
                   <td style={{...td,textAlign:"center"}}>{it.groesse||"—"}</td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisSpin)}</td>
