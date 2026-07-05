@@ -663,7 +663,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
             <div>
-              <div style={{fontSize:15,fontWeight:800}}>{clubConfig.name||"TTC Niederzeuzheim"}</div>
+              <div style={{fontSize:15,fontWeight:800}}>TTC Niederzeuzheim</div>
               <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
             </div>
           </div>
@@ -3324,7 +3324,7 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
-function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
+function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer}) {
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
@@ -3410,7 +3410,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"} · Rang #{myRank} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>TTC Niederzeuzheim · Rang #{myRank} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -5059,12 +5059,6 @@ function AufstellungUpload({showToast}) {
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
-  // Saison-Auswahl: Standard = aktuelle Saison
-  const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
-  const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
-  const seasonTeams = season.teams;
-  // eindeutiges Saison-Kürzel für den Datei-Key (z.B. "2026/27" → "2026_27")
-  const seasonSlug = selSeasonKey.replace("/","_");
 
   useEffect(()=>{
     const unsub = onSnapshot(doc(db,"config","teamFiles"),snap=>{
@@ -5073,24 +5067,26 @@ function MannschaftenVerwaltung({showToast}) {
     return unsub;
   },[]);
 
-  async function handleUpload(fileKey, file) {
+  async function handleUpload(teamId, type, file) {
     if(!file) return;
-    setUploading(p=>({...p,[fileKey]:true}));
+    setUploading(p=>({...p,[teamId+type]:true}));
     const reader = new FileReader();
     reader.onload = async(e)=>{
       const dataUrl = e.target.result;
-      const updated = {...teamFiles, [fileKey]:dataUrl, [`${fileKey}_name`]:file.name};
+      const key = `${teamId}_${type}`;
+      const updated = {...teamFiles, [key]:dataUrl, [`${key}_name`]:file.name};
       await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
       setTeamFiles(updated);
       showToast(`${file.name} hochgeladen`,"📎");
-      setUploading(p=>({...p,[fileKey]:false}));
+      setUploading(p=>({...p,[teamId+type]:false}));
     };
     reader.readAsDataURL(file);
   }
 
-  async function handleDelete(fileKey) {
+  async function handleDelete(teamId, type) {
+    const key = `${teamId}_${type}`;
     const updated = {...teamFiles};
-    delete updated[fileKey]; delete updated[`${fileKey}_name`];
+    delete updated[key]; delete updated[`${key}_name`];
     await setDoc(doc(db,"config","teamFiles"),updated).catch(()=>{});
     setTeamFiles(updated);
     showToast("Gelöscht","🗑️");
@@ -5098,31 +5094,14 @@ function MannschaftenVerwaltung({showToast}) {
 
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
     <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
       Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
     </div>
 
-    {/* Saison-Auswahl */}
-    <div style={{marginBottom:14}}>
-      <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4,fontWeight:700}}>Saison</label>
-      <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
-        style={{width:"100%",padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
-        {SEASONS.map(s=><option key={s.key} value={s.key}>{s.key}{s.current?" (aktuell)":""}</option>)}
-      </select>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>{seasonTeams.length} Mannschaften in dieser Saison</div>
-    </div>
-
-    {seasonTeams.map(t=>{
-      // Saison-spezifischer Key; Fallback auf alten Key (ohne Saison) für Altdaten
-      const pinKey = `${seasonSlug}_${t.id}_pin`;   const codeKey = `${seasonSlug}_${t.id}_code`;
-      const oldPinKey = `${t.id}_pin`;              const oldCodeKey = `${t.id}_code`;
-      const pinFile = teamFiles[pinKey] ?? teamFiles[oldPinKey];
-      const codFile = teamFiles[codeKey] ?? teamFiles[oldCodeKey];
-      const pinName = teamFiles[`${pinKey}_name`] ?? teamFiles[`${oldPinKey}_name`];
-      const codName = teamFiles[`${codeKey}_name`] ?? teamFiles[`${oldCodeKey}_name`];
-      // Für Löschen den tatsächlich belegten Key verwenden
-      const pinDelKey = teamFiles[pinKey]!==undefined ? pinKey : (teamFiles[oldPinKey]!==undefined ? oldPinKey : pinKey);
-      const codDelKey = teamFiles[codeKey]!==undefined ? codeKey : (teamFiles[oldCodeKey]!==undefined ? oldCodeKey : codeKey);
+    {TEAMS.map(t=>{
+      const pinKey = `${t.id}_pin`; const codeKey = `${t.id}_code`;
+      const pinFile = teamFiles[pinKey]; const codFile = teamFiles[codeKey];
+      const pinName = teamFiles[`${pinKey}_name`]; const codName = teamFiles[`${codeKey}_name`];
       return <div key={t.id} style={{borderTop:"1px solid var(--border)",paddingTop:10,marginBottom:10}}>
         <div style={{fontSize:12,fontWeight:700,color:t.color,marginBottom:6}}>{t.name}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -5132,12 +5111,12 @@ function MannschaftenVerwaltung({showToast}) {
             {pinFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pinName}</span>
-                  <button onClick={()=>handleDelete(pinDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(t.id,"pin")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[pinKey]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[pinKey]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"pin"]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[t.id+"pin"]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(pinKey,e.target.files?.[0])} disabled={uploading[pinKey]}/>
+                    onChange={e=>handleUpload(t.id,"pin",e.target.files?.[0])} disabled={uploading[t.id+"pin"]}/>
                 </label>}
           </div>
           {/* Spielcodes */}
@@ -5146,12 +5125,12 @@ function MannschaftenVerwaltung({showToast}) {
             {codFile
               ? <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{fontSize:10,color:"#10b981",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{codName}</span>
-                  <button onClick={()=>handleDelete(codDelKey)} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
+                  <button onClick={()=>handleDelete(t.id,"code")} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:9,cursor:"pointer",flexShrink:0}}>✕</button>
                 </div>
-              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[codeKey]?"not-allowed":"pointer",textAlign:"center"}}>
-                  {uploading[codeKey]?"⏳ Lädt…":"📎 Datei hochladen"}
+              : <label style={{display:"block",padding:"4px 8px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,fontSize:10,color:"var(--text3)",cursor:uploading[t.id+"code"]?"not-allowed":"pointer",textAlign:"center"}}>
+                  {uploading[t.id+"code"]?"⏳ Lädt…":"📎 Datei hochladen"}
                   <input type="file" accept=".pdf,.doc,.docx,.txt,.png,.jpg" style={{display:"none"}}
-                    onChange={e=>handleUpload(codeKey,e.target.files?.[0])} disabled={uploading[codeKey]}/>
+                    onChange={e=>handleUpload(t.id,"code",e.target.files?.[0])} disabled={uploading[t.id+"code"]}/>
                 </label>}
           </div>
         </div>
@@ -5714,11 +5693,9 @@ function SpielbetrieblTab({isSuperAdmin}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {(()=>{
-              const slug=selSeasonKey.replace("/","_");
-              const dataUrl=teamFiles[`${slug}_${t.id}_pin`] ?? teamFiles[`${t.id}_pin`];
-              if(!dataUrl) return null;
-              const name=teamFiles[`${slug}_${t.id}_pin_name`] ?? teamFiles[`${t.id}_pin_name`] ?? "spiel-pins";
+            {teamFiles[`${t.id}_pin`]&&(()=>{
+              const dataUrl=teamFiles[`${t.id}_pin`];
+              const name=teamFiles[`${t.id}_pin_name`]||"spiel-pins";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
@@ -5730,11 +5707,9 @@ function SpielbetrieblTab({isSuperAdmin}) {
               return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
                 style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>;
             })()}
-            {(()=>{
-              const slug=selSeasonKey.replace("/","_");
-              const dataUrl=teamFiles[`${slug}_${t.id}_code`] ?? teamFiles[`${t.id}_code`];
-              if(!dataUrl) return null;
-              const name=teamFiles[`${slug}_${t.id}_code_name`] ?? teamFiles[`${t.id}_code_name`] ?? "spielcodes";
+            {teamFiles[`${t.id}_code`]&&(()=>{
+              const dataUrl=teamFiles[`${t.id}_code`];
+              const name=teamFiles[`${t.id}_code_name`]||"spielcodes";
               const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
               if(isPdf){
                 return <button onClick={()=>{
@@ -6132,11 +6107,7 @@ function icsUid(parts){
 
 // options: {teams:[...], vorlaufMin, dauerMin, includeTermine, spiele:[], vereinstermine:[]}
 function buildICS(options){
-  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[],
-    puffer=false,
-    heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
-    auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
-  }=options;
+  const {teams=[], vorlaufMin=60, dauerMin=180, includeTermine=false, spiele=[], vereinstermine=[]}=options;
   const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
   const L=[];
   L.push("BEGIN:VCALENDAR");
@@ -6153,26 +6124,12 @@ function buildICS(options){
   // Spiele
   for(const s of spiele){
     if(teamSet && !teamSet.has(s.mannschaft)) continue;
-    const spielStart=icsDateTime(s.datum, s.uhrzeit);
-    if(!spielStart) continue;
+    const start=icsDateTime(s.datum, s.uhrzeit);
+    if(!start) continue;
+    const end=icsAddMinutes(s.datum, s.uhrzeit, dauerMin);
     const heim = /heim/i.test(s.ort||"");
-    const auswaerts = /ausw/i.test(s.ort||"");
-    // Puffer: Kalendereintrag beginnt vor Spielbeginn und endet nach Spielende
-    let vorMin=0, nachMin=0;
-    if(puffer){
-      if(heim){ vorMin=heimVor; nachMin=heimNach; }
-      else if(auswaerts){ vorMin=auswVor; nachMin=auswNach; }
-      // wenn Ort weder klar Heim noch Auswärts: kein Puffer
-    }
-    const start = vorMin>0 ? icsAddMinutes(s.datum, s.uhrzeit, -vorMin) : spielStart;
-    const end   = icsAddMinutes(s.datum, s.uhrzeit, dauerMin + nachMin);
     const titel=`🏓 ${s.mannschaft} vs. ${s.gegner||"?"}`;
     const ortText = s.ort && !/heim|ausw/i.test(s.ort) ? s.ort : (heim?"Heimspiel":"Auswärtsspiel");
-    // Beschreibung: Spielbeginn explizit nennen + Puffer erläutern
-    const descParts=[`Spielbeginn: ${s.uhrzeit} Uhr`];
-    if(puffer && heim && (vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
-    if(puffer && auswaerts && (vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
-    if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
     L.push("BEGIN:VEVENT");
     L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
     L.push(`DTSTAMP:${stamp}`);
@@ -6181,9 +6138,8 @@ function buildICS(options){
     L.push(`SUMMARY:${icsEscape(titel)}`);
     L.push(`LOCATION:${icsEscape(ortText)}`);
     L.push(`CATEGORIES:${icsEscape(s.mannschaft)}`);
-    L.push(`DESCRIPTION:${icsEscape(descParts.join(" · "))}`);
+    if(s.ergebnis) L.push(`DESCRIPTION:${icsEscape("Ergebnis: "+s.ergebnis)}`);
     if(vorlaufMin>0){
-      // Erinnerung bezieht sich auf den Kalender-Start (also inkl. Puffer)
       L.push("BEGIN:VALARM");
       L.push("ACTION:DISPLAY");
       L.push(`DESCRIPTION:${icsEscape(titel)}`);
@@ -6232,79 +6188,38 @@ function buildICS(options){
 const KALENDER_FEED_BASE = "/.netlify/functions/calendar";
 
 function KalenderExport(){
-  // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
-  const SAISON_OPTS=[
-    {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
-    {id:"spielplan_2025_2026", label:"2025/26"},
-    {id:"spielplan_2024_2025", label:"2024/25"},
-  ];
-  const [selSaison,setSelSaison]=useState((SEASONS.find(s=>s.current)||SEASONS[0]).key.startsWith("2026")?"spielplan_2026_2027":"spielplan_"+(SEASONS.find(s=>s.current)||SEASONS[0]).key.replace("/","_"));
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
-
-  // Spiele der gewählten Saison + Vereinstermine laden
+  // aktuelle Saison + Vereinstermine laden
   useEffect(()=>{
-    const u1=onSnapshot(doc(db,"config",selSaison),snap=>{
-      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[selSaison]||[]);
+    const cur=(SEASONS.find(s=>s.current)||SEASONS[0]);
+    const spielplanKey="spielplan_"+cur.key.replace("/","_");
+    const u1=onSnapshot(doc(db,"config",spielplanKey),snap=>{
+      const data = snap.exists()&&(snap.data().spiele||[]).length>0 ? snap.data().spiele : (SPIELPLAN_DATA[spielplanKey]||[]);
       setSpiele(data);
-    },()=>{ setSpiele(SPIELPLAN_DATA[selSaison]||[]); });
-    return ()=>u1();
-  },[selSaison]);
-  useEffect(()=>{
+    },()=>{ setSpiele(SPIELPLAN_DATA[spielplanKey]||[]); });
     const u2=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
       setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
     },()=>{});
-    return ()=>u2();
+    return ()=>{u1();u2();};
   },[]);
-
-  // Mannschaften aus den Spielen der gewählten Saison ableiten
+  // Mannschaften aus den Spielen ableiten (echte Spielplan-Namen wie "Herren 1", "Mädchen 13")
   const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
+
   const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
-
-  // Verfügbare Rubriken: Standard-Liste + alle, die tatsächlich in Terminen vorkommen
-  const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
-  const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
-
   const [selTeams,setSelTeams]=useState([]);
   const [vorlauf,setVorlauf]=useState(60);
-  const [dauer,setDauer]=useState(120);
-  const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
-  const [selRubriken,setSelRubriken]=useState([...TERMIN_RUBRIKEN]); // Standard: alle Rubriken an
-  const [puffer,setPuffer]=useState(false);
+  const [dauer,setDauer]=useState(180);
+  const [mitTermine,setMitTermine]=useState(true);
   const [copied,setCopied]=useState(false);
-
-  // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften)
-  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); },[selSaison]);
-
-  // Punkt 3: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2h),
-  // solange der Nutzer die Dauer nicht manuell geändert hat.
-  useEffect(()=>{
-    if(dauerManuell) return;
-    if(selTeams.length===0){ setDauer(120); return; } // Standard 2h
-    const nurNachwuchs = selTeams.every(istNachwuchsMannschaft);
-    const nurErwachsene = selTeams.every(t=>!istNachwuchsMannschaft(t));
-    if(nurNachwuchs) setDauer(90);        // 1,5 Stunden
-    else if(nurErwachsene) setDauer(120); // 2 Stunden
-    else setDauer(120);                   // gemischt → 2 Stunden
-  },[selTeams, dauerManuell]);
 
   function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
   function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
   function selectAlle(){ setSelTeams(alleMannschaften); }
   function selectKeine(){ setSelTeams([]); }
-  function toggleRubrik(r){ setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
-
-  // Vereinstermine nach ausgewählten Rubriken filtern (Termin ohne Rubrik zählt als "Alle")
-  const gefilterteTermine = vereinstermine.filter(t=>selRubriken.includes(t.rubrik||"Alle"));
-  const mitTermine = selRubriken.length>0;
-
-  const icsOptions=()=>({
-    teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
-    puffer, spiele, vereinstermine:gefilterteTermine,
-  });
 
   function download(){
-    const ics=buildICS(icsOptions());
+    const ics=buildICS({teams:selTeams,vorlaufMin:vorlauf,dauerMin:dauer,includeTermine:mitTermine,spiele,vereinstermine});
     const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -6315,21 +6230,14 @@ function KalenderExport(){
   // Abo-Link mit Parametern zusammenbauen
   const aboUrl=(()=>{
     const params=new URLSearchParams();
-    params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
-    // Rubriken: nur setzen wenn nicht alle Standard-Rubriken gewählt sind
-    if(selRubriken.length>0 && !TERMIN_RUBRIKEN.every(r=>selRubriken.includes(r))){
-      params.set("rubriken",selRubriken.join(","));
-    } else if(selRubriken.length===0){
-      params.set("rubriken","");  // keine Termine
-    }
     if(mitTermine) params.set("termine","1");
-    if(puffer) params.set("puffer","1");
     const origin=typeof window!=="undefined"?window.location.origin:"";
     return `${origin}${KALENDER_FEED_BASE}.ics?${params.toString()}`;
   })();
+  // webcal:// sorgt dafür, dass Kalender-Apps direkt "Abonnieren" anbieten
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
 
   function copyLink(){
@@ -6339,31 +6247,17 @@ function KalenderExport(){
   const box={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:14};
   const lab={fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:8};
 
-  // Dauer-Label für Anzeige
-  const dauerLabel={90:"1,5 Stunden",120:"2 Stunden",150:"2,5 Stunden",180:"3 Stunden",210:"3,5 Stunden",240:"4 Stunden"}[dauer]||`${dauer} Min`;
-
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📅 Kalender-Export</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
       Spieltermine in deinen Kalender übernehmen — als Abo (bleibt automatisch aktuell) oder Download.
     </div>
 
-    {/* Saison-Auswahl (Punkt 1) */}
-    <div style={box}>
-      <div style={lab}>Saison</div>
-      <select value={selSaison} onChange={e=>setSelSaison(e.target.value)} style={sel}>
-        {SAISON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-      </select>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>
-        {spiele.length>0?`${spiele.length} Spiele · ${alleMannschaften.length} Mannschaften`:"Für diese Saison sind noch keine Spiele hinterlegt."}
-      </div>
-    </div>
-
     {/* Mannschaftsauswahl */}
     <div style={box}>
       <div style={lab}>Welche Mannschaften?</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length&&alleMannschaften.length>0)}>Alle</button>
+        <button onClick={selectAlle} style={chip(selTeams.length===alleMannschaften.length)}>Alle</button>
         <button onClick={selectNachwuchs} style={chip(false)}>Alle Nachwuchs</button>
         <button onClick={selectKeine} style={chip(false)}>Keine</button>
       </div>
@@ -6371,40 +6265,16 @@ function KalenderExport(){
         {alleMannschaften.map(t=>(
           <label key={t} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
             <input type="checkbox" checked={selTeams.includes(t)} onChange={()=>toggleTeam(t)}/>
-            {t}{istNachwuchsMannschaft(t)?<span style={{fontSize:10,color:"var(--text4)"}}> (Nachwuchs)</span>:null}
+            {t}
           </label>
         ))}
-        {alleMannschaften.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Keine Mannschaften in dieser Saison.</div>}
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
       </div>
     </div>
 
-    {/* Welche (Vereins-)Termine? — Rubriken als Ankreuzfelder (Punkt 2) */}
-    <div style={box}>
-      <div style={lab}>Welche (Vereins-)Termine?</div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
-        Wähle die Rubriken, deren Termine in deinen Kalender sollen.
-      </div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-        <button onClick={()=>setSelRubriken([...alleRubriken])} style={chip(selRubriken.length===alleRubriken.length)}>Alle</button>
-        <button onClick={()=>setSelRubriken([])} style={chip(false)}>Keine</button>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:5}}>
-        {alleRubriken.map(r=>(
-          <label key={r} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
-            <input type="checkbox" checked={selRubriken.includes(r)} onChange={()=>toggleRubrik(r)}/>
-            {r}
-          </label>
-        ))}
-      </div>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
-        {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
-      </div>
-    </div>
-
-    {/* Erinnerung + Dauer */}
+    {/* Vorlauf + Dauer */}
     <div style={box}>
       <div style={lab}>Erinnerung & Dauer</div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
@@ -6418,34 +6288,17 @@ function KalenderExport(){
         </div>
         <div style={{flex:1,minWidth:130}}>
           <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Dauer pro Spiel</label>
-          <select value={dauer} onChange={e=>{setDauer(Number(e.target.value));setDauerManuell(true);}} style={sel}>
-            <option value={90}>1,5 Stunden</option><option value={120}>2 Stunden</option>
-            <option value={150}>2,5 Stunden</option><option value={180}>3 Stunden</option>
-            <option value={210}>3,5 Stunden</option><option value={240}>4 Stunden</option>
+          <select value={dauer} onChange={e=>setDauer(Number(e.target.value))} style={sel}>
+            <option value={120}>2 Stunden</option><option value={150}>2,5 Stunden</option>
+            <option value={180}>3 Stunden</option><option value={210}>3,5 Stunden</option>
+            <option value={240}>4 Stunden</option>
           </select>
         </div>
       </div>
-      {!dauerManuell&&selTeams.length>0&&<div style={{fontSize:10,color:"#10b981",marginTop:6}}>
-        Automatisch vorbelegt: {dauerLabel} ({selTeams.every(istNachwuchsMannschaft)?"Nachwuchs":selTeams.every(t=>!istNachwuchsMannschaft(t))?"Erwachsene":"gemischt"})
-      </div>}
-    </div>
-
-    {/* Fahrt-/Auf-/Abbauzeiten (Punkt 4) */}
-    <div style={box}>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:700,color:"var(--text)",cursor:"pointer"}}>
-        <input type="checkbox" checked={puffer} onChange={e=>setPuffer(e.target.checked)}/>
-        Fahrt- & Auf-/Abbauzeit einrechnen
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",marginTop:12}}>
+        <input type="checkbox" checked={mitTermine} onChange={e=>setMitTermine(e.target.checked)}/>
+        Vereinstermine (z. B. Versammlungen) einbeziehen
       </label>
-      <div style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.5}}>
-        Der Kalendereintrag beginnt dann vor dem Spiel und endet danach — der eigentliche Spielbeginn steht in der Beschreibung.
-        <div style={{marginTop:6,paddingLeft:6,borderLeft:"2px solid var(--border2)"}}>
-          <b>Heimspiel:</b> 1 Std Aufbau vorher, 30 Min Abbau nachher<br/>
-          <b>Auswärts:</b> 1 Std Hinfahrt, 30 Min Rückfahrt
-        </div>
-        <div style={{marginTop:6,fontStyle:"italic"}}>
-          Beispiel Nachwuchs 14:00 Uhr: Heim 13:00–16:00, Auswärts 13:00–16:00.
-        </div>
-      </div>
     </div>
 
     {/* Abo-Weg */}
@@ -6500,7 +6353,6 @@ const SPIELPLAN_COLS = [
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
 const TERMIN_ORTE = ["Feuerwehr-Gerätehaus","Gasthaus Horn","Mehrzweckhalle"];
-const TERMIN_RUBRIKEN = ["Alle","Erwachsene","Nachwuchs","Halle zu","Vorstand","Grenzau-Spiele"];
 const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 function terminTag(isoDatum){
   if(!isoDatum) return "";
@@ -6529,7 +6381,7 @@ function spielplanKeyStartjahr(key){
 // TerminVerwaltung — Admin erfasst Vereinstermine (im Verwaltung-Bereich)
 function TerminVerwaltung({showToast}) {
   const [termine,setTermine]=useState([]);
-  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",rubrik:"Alle",veranstaltung:"",ort:""};
+  const leer={datumStart:"",datumEnde:"",uhrzeitStart:"",uhrzeitEnde:"",veranstaltung:"",ort:""};
   const [form,setForm]=useState(leer);
   const [editId,setEditId]=useState(null);
 
@@ -6556,7 +6408,7 @@ function TerminVerwaltung({showToast}) {
       showToast(editId?"Termin aktualisiert":"Termin angelegt","📌"); setForm(leer); setEditId(null);
     }catch(e){showToast("Fehler: "+e.message,"❌");}
   }
-  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",rubrik:t.rubrik||"Alle",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
+  function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id); }
   async function del(id){
     if(!window.confirm("Diesen Termin löschen?")) return;
     const next=termine.filter(t=>t.id!==id);
@@ -6598,19 +6450,10 @@ function TerminVerwaltung({showToast}) {
           <input type="time" value={form.uhrzeitEnde} onChange={e=>setForm(f=>({...f,uhrzeitEnde:e.target.value}))} style={inp}/>
         </div>
       </div>
-      {/* Rubrik (Dropdown mit Freieingabe) + Veranstaltung nebeneinander */}
-      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-        <div style={{flex:"0 0 auto",width:150}}>
-          <label style={lab}>Rubrik</label>
-          <input list="termin-rubriken" value={form.rubrik} onChange={e=>setForm(f=>({...f,rubrik:e.target.value}))} placeholder="Rubrik wählen" style={inp}/>
-          <datalist id="termin-rubriken">
-            {TERMIN_RUBRIKEN.map(r=><option key={r} value={r}/>)}
-          </datalist>
-        </div>
-        <div style={{flex:1,minWidth:150}}>
-          <label style={lab}>Veranstaltung</label>
-          <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
-        </div>
+      {/* Veranstaltung */}
+      <div style={{marginBottom:10}}>
+        <label style={lab}>Veranstaltung</label>
+        <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
       </div>
       {/* Ort: Dropdown + freie Eingabe via datalist */}
       <div style={{marginBottom:12}}>
@@ -6657,7 +6500,6 @@ const TERMIN_COLS=[
   {key:"tagEnde",      label:"Tag",           w:"40px"},
   {key:"uhrzeitStart", label:"Start",         w:"56px"},
   {key:"uhrzeitEnde",  label:"Ende",          w:"56px"},
-  {key:"rubrik",       label:"Rubrik",        w:"100px"},
   {key:"veranstaltung",label:"Veranstaltung", w:"auto"},
   {key:"ort",          label:"Ort",           w:"140px"},
 ];
@@ -6728,12 +6570,11 @@ function TermineView() {
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{(t.datumEnde&&t.datumEnde!==t.datumStart)?t.tagEnde:""}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{t.uhrzeitStart}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:11}}>{t.uhrzeitEnde}</td>
-              <td style={{padding:"5px 6px",fontSize:11}}>{t.rubrik&&t.rubrik!=="Alle"?<span style={{background:"var(--bg3)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"var(--text2)"}}>{t.rubrik}</span>:<span style={{color:"var(--text4)",fontSize:10}}>{t.rubrik||""}</span>}</td>
               <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}}>{t.veranstaltung}</td>
               <td style={{padding:"5px 6px",fontSize:11}}>{t.ort}</td>
             </tr>
           ))}
-          {sorted.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Termine gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -7653,7 +7494,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
   };
 
-  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
+  const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut};
   const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
 
   // All active players sorted alphabetically
@@ -8218,7 +8059,7 @@ export default function App() {
   // Gemeinsame Props
   const sharedProps = {
     isDark, onSetUserTheme:handleSetUserTheme, userTheme,
-    onSignOut:handleSignOut, clubConfig,
+    onSignOut:handleSignOut,
   };
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
