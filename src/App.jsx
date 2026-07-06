@@ -3233,6 +3233,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
   const [saving,setSaving] = useState(false);
   const [dirty,setDirty]   = useState(false);
   const [items,setItems]   = useState({});     // lokaler Bearbeitungsstand {id:{anzahl,groesse}}
+  const [zoomFoto,setZoomFoto] = useState(null); // {url,name} für Großansicht
 
   const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger", me.gender) : [];
 
@@ -3365,13 +3366,13 @@ function BestellungenView({me, isAdmin=false, showToast}) {
     <div style={{overflowX:"auto",marginBottom:14,border:"1px solid var(--border)",borderRadius:10}}>
       <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
         <thead><tr>
+          <th style={{...th,textAlign:"center"}}>Foto</th>
           <th style={th}>Artikel</th>
           <th style={{...th,textAlign:"center"}}>Anzahl</th>
           <th style={{...th,textAlign:"center"}}>Größe</th>
           <th style={{...th,textAlign:"right"}}>Preis Katalog</th>
           <th style={{...th,textAlign:"right"}}>Preis TTC</th>
           <th style={{...th,textAlign:"right"}}>Preis TTC gesamt</th>
-          <th style={{...th,textAlign:"center"}}>Foto</th>
         </tr></thead>
         <tbody>
           {artikel.map(a=>{
@@ -3379,6 +3380,19 @@ function BestellungenView({me, isAdmin=false, showToast}) {
             const gesamt=anz*a.preisTTC;
             const artSizes=sizesForArtikel(a);
             return <tr key={a.id}>
+              <td style={{...td,textAlign:"center"}}>
+                {fotos[a.id]
+                  ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                      <img src={fotos[a.id]} alt={a.name} onClick={()=>setZoomFoto({url:fotos[a.id],name:a.name})}
+                        style={{width:38,height:38,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)",cursor:"zoom-in"}}/>
+                      {isAdmin && <button onClick={()=>deleteFoto(a.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>entfernen</button>}
+                    </div>
+                  : isAdmin
+                    ? <label style={{fontSize:9,color:"var(--text3)",cursor:"pointer",display:"inline-block",padding:"3px 5px",border:"1px dashed var(--border2)",borderRadius:5}}>
+                        📷<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadFoto(a.id,e.target.files?.[0])}/>
+                      </label>
+                    : <span style={{color:"var(--text4)",fontSize:10}}>—</span>}
+              </td>
               <td style={{...td,fontWeight:600,minWidth:150}}>{a.name}{a.druck&&<span style={{fontSize:9,color:"#f59e0b",marginLeft:4}}>(Druck, autom.)</span>}</td>
               <td style={{...td,textAlign:"center"}}>
                 {a.druck
@@ -3400,26 +3414,13 @@ function BestellungenView({me, isAdmin=false, showToast}) {
               <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
               <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(a.preisTTC)}</td>
               <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(gesamt)}</td>
-              <td style={{...td,textAlign:"center"}}>
-                {fotos[a.id]
-                  ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                      <img src={fotos[a.id]} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)"}}/>
-                      {isAdmin && <button onClick={()=>deleteFoto(a.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>entfernen</button>}
-                    </div>
-                  : isAdmin
-                    ? <label style={{fontSize:9,color:"var(--text3)",cursor:"pointer",display:"inline-block",padding:"3px 5px",border:"1px dashed var(--border2)",borderRadius:5}}>
-                        📷<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadFoto(a.id,e.target.files?.[0])}/>
-                      </label>
-                    : <span style={{color:"var(--text4)",fontSize:10}}>—</span>}
-              </td>
             </tr>;
           })}
         </tbody>
         <tfoot>
           <tr>
-            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={5}>Summe (Preis TTC gesamt)</td>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={6}>Summe (Preis TTC gesamt)</td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(summe)}</td>
-            <td style={{...td,borderTop:"2px solid var(--border2)"}}></td>
           </tr>
         </tfoot>
       </table>
@@ -3457,6 +3458,15 @@ function BestellungenView({me, isAdmin=false, showToast}) {
       <div style={{fontSize:10,color:"var(--text4)",textAlign:"center"}}>
         Mit „Verbindlich bestellen" wird die Bestellung final gesetzt und als bezahlt markiert. Der Geldeingang wird vom Verein separat bestätigt.
       </div>
+    </div>}
+
+    {/* Großansicht des Artikelfotos */}
+    {zoomFoto && <div onClick={()=>setZoomFoto(null)} style={{
+        position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+      <img src={zoomFoto.url} alt={zoomFoto.name} style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}/>
+      <div style={{color:"#fff",fontSize:14,fontWeight:600,marginTop:14,textAlign:"center"}}>{zoomFoto.name}</div>
+      <button onClick={()=>setZoomFoto(null)} style={{marginTop:12,padding:"8px 18px",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer"}}>Schließen</button>
     </div>}
   </div>;
 }
