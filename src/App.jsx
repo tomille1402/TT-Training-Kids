@@ -2005,8 +2005,18 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login${mailInfo}`,"🎉");
       setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
     } catch(e) {
-      if (e.code==="auth/email-already-in-use") setUpgradeErr("Diese E-Mail wird bereits verwendet.");
+      if (e.code==="auth/email-already-in-use") {
+        // Konto mit dieser echten Adresse existiert bereits → nur Passwort-Mail schicken
+        try {
+          await sendPasswordResetEmail(auth, upgradeEmail.trim());
+          showToast(`Login besteht bereits — Passwort-Mail an ${upgradeEmail.trim()} verschickt`,"📧");
+          setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
+        } catch(_) {
+          setUpgradeErr("Konto existiert bereits, aber die Passwort-Mail konnte nicht verschickt werden.");
+        }
+      }
       else if (e.code==="auth/weak-password")    setUpgradeErr("Passwort zu schwach.");
+      else if (e.code==="auth/invalid-email")    setUpgradeErr("Ungültige E-Mail-Adresse.");
       else setUpgradeErr("Fehler: "+e.message);
     }
     setUpgrading(false);
@@ -2195,39 +2205,53 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </div>
 
-    {/* Sammel-Banner: Personen ohne echtes Login (künstliche @ttc-intern.de-Adresse oder noLogin) */}
+    {/* Sammel-Banner: Login-Status ALLER Personen (nicht nur der erkannt-betroffenen) */}
     {(()=>{
-      const betroffen = players.filter(p=>p.status!=="passiv" && hatKeinEchtesLogin(p))
-        .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
-      if(betroffen.length===0) return null;
+      const alleAktiv = players.filter(p=>p.status!=="passiv")
+        .sort((a,b)=>{
+          // Kritische zuerst (kein echtes Login), dann alphabetisch
+          const ka=hatKeinEchtesLogin(a)?0:1, kb=hatKeinEchtesLogin(b)?0:1;
+          if(ka!==kb) return ka-kb;
+          return (a.firstName||"").localeCompare(b.firstName||"","de");
+        });
+      if(alleAktiv.length===0) return null;
+      const kritisch = alleAktiv.filter(p=>hatKeinEchtesLogin(p)).length;
+      // Status je Person bestimmen
+      const statusOf=(p)=>{
+        if(p.noLogin) return {txt:"kein Login",farbe:"#ef4444"};
+        if(istKuenstlicheEmail(p.email)) return {txt:"Platzhalter-Adresse",farbe:"#f59e0b"};
+        return {txt:p.email,farbe:"#10b981"};
+      };
       return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}
           onClick={()=>setZeigeLoginProbleme(v=>!v)}>
           <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>
-            ⚠️ {betroffen.length} {betroffen.length===1?"Person hat":"Personen haben"} kein echtes Login
+            🔑 Login-Status ({kritisch} von {alleAktiv.length} ohne echtes Login)
           </div>
           <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
         </div>
         <div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
-          Diese Personen haben eine automatische Platzhalter-Adresse (…@ttc-intern.de) oder gar kein Login.
-          An diese Adressen kann <b>keine Passwort-Mail</b> zugestellt werden. Trage über „Login einrichten" eine
-          echte E-Mail ein — alle bisherigen Daten bleiben erhalten, danach funktioniert „Passwort vergessen".
+          Hier sind <b>alle {alleAktiv.length} aktiven Personen</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
+          „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
+          E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten. Klick auf den Titel klappt die Liste auf/zu.
         </div>
         {zeigeLoginProbleme && <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
-          {betroffen.map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
-                background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:8,padding:"7px 10px"}}>
+          {alleAktiv.map(p=>{
+            const st=statusOf(p);
+            const krit=hatKeinEchtesLogin(p);
+            return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
+                background:"var(--bg2)",border:`1px solid ${krit?"#f59e0b55":"var(--border)"}`,borderRadius:8,padding:"7px 10px"}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:600}}>{p.firstName} {p.lastName}
                   <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{p.group}</span></div>
-                <div style={{fontSize:10,color:"var(--text4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {p.noLogin?"kein Login":p.email}</div>
+                <div style={{fontSize:10,color:st.farbe,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {krit?"⚠️ ":"✅ "}{st.txt}</div>
               </div>
               <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}}
-                style={{flexShrink:0,background:"#f59e0b",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>
+                style={{flexShrink:0,background:krit?"#f59e0b":"var(--bg3)",border:krit?"none":"1px solid var(--border2)",borderRadius:6,color:krit?"#fff":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>
                 → Login einrichten</button>
-            </div>
-          ))}
+            </div>;
+          })}
         </div>}
       </div>;
     })()}
