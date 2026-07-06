@@ -1,0 +1,14 @@
+[build]
+  functions = "netlify/functions"
+
+# Schöner Pfad für den Kalender-Feed: /.netlify/functions/calendar.ics
+[[redirects]]
+  from = "/.netlify/functions/calendar.ics"
+  to = "/.netlify/functions/calendar"
+  status = 200
+
+# Optional noch kürzer: /kalender.ics
+[[redirects]]
+  from = "/kalender.ics"
+  to = "/.netlify/functions/calendar"
+  status = 200
