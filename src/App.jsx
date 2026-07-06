@@ -1656,6 +1656,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [saving,setSaving]=useState(false);
   const [loginUpgradeFor,setLoginUpgradeFor]=useState(null);
   const [zeigeLoginProbleme,setZeigeLoginProbleme]=useState(false);
+  const [sammelLauft,setSammelLauft]=useState(false);
+  const [sammelLog,setSammelLog]=useState(null); // {ok:[], fehler:[], mail:[]}
   const [upgradeEmail,setUpgradeEmail]=useState("");
   const [upgradePass,setUpgradePass]=useState("");
   const [upgradeErr,setUpgradeErr]=useState("");
@@ -2010,6 +2012,67 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setUpgrading(false);
   }
 
+  // Sammel-Reparatur: für alle Personen mit echter, hinterlegter E-Mail das
+  // Login sicherstellen (Auth-Konto auf echte Adresse) und Passwort-Mail schicken.
+  // Erfasst auch Personen, deren Dokument-Adresse echt ist, deren Auth-Konto aber
+  // noch auf einer künstlichen Adresse läuft (dann kommt derzeit keine Reset-Mail an).
+  async function doSammelReparatur() {
+    const kandidaten = players.filter(p=>p.status!=="passiv" && !istKuenstlicheEmail(p.email));
+    if(kandidaten.length===0){
+      showToast("Keine Personen mit hinterlegter echter E-Mail gefunden","ℹ️");
+      return;
+    }
+    if(!window.confirm(`Für ${kandidaten.length} ${kandidaten.length===1?"Person":"Personen"} mit echter E-Mail das Login sicherstellen und Passwort-Mail verschicken?\n\nBereits funktionierende Logins erhalten einfach eine neue Passwort-Mail.`)) return;
+    setSammelLauft(true);
+    const ok=[], fehler=[], mail=[];
+    for(const p of kandidaten){
+      const echteMail=p.email.trim();
+      const passToUse="Tt"+Math.random().toString(36).slice(2,12)+"1!";
+      try{
+        let newId=null;
+        try{
+          const {user:newUser}=await createUserWithEmailAndPassword(authHelper,echteMail,passToUse);
+          await signOut(authHelper);
+          newId=newUser.uid;
+        }catch(e){
+          // Konto existiert schon auf die echte Adresse → nur Reset-Mail schicken
+          if(e.code==="auth/email-already-in-use"){
+            try{ await sendPasswordResetEmail(auth,echteMail); mail.push(p); ok.push(p); }
+            catch(_){ fehler.push({p,grund:"Konto existiert, Mail-Versand fehlgeschlagen"}); }
+            continue;
+          }
+          throw e;
+        }
+        const oldId=p.id;
+        // Spieler-Dokument auf neue UID umziehen
+        await setDoc(doc(db,"players",newId),{...p,id:newId,email:echteMail,noLogin:false,updatedAt:Date.now()});
+        await deleteDoc(doc(db,"players",oldId));
+        // Anwesenheiten migrieren
+        const attSnap=await getDocs(collection(db,"attendance"));
+        for(const attDoc of attSnap.docs){
+          const data=attDoc.data();
+          if(data.attendances && data.attendances[oldId]!==undefined){
+            const na={...data.attendances}; na[newId]=na[oldId]; delete na[oldId];
+            await updateDoc(doc(db,"attendance",attDoc.id),{attendances:na});
+          }
+        }
+        // Bestellung migrieren
+        try{
+          const bSnap=await getDoc(doc(db,"bestellungen",oldId));
+          if(bSnap.exists()){ await setDoc(doc(db,"bestellungen",newId),{...bSnap.data(),playerId:newId}); await deleteDoc(doc(db,"bestellungen",oldId)); }
+        }catch(_){}
+        // Passwort-Mail schicken
+        try{ await sendPasswordResetEmail(auth,echteMail); mail.push(p); }catch(_){}
+        ok.push(p);
+      }catch(e){
+        fehler.push({p,grund:e.code||e.message||"unbekannt"});
+      }
+    }
+    setSammelLog({ok,fehler,mail});
+    setSammelLauft(false);
+    showToast(`${ok.length} repariert, ${fehler.length} Fehler`,"🎉");
+  }
+
   async function doDelete(id) {
     try { await deleteDoc(doc(db,"players",id)); showToast("Gelöscht","🗑️"); }
     catch(e){showToast("Fehler","❌");}
@@ -2165,6 +2228,34 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 → Login einrichten</button>
             </div>
           ))}
+        </div>}
+      </div>;
+    })()}
+
+    {/* Sammel-Reparatur: Login sicherstellen + Passwort-Mail für alle mit echter E-Mail */}
+    {(()=>{
+      const mitEchterMail = players.filter(p=>p.status!=="passiv" && !istKuenstlicheEmail(p.email));
+      if(mitEchterMail.length===0 && !sammelLog) return null;
+      return <div style={{background:"#3b82f610",border:"1px solid #3b82f644",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:800,color:"#2563eb",marginBottom:6}}>🔧 Passwort-Mail / Login-Reparatur</div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:10,lineHeight:1.5}}>
+          Verschickt an alle {mitEchterMail.length} Personen mit hinterlegter echter E-Mail eine Passwort-Mail und stellt
+          sicher, dass ihr Login auf die echte Adresse läuft. Personen, deren Login-Konto noch auf einer Platzhalter-Adresse
+          liegt (z. B. Heiko Schmid), werden dabei automatisch auf ihre echte E-Mail umgestellt — alle Daten bleiben erhalten.
+        </div>
+        <button onClick={doSammelReparatur} disabled={sammelLauft||mitEchterMail.length===0} style={{
+          padding:"9px 16px",background:(sammelLauft||mitEchterMail.length===0)?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",
+          border:"none",borderRadius:8,color:(sammelLauft||mitEchterMail.length===0)?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:sammelLauft?"wait":"pointer"}}>
+          {sammelLauft?"⏳ Läuft…":`🔧 Sammel-Reparatur für ${mitEchterMail.length} ${mitEchterMail.length===1?"Person":"Personen"} starten`}
+        </button>
+        {sammelLog && <div style={{marginTop:10,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,fontSize:11}}>
+          <div style={{fontWeight:700,marginBottom:4}}>Ergebnis</div>
+          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
+          {sammelLog.fehler.length>0 && <div style={{color:"#ef4444",marginTop:4}}>
+            ⚠️ {sammelLog.fehler.length} Fehler:
+            {sammelLog.fehler.map((f,i)=><div key={i} style={{color:"#fca5a5",marginLeft:8}}>• {f.p.firstName} {f.p.lastName}: {f.grund}</div>)}
+          </div>}
+          <button onClick={()=>setSammelLog(null)} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Schließen</button>
         </div>}
       </div>;
     })()}
@@ -3546,6 +3637,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
 function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToast}) {
   const notify = typeof showToast==="function" ? showToast : (()=>{});
   const [alle,setAlle]=useState([]); // Array von Bestell-Dokumenten
+  const [exporting,setExporting]=useState(false);
   const [editPlayerId,setEditPlayerId]=useState(null); // Spieler, dessen Bestellung bearbeitet wird
 
   useEffect(()=>{
@@ -3590,15 +3682,79 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     notify(!b.geldeingang?"Geldeingang bestätigt ✅":"Geldeingang zurückgenommen","💶");
   }
 
+  // Excel-Export: eine Zeile pro bestelltem Artikel, Person je Zeile wiederholt (Pivot-tauglich).
+  async function exportExcel(){
+    setExporting(true);
+    try{
+      const XLSX=await new Promise((res,rej)=>{
+        if(window.XLSX){res(window.XLSX);return;}
+        const sc=document.createElement("script");
+        sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+        document.head.appendChild(sc);
+      });
+      const rows=[];
+      for(const b of sichtbar){
+        const pl=players.find(p=>p.id===b.playerId);
+        const grp=pl?.group||b.group||"";
+        const it0=b.items||{};
+        const art=bestellArtikelForGroup(grp, pl?.gender).filter(a=>anzahlForArtikel(a,it0)>0);
+        for(const a of art){
+          const anz=anzahlForArtikel(a,it0);
+          const it=b.items[a.id]||{};
+          rows.push({
+            "Nachname": pl?.lastName||"",
+            "Vorname": pl?.firstName||"",
+            "Person": b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:""),
+            "Gruppe": grp,
+            "Mannschaft": pl?.mannschaftsfuehrerTeam||b.mannschaft||"",
+            "Artikel": a.name,
+            "Anzahl": anz,
+            "Größe": it.groesse||"",
+            "Preis Katalog": a.preisKatalog,
+            "Preis Spin & Speed": a.preisSpin,
+            "Preis Spin & Speed gesamt": +(anz*a.preisSpin).toFixed(2),
+            "Preis TTC": a.preisTTC,
+            "Preis TTC gesamt": +(anz*a.preisTTC).toFixed(2),
+            "bestellt": b.final?"ja":"nein",
+            "bezahlt": b.bezahlt?"ja":"nein",
+            "Geldeingang": b.geldeingang?"ja":"nein",
+          });
+        }
+      }
+      if(rows.length===0){ notify("Keine Bestellungen zum Export","ℹ️"); setExporting(false); return; }
+      const ws=XLSX.utils.json_to_sheet(rows);
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,"Bestellungen");
+      const today=new Date(Date.now()+2*3600000).toISOString().slice(0,10);
+      XLSX.writeFile(wb,`TTC_Bestellungen_${today}.xlsx`);
+      notify(`${rows.length} Zeilen exportiert 📊`,"📊");
+    }catch(e){ window.alert("Export fehlgeschlagen:\n"+(e.message||"")); }
+    setExporting(false);
+  }
+
   // Alle Bestellzeilen über alle Personen für die Detailtabelle aufbereiten
   const th={padding:"6px 6px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",background:"var(--bg2)",position:"sticky",top:0};
   const td={padding:"5px 6px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
 
   // Gesamtsummen
   const gesamtTTC = sichtbar.reduce((s,b)=>s+(b.summeTTC||0),0);
+  // Gesamtsumme Spin & Speed = über alle bestellten Artikel Anzahl × preisSpin
+  const gesamtSpinAlle = sichtbar.reduce((s,b)=>{
+    const pl=players.find(p=>p.id===b.playerId);
+    const it0=b.items||{};
+    const art=bestellArtikelForGroup(pl?.group||b.group||"", pl?.gender);
+    return s + art.reduce((ss,a)=>ss + anzahlForArtikel(a,it0)*a.preisSpin, 0);
+  },0);
 
   return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📦 Bestellungen Übersicht</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
+      <div style={{fontSize:17,fontWeight:800}}>📦 Bestellungen Übersicht</div>
+      {isAdmin && <button onClick={exportExcel} disabled={exporting} style={{
+        padding:"7px 14px",background:exporting?"var(--border)":"linear-gradient(135deg,#059669,#047857)",
+        border:"none",borderRadius:8,color:exporting?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:exporting?"wait":"pointer"}}>
+        {exporting?"⏳ Export…":"📊 Als Excel herunterladen"}</button>}
+    </div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
       {isAdmin?"Alle Bestellungen der Spieler und Erwachsenen.":`Bestellungen deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}
     </div>
@@ -3619,7 +3775,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     {sichtbar.length===0
       ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Bestellungen vorhanden.</div>
       : <div style={{overflowX:"auto",border:"1px solid var(--border)",borderRadius:10}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:920}}>
           <thead><tr>
             <th style={th}>Person</th>
             <th style={th}>Artikel</th>
@@ -3627,6 +3783,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             <th style={{...th,textAlign:"center"}}>Größe</th>
             <th style={{...th,textAlign:"right"}}>Preis Katalog</th>
             <th style={{...th,textAlign:"right"}}>Preis Spin &amp; Speed</th>
+            <th style={{...th,textAlign:"right"}}>Preis Spin &amp; Speed gesamt</th>
             <th style={{...th,textAlign:"right"}}>Preis TTC</th>
             <th style={{...th,textAlign:"right"}}>Preis TTC gesamt</th>
             <th style={{...th,textAlign:"center"}}>bestellt</th>
@@ -3644,6 +3801,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                 const anz=anzahlForArtikel(a, it0);
                 const it=b.items[a.id]||{};
                 const gesamt=anz*a.preisTTC;
+                const gesamtSpin=anz*a.preisSpin;
                 return <tr key={b.id+"_"+a.id}>
                   {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={art.length}>{b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:"?")}</td>}
                   <td style={td}>{a.name}</td>
@@ -3651,6 +3809,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                   <td style={{...td,textAlign:"center"}}>{it.groesse||"—"}</td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisSpin)}</td>
+                  <td style={{...td,textAlign:"right",fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{eur(gesamtSpin)}</td>
                   <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(a.preisTTC)}</td>
                   <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(gesamt)}</td>
                   {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>{b.final?"✅":"—"}</td>}
@@ -3665,7 +3824,9 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             })}
           </tbody>
           <tfoot><tr>
-            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={7}>Gesamtsumme (Preis TTC)</td>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={6}>Gesamtsumme</td>
+            <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtSpinAlle)}</td>
+            <td style={{...td,borderTop:"2px solid var(--border2)"}}></td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtTTC)}</td>
             <td style={{...td,borderTop:"2px solid var(--border2)"}} colSpan={3}></td>
           </tr></tfoot>
