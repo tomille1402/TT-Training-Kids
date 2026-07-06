@@ -1628,6 +1628,76 @@ function BrandingEditor({showToast}) {
   </div>;
 }
 
+// ─── ARTIKEL-FOTOS (Verwaltung der Produktbilder für Bestellungen) ───────────
+// Speichert unter config/bestellungKatalog Feld fotos{artikelId:dataUrl}. Nur Admin.
+function ArtikelFotoVerwaltung({showToast}) {
+  const notify = typeof showToast==="function" ? showToast : (()=>{});
+  const [fotos,setFotos]=useState({});
+  const [zoomFoto,setZoomFoto]=useState(null);
+  const [offen,setOffen]=useState(false);
+
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","bestellungKatalog"),snap=>{
+      setFotos(snap.exists()?(snap.data().fotos||{}):{});
+    },()=>{});
+    return u;
+  },[]);
+
+  async function uploadFoto(artikelId,file){
+    if(!file) return;
+    if(file.size>1200000){ window.alert("Bild ist zu groß (max. ~1 MB). Bitte kleineres Foto wählen."); return; }
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      const updated={...fotos,[artikelId]:e.target.result};
+      await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated},{merge:true}).catch(err=>window.alert("Fehler: "+(err.message||"")));
+      notify("Foto gespeichert 🖼️","🖼️");
+    };
+    reader.readAsDataURL(file);
+  }
+  async function deleteFoto(artikelId){
+    const updated={...fotos}; delete updated[artikelId];
+    await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated}).catch(()=>{});
+    notify("Foto entfernt","🗑️");
+  }
+
+  const anzahlMitFoto = BESTELL_ARTIKEL.filter(a=>fotos[a.id]).length;
+
+  return <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setOffen(v=>!v)}>
+      <div style={{fontSize:13,fontWeight:800}}>🖼️ Artikel-Fotos für Bestellungen <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>({anzahlMitFoto}/{BESTELL_ARTIKEL.length})</span></div>
+      <span style={{fontSize:13,color:"var(--text3)"}}>{offen?"▲":"▼"}</span>
+    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
+      Hier lädst du die Produktfotos hoch, die im Reiter „Bestellungen" bei den Artikeln erscheinen. Empfohlen: quadratische Bilder unter 1 MB.
+    </div>
+    {offen && <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      {BESTELL_ARTIKEL.map(a=>(
+        <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,padding:"7px 9px"}}>
+          {fotos[a.id]
+            ? <img src={fotos[a.id]} alt={a.name} onClick={()=>setZoomFoto({url:fotos[a.id],name:a.name})}
+                style={{width:40,height:40,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)",cursor:"zoom-in",flexShrink:0}}/>
+            : <div style={{width:40,height:40,borderRadius:6,border:"1px dashed var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"var(--text4)"}}>📷</div>}
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{fontSize:11,fontWeight:600,lineHeight:1.2,marginBottom:3}}>{a.name}</div>
+            <div style={{display:"flex",gap:6}}>
+              <label style={{fontSize:10,color:"#3b82f6",cursor:"pointer",fontWeight:600}}>
+                {fotos[a.id]?"ändern":"hochladen"}
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadFoto(a.id,e.target.files?.[0])}/>
+              </label>
+              {fotos[a.id] && <button onClick={()=>deleteFoto(a.id)} style={{fontSize:10,color:"#ef4444",background:"none",border:"none",cursor:"pointer",padding:0}}>entfernen</button>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>}
+    {zoomFoto && <div onClick={()=>setZoomFoto(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+      <img src={zoomFoto.url} alt={zoomFoto.name} style={{maxWidth:"100%",maxHeight:"80vh",objectFit:"contain",borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}/>
+      <div style={{color:"#fff",fontSize:14,fontWeight:600,marginTop:14,textAlign:"center"}}>{zoomFoto.name}</div>
+      <button onClick={()=>setZoomFoto(null)} style={{marginTop:12,padding:"8px 18px",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,color:"#fff",fontSize:13,cursor:"pointer"}}>Schließen</button>
+    </div>}
+  </div>;
+}
+
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={}}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -2283,6 +2353,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>}
       </div>;
     })()}
+
+    {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
+    <ArtikelFotoVerwaltung showToast={showToast}/>
+
     {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
       <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
       {joinNotFound.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
@@ -3517,23 +3591,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
     notify("Bestellung wieder geöffnet","🔓");
   }
 
-  // Admin: Foto zu einem Artikel hochladen
-  async function uploadFoto(artikelId,file){
-    if(!isAdmin||!file) return;
-    const reader=new FileReader();
-    reader.onload=async e=>{
-      const updated={...fotos,[artikelId]:e.target.result};
-      await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated},{merge:true}).catch(()=>{});
-      notify("Foto gespeichert 🖼️","🖼️");
-    };
-    reader.readAsDataURL(file);
-  }
-  async function deleteFoto(artikelId){
-    if(!isAdmin) return;
-    const updated={...fotos}; delete updated[artikelId];
-    await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated}).catch(()=>{});
-    notify("Foto entfernt","🗑️");
-  }
+  // Produktfotos werden zentral in der Personen-Verwaltung gepflegt (nur Anzeige hier).
 
   const th={padding:"6px 5px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap"};
   const td={padding:"5px 5px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
@@ -3568,16 +3626,9 @@ function BestellungenView({me, isAdmin=false, showToast}) {
             return <tr key={a.id}>
               <td style={{...td,textAlign:"center"}}>
                 {fotos[a.id]
-                  ? <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                      <img src={fotos[a.id]} alt={a.name} onClick={()=>setZoomFoto({url:fotos[a.id],name:a.name})}
-                        style={{width:38,height:38,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)",cursor:"zoom-in"}}/>
-                      {isAdmin && <button onClick={()=>deleteFoto(a.id)} style={{fontSize:9,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>entfernen</button>}
-                    </div>
-                  : isAdmin
-                    ? <label style={{fontSize:9,color:"var(--text3)",cursor:"pointer",display:"inline-block",padding:"3px 5px",border:"1px dashed var(--border2)",borderRadius:5}}>
-                        📷<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>uploadFoto(a.id,e.target.files?.[0])}/>
-                      </label>
-                    : <span style={{color:"var(--text4)",fontSize:10}}>—</span>}
+                  ? <img src={fotos[a.id]} alt={a.name} onClick={()=>setZoomFoto({url:fotos[a.id],name:a.name})}
+                      style={{width:38,height:38,objectFit:"cover",borderRadius:6,border:"1px solid var(--border2)",cursor:"zoom-in"}}/>
+                  : <span style={{color:"var(--text4)",fontSize:10}}>—</span>}
               </td>
               <td style={{...td,fontWeight:600,minWidth:150}}>{a.name}{a.druck&&<span style={{fontSize:9,color:"#f59e0b",marginLeft:4}}>(Druck, autom.)</span>}</td>
               <td style={{...td,textAlign:"center"}}>
