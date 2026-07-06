@@ -373,6 +373,16 @@ const VEREIN_KONTO = {
 };
 function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
 
+// Künstliche Platzhalter-Adresse (bei Anlage ohne echte E-Mail vergeben).
+// An @ttc-intern.de existiert kein Postfach → kein Passwort-Reset möglich.
+function istKuenstlicheEmail(email){
+  return !email || !email.includes("@") || email.toLowerCase().includes("@ttc-intern.de");
+}
+// Person hat KEIN nutzbares Login, wenn kein Login gewünscht ODER die Adresse künstlich ist.
+function hatKeinEchtesLogin(p){
+  return !!(p?.noLogin) || istKuenstlicheEmail(p?.email);
+}
+
 const ABSENCE_REASONS = [
   "Halle zu",
   "Punktspiel",
@@ -1645,6 +1655,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
   const [loginUpgradeFor,setLoginUpgradeFor]=useState(null);
+  const [zeigeLoginProbleme,setZeigeLoginProbleme]=useState(false);
   const [upgradeEmail,setUpgradeEmail]=useState("");
   const [upgradePass,setUpgradePass]=useState("");
   const [upgradeErr,setUpgradeErr]=useState("");
@@ -1934,13 +1945,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setSaving(false);
   }
 
-  // Login-Upgrade: Spieler ohne Login bekommt einen echten Account
+  // Login-Upgrade: Spieler ohne (echtes) Login bekommt einen echten Account.
+  // Passwort optional: bleibt es leer, wird ein Zufallspasswort gesetzt und die
+  // Person setzt es selbst per „Passwort vergessen".
   async function doUpgradeLogin() {
-    if (!loginUpgradeFor||!upgradeEmail.trim()||!upgradePass.trim()) return;
-    if (upgradePass.length<6){setUpgradeErr("Passwort mind. 6 Zeichen.");return;}
+    if (!loginUpgradeFor||!upgradeEmail.trim()) return;
+    if (istKuenstlicheEmail(upgradeEmail.trim())) {setUpgradeErr("Bitte eine echte E-Mail-Adresse eingeben.");return;}
+    if (upgradePass.trim() && upgradePass.trim().length<6){setUpgradeErr("Passwort mind. 6 Zeichen.");return;}
+    const passToUse = upgradePass.trim() || ("Tt"+Math.random().toString(36).slice(2,12)+"1!");
     setUpgrading(true); setUpgradeErr("");
     try {
-      const {user:newUser} = await createUserWithEmailAndPassword(authHelper, upgradeEmail.trim(), upgradePass.trim());
+      const {user:newUser} = await createUserWithEmailAndPassword(authHelper, upgradeEmail.trim(), passToUse);
       await signOut(authHelper);
       const oldId = loginUpgradeFor.id;
       const newId = newUser.uid;
@@ -1969,7 +1984,23 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         }
       }
 
-      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login — Anwesenheiten migriert!`,"🎉");
+      // 4) Bestellung migrieren (Doc-ID = alte uid → neue uid), falls vorhanden
+      try {
+        const bSnap = await getDoc(doc(db,"bestellungen",oldId));
+        if (bSnap.exists()) {
+          await setDoc(doc(db,"bestellungen",newId), {...bSnap.data(), playerId:newId});
+          await deleteDoc(doc(db,"bestellungen",oldId));
+        }
+      } catch(_) {}
+
+      // 5) Wenn kein manuelles Passwort gesetzt wurde: direkt Passwort-Mail schicken
+      let mailInfo = "";
+      if (!upgradePass.trim()) {
+        try { await sendPasswordResetEmail(auth, upgradeEmail.trim()); mailInfo = " — Passwort-Mail verschickt"; }
+        catch(_) { mailInfo = " — bitte „Passwort vergessen“ nutzen"; }
+      }
+
+      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login${mailInfo}`,"🎉");
       setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
     } catch(e) {
       if (e.code==="auth/email-already-in-use") setUpgradeErr("Diese E-Mail wird bereits verwendet.");
@@ -2057,28 +2088,33 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {loginUpgradeFor&&<Modal onClose={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}}>
       <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:6}}>📧 Login einrichten</div>
       <div style={{fontSize:13,color:"var(--text3)",marginBottom:16,lineHeight:1.5}}>
-        Für <b style={{color:"var(--text)"}}>{loginUpgradeFor.firstName} {loginUpgradeFor.lastName}</b> wird ein Login-Account erstellt. Alle bisherigen Ergebnisse bleiben erhalten.
+        Für <b style={{color:"var(--text)"}}>{loginUpgradeFor.firstName} {loginUpgradeFor.lastName}</b> wird ein Login mit echter E-Mail eingerichtet. Alle bisherigen Daten bleiben erhalten.
+        {istKuenstlicheEmail(loginUpgradeFor.email) && !loginUpgradeFor.noLogin &&
+          <span style={{display:"block",marginTop:6,color:"#b45309"}}>Bisher ist nur eine Platzhalter-Adresse hinterlegt, daher kam keine Passwort-Mail an.</span>}
       </div>
       {upgradeErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{upgradeErr}</div>}
       <div style={{marginBottom:10}}>
-        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Echte E-Mail-Adresse</label>
         <input type="email" value={upgradeEmail} onChange={e=>setUpgradeEmail(e.target.value)}
           placeholder="spieler@email.de"
           style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
       </div>
       <div style={{marginBottom:16}}>
-        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Passwort (mind. 6 Zeichen)</label>
+        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Passwort <span style={{color:"var(--text4)"}}>(optional — leer lassen empfohlen)</span></label>
         <input type="password" value={upgradePass} onChange={e=>setUpgradePass(e.target.value)}
-          placeholder="••••••••"
+          placeholder="leer = Person setzt es selbst per „Passwort vergessen“"
           style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:5,lineHeight:1.4}}>
+          Empfehlung: Feld leer lassen. Die Person erhält dann über „Passwort vergessen?" auf der Login-Seite selbst eine Mail, um ihr Passwort zu setzen.
+        </div>
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={doUpgradeLogin} disabled={upgrading||!upgradeEmail.trim()||!upgradePass.trim()} style={{
+        <button onClick={doUpgradeLogin} disabled={upgrading||!upgradeEmail.trim()} style={{
           flex:1,padding:11,
-          background:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
+          background:(upgrading||!upgradeEmail.trim())?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
           border:"none",borderRadius:9,
-          color:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"#6b7280":"#fff",
-          fontSize:14,fontWeight:700,cursor:(upgrading||!upgradeEmail.trim()||!upgradePass.trim())?"not-allowed":"pointer",
+          color:(upgrading||!upgradeEmail.trim())?"#6b7280":"#fff",
+          fontSize:14,fontWeight:700,cursor:(upgrading||!upgradeEmail.trim())?"not-allowed":"pointer",
         }}>{upgrading?"Wird eingerichtet…":"📧 Login erstellen"}</button>
         <button onClick={()=>{setLoginUpgradeFor(null);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{
           flex:1,padding:11,background:"var(--bg3)",border:"1px solid var(--border2)",
@@ -2096,7 +2132,42 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </div>
 
-    {/* Import-Fehler */}
+    {/* Sammel-Banner: Personen ohne echtes Login (künstliche @ttc-intern.de-Adresse oder noLogin) */}
+    {(()=>{
+      const betroffen = players.filter(p=>p.status!=="passiv" && hatKeinEchtesLogin(p))
+        .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
+      if(betroffen.length===0) return null;
+      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}
+          onClick={()=>setZeigeLoginProbleme(v=>!v)}>
+          <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>
+            ⚠️ {betroffen.length} {betroffen.length===1?"Person hat":"Personen haben"} kein echtes Login
+          </div>
+          <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
+          Diese Personen haben eine automatische Platzhalter-Adresse (…@ttc-intern.de) oder gar kein Login.
+          An diese Adressen kann <b>keine Passwort-Mail</b> zugestellt werden. Trage über „Login einrichten" eine
+          echte E-Mail ein — alle bisherigen Daten bleiben erhalten, danach funktioniert „Passwort vergessen".
+        </div>
+        {zeigeLoginProbleme && <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+          {betroffen.map(p=>(
+            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
+                background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:8,padding:"7px 10px"}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600}}>{p.firstName} {p.lastName}
+                  <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{p.group}</span></div>
+                <div style={{fontSize:10,color:"var(--text4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {p.noLogin?"kein Login":p.email}</div>
+              </div>
+              <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}}
+                style={{flexShrink:0,background:"#f59e0b",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>
+                → Login einrichten</button>
+            </div>
+          ))}
+        </div>}
+      </div>;
+    })()}
     {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
       <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
       {joinNotFound.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
@@ -2849,9 +2920,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"var(--text)"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>(passiv)</span>}</div>
                 <div style={{fontSize:10,color:"var(--text4)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  {p.noLogin
-                    ? <><span style={{color:"#f59e0b"}}>👤 Kein Login</span>
-                        <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail("");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
+                  {hatKeinEchtesLogin(p)
+                    ? <><span style={{color:"#f59e0b"}}>{p.noLogin?"👤 Kein Login":"⚠️ Kein echtes Login"}</span>
+                        <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
                       </>
                     : <span style={{color:"#10b981"}}>📧 {p.email}</span>
                   }
