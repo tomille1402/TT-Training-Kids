@@ -840,8 +840,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
-    {/* Spacer: standalone=header(62)+tabs(40)=102, in RSW RSWHeader-Spacer+tabs(40)=40 */}
-    <div style={{height:hideHeader?40:102}}/>
+    {/* Spacer: standalone=header(62)+tabs(40)=102; in RSW = RSWHeader-Höhe + Tab-Höhe(40),
+        sonst rutscht der Seiteninhalt unter die fixierte Leiste und die Überschrift wird oben abgeschnitten. */}
+    <div style={{height:hideHeader?"calc(var(--rsw-height, 88px) + 40px)":102}}/>
 
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
@@ -4355,7 +4356,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?40:114}}/>
+    <div style={{height:hideHeader?"calc(var(--rsw-height, 88px) + 44px)":114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -7723,7 +7724,14 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         :null
       ).catch(()=>null)
     )).then(results=>{
-      const seas=results.filter(Boolean);
+      const seas=results.filter(Boolean)
+        // Neueste Saison zuerst: nach ID absteigend sortieren (spielplan_2026_2027 vor _2025_2026).
+        // Der generische Key "spielplan" (ohne Jahr) landet ganz unten.
+        .sort((a,b)=>{
+          if(a.id==="spielplan") return 1;
+          if(b.id==="spielplan") return -1;
+          return b.id.localeCompare(a.id);
+        });
       if(seas.length>0){
         setSeasons(seas);
         setSelSeason(seas[0].id);
@@ -8099,6 +8107,16 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       [TTC+" IV"]:"Herren 4",[TTC+" V"]:"Herren 5",[TTC+" VI"]:"Herren 6",
     };
     const spiele=[];
+    // Erkennt "unseren" Verein anhand des Namens-Bestandteils (robust gegen
+    // Schreibvarianten wie "TTC Niederzeuzheim" / "TTC 1979 Niederzeuzheim").
+    const istUnsVerein=(name)=>(name||"").toLowerCase().includes("niederzeuzheim");
+    // Römische Mannschafts-Nummer aus einer Mannschaftsbezeichnung ableiten
+    // ("… III" → 3, ohne Suffix → 1). Unabhängig vom Vereinsnamen.
+    function herrenNummer(mannBez){
+      const m=(mannBez||"").trim().match(/\b(I{1,3}|IV|V|VI{0,3}|IX|X)\b\s*$/);
+      const ROM={I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
+      return m?ROM[m[1]]||1:1;
+    }
     for(let i=1;i<lines.length;i++){
       const cols=lines[i].split(sep);
       if(cols.length<10) continue;
@@ -8113,40 +8131,42 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const spieleH=cols[idx("SpieleHeim")]||"";
       const spieleG=cols[idx("SpieleGast")]||"";
       if(!termin||!termin.trim()) continue;
-      // P3: Spielfreie Spiele überspringen
+      // Spielfreie Spiele überspringen
       if(heimMann.toLowerCase().includes("spielfrei")||gastMann.toLowerCase().includes("spielfrei")) continue;
       const [datumStr,uhrzeitStr]=(termin+" ").split(" ");
       const dp=datumStr.split(".");
       if(dp.length<3) continue;
       const datum=`${dp[2].substring(0,4)}-${dp[1]}-${dp[0]}`;
       const uhrzeit=uhrzeitStr?.substring(0,5)||"";
-      // P2: Wochentag aus Datum berechnen
       const TAGE=["So","Mo","Di","Mi","Do","Fr","Sa"];
       const dObj=new Date(parseInt(dp[2].substring(0,4)),parseInt(dp[1])-1,parseInt(dp[0]));
       const tag=isNaN(dObj.getTime())?"":TAGE[dObj.getDay()];
-      // P4: Art bestimmen — "Pokal" wenn Saison-Spalte "Pokal" enthält, sonst "Runde"
       const art=saisonCol.toLowerCase().includes("pokal")?"Pokal":"Runde";
       let mannschaft="",ort="",gegner="";
-      // Mannschaftsname direkt aus *MannschaftAltersklasse Spalte lesen
       const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
       const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
-      // WICHTIG: Altersklasse ZUERST prüfen! Nachwuchs-Teams haben denselben
-      // Vereinsnamen "TTC Niederzeuzheim" wie Herren 1 — nur die Altersklasse unterscheidet sie.
-      function resolveMann(vereinMann, alk){
-        if(alk==="Mädchen 13"||alk==="Mädchen 15"||alk==="Mädchen 11"||alk==="Mädchen 17") return alk;
-        if(alk.startsWith("Jugend")) return alk;
-        if(alk==="Damen") return "Damen";
-        if(MANN_MAP[vereinMann]) return MANN_MAP[vereinMann]; // Herren 1-5
-        return vereinMann; // Fallback
+      // Mannschaftsname bestimmen. Altersklasse ZUERST prüfen (Nachwuchs teilt sich
+      // den Vereinsnamen mit Herren 1) — Vergleich per includes gegen Umlaut-/Schreibvarianten.
+      function resolveMann(mannBez, alk){
+        const a=(alk||"").toLowerCase();
+        if(a.includes("mädchen")||a.includes("maedchen")||a.includes("mdchen")){
+          const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Mädchen ${nr}`:"Mädchen";
+        }
+        if(a.includes("jugend")){
+          const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Jugend ${nr}`:"Jugend";
+        }
+        if(a.includes("damen")) return "Damen";
+        // Erwachsene/Herren → Nummer aus der Mannschaftsbezeichnung ableiten
+        return `Herren ${herrenNummer(mannBez)}`;
       }
-      if(heimVerein===TTC){
+      if(istUnsVerein(heimVerein)){
         mannschaft=resolveMann(heimMann, heimAlk);
-        ort="Heim"; gegner=gastMann;
-      } else if(gastVerein===TTC){
+        ort="Heim"; gegner=gastMann||gastVerein;
+      } else if(istUnsVerein(gastVerein)){
         mannschaft=resolveMann(gastMann, gastAlk);
-        ort="Auswärts"; gegner=heimMann;
+        ort="Auswärts"; gegner=heimMann||heimVerein;
       } else continue;
-      // Ergebnis immer als CSV-Wert (SpieleHeim:SpieleGast) speichern
+      // Ergebnis als CSV-Wert (SpieleHeim:SpieleGast), 0:0 gilt als noch nicht gespielt
       const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
         `${spieleH}:${spieleG}`:"";
       spiele.push({datum,tag,uhrzeit,mannschaft,art,ort,gegner,liga,ergebnis});
@@ -8507,8 +8527,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         }}>⏻</button>}
       </div>
     </div>
-    {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
-    <div style={{height:44}}/>
+    {/* Spacer für die fixierte Tableiste; im RSW zusätzlich um RSWHeader-Höhe erhöhen,
+        damit die Überschrift nicht unter der Leiste verschwindet. */}
+    <div style={{height:inRSW?"calc(var(--rsw-height, 88px) + 44px)":44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
