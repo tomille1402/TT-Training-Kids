@@ -840,9 +840,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
-    {/* Spacer: standalone=header(62)+tabs(40)=102; in RSW = RSWHeader-Höhe + Tab-Höhe(40),
-        sonst rutscht der Seiteninhalt unter die fixierte Leiste und die Überschrift wird oben abgeschnitten. */}
-    <div style={{height:hideHeader?"calc(var(--rsw-height, 88px) + 40px)":102}}/>
+    {/* Spacer: standalone=header(62)+tabs(40)=102; im RSW-Modus fester Tab-Spacer (44px,
+        analog zur Erwachsenen-Sicht), da die fixierte Leiste bereits bei var(--rsw-height) sitzt. */}
+    <div style={{height:hideHeader?44:102}}/>
 
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
@@ -4356,7 +4356,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?"calc(var(--rsw-height, 88px) + 44px)":114}}/>
+    <div style={{height:hideHeader?40:114}}/>
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -8145,9 +8145,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       let mannschaft="",ort="",gegner="";
       const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
       const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
+      const heimNr=(cols[idx("HeimMannschaftNr")]||"").trim();
+      const gastNr=(cols[idx("GastMannschaftNr")]||"").trim();
       // Mannschaftsname bestimmen. Altersklasse ZUERST prüfen (Nachwuchs teilt sich
       // den Vereinsnamen mit Herren 1) — Vergleich per includes gegen Umlaut-/Schreibvarianten.
-      function resolveMann(mannBez, alk){
+      // Für Herren wird die Nummer bevorzugt aus der Spalte MannschaftNr gelesen (zuverlässig),
+      // und nur als Fallback aus der römischen Ziffer der Bezeichnung.
+      function resolveMann(mannBez, alk, mannNr){
         const a=(alk||"").toLowerCase();
         if(a.includes("mädchen")||a.includes("maedchen")||a.includes("mdchen")){
           const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Mädchen ${nr}`:"Mädchen";
@@ -8156,14 +8160,16 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
           const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Jugend ${nr}`:"Jugend";
         }
         if(a.includes("damen")) return "Damen";
-        // Erwachsene/Herren → Nummer aus der Mannschaftsbezeichnung ableiten
-        return `Herren ${herrenNummer(mannBez)}`;
+        // Erwachsene/Herren → Nummer bevorzugt aus MannschaftNr-Spalte, sonst aus Bezeichnung
+        const nrNum=parseInt(mannNr,10);
+        const num=(!isNaN(nrNum)&&nrNum>0)?nrNum:herrenNummer(mannBez);
+        return `Herren ${num}`;
       }
       if(istUnsVerein(heimVerein)){
-        mannschaft=resolveMann(heimMann, heimAlk);
+        mannschaft=resolveMann(heimMann, heimAlk, heimNr);
         ort="Heim"; gegner=gastMann||gastVerein;
       } else if(istUnsVerein(gastVerein)){
-        mannschaft=resolveMann(gastMann, gastAlk);
+        mannschaft=resolveMann(gastMann, gastAlk, gastNr);
         ort="Auswärts"; gegner=heimMann||heimVerein;
       } else continue;
       // Ergebnis als CSV-Wert (SpieleHeim:SpieleGast), 0:0 gilt als noch nicht gespielt
@@ -8527,9 +8533,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         }}>⏻</button>}
       </div>
     </div>
-    {/* Spacer für die fixierte Tableiste; im RSW zusätzlich um RSWHeader-Höhe erhöhen,
-        damit die Überschrift nicht unter der Leiste verschwindet. */}
-    <div style={{height:inRSW?"calc(var(--rsw-height, 88px) + 44px)":44}}/>
+    {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
+    <div style={{height:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
