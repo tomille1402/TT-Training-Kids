@@ -6929,7 +6929,8 @@ function GeburtstageTabErwachsene({players}) {
       if(next<today) next.setFullYear(today.getFullYear()+1);
       const days=Math.round((next-today)/(1000*60*60*24));
       const isToday=days===0; const isSoon=days<=7;
-      const age=today.getFullYear()-bd.getFullYear()-(next>today&&next.getFullYear()>today.getFullYear()?1:0);
+      // Alter, das beim NÄCHSTEN Geburtstag erreicht wird (nicht das aktuelle Alter).
+      const age=next.getFullYear()-bd.getFullYear();
       return <div key={p.id} style={{
         display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:6,
         background:isToday?"#f59e0b22":isSoon?"#10b98111":"var(--bg2)",
