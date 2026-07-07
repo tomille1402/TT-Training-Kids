@@ -7157,8 +7157,11 @@ function buildICS(options){
 }
 
 // ─── KALENDER-EXPORT UI (Download + Abo-Link) ────────────────────────────────
-// Basis-URL des Abo-Feeds (Netlify Function). Bei Bedarf an echte Domain anpassen.
-const KALENDER_FEED_BASE = "/.netlify/functions/calendar";
+// Basis-URL des Abo-Feeds. Wir nutzen den kurzen Redirect /kalender.ics (definiert
+// in netlify.toml), da er zuverlaessig greift und auf .ics endet. Der direkte
+// Funktionspfad /.netlify/functions/calendar.ics fuehrt zu "Page not found",
+// weil Redirects unter /.netlify/functions/ nicht zuverlaessig angewendet werden.
+const KALENDER_FEED_BASE = "/kalender.ics";
 
 function KalenderExport(){
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
@@ -7257,7 +7260,11 @@ function KalenderExport(){
     if(mitTermine) params.set("termine","1");
     if(puffer) params.set("puffer","1");
     const origin=typeof window!=="undefined"?window.location.origin:"";
-    return `${origin}${KALENDER_FEED_BASE}.ics?${params.toString()}`;
+    // Direkt die Netlify-Function ohne ".ics"-Endung aufrufen. Der Redirect von
+    // "…/calendar.ics" greift unter /.netlify/functions/ nicht zuverlaessig
+    // (Page not found). Fuer die Gueltigkeit im Kalender zaehlt der Content-Type-Header,
+    // nicht die Dateiendung.
+    return `${origin}${KALENDER_FEED_BASE}?${params.toString()}`;
   })();
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
 
