@@ -95,6 +95,19 @@ function buildICS(opts){
 
 exports.handler = async (event) => {
   try {
+    // Frühe, klare Diagnose: ohne Project-ID kann Firestore nicht gelesen werden.
+    if(!PROJECT_ID || PROJECT_ID==="DEIN_PROJECT_ID"){
+      const hinweis=[
+        "BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TTC Niederzeuzheim//Trainings-App//DE",
+        "CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:TTC Niederzeuzheim – Einrichtung nötig",
+        "BEGIN:VEVENT","UID:setup-hinweis@ttc-niederzeuzheim","DTSTAMP:20260101T000000Z",
+        "DTSTART:20260101T000000Z","DTEND:20260101T010000Z",
+        "SUMMARY:Kalender-Feed: FIREBASE_PROJECT_ID in Netlify setzen",
+        "DESCRIPTION:In Netlify unter Site settings > Environment variables die Variable FIREBASE_PROJECT_ID auf die Firebase-Project-ID setzen und neu deployen.",
+        "END:VEVENT","END:VCALENDAR"
+      ].join("\r\n");
+      return {statusCode:200,headers:{"Content-Type":"text/calendar; charset=utf-8","Access-Control-Allow-Origin":"*"},body:hinweis};
+    }
     const q=event.queryStringParameters||{};
     const teams=q.teams?q.teams.split(",").map(s=>s.trim()).filter(Boolean):[];
     const vorlaufMin=q.vorlauf!=null?parseInt(q.vorlauf):60;
