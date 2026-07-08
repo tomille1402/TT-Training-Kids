@@ -659,7 +659,13 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   function toggleGroupFilter(g){setGroupFilters(f=>({...f,[g]:!f[g]}));}
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2200);}
 
-  const activePlayers = players.filter(p=>p.status!=="passiv"&&(p.group||"Anfänger")!=="Erwachsene");
+  const activePlayers = players.filter(p=>{
+    if(p.status==="passiv") return false;
+    const g=p.group||"Anfänger";
+    if(g==="Erwachsene") return false;
+    if(g==="Gast" && !isSuperAdmin) return false; // Gäste NUR für Admins, nie für Trainer
+    return true;
+  });
   const visiblePlayers = activePlayers
     .filter(p=>{
       const g = p.group||"Anfänger";
@@ -676,6 +682,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const curPlayer = visiblePlayers.find(p=>p.id===selectedPlayer)||visiblePlayers[0];
   const filteredEx = exerciseFilter==="beginner"?EXERCISES_BEGINNER:exerciseFilter==="advanced"?EXERCISES_ADVANCED:ALL_EXERCISES;
   const sortedRanking = [...visiblePlayers].filter(p=>{const g=p.group||"Anfänger"; return g!=="Erwachsene"&&g!=="Gast";}).sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  // Eigene Gast-Rangliste (nur für Admins sichtbar, getrennt von der Hauptrangliste)
+  const gastRanking = [...activePlayers].filter(p=>(p.group||"")==="Gast" && isSuperAdmin).sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
 
   async function setStars(playerId,exId,value) {
     setSaving(true);
@@ -937,9 +945,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}/>}
 
     {/* ── RANGLISTE TAB ── */}
-    {activeTab==="rangliste"&&<div style={{padding:13}}>
-      <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏆 Rangliste</div>
-      {sortedRanking.map((player,idx)=>{
+    {activeTab==="rangliste"&&(()=>{
+      const renderRankCard=(player,idx)=>{
         const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(player);
         const nexts=nextAwards(player);
         const rankEmoji=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`#${idx+1}`;
@@ -980,8 +987,21 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             ))}
           </div>}
         </div>;
-      })}
-    </div>}
+      };
+      return <div style={{padding:13}}>
+        <div style={{fontSize:17,fontWeight:800,marginBottom:14}}>🏆 Rangliste</div>
+        {sortedRanking.map((player,idx)=>renderRankCard(player,idx))}
+        {/* Eigene Gast-Rangliste, nur für Admins und nur wenn Gäste vorhanden */}
+        {gastRanking.length>0 && <>
+          <div style={{fontSize:17,fontWeight:800,margin:"26px 0 14px",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{background:"#64748b",color:"#fff",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:6}}>Gast</span>
+            Gast-Rangliste
+          </div>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:-8,marginBottom:12}}>Separate Wertung der Gäste – erscheint nur in der Admin-Ansicht.</div>
+          {gastRanking.map((player,idx)=>renderRankCard(player,idx))}
+        </>}
+      </div>;
+    })()}
 
     {/* ── SCHLÄGER TAB ── */}
     {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
