@@ -2078,13 +2078,25 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
     } catch(e) {
       if (e.code==="auth/email-already-in-use") {
-        // Konto mit dieser echten Adresse existiert bereits → nur Passwort-Mail schicken
+        // Konto mit dieser echten Adresse existiert bereits. Wir kennen dessen UID
+        // hier nicht, koennen das Dokument also nicht umziehen — aber wir markieren
+        // die Person als "hat Login" (noLogin:false + echte E-Mail) und schicken die
+        // Passwort-Mail. Damit verschwindet sie aus dem Login-Status-Banner und kann
+        // sich per "Passwort vergessen" anmelden.
+        try {
+          await updateDoc(doc(db,"players",loginUpgradeFor.id), {
+            email: upgradeEmail.trim(),
+            noLogin: false,
+            updatedAt: Date.now(),
+          });
+        } catch(_) {}
         try {
           await sendPasswordResetEmail(auth, upgradeEmail.trim());
-          showToast(`Login besteht bereits — Passwort-Mail an ${upgradeEmail.trim()} verschickt`,"📧");
+          showToast(`Login bestand bereits — als „mit Login“ markiert, Passwort-Mail an ${upgradeEmail.trim()} verschickt`,"📧");
           setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
         } catch(_) {
-          setUpgradeErr("Konto existiert bereits, aber die Passwort-Mail konnte nicht verschickt werden.");
+          showToast("Login bestand bereits — als „mit Login“ markiert. Bitte „Passwort vergessen“ nutzen.","📧");
+          setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
         }
       }
       else if (e.code==="auth/weak-password")    setUpgradeErr("Passwort zu schwach.");
@@ -2092,6 +2104,24 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       else setUpgradeErr("Fehler: "+e.message);
     }
     setUpgrading(false);
+  }
+
+  // Schnell-Reparatur: Personen, die eine ECHTE E-Mail hinterlegt haben, aber noch
+  // faelschlich noLogin:true tragen (z.B. weil ihr Auth-Konto beim Login-Einrichten
+  // schon existierte), auf noLogin:false setzen. Behebt den Fall "steht als kein
+  // Login im Banner, obwohl echte Adresse vorhanden".
+  const [flagFixLaeuft,setFlagFixLaeuft]=useState(false);
+  async function doFlagReparatur() {
+    const betroffen = players.filter(p=>p.status!=="passiv" && p.noLogin===true && !istKuenstlicheEmail(p.email));
+    if(betroffen.length===0){ showToast("Keine solchen Faelle gefunden","ℹ️"); return; }
+    if(!window.confirm(`${betroffen.length} ${betroffen.length===1?"Person":"Personen"} haben eine echte E-Mail, sind aber als „kein Login" markiert. Jetzt als „mit Login" markieren?`)) return;
+    setFlagFixLaeuft(true);
+    let ok=0;
+    for(const p of betroffen){
+      try{ await updateDoc(doc(db,"players",p.id),{noLogin:false,updatedAt:Date.now()}); ok++; }catch(_){}
+    }
+    setFlagFixLaeuft(false);
+    showToast(`${ok} Person(en) korrigiert`,"✅");
   }
 
   // Sammel-Reparatur: für alle Personen mit echter, hinterlegter E-Mail das
@@ -2307,6 +2337,20 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
           E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten. Klick auf den Titel klappt die Liste auf/zu.
         </div>
+        {(()=>{
+          const flagFaelle = alleAktiv.filter(p=>p.noLogin===true && !istKuenstlicheEmail(p.email));
+          if(flagFaelle.length===0) return null;
+          return <div style={{marginTop:10,padding:"9px 11px",background:"#10b98112",border:"1px solid #10b98144",borderRadius:9}}>
+            <div style={{fontSize:11,color:"var(--text)",marginBottom:7,lineHeight:1.5}}>
+              ✅ <b>{flagFaelle.length}</b> {flagFaelle.length===1?"Person hat":"Personen haben"} bereits eine echte E-Mail, {flagFaelle.length===1?"wird":"werden"} aber noch als „kein Login" angezeigt (z.B. weil beim Einrichten das Konto schon bestand). Das lässt sich in einem Schritt korrigieren.
+            </div>
+            <button onClick={doFlagReparatur} disabled={flagFixLaeuft} style={{
+              padding:"7px 13px",background:flagFixLaeuft?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
+              border:"none",borderRadius:8,color:flagFixLaeuft?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:flagFixLaeuft?"wait":"pointer"}}>
+              {flagFixLaeuft?"⏳ Korrigiere…":`✅ ${flagFaelle.length} als „mit Login" markieren`}
+            </button>
+          </div>;
+        })()}
         {zeigeLoginProbleme && <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
           {alleAktiv.map(p=>{
             const st=statusOf(p);
