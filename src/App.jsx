@@ -654,7 +654,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
   // Punkt 6: Geburtstags-Popup
-  const [birthdayPopupDismissed,setBirthdayPopupDismissed]=useState(false);
+  const [birthdayPopupDismissed,setBirthdayPopupDismissed]=useState(()=>{
+    try { return localStorage.getItem("ttc_bday_dismissed_admin")||""; } catch(_) { return ""; }
+  });
 
   function toggleGroupFilter(g){setGroupFilters(f=>({...f,[g]:!f[g]}));}
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2200);}
@@ -719,13 +721,19 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return result;
   }
   const recentBirthdays = getBirthdaysSince(birthdaySince);
-  const showBirthdayPopup = recentBirthdays.length > 0 && !birthdayPopupDismissed;
+  // Punkt 7: dauerhaftes Wegklicken — Signatur aus Trainingstag + IDs; in localStorage gemerkt
+  const bdaySignatur = (lastTraining||"") + "|" + recentBirthdays.map(p=>p.id).sort().join(",");
+  const showBirthdayPopup = recentBirthdays.length > 0 && birthdayPopupDismissed !== bdaySignatur;
+  function dismissBirthdays(){
+    try { localStorage.setItem("ttc_bday_dismissed_admin", bdaySignatur); } catch(_) {}
+    setBirthdayPopupDismissed(bdaySignatur);
+  }
 
   return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 6: Geburtstags-Popup */}
-    {showBirthdayPopup&&<Modal onClose={()=>setBirthdayPopupDismissed(true)}>
+    {showBirthdayPopup&&<Modal onClose={dismissBirthdays}>
       <div style={{textAlign:"center",marginBottom:16}}>
         <div style={{fontSize:40,marginBottom:8}}>🎂</div>
         <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>Geburtstage seit letztem Training</div>
@@ -740,7 +748,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           </div>
         </div>
       ))}
-      <button onClick={()=>setBirthdayPopupDismissed(true)} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Schließen</button>
+      <button onClick={dismissBirthdays} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Erledigt – nicht mehr anzeigen</button>
     </Modal>}
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
@@ -1227,7 +1235,12 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
-  const allActive = players.filter(p=>{const g=p.group||"Anfänger"; return p.status!=="passiv" && g!=="Erwachsene" && g!=="Gast";});
+  // Punkt 5: Nur Personen mit gesetztem individuellem "Start Training" nehmen am
+  // Vereinstraining teil und erscheinen in der Teilnahme-Übersicht.
+  const allActive = players.filter(p=>{
+    const g=p.group||"Anfänger";
+    return p.status!=="passiv" && g!=="Erwachsene" && g!=="Gast" && !!p.trainingStart;
+  });
 
   // Punkt 4: Trainingszeitraum aus Firestore lesen
   const [trainingRange,setTrainingRange]=useState({start:"",end:""});
@@ -4348,7 +4361,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const myGroup = myPlayer?.group||"Anfänger";
   const groupPeers = activePlayers.filter(p=>p.group===myGroup);
   const sortedRanking=groupPeers.sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
-  const TABS=[
+  const ALL_TABS=[
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
     {key:"teilnahme",label:"Teilnahme",icon:"📊"},
@@ -4364,6 +4377,19 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
+  // Punkt 6: Anfänger/Gast sehen die Wettkampf-Reiter noch nicht; Gast zusätzlich
+  // keine Termine/Bestellungen. Erst ab höherer Gruppe werden sie eingeblendet.
+  const wettkampfReiter = ["spielbetrieb","aufstellung","spielplan","einsaetze","kalender"];
+  const nurHoehereGruppe = (myGroup==="Anfänger" || myGroup==="Gast");
+  const gastAusblenden = ["termine","bestellungen"];
+  const TABS = ALL_TABS.filter(t=>{
+    if(nurHoehereGruppe && wettkampfReiter.includes(t.key)) return false;
+    if(myGroup==="Gast" && gastAusblenden.includes(t.key)) return false;
+    return true;
+  });
+
+  // Punkt 6: Wenn der aktive Reiter für diese Gruppe ausgeblendet ist, auf "stats" zurück
+  useEffect(()=>{ if(!TABS.some(t=>t.key===activeTab)) setActiveTab("stats"); },[myGroup]);
 
   // Punkt 6: Avatar selbst ändern
   async function changeMyAvatar(av) {
@@ -4384,7 +4410,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(myPlayer);
   const nexts=nextAwards(myPlayer);
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
-  const myDays=getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays);
+  // Punkt 5: Ohne "Start Training" nimmt die Person nicht am Vereinstraining teil → keine Trainingstage.
+  const myTrainingStart = myPlayer.trainingStart || null;
+  const myDays = myTrainingStart
+    ? getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays).filter(d=>d>=myTrainingStart)
+    : [];
   const todayStr=new Date().toLocaleDateString("sv");
   const pastDays=myDays.filter(d=>d<=todayStr);
   let present=0,total=0;
@@ -5757,7 +5787,6 @@ function EinheitenTab({user, players}) {
 
 // ─── BIRTHDAY BUTTON COMPONENT ────────────────────────────────────────────────
 function BirthdayBtn({players, attendance}) {
-  const [dismissed,setDismissed] = useState(false);
   const [showPopup,setShowPopup] = useState(false);
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -5770,13 +5799,9 @@ function BirthdayBtn({players, attendance}) {
     return [...days].reverse().find(d=>d<=todayStr) || null;
   }
 
-  // Use single lastTraining date (most recent across all groups) for consistent window
-  // Use OLDEST last training day across all groups (last Tuesday)
-  // so Anfänger/Fortgeschrittene birthdays aren't missed because of a Friday training
   const todayDateStr = today.toLocaleDateString("sv");
   const lastTuesday = [...ALL_TUESDAYS].reverse().find(d=>d<=todayDateStr) || ALL_TUESDAYS[0];
   const lastFriday  = [...ALL_FRIDAYS].reverse().find(d=>d<=todayDateStr)  || ALL_FRIDAYS[0];
-  // Use the LATER of the two = most recent actual training day
   const lastTrainingDay = lastTuesday > lastFriday ? lastTuesday : lastFriday;
   const birthdaySince2 = new Date(lastTrainingDay);
   birthdaySince2.setHours(0,0,0,0);
@@ -5792,15 +5817,31 @@ function BirthdayBtn({players, attendance}) {
     }
   }
 
+  // Punkt 7: dauerhaftes Wegklicken. Signatur = Trainingstag + IDs der aktuellen
+  // Geburtstage. Wurde genau diese Liste als erledigt markiert, erscheint nichts mehr.
+  // Kommen neue Geburtstage hinzu (neuer Trainingszyklus), ändert sich die Signatur
+  // und der Hinweis erscheint wieder.
+  const signatur = lastTrainingDay + "|" + recentBirthdays.map(p=>p.id).sort().join(",");
+  const STORAGE_KEY = "ttc_bday_dismissed";
+  const [dismissedSig,setDismissedSig] = useState(()=>{
+    try { return localStorage.getItem(STORAGE_KEY)||""; } catch(_) { return ""; }
+  });
+  function erledigt(){
+    try { localStorage.setItem(STORAGE_KEY, signatur); } catch(_) {}
+    setDismissedSig(signatur);
+    setShowPopup(false);
+  }
+
   if (recentBirthdays.length === 0) return null;
+  if (dismissedSig === signatur) return null; // bereits als erledigt weggeklickt
 
   return <>
-    <button onClick={()=>{setShowPopup(true);setDismissed(false);}} style={{
+    <button onClick={()=>setShowPopup(true)} style={{
       background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,
       color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer",flexShrink:0,
     }}>🎂 {recentBirthdays.length}</button>
 
-    {showPopup&&!dismissed&&<div style={{
+    {showPopup&&<div style={{
       position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0008",zIndex:800,
       display:"flex",alignItems:"center",justifyContent:"center",padding:20,
     }} onClick={()=>setShowPopup(false)}>
@@ -5822,7 +5863,8 @@ function BirthdayBtn({players, attendance}) {
             </div>
           </div>
         ))}
-        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Schließen</button>
+        <button onClick={erledigt} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Erledigt – nicht mehr anzeigen</button>
+        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:8,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Nur schließen</button>
       </div>
     </div>}
   </>;
@@ -8723,7 +8765,7 @@ function RSWHeader({switchBarContent, chipsContent}) {
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
 // Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
 function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,clubConfig={},
-  globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut}) {
+  globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut,lockedPlayer=false}) {
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
@@ -8768,14 +8810,16 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
   // For erwachsene-only: force own player, no selection possible
-  const selectedPlayer = isErwachseneOnly
+  const selectedPlayer = lockedPlayer
+    ? myPlayer
+    : isErwachseneOnly
     ? myPlayer
     : players.find(p=>p.id===viewAsPlayer)
       || (activeView==="erwachsene" ? erwachsenePlayers[0]
         : activeView==="mannschaftsfuehrer" ? (mfPlayers[0]||myPlayer)
         : (myPlayer||spielerPlayers[0]));
 
-  const showChips = (activeView==="player" || activeView==="erwachsene" || activeView==="mannschaftsfuehrer" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
+  const showChips = !lockedPlayer && (activeView==="player" || activeView==="erwachsene" || activeView==="mannschaftsfuehrer" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
 
   return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:1024,margin:"0 auto"}}>
     {/* Header-Container — misst seine eigene Höhe */}
@@ -9043,7 +9087,7 @@ function DatenschutzGate({playerId, onAccepted, onSignOut}) {
 // normale Spieler-Ansicht (PlayerView via forcePlayer) gezeigt — volle Rechte
 // wie das Kind selbst. Ist zusaetzlich ein eigenes Profil vorhanden (Elternteil
 // spielt selbst), steht dieses ebenfalls zur Auswahl.
-function ElternView({user, players, attendance, kinder, ownProfile, sharedProps}) {
+function ElternView({user, players, attendance, rackets, kinder, ownProfile, viewsForPerson, sharedProps, globalTheme, onSetGlobalTheme}) {
   const personen = [
     ...(ownProfile?[ownProfile]:[]),
     ...kinder.slice().sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de")),
@@ -9052,9 +9096,9 @@ function ElternView({user, players, attendance, kinder, ownProfile, sharedProps}
   const selected = personen.find(p=>p.id===selId)||personen[0];
 
   return <div style={{minHeight:"100vh",background:"var(--bg)"}}>
-    {/* Umschaltleiste für die betreuten Personen */}
-    <div style={{position:"sticky",top:0,zIndex:50,background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 10px",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
-      <span style={{fontSize:16,flexShrink:0}}>👨‍👩‍👧</span>
+    {/* Personen-Umschaltleiste (Eltern -> Kinder). Bleibt oben fixiert. */}
+    <div style={{position:"sticky",top:0,zIndex:60,background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"7px 10px",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
+      <span style={{fontSize:15,flexShrink:0}}>👨‍👩‍👧</span>
       {personen.map(p=>{
         const aktiv=p.id===selId;
         const eigen=ownProfile&&p.id===ownProfile.id;
@@ -9069,8 +9113,11 @@ function ElternView({user, players, attendance, kinder, ownProfile, sharedProps}
       })}
     </div>
     {selected
-      ? <PlayerView key={selected.id} user={user} players={players} attendance={attendance}
-          forcePlayer={selected} hideHeader {...sharedProps}/>
+      ? <RoleSwitchWrapper key={selected.id}
+          user={user} players={players} attendance={attendance} rackets={rackets}
+          myPlayer={selected} availableViews={viewsForPerson(selected)} hasAdminRole={false} lockedPlayer
+          globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+          onPlayerAdded={()=>{}} {...sharedProps}/>
       : <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>}
   </div>;
 }
@@ -9307,15 +9354,37 @@ export default function App() {
       onAccepted={()=>setDatenschutzOk(true)} onSignOut={handleSignOut}/>;
   }
 
-  // ── Eltern-Login: mehrere Kinder unter einer E-Mail ──
+  const sharedPropsGlobal = { isDark, onSetUserTheme:handleSetUserTheme, userTheme, onSignOut:handleSignOut, clubConfig };
+
+  // Verfügbare Views für EINE Person rein aus deren eigenen Rollen (ohne Admin-
+  // Sonderrechte des eingeloggten Nutzers). Genutzt für den Eltern-Login, damit
+  // jedes Kind das zu seiner Funktion passende Menü bekommt (Spieler/Erwachsene/…).
+  function viewsForPerson(person) {
+    const r = person?.roles || {};
+    const views = [];
+    if (r.admin === true)   views.push("admin");
+    if (r.trainer === true) views.push("trainer");
+    const erwachsene = r.erwachsene === true;
+    const mf = r.mannschaftsfuehrer === true;
+    // Spieler-View, wenn explizite Spieler-Rolle ODER Profil ohne reine Erwachsene/MF-Sonderrolle
+    const player = r.player === true || (!!person && !erwachsene && !mf && !r.trainer && !r.admin);
+    if (player)     views.push("player");
+    if (erwachsene) views.push("erwachsene");
+    if (mf)         views.push("mannschaftsfuehrer");
+    if (views.length === 0) views.push("player");
+    return views;
+  }
+
+  // ── Eltern-Login: mehrere Kinder (und ggf. eigenes Profil) unter einer E-Mail ──
   // Greift, wenn diese Adresse als elternEmail bei aktiven Kindern hinterlegt ist
-  // und der Nutzer kein Admin/Trainer ist (die verwalten Kinder ueber die Verwaltung).
+  // und der Nutzer kein Admin/Trainer ist.
   const ownRoles = myPlayer?.roles || {};
   const istAdminOderTrainer = isAdmin || isSuperAdmin || ownRoles.admin===true || ownRoles.trainer===true;
   if (meineKinder.length > 0 && !istAdminOderTrainer) {
-    const sharedProps = { isDark, onSetUserTheme:handleSetUserTheme, userTheme, onSignOut:handleSignOut, clubConfig };
-    return <ElternView user={authUser} players={players} attendance={attendance}
-      kinder={meineKinder} ownProfile={myPlayer||null} sharedProps={sharedProps}/>;
+    return <ElternView user={authUser} players={players} attendance={attendance} rackets={rackets}
+      kinder={meineKinder} ownProfile={myPlayer||null}
+      viewsForPerson={viewsForPerson} sharedProps={sharedPropsGlobal}
+      globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}/>;
   }
 
   // Rollen aus Spieler-Profil ermitteln
