@@ -1799,7 +1799,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   // ── Personen-Datenfelder: deutsche Spalte ↔ Firestore-Key ──
   const PERSON_FIELDS=[
     ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
-    ["E-Mail","email"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
+    ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
     ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
@@ -1954,6 +1954,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         lastName:      editPlayer.lastName||"",
         gender:        editPlayer.gender||"m",
         email:         editPlayer.email||"",
+        elternEmail:   (editPlayer.elternEmail||"").trim().toLowerCase(),
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
@@ -2724,6 +2725,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
                 <input type="text" value={editPlayer.email||""} onChange={e=>setEditPlayer(prev=>({...prev,email:e.target.value}))}
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              {/* Eltern-E-Mail: ermöglicht einem Elternteil, mit EINEM Login mehrere Kinder zu betreuen */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👨‍👩‍👧 Eltern-Login (E-Mail)</label>
+                <input type="text" value={editPlayer.elternEmail||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail:e.target.value}))}
+                  placeholder="z. B. elternteil@email.de"
+                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                <div style={{fontSize:10,color:"var(--text4)",marginTop:4,lineHeight:1.4}}>
+                  Trägst du hier die E-Mail eines Elternteils ein, kann sich dieses mit seinem eigenen Login anmelden und dieses Kind mitverwalten. Mehrere Kinder mit derselben Eltern-E-Mail erscheinen unter einem Login zum Umschalten.
+                </div>
               </div></>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div>
@@ -6909,28 +6920,46 @@ const INITIAL_SPIELPLAN = [{"datum": "05.09.25", "tag": "Fr", "uhrzeit": "17:30"
 
 // ─── GEBURTSTAGE TAB FÜR ERWACHSENE ─────────────────────────────────────────
 function GeburtstageTabErwachsene({players}) {
+  // Datum robust und zeitzonenunabhängig aus dem String lesen ("YYYY-MM-DD" o.ä.).
+  // Rueckgabe {y,m,d} mit m 1-basiert; ungueltig -> null.
+  function parseBd(s){
+    if(!s) return null;
+    const mm=String(s).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(mm) return {y:+mm[1],m:+mm[2],d:+mm[3]};
+    const dd=String(s).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if(dd) return {y:+dd[3],m:+dd[2],d:+dd[1]};
+    return null;
+  }
+  const now=new Date();
+  const heuteY=now.getFullYear(), heuteM=now.getMonth()+1, heuteD=now.getDate();
+  // Tage bis zum naechsten Geburtstag + Alter beim naechsten Geburtstag – rein numerisch.
+  function birthdayInfo(bdStr){
+    const b=parseBd(bdStr); if(!b) return null;
+    // Hatte die Person dieses Jahr schon Geburtstag (oder ist heute)?
+    const schonGehabt = (b.m<heuteM)||(b.m===heuteM&&b.d<heuteD);
+    const heute = (b.m===heuteM&&b.d===heuteD);
+    // Jahr des naechsten Geburtstags
+    const nextYear = heute ? heuteY : (schonGehabt ? heuteY+1 : heuteY);
+    const ageAtNext = nextYear - b.y;
+    // Tage bis zum naechsten Geburtstag (ueber lokale Date-Objekte, nur fuer die Anzeige)
+    const t0=new Date(heuteY,heuteM-1,heuteD);
+    const t1=new Date(nextYear,b.m-1,b.d);
+    const days=Math.round((t1-t0)/86400000);
+    return {ageAtNext, days, isToday:heute, m:b.m, d:b.d};
+  }
+
   const erwachsene = players.filter(p=>p.birthdate && p.roles?.erwachsene===true && p.status!=="passiv")
-    .sort((a,b)=>{
-      const bdA = new Date(a.birthdate); const bdB = new Date(b.birthdate);
-      const now = new Date();
-      const nextA = new Date(now.getFullYear(), bdA.getMonth(), bdA.getDate());
-      if(nextA < now) nextA.setFullYear(now.getFullYear()+1);
-      const nextB = new Date(now.getFullYear(), bdB.getMonth(), bdB.getDate());
-      if(nextB < now) nextB.setFullYear(now.getFullYear()+1);
-      return nextA-nextB;
-    });
-  const today = new Date(); today.setHours(0,0,0,0);
+    .map(p=>({p, info:birthdayInfo(p.birthdate)}))
+    .filter(x=>x.info)
+    .sort((a,b)=>a.info.days-b.info.days);
+
   return <div style={{padding:14}}>
     <div style={{fontSize:14,fontWeight:700,marginBottom:12}}>🎂 Geburtstage Erwachsene</div>
     {erwachsene.length===0&&<div style={{textAlign:"center",padding:30,color:"var(--text3)"}}>Keine Geburtstage vorhanden.</div>}
-    {erwachsene.map(p=>{
-      const bd=new Date(p.birthdate);
-      const next=new Date(today.getFullYear(),bd.getMonth(),bd.getDate());
-      if(next<today) next.setFullYear(today.getFullYear()+1);
-      const days=Math.round((next-today)/(1000*60*60*24));
-      const isToday=days===0; const isSoon=days<=7;
-      // Alter, das beim NÄCHSTEN Geburtstag erreicht wird (nicht das aktuelle Alter).
-      const age=next.getFullYear()-bd.getFullYear();
+    {erwachsene.map(({p,info})=>{
+      const {ageAtNext:age, days, isToday}=info;
+      const isSoon=days<=7;
+      const bdLabel=new Date(2000,info.m-1,info.d).toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
       return <div key={p.id} style={{
         display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:6,
         background:isToday?"#f59e0b22":isSoon?"#10b98111":"var(--bg2)",
@@ -6940,7 +6969,7 @@ function GeburtstageTabErwachsene({players}) {
         <div style={{flex:1}}>
           <div style={{fontSize:13,fontWeight:700,color:isToday?"#f59e0b":"var(--text)"}}>{p.firstName} {p.lastName}</div>
           <div style={{fontSize:11,color:"var(--text3)"}}>
-            {bd.toLocaleDateString("de-DE",{day:"2-digit",month:"long"})} · {isToday?"🎂 Heute!":days===1?"Morgen!":`in ${days} Tagen`}
+            {bdLabel} · {isToday?"🎂 Heute!":days===1?"Morgen!":`in ${days} Tagen`}
           </div>
         </div>
         <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{age} J.</div>
@@ -8944,6 +8973,44 @@ function DatenschutzGate({playerId, onAccepted, onSignOut}) {
   </div>;
 }
 
+// ─── ELTERN-ANSICHT: ein Login, mehrere Kinder ──────────────────────────────
+// Ein Elternteil meldet sich mit der eigenen E-Mail an und sieht alle Kinder,
+// bei denen diese Adresse als elternEmail hinterlegt ist. Pro Kind wird die
+// normale Spieler-Ansicht (PlayerView via forcePlayer) gezeigt — volle Rechte
+// wie das Kind selbst. Ist zusaetzlich ein eigenes Profil vorhanden (Elternteil
+// spielt selbst), steht dieses ebenfalls zur Auswahl.
+function ElternView({user, players, attendance, kinder, ownProfile, sharedProps}) {
+  const personen = [
+    ...(ownProfile?[ownProfile]:[]),
+    ...kinder.slice().sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de")),
+  ];
+  const [selId,setSelId]=useState(personen[0]?.id||null);
+  const selected = personen.find(p=>p.id===selId)||personen[0];
+
+  return <div style={{minHeight:"100vh",background:"var(--bg)"}}>
+    {/* Umschaltleiste für die betreuten Personen */}
+    <div style={{position:"sticky",top:0,zIndex:50,background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"8px 10px",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
+      <span style={{fontSize:16,flexShrink:0}}>👨‍👩‍👧</span>
+      {personen.map(p=>{
+        const aktiv=p.id===selId;
+        const eigen=ownProfile&&p.id===ownProfile.id;
+        return <button key={p.id} onClick={()=>setSelId(p.id)} style={{
+          flexShrink:0,display:"flex",alignItems:"center",gap:5,
+          background:aktiv?"linear-gradient(135deg,#3b82f6,#2563eb)":"var(--bg3)",
+          border:aktiv?"none":"1px solid var(--border2)",borderRadius:20,
+          color:aktiv?"#fff":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"6px 12px"}}>
+          <span style={{fontSize:14}}>{p.avatar||(eigen?"🧑":"🏓")}</span>
+          {p.firstName}{eigen?" (ich)":""}
+        </button>;
+      })}
+    </div>
+    {selected
+      ? <PlayerView key={selected.id} user={user} players={players} attendance={attendance}
+          forcePlayer={selected} hideHeader {...sharedProps}/>
+      : <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>}
+  </div>;
+}
+
 export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [players,      setPlayers]      = useState([]);
@@ -9163,10 +9230,28 @@ export default function App() {
   // ── Spieler-Profil suchen ──
   const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
 
+  // Eltern-Login: alle aktiven Kinder, bei denen diese Adresse als elternEmail hinterlegt ist
+  const meineKinder = players.filter(p =>
+    p.status!=="passiv" &&
+    p.elternEmail && p.elternEmail.toLowerCase() === authUser.email?.toLowerCase() &&
+    p.id !== myPlayer?.id
+  );
+
   // ── Datenschutz-Gate: Profil ohne Akzeptanz-Datum muss zuerst zustimmen ──
   if (myPlayer && !myPlayer.datenschutzAccepted && !datenschutzOk) {
     return <DatenschutzGate playerId={myPlayer.id}
       onAccepted={()=>setDatenschutzOk(true)} onSignOut={handleSignOut}/>;
+  }
+
+  // ── Eltern-Login: mehrere Kinder unter einer E-Mail ──
+  // Greift, wenn diese Adresse als elternEmail bei aktiven Kindern hinterlegt ist
+  // und der Nutzer kein Admin/Trainer ist (die verwalten Kinder ueber die Verwaltung).
+  const ownRoles = myPlayer?.roles || {};
+  const istAdminOderTrainer = isAdmin || isSuperAdmin || ownRoles.admin===true || ownRoles.trainer===true;
+  if (meineKinder.length > 0 && !istAdminOderTrainer) {
+    const sharedProps = { isDark, onSetUserTheme:handleSetUserTheme, userTheme, onSignOut:handleSignOut, clubConfig };
+    return <ElternView user={authUser} players={players} attendance={attendance}
+      kinder={meineKinder} ownProfile={myPlayer||null} sharedProps={sharedProps}/>;
   }
 
   // Rollen aus Spieler-Profil ermitteln
