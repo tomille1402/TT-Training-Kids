@@ -343,7 +343,10 @@ const BESTELL_ARTIKEL = [
   {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"trikot", sizeQuelle:"tshirt"},
 ];
 // Größenliste je Artikel
+const NACHWUCHS_TSHIRT_SIZES = ["116","128","140","152","164"];
 function sizesForArtikel(a){
+  // Punkt 9: T-Shirt Nimatsu Nachwuchs hat eigene Kindergrößen
+  if(a.id===12) return NACHWUCHS_TSHIRT_SIZES;
   if(a.sizeType==="anzug") return ANZUG_SIZES;
   if(a.sizeType==="trikot") return TRIKOT_SIZES;
   return [];
@@ -1032,7 +1035,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       roles={isSuperAdmin?{admin:true}:{trainer:true}}
       viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -1732,7 +1735,115 @@ function ArtikelFotoVerwaltung({showToast}) {
   </div>;
 }
 
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={}}) {
+// ─── PERSONEN-ÜBERSICHT (nur Admin, Punkt 11) ────────────────────────────────
+// Tabelle aller Personen: Funktionen, Gruppe, Status, Datenschutz-Datum.
+// Alle Spalten filter- und sortierbar; Kopfzeile fixiert (sticky).
+function PersonenUebersicht({players}) {
+  const [sortKey,setSortKey]=useState("name");
+  const [sortDir,setSortDir]=useState("asc");
+  const [filters,setFilters]=useState({name:"",funktionen:"",group:"",status:"",datenschutz:""});
+
+  const rollenText=(p)=>{
+    const r=p.roles||{};
+    const list=[];
+    if(r.admin) list.push("Admin");
+    if(r.trainer) list.push("Trainer");
+    if(r.player) list.push("Spieler");
+    if(r.erwachsene) list.push("Erwachsene");
+    if(r.mannschaftsfuehrer) list.push("Mannschaftsführer");
+    return list.join(", ")||"—";
+  };
+  const dsText=(p)=> p.datenschutzAccepted ? String(p.datenschutzAccepted).split("-").reverse().join(".") : "—";
+  const rows=players.map(p=>({
+    id:p.id,
+    name:`${p.firstName||""} ${p.lastName||""}`.trim()||p.name||"—",
+    funktionen:rollenText(p),
+    group:p.group||"Anfänger",
+    status:p.status||"aktiv",
+    datenschutz:dsText(p),
+    dsSort:p.datenschutzAccepted||"",
+  }));
+  const filtered=rows.filter(r=>{
+    if(filters.name&&!r.name.toLowerCase().includes(filters.name.toLowerCase())) return false;
+    if(filters.funktionen&&!r.funktionen.toLowerCase().includes(filters.funktionen.toLowerCase())) return false;
+    if(filters.group&&r.group!==filters.group) return false;
+    if(filters.status&&r.status!==filters.status) return false;
+    if(filters.datenschutz==="ja"&&!r.dsSort) return false;
+    if(filters.datenschutz==="nein"&&r.dsSort) return false;
+    return true;
+  });
+  const sorted=[...filtered].sort((a,b)=>{
+    let av,bv;
+    if(sortKey==="datenschutz"){av=a.dsSort;bv=b.dsSort;}
+    else {av=String(a[sortKey]||"").toLowerCase();bv=String(b[sortKey]||"").toLowerCase();}
+    if(av<bv) return sortDir==="asc"?-1:1;
+    if(av>bv) return sortDir==="asc"?1:-1;
+    return 0;
+  });
+  function toggleSort(k){
+    if(sortKey===k) setSortDir(d=>d==="asc"?"desc":"asc");
+    else {setSortKey(k);setSortDir("asc");}
+  }
+  const arrow=(k)=> sortKey===k ? (sortDir==="asc"?" ▲":" ▼") : "";
+  const th={padding:"8px 8px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
+  const td={padding:"6px 8px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",verticalAlign:"top"};
+  const fInp={width:"100%",padding:"4px 6px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",boxSizing:"border-box"};
+
+  const alleGruppen=["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+
+  return <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>📋 Personen-Übersicht ({sorted.length})</div>
+      <div style={{fontSize:10,color:"var(--text4)"}}>Spalten anklicken zum Sortieren</div>
+    </div>
+    <div style={{maxHeight:"70vh",overflowY:"auto",overflowX:"auto",borderRadius:8,border:"1px solid var(--border)"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
+        <thead>
+          <tr>
+            <th style={th} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
+            <th style={th} onClick={()=>toggleSort("funktionen")}>Funktionen{arrow("funktionen")}</th>
+            <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
+            <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+            <th style={th} onClick={()=>toggleSort("datenschutz")}>Datenschutz{arrow("datenschutz")}</th>
+          </tr>
+          <tr>
+            <th style={{...th,top:32,cursor:"default"}}><input value={filters.name} onChange={e=>setFilters(f=>({...f,name:e.target.value}))} placeholder="Filter…" style={fInp}/></th>
+            <th style={{...th,top:32,cursor:"default"}}><input value={filters.funktionen} onChange={e=>setFilters(f=>({...f,funktionen:e.target.value}))} placeholder="Filter…" style={fInp}/></th>
+            <th style={{...th,top:32,cursor:"default"}}>
+              <select value={filters.group} onChange={e=>setFilters(f=>({...f,group:e.target.value}))} style={fInp}>
+                <option value="">Alle</option>{alleGruppen.map(g=><option key={g} value={g}>{g}</option>)}
+              </select>
+            </th>
+            <th style={{...th,top:32,cursor:"default"}}>
+              <select value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))} style={fInp}>
+                <option value="">Alle</option><option value="aktiv">aktiv</option><option value="passiv">passiv</option>
+              </select>
+            </th>
+            <th style={{...th,top:32,cursor:"default"}}>
+              <select value={filters.datenschutz} onChange={e=>setFilters(f=>({...f,datenschutz:e.target.value}))} style={fInp}>
+                <option value="">Alle</option><option value="ja">zugestimmt</option><option value="nein">offen</option>
+              </select>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(r=>(
+            <tr key={r.id}>
+              <td style={{...td,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap"}}>{r.name}</td>
+              <td style={td}>{r.funktionen}</td>
+              <td style={td}>{r.group}</td>
+              <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
+              <td style={td}>{r.datenschutz}</td>
+            </tr>
+          ))}
+          {sorted.length===0&&<tr><td colSpan={5} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Treffer</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
+
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
   // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
@@ -1833,6 +1944,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const PERSON_FIELDS=[
     ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
     ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
+    ["Elternteil 1","elternteil1"],["Vorname 1","elternVorname1"],["Nachname 1","elternNachname1"],
+    ["Elternteil 2","elternteil2"],["Vorname 2","elternVorname2"],["Nachname 2","elternNachname2"],
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
     ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
@@ -1988,6 +2101,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         gender:        editPlayer.gender||"m",
         email:         editPlayer.email||"",
         elternEmail:   (editPlayer.elternEmail||"").trim().toLowerCase(),
+        elternteil1:      editPlayer.elternteil1||"Mutter",
+        elternVorname1:   editPlayer.elternVorname1||"",
+        elternNachname1:  editPlayer.elternNachname1||"",
+        elternteil2:      editPlayer.elternteil2||"Vater",
+        elternVorname2:   editPlayer.elternVorname2||"",
+        elternNachname2:  editPlayer.elternNachname2||"",
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
@@ -2433,6 +2552,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>;
     })()}
 
+    {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
+    {isSuperAdmin && <PersonenUebersicht players={players}/>}
+
     {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
     <ArtikelFotoVerwaltung showToast={showToast}/>
 
@@ -2812,7 +2934,50 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{fontSize:10,color:"var(--text4)",marginTop:4,lineHeight:1.4}}>
                   Trägst du hier die E-Mail eines Elternteils ein, kann sich dieses mit seinem eigenen Login anmelden und dieses Kind mitverwalten. Mehrere Kinder mit derselben Eltern-E-Mail erscheinen unter einem Login zum Umschalten.
                 </div>
-              </div></>
+              </div>
+              {/* Punkt 10: Namen der Eltern — nur bei Personen mit Spieler-Funktion */}
+              {editPlayer.roles?.player===true && <div style={{marginBottom:10,padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>👪 Eltern</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Elternteil 1</label>
+                    <select value={editPlayer.elternteil1||"Mutter"} onChange={e=>setEditPlayer(prev=>({...prev,elternteil1:e.target.value}))}
+                      style={{width:"100%",padding:"8px 6px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12}}>
+                      <option value="Mutter">Mutter</option><option value="Vater">Vater</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Vorname 1</label>
+                    <input type="text" value={editPlayer.elternVorname1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternVorname1:e.target.value}))}
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Nachname 1</label>
+                    <input type="text" value={editPlayer.elternNachname1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternNachname1:e.target.value}))}
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Elternteil 2</label>
+                    <select value={editPlayer.elternteil2||"Vater"} onChange={e=>setEditPlayer(prev=>({...prev,elternteil2:e.target.value}))}
+                      style={{width:"100%",padding:"8px 6px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12}}>
+                      <option value="Mutter">Mutter</option><option value="Vater">Vater</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Vorname 2</label>
+                    <input type="text" value={editPlayer.elternVorname2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternVorname2:e.target.value}))}
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Nachname 2</label>
+                    <input type="text" value={editPlayer.elternNachname2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternNachname2:e.target.value}))}
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+              </div>}
+              </>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geschlecht</label>
@@ -4357,10 +4522,20 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       await updateDoc(doc(db,"players",playerId),{[`stars.${exId}`]:value});
     } catch(e) { console.error("setStars error:",e); }
   }
-  // Punkt 6+7: Nur Spieler der eigenen Gruppe
+  // Punkt 6: Rangliste vergleicht nur echte Spieler-Gruppen. Erwachsene und Gäste
+  // gehören nicht in die Spieler-Rangliste; ohne sauberes group-Feld dürfen Personen
+  // nicht über den Fallback fälschlich als "Anfänger" einsortiert werden.
+  const normGroup = (p)=>{
+    const g = p.group;
+    if(!g) return null; // kein sauberes Gruppenfeld -> nicht in Rangliste einsortieren
+    return g;
+  };
   const myGroup = myPlayer?.group||"Anfänger";
-  const groupPeers = activePlayers.filter(p=>p.group===myGroup);
-  const sortedRanking=groupPeers.sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
+  const rankingGroups = ["Profis","Fortgeschrittene","Anfänger"];
+  const groupPeers = rankingGroups.includes(myGroup)
+    ? activePlayers.filter(p=>normGroup(p)===myGroup && rankingGroups.includes(p.group))
+    : [];
+  const sortedRanking=[...groupPeers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const ALL_TABS=[
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
@@ -7707,13 +7882,17 @@ function TerminVerwaltung({showToast}) {
           <input value={form.veranstaltung} onChange={e=>setForm(f=>({...f,veranstaltung:e.target.value}))} placeholder="z. B. Jahreshauptversammlung" style={inp}/>
         </div>
       </div>
-      {/* Ort: Dropdown + freie Eingabe via datalist */}
+      {/* Punkt 8: Ort — echtes Dropdown UND freie Eingabe */}
       <div style={{marginBottom:12}}>
         <label style={lab}>Ort</label>
-        <input list="termin-orte" value={form.ort} onChange={e=>setForm(f=>({...f,ort:e.target.value}))} placeholder="Ort wählen oder eingeben" style={inp}/>
-        <datalist id="termin-orte">
-          {TERMIN_ORTE.map(o=><option key={o} value={o}/>)}
-        </datalist>
+        <div style={{display:"flex",gap:8}}>
+          <select value={TERMIN_ORTE.includes(form.ort)?form.ort:""} onChange={e=>{if(e.target.value)setForm(f=>({...f,ort:e.target.value}));}}
+            style={{...inp,flex:"0 0 auto",width:"auto",minWidth:150,cursor:"pointer"}}>
+            <option value="">— Auswählen —</option>
+            {TERMIN_ORTE.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
+          <input value={form.ort} onChange={e=>setForm(f=>({...f,ort:e.target.value}))} placeholder="oder frei eingeben" style={{...inp,flex:1}}/>
+        </div>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button onClick={save} style={{flex:1,padding:"9px 12px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
@@ -8724,7 +8903,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // ─── RSW HEADER mit dynamischer Höhenmessung ────────────────────────────────
-function RSWHeader({switchBarContent, chipsContent}) {
+function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
   const containerRef = useRef(null);
   const [height, setHeight] = useState(0);
 
@@ -8740,7 +8919,7 @@ function RSWHeader({switchBarContent, chipsContent}) {
     const ro = new ResizeObserver(measure);
     ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [chipsContent]);
+  }, [chipsContent, parentBarContent]);
 
   return <>
     <div ref={containerRef} style={{
@@ -8748,10 +8927,14 @@ function RSWHeader({switchBarContent, chipsContent}) {
       width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
       borderBottom:"2px solid var(--border2)"
     }}>
-      {/* Switch Bar */}
+      {/* Switch Bar (Funktionen + Abmelden + Theme) */}
       <div style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
         {switchBarContent}
       </div>
+      {/* Eltern-/Kind-Umschaltleiste — direkt unter der Funktionsleiste, über allen anderen Menüs */}
+      {parentBarContent && <div style={{padding:"6px 14px",borderTop:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
+        {parentBarContent}
+      </div>}
       {/* Chips */}
       {chipsContent && <div style={{padding:"4px 14px 8px",borderTop:"1px solid var(--border)"}}>
         {chipsContent}
@@ -8765,7 +8948,7 @@ function RSWHeader({switchBarContent, chipsContent}) {
 // ─── ROLE SWITCH WRAPPER ──────────────────────────────────────────────────────
 // Zeigt Switch-Bar oben und wechselt zwischen Player/Trainer/Admin-View
 function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableViews,hasAdminRole,clubConfig={},
-  globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut,lockedPlayer=false}) {
+  globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut,lockedPlayer=false,parentBar=null}) {
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
@@ -8795,17 +8978,25 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     ? `${p.firstName} ${(p.lastName||"").charAt(0)}.`
     : (p.firstName||p.name||"?");
 
-  const spielerPlayers = allActive.filter(p=>(p.group||"Anfänger")!=="Erwachsene");
+  // Punkt 2: Gäste sind NUR für Admins sichtbar, nie für Trainer.
+  const spielerPlayers = allActive.filter(p=>{
+    const g=p.group||"Anfänger";
+    if(g==="Erwachsene") return false;
+    if(g==="Gast" && !hasAdminRole) return false;
+    return true;
+  });
   const erwachsenePlayers = allActive.filter(p=>(p.group||"Anfänger")==="Erwachsene");
   const mfPlayers = allActive.filter(p=>p.roles?.mannschaftsfuehrer===true);
 
   // Erwachsene-only: only see own data, no chip selection
   const isErwachseneOnly = availableViews.length===1 && availableViews[0]==="erwachsene";
 
+  // Punkt 3+7: Die Personen-Auswahlleiste (alle Vornamen der Erwachsenen bzw. aller
+  // Mannschaftsführer) darf NUR der Admin sehen. Nicht-Admins sehen nur sich selbst.
   const chipPlayers = activeView==="erwachsene"
-    ? (isErwachseneOnly ? [] : erwachsenePlayers)
+    ? (isErwachseneOnly || !hasAdminRole ? [] : erwachsenePlayers)
     : activeView==="mannschaftsfuehrer"
-    ? mfPlayers
+    ? (!hasAdminRole ? [] : mfPlayers)
     : groupFilter==="all" ? spielerPlayers
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
@@ -8819,11 +9010,17 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         : activeView==="mannschaftsfuehrer" ? (mfPlayers[0]||myPlayer)
         : (myPlayer||spielerPlayers[0]));
 
-  const showChips = !lockedPlayer && (activeView==="player" || activeView==="erwachsene" || activeView==="mannschaftsfuehrer" || activeView==="admin" || activeView==="trainer") && !isErwachseneOnly;
+  // Punkt 3+7: In der Erwachsene-/MF-View nur für Admins die Namensleiste zeigen.
+  const showChips = !lockedPlayer && !isErwachseneOnly && (
+    activeView==="player" ||
+    activeView==="admin"  ||
+    activeView==="trainer" ||
+    ((activeView==="erwachsene" || activeView==="mannschaftsfuehrer") && hasAdminRole)
+  );
 
   return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:1024,margin:"0 auto"}}>
     {/* Header-Container — misst seine eigene Höhe */}
-    <RSWHeader switchBarContent={
+    <RSWHeader parentBarContent={parentBar} switchBarContent={
       <>
         {availableViews.map(v=>{
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
@@ -8867,8 +9064,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
                 border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
               }}>{g}</button>;
             })}
-          {activeView==="erwachsene"&&<span style={{fontSize:11,color:"var(--text3)",padding:"3px 0",flexShrink:0}}>👪 Erwachsene</span>}
-          {activeView==="mannschaftsfuehrer"&&<span style={{fontSize:11,color:"var(--text3)",padding:"3px 0",flexShrink:0}}>📋 Mannschaftsführer</span>}
+          {/* Punkt 4: Text-Label über der Namensliste entfernt (galt nur für Admins ohnehin) */}
         </div>
         {/* Menü 3: Personen-Chips — einzeilig, scrollbar */}
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,flexWrap:"nowrap"}}>
@@ -9095,31 +9291,32 @@ function ElternView({user, players, attendance, rackets, kinder, ownProfile, vie
   const [selId,setSelId]=useState(personen[0]?.id||null);
   const selected = personen.find(p=>p.id===selId)||personen[0];
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)"}}>
-    {/* Personen-Umschaltleiste (Eltern -> Kinder). Bleibt oben fixiert. */}
-    <div style={{position:"sticky",top:0,zIndex:60,background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"7px 10px",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
-      <span style={{fontSize:15,flexShrink:0}}>👨‍👩‍👧</span>
-      {personen.map(p=>{
-        const aktiv=p.id===selId;
-        const eigen=ownProfile&&p.id===ownProfile.id;
-        return <button key={p.id} onClick={()=>setSelId(p.id)} style={{
-          flexShrink:0,display:"flex",alignItems:"center",gap:5,
-          background:aktiv?"linear-gradient(135deg,#3b82f6,#2563eb)":"var(--bg3)",
-          border:aktiv?"none":"1px solid var(--border2)",borderRadius:20,
-          color:aktiv?"#fff":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"6px 12px"}}>
-          <span style={{fontSize:14}}>{p.avatar||(eigen?"🧑":"🏓")}</span>
-          {p.firstName}{eigen?" (ich)":""}
-        </button>;
-      })}
-    </div>
-    {selected
-      ? <RoleSwitchWrapper key={selected.id}
-          user={user} players={players} attendance={attendance} rackets={rackets}
-          myPlayer={selected} availableViews={viewsForPerson(selected)} hasAdminRole={false} lockedPlayer
-          globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
-          onPlayerAdded={()=>{}} {...sharedProps}/>
-      : <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>}
-  </div>;
+  // Eltern-/Kind-Umschaltleiste – wird in den fixierten Kopf des RoleSwitchWrapper
+  // eingehängt (direkt unter der Funktionsleiste, über allen anderen Menüs).
+  const parentBar = <>
+    <span style={{fontSize:15,flexShrink:0}}>👨‍👩‍👧</span>
+    {personen.map(p=>{
+      const aktiv=p.id===selId;
+      const eigen=ownProfile&&p.id===ownProfile.id;
+      return <button key={p.id} onClick={()=>setSelId(p.id)} style={{
+        flexShrink:0,display:"flex",alignItems:"center",gap:5,
+        background:aktiv?"linear-gradient(135deg,#3b82f6,#2563eb)":"var(--bg3)",
+        border:aktiv?"none":"1px solid var(--border2)",borderRadius:20,
+        color:aktiv?"#fff":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"6px 12px"}}>
+        <span style={{fontSize:14}}>{p.avatar||(eigen?"🧑":"🏓")}</span>
+        {p.firstName}{eigen?" (ich)":""}
+      </button>;
+    })}
+  </>;
+
+  return selected
+    ? <RoleSwitchWrapper key={selected.id}
+        user={user} players={players} attendance={attendance} rackets={rackets}
+        myPlayer={selected} availableViews={viewsForPerson(selected)} hasAdminRole={false} lockedPlayer
+        parentBar={parentBar}
+        globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+        onPlayerAdded={()=>{}} {...sharedProps}/>
+    : <div style={{minHeight:"100vh",background:"var(--bg)",padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>;
 }
 
 export default function App() {
@@ -9389,7 +9586,9 @@ export default function App() {
 
   // Rollen aus Spieler-Profil ermitteln
   const playerRoles = myPlayer?.roles || {};
-  const hasTrainerRole = isAdmin || playerRoles.trainer === true;
+  // Punkt 5: Trainer-View NUR bei zugeordneter Trainer-Funktion (nicht automatisch für Admins).
+  // Admins haben ohnehin die Admin-View mit vollem Zugriff.
+  const hasTrainerRole = playerRoles.trainer === true;
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
