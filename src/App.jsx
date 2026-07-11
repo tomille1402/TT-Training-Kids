@@ -625,6 +625,18 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return true;
   });
   const [activeTab,setActiveTab]=useState("training");
+  // Punkt 1: Höhe der fixierten Tab-Leiste messen, damit der Spacer exakt passt und
+  // keine Überschriften abgeschnitten werden (v.a. Admin-Ansicht mit vielen Chips).
+  const tabBarRef=useRef(null);
+  const [tabBarH,setTabBarH]=useState(44);
+  useLayoutEffect(()=>{
+    if(!tabBarRef.current) return;
+    const measure=()=>setTabBarH(tabBarRef.current?.offsetHeight||44);
+    measure();
+    const ro=new ResizeObserver(measure);
+    ro.observe(tabBarRef.current);
+    return ()=>ro.disconnect();
+  },[hideHeader]);
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
   const [expandedEx,setExpandedEx]=useState(null);
@@ -848,7 +860,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>}
 
     {/* Tabs — immer fixiert: unter RSWHeader (hideHeader) oder standalone (62px) */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
+    <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"62px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
@@ -859,9 +871,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
     </div>
-    {/* Spacer: standalone=header(62)+tabs(40)=102; im RSW-Modus fester Tab-Spacer (44px,
-        analog zur Erwachsenen-Sicht), da die fixierte Leiste bereits bei var(--rsw-height) sitzt. */}
-    <div style={{height:hideHeader?44:102}}/>
+    {/* Spacer: standalone = header(62) + gemessene Tab-Höhe; im RSW-Modus nur die
+        gemessene Tab-Höhe (die fixierte Leiste sitzt bereits bei var(--rsw-height)). */}
+    <div style={{height:hideHeader?tabBarH:(62+tabBarH)}}/>
 
 
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
@@ -1510,7 +1522,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead><tr style={{background:"var(--bg2)"}}>
-              {[{l:"Rg",w:36},{l:"TTR",w:52},{l:"Name",w:130},{l:"S/E",w:60},{l:"St.",w:50}].map(h=>(
+              {[{l:"Rg",w:36},{l:"TTR",w:52},{l:"Name",w:118},{l:"Status",w:52},{l:"S/E",w:60}].map(h=>(
                 <th key={h.l} style={{padding:"6px 8px",textAlign:"left",fontWeight:600,color:"var(--text2)",
                   borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap",position:"sticky",top:0,
                   background:"var(--bg2)",width:h.w,minWidth:h.w}}>{h.l}</th>
@@ -1520,19 +1532,17 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
               <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
                 <td style={{padding:"4px 5px",color:"var(--text2)",width:36,fontSize:11}}>{s.rang||"—"}</td>
                 <td style={{padding:"4px 5px",width:52,fontSize:11}}>{s.qTtr||"—"}</td>
-                <td style={{padding:"4px 5px",fontWeight:500,width:130,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}</td>
+                <td style={{padding:"4px 5px",fontWeight:500,width:118,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}</td>
+                <td style={{padding:"4px 5px",width:52,fontSize:10}}>
+                  {s.bem?<span style={{padding:"1px 5px",borderRadius:8,fontSize:10,fontWeight:600,
+                    background:"#64748b22",color:"var(--text2)",whiteSpace:"nowrap"}}>{s.bem}</span>
+                  :<span style={{color:"var(--text4)"}}>—</span>}
+                </td>
                 <td style={{padding:"4px 5px",width:60}}>
                   <span style={{padding:"1px 5px",borderRadius:10,fontSize:10,
                     background:s.stammErsatz==="Stammspieler"?"#10b98122":"#f59e0b22",
                     color:s.stammErsatz==="Stammspieler"?"#10b981":"#f59e0b"}}>
                     {s.stammErsatz==="Stammspieler"?"⭐ Stamm":"🔄 Ersatz"}
-                  </span>
-                </td>
-                <td style={{padding:"4px 5px",width:50}}>
-                  <span style={{padding:"1px 5px",borderRadius:10,fontSize:10,
-                    background:s.status==="aktiv"?"#3b82f622":"#ef444422",
-                    color:s.status==="aktiv"?"#3b82f6":"#ef4444"}}>
-                    {s.status||"aktiv"}
                   </span>
                 </td>
               </tr>
@@ -6284,9 +6294,23 @@ function AufstellungUpload({showToast}) {
       pages.push(ys.map(y=>lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")).join("\n"));
     }
     const ERW_MANN={1:"Erwachsene",2:"Erwachsene II",3:"Erwachsene III",4:"Erwachsene IV",5:"Erwachsene V",6:"Erwachsene VI"};
+    // Bekannte click-tt-Status-/Bemerkungs-Kürzel (Spalten "A", "Status", "Bem.").
+    const STATUS_TOKENS=["SBE","DE","JES","RES","SPV","WES","NES","SES","Antrag","gA","eA","A"];
+    // Extrahiert aus dem Zeilenrest nach der Nationalität die Status-Kürzel in Reihenfolge.
+    function extractStatus(rest){
+      if(!rest) return "";
+      const found=[];
+      // Tokenweise scannen; nur bekannte Kürzel übernehmen (Duplikate vermeiden).
+      for(const tok of rest.split(/[\s,]+/)){
+        const t=tok.trim();
+        if(STATUS_TOKENS.includes(t) && !found.includes(t)) found.push(t);
+      }
+      return found.join(", ");
+    }
     // Namen mit Unicode-Buchstaben (é, è, á, ñ, ć …) korrekt erfassen (u-Flag + \p{L})
     // Q-TTR kann Zahl, Zahl mit "*" (vorläufig) oder "-" sein
-    const RANG_RE=/([1-6])\.(\d{1,2})\s+(\d{3,4}\*?|-)\s+(\p{Lu}[\p{L}.\-]+,\s*[\p{L}.\- ]+?)\s*(?:\(\d{4}\/|\((\d{4})|GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|Nat\b)/gu;
+    // Gruppe 5 = Nationalität, Gruppe 6 = Rest der Zeile (Status/Bemerkung) bis Zeilenende.
+    const RANG_RE=/([1-6])\.(\d{1,2})\s+(\d{3,4}\*?|-)\s+(\p{Lu}[\p{L}.\-]+,\s*[\p{L}.\- ]+?)\s*\(\d{4}\/\s*[mw]\s*\)\s*(GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|[A-Z]{3})?([^\n]*)/gu;
     const NW_HEAD=/Kontaktadresse\s+(Mädchen \d+|Jugend \d+)/;
     const rows=[]; const seen=new Set();
     for(const t of pages){
@@ -6297,7 +6321,10 @@ function AufstellungUpload({showToast}) {
         const qttr=(m[3]==='-')?'':m[3].replace('*',''); const name=m[4].trim().replace(/\s+/g,' ');
         const mann=nwTeam?nwTeam:ERW_MANN[d1]; if(!mann) continue;
         const k=mann+"|"+name; if(seen.has(k)) continue; seen.add(k);
-        rows.push({mannschaft:mann,rang,qTtr:qttr,name});
+        const bem=extractStatus(m[6]||"");
+        const row={mannschaft:mann,rang,qTtr:qttr,name};
+        if(bem) row.bem=bem;
+        rows.push(row);
       }
     }
     if(withRaw) return {rows, rawText:pages.join("\n")};
@@ -6697,6 +6724,59 @@ const EINSATZ_OPTS = [
   {key:"verletzt", label:"Verletzt", icon:"🤕", color:"#8b5cf6"},
 ];
 
+// Prüft, ob eine Aufstellungszeile den NES-Status trägt (Nachwuchs-Ergänzungsspieler).
+// bem kann mehrere Kürzel enthalten (z.B. "gA, NES"); wir prüfen tokenweise.
+function zeileHatNES(row){
+  if(!row||!row.bem) return false;
+  return String(row.bem).split(/[\s,]+/).map(t=>t.trim()).includes("NES");
+}
+
+// FAHRER-KANDIDATEN (nur Auswärts, Nachwuchs):
+// Eltern der Kinder OHNE NES-Status in dieser Mannschaft. Alle gepflegten
+// Elternteile ("Vorname Nachname"), Duplikate zusammengefasst, alphabetisch
+// nach Vorname. Ein Kind gilt als "ohne NES", wenn seine Aufstellungszeile in
+// genau dieser Mannschaft KEIN NES trägt.
+function fahrerKandidaten(selTeam, players, aufSpieler){
+  if(!selTeam) return [];
+  const namen=new Set();
+  // Kinder dieser Mannschaft ohne NES ermitteln
+  for(const row of aufSpieler){
+    if(row.mannschaft!==selTeam) continue;
+    if(zeileHatNES(row)) continue; // NES-Kinder ausschließen
+    // zugehörige Person finden (für Elternfelder)
+    const kind = players.find(p=>playerMatchesAufName(p,row.name));
+    if(!kind) continue;
+    const paare=[
+      [kind.elternVorname1, kind.elternNachname1],
+      [kind.elternVorname2, kind.elternNachname2],
+    ];
+    for(const [vn,nn] of paare){
+      const v=(vn||"").trim(), n=(nn||"").trim();
+      if(v||n) namen.add(`${v} ${n}`.trim());
+    }
+  }
+  return [...namen].sort((a,b)=>a.localeCompare(b,"de"));
+}
+
+// BETREUER-KANDIDATEN (Nachwuchs, Heim & Auswärts):
+// Trainer + aktive Erwachsene, dedupliziert, alphabetisch nach Vorname,
+// OHNE Trainer, die selbst laut Aufstellung in DIESER Mannschaft stehen.
+function betreuerKandidaten(selTeam, players, aufSpieler){
+  const map=new Map(); // key "Vorname Nachname" -> label
+  for(const p of players){
+    if(p.status==="passiv") continue;
+    const istTrainer = p.roles?.trainer===true;
+    const istErwachsene = p.roles?.erwachsene===true || (p.group==="Erwachsene");
+    if(!istTrainer && !istErwachsene) continue;
+    // Trainer, die selbst in dieser Mannschaft aufgestellt sind, ausschließen
+    if(istTrainer && teamsOfPlayer(p, aufSpieler).includes(selTeam)) continue;
+    const vn=(p.firstName||"").trim(), nn=(p.lastName||"").trim();
+    const label=`${vn} ${nn}`.trim();
+    if(label) map.set(label, {label, vn});
+  }
+  return [...map.values()].sort((a,b)=>a.vn.localeCompare(b.vn,"de")).map(x=>x.label);
+}
+
 function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) {
   const [spielplaene,setSpielplaene] = useState({});
   const [aufstellungen,setAufstellungen] = useState({});
@@ -6813,6 +6893,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 
   function spielKey(s){ return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_"); }
 
+  // Betreuer/Fahrer nur für Nachwuchsmannschaften. Kandidatenlisten hängen nur
+  // von selTeam/Aufstellung/Personen ab → einmal pro Team berechnen.
+  const selTeamIstNachwuchs = selTeam ? istNachwuchsMannschaft(selTeam) : false;
+  const fahrerListe   = selTeamIstNachwuchs ? fahrerKandidaten(selTeam, players, aufSpieler) : [];
+  const betreuerListe = selTeamIstNachwuchs ? betreuerKandidaten(selTeam, players, aufSpieler) : [];
+
   function canEdit(targetPlayerId){
     if(viewerCanEditAll) return true;
     return myPlayer && targetPlayerId===myPlayer.id;
@@ -6837,8 +6923,67 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     setEinsaetze(updated);
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
   }
+  // Betreuer/Fahrer sind spiel-global (nicht pro Spieler). Gespeichert unter
+  // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_fahrer. Sofort speichern.
+  async function setEinsatzFeld(spiel, feld, wert){
+    const sk=spielKey(spiel);
+    const cur = einsaetze[sk]||{};
+    const updated = {...einsaetze, [sk]:{...cur, [feld]:wert}};
+    setEinsaetze(updated);
+    try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+  }
 
   const heuteStr=new Date().toLocaleDateString("sv");
+
+  // Wer darf Betreuer/Fahrer setzen? Admin/Trainer/MF (viewerCanEditAll) sowie
+  // Eltern (über den Kind-Account) und Erwachsene für sich — praktisch jeder, der
+  // dieses Spiel in seiner Einsätze-Sicht sieht. Reine Nur-Lese-Fälle gibt es hier
+  // nicht, daher an viewerCanEditAll ODER vorhandenem myPlayer festmachen.
+  const kannBetreuerFahrer = !!(viewerCanEditAll || myPlayer);
+
+  // Rendert den Betreuer-/Fahrer-Block für ein Nachwuchsspiel.
+  function betreuerFahrerBlock(spiel){
+    if(!selTeamIstNachwuchs) return null;
+    const sk=spielKey(spiel);
+    const cur=einsaetze[sk]||{};
+    const istHeim=(spiel.ort==="Heim");
+    const editable=kannBetreuerFahrer;
+    const selStyle={padding:"5px 8px",fontSize:12,borderRadius:7,background:"var(--bg)",
+      border:"1px solid var(--border2)",color:"var(--text)",minWidth:0,flex:"1 1 140px",maxWidth:"100%"};
+    const labelStyle={fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:3,textTransform:"uppercase",letterSpacing:0.3};
+    const feld=(feldKey,wert,liste,placeholder)=>(
+      <div style={{flex:"1 1 140px",minWidth:0}}>
+        <select value={wert||""} disabled={!editable}
+          onChange={e=>setEinsatzFeld(spiel,feldKey,e.target.value)}
+          style={{...selStyle,opacity:editable?1:0.6,cursor:editable?"pointer":"default",width:"100%"}}>
+          <option value="">{placeholder}</option>
+          {/* aktuell gespeicherter Wert bleibt wählbar, auch wenn nicht mehr in der Liste */}
+          {wert&&!liste.includes(wert)&&<option value={wert}>{wert}</option>}
+          {liste.map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+    );
+    return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+        {/* Betreuer: Heim 2 Felder, Auswärts 1 Feld */}
+        <div style={{flex:"2 1 220px",minWidth:0}}>
+          <div style={labelStyle}>🧑‍🏫 Betreuer</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {feld("_betreuer1",cur._betreuer1,betreuerListe,istHeim?"Betreuer 1 …":"Betreuer …")}
+            {istHeim&&feld("_betreuer2",cur._betreuer2,betreuerListe,"Betreuer 2 …")}
+          </div>
+        </div>
+        {/* Fahrer nur bei Auswärtsspielen */}
+        {!istHeim&&<div style={{flex:"1 1 160px",minWidth:0}}>
+          <div style={labelStyle}>🚗 Fahrer</div>
+          <div style={{display:"flex",gap:8}}>
+            {feld("_fahrer",cur._fahrer,fahrerListe,"Fahrer …")}
+          </div>
+          {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Keine Eltern-Namen hinterlegt.</div>}
+        </div>}
+      </div>
+    </div>;
+  }
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>🗓️ Einsätze</div>
@@ -6969,6 +7114,11 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   color:"var(--text2)",outline:"none"}}/>}
             </div>;
           })}
+          {betreuerFahrerBlock(spiel)}
+        </div>}
+        {/* Self-View (Spieler/Erwachsene/Eltern): Betreuer/Fahrer unter den Ankreuzfeldern */}
+        {!viewerCanEditAll&&selfPlayer&&selTeamIstNachwuchs&&<div style={{padding:"0 12px 10px"}}>
+          {betreuerFahrerBlock(spiel)}
         </div>}
       </div>;
     })}
@@ -8182,6 +8332,7 @@ function TermineView() {
 function VereinsSpielplan({nurNachwuchs=false}) {
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
+  const [einsaetzeData,setEinsaetzeData]=useState({}); // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
   const [loading,setLoading]=useState(true);
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
@@ -8197,6 +8348,16 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     },()=>{});
     return unsub;
   },[]);
+
+  // Einsätze der gewählten Saison laden — liefert Betreuer/Fahrer je Spiel.
+  // Der Doc-Key entspricht der Spielplan-Saison (z.B. "spielplan_2026_2027").
+  useEffect(()=>{
+    if(!selSeason||selSeason==="_local"){ setEinsaetzeData({}); return; }
+    const unsub=onSnapshot(doc(db,"einsaetze",selSeason),snap=>{
+      setEinsaetzeData(snap.exists()?(snap.data().data||{}):{});
+    },()=>setEinsaetzeData({}));
+    return unsub;
+  },[selSeason]);
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
@@ -8433,15 +8594,21 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               {(()=>{
                 // Betreuer/Fahrer nur für Nachwuchsspiele relevant. Bei Herrenmannschaften
                 // beide ausgegraut. Fahrer zusätzlich bei Heimspielen ausgegraut.
+                // Werte kommen aus den Einsätzen (einsaetzeData[spielKey]).
                 const istNachwuchs = nachwuchsMannschaften.some(nm=>s.mannschaft===nm||String(s.mannschaft||"").startsWith(nm));
                 const istHeim = s.ort==="Heim";
                 const grau = {padding:"5px 6px",fontSize:10,color:"var(--text4)",background:"var(--bg3)",opacity:0.5,whiteSpace:"nowrap"};
-                const aktiv = {padding:"5px 6px",fontSize:10,color:"var(--text2)",whiteSpace:"nowrap"};
+                const aktiv = {padding:"5px 6px",fontSize:10,color:"var(--text2)"};
                 const betreuerAus = !istNachwuchs;           // bei Herren ausgegraut
                 const fahrerAus    = !istNachwuchs || istHeim; // bei Herren ODER Heimspiel ausgegraut
+                // spielKey identisch zur EinsätzeView berechnen
+                const sk = `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+                const ei = einsaetzeData[sk]||{};
+                const betreuer = [ei._betreuer1,ei._betreuer2].filter(Boolean).join(", ");
+                const fahrer = ei._fahrer||"";
                 return <>
-                  <td style={betreuerAus?grau:aktiv}>{betreuerAus?"—":(s.betreuer||"")}</td>
-                  <td style={fahrerAus?grau:aktiv}>{fahrerAus?"—":(s.fahrer||"")}</td>
+                  <td style={betreuerAus?grau:aktiv}>{betreuerAus?"—":(betreuer||<span style={{color:"var(--text4)"}}>—</span>)}</td>
+                  <td style={fahrerAus?grau:aktiv}>{fahrerAus?"—":(fahrer||<span style={{color:"var(--text4)"}}>—</span>)}</td>
                 </>;
               })()}
               <td style={{padding:"5px 6px"}}>
