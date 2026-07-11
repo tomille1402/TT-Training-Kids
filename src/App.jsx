@@ -4684,15 +4684,17 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // Punkt 6: Rangliste vergleicht nur echte Spieler-Gruppen. Erwachsene und Gäste
   // gehören nicht in die Spieler-Rangliste; ohne sauberes group-Feld dürfen Personen
   // nicht über den Fallback fälschlich als "Anfänger" einsortiert werden.
-  const normGroup = (p)=>{
-    const g = p.group;
-    if(!g) return null; // kein sauberes Gruppenfeld -> nicht in Rangliste einsortieren
-    return g;
+  const rankingGroups = ["Profis","Fortgeschrittene","Anfänger"];
+  // Gruppen-Feld robust normalisieren (Whitespace/Groß-Klein), damit z.B. "anfänger"
+  // oder " Anfänger " korrekt derselben Gruppe zugeordnet wird.
+  const normGroupName = (g)=>{
+    const s=(g||"").trim();
+    return rankingGroups.find(rg=>rg.toLowerCase()===s.toLowerCase())||null;
   };
   const myGroup = myPlayer?.group||"Anfänger";
-  const rankingGroups = ["Profis","Fortgeschrittene","Anfänger"];
-  const groupPeers = rankingGroups.includes(myGroup)
-    ? activePlayers.filter(p=>normGroup(p)===myGroup && rankingGroups.includes(p.group))
+  const myGroupNorm = normGroupName(myGroup);
+  const groupPeers = myGroupNorm
+    ? activePlayers.filter(p=>normGroupName(p.group)===myGroupNorm)
     : [];
   const sortedRanking=[...groupPeers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const ALL_TABS=[
@@ -4775,7 +4777,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"} · Rang #{myRank} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"}{sortedRanking.length>0?` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -4804,7 +4806,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
         </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{myPlayer.group||"Anfänger"} · Rang #{myRank} von {activePlayers.filter(p=>p.group!=="Trainer").length}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{myPlayer.group||"Anfänger"}{sortedRanking.length>0?` · Rang #${myRank} von ${sortedRanking.length}`:""}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           {[{label:"Gesamt",val:totalStars,color:myPlayer.color},{label:"Anfänger",val:beginnerStars,color:"#10b981"},{label:"Fortgeschr.",val:advancedStars,color:"#3b82f6"}].map(s=>(
@@ -7897,6 +7899,8 @@ const SPIELPLAN_COLS = [
   {key:"tag",       label:"Tag",         w:"36px"},
   {key:"uhrzeit",   label:"Uhrzeit",     w:"56px"},
   {key:"mannschaft",label:"Mannschaft",  w:"100px"},
+  {key:"betreuer",  label:"Betreuer",    w:"90px"},
+  {key:"fahrer",    label:"Fahrer",      w:"90px"},
   {key:"art",       label:"Art",         w:"56px"},
   {key:"ort",       label:"Ort",         w:"72px"},
   {key:"gegner",    label:"Gegner",      w:"auto"},
@@ -8413,7 +8417,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
                 </td>
                 <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
                 <td style={{padding:"5px 6px"}}></td>
-                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={3}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
+                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={5}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
               </tr>;
             }
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
@@ -8426,6 +8430,20 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               <td style={{padding:"5px 6px"}}>
                 <span style={{background:mc+"22",color:mc,borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.mannschaft}</span>
               </td>
+              {(()=>{
+                // Betreuer/Fahrer nur für Nachwuchsspiele relevant. Bei Herrenmannschaften
+                // beide ausgegraut. Fahrer zusätzlich bei Heimspielen ausgegraut.
+                const istNachwuchs = nachwuchsMannschaften.some(nm=>s.mannschaft===nm||String(s.mannschaft||"").startsWith(nm));
+                const istHeim = s.ort==="Heim";
+                const grau = {padding:"5px 6px",fontSize:10,color:"var(--text4)",background:"var(--bg3)",opacity:0.5,whiteSpace:"nowrap"};
+                const aktiv = {padding:"5px 6px",fontSize:10,color:"var(--text2)",whiteSpace:"nowrap"};
+                const betreuerAus = !istNachwuchs;           // bei Herren ausgegraut
+                const fahrerAus    = !istNachwuchs || istHeim; // bei Herren ODER Heimspiel ausgegraut
+                return <>
+                  <td style={betreuerAus?grau:aktiv}>{betreuerAus?"—":(s.betreuer||"")}</td>
+                  <td style={fahrerAus?grau:aktiv}>{fahrerAus?"—":(s.fahrer||"")}</td>
+                </>;
+              })()}
               <td style={{padding:"5px 6px"}}>
                 <span style={{color:s.art==="Pokal"?"#f59e0b":"var(--text3)",fontSize:10,fontWeight:600}}>{s.art||"Runde"}</span>
               </td>
@@ -8445,7 +8463,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
               </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={9} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={11} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
