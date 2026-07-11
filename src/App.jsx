@@ -8791,6 +8791,17 @@ const VEREINSMITARBEITER_EHRUNGEN = [
 function getAllEhrungLabel(e) {
   return [...SPIELER_VERDIENST,...VEREINSMITARBEITER_EHRUNGEN].find(a=>a.id===e.art)||{icon:"🏅",label:e.art||"Ehrung"};
 }
+// Ehrungen absteigend nach Datum sortieren (aktuellste zuerst); Einträge ohne
+// Datum ans Ende. Verändert das Original-Array nicht.
+function ehrungenNeuesteZuerst(list) {
+  return [...(list||[])].sort((a,b)=>{
+    const da=a?.datum||"", db=b?.datum||"";
+    if(!da&&!db) return 0;
+    if(!da) return 1;
+    if(!db) return -1;
+    return db.localeCompare(da);
+  });
+}
 
 // Mapping der Ehrungs-Bezeichnungen aus der myTischtennis-CSV auf die App-IDs.
 const EHRUNG_CSV_MAP = {
@@ -8901,7 +8912,7 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
       <button onClick={addEhrung} style={{width:"100%",padding:"6px",background:"#f59e0b",border:"none",borderRadius:7,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Speichern</button>
     </div>}
     {ehrungen.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Noch keine Ehrungen.</div>}
-    {ehrungen.map(e=>{
+    {ehrungenNeuesteZuerst(ehrungen).map(e=>{
       const art=getAllEhrungLabel(e);
       const isEditing=editingEhr===e.id;
       if(isEditing) return <div key={e.id} style={{background:"var(--bg3)",borderRadius:8,padding:8,marginBottom:4}}>
@@ -8953,8 +8964,8 @@ function EhrungenView({player}) {
     return unsub;
   },[player?.id]);
 
-  const spieler=ehrungen.filter(e=>e.typ==="spieler");
-  const mit=ehrungen.filter(e=>e.typ==="mitarbeiter");
+  const spieler=ehrungenNeuesteZuerst(ehrungen.filter(e=>e.typ==="spieler"));
+  const mit=ehrungenNeuesteZuerst(ehrungen.filter(e=>e.typ==="mitarbeiter"));
 
   if(!ehrungen.length) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
     <div style={{fontSize:32,marginBottom:8}}>🏅</div>
