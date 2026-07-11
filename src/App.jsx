@@ -1735,7 +1735,123 @@ function ArtikelFotoVerwaltung({showToast}) {
   </div>;
 }
 
-// ─── PERSONEN-ÜBERSICHT (nur Admin, Punkt 11) ────────────────────────────────
+// ─── EHRUNGEN-IMPORT (nur Admin) ─────────────────────────────────────────────
+// Liest die myTischtennis-Geehrten-CSV (ISO-8859-1, ;-getrennt), ordnet die
+// Ehrungen den aktiven UND passiven Erwachsenen per Name zu und ergänzt fehlende
+// Ehrungen (Duplikatschutz über art+datum). Zeigt am Ende, wie viele Ehrungen
+// ergänzt wurden, plus ein Protokoll nicht zugeordneter Namen/Arten.
+function EhrungenImport({players, showToast}) {
+  const [importing,setImporting]=useState(false);
+  const [log,setLog]=useState(null);
+  const inputRef=useRef(null);
+
+  const istErwachsener=(p)=> (p.group==="Erwachsene") || (p.roles?.erwachsene===true);
+
+  async function handleFile(e){
+    const file=e.target.files?.[0];
+    if(inputRef.current) inputRef.current.value="";
+    if(!file) return;
+    setImporting(true); setLog(null);
+    try{
+      const text=await new Promise((res,rej)=>{
+        const r=new FileReader();
+        r.onload=()=>res(r.result);
+        r.onerror=()=>rej(new Error("Datei konnte nicht gelesen werden"));
+        r.readAsText(file,"ISO-8859-1");
+      });
+      const rows=parseEhrungenCSV(text);
+      if(rows.length===0){ showToast&&showToast("Keine Ehrungen in der Datei gefunden","❌"); setImporting(false); return; }
+
+      // Nach Person gruppieren
+      const byPerson=new Map();
+      const norm=(s)=>String(s||"").trim().toLowerCase();
+      for(const row of rows){
+        const key=norm(row.nachname)+"|"+norm(row.vorname);
+        if(!byPerson.has(key)) byPerson.set(key,{nachname:row.nachname,vorname:row.vorname,gebdat:row.gebdat,ehrungen:[]});
+        byPerson.get(key).ehrungen.push(row);
+      }
+
+      const erwachsene=players.filter(istErwachsener);
+      let ehrungenErgaenzt=0, personenAktualisiert=0;
+      const nichtGefunden=[], unbekannteArten=[], aktualisierteNamen=[];
+
+      for(const [,pers] of byPerson){
+        // passenden Erwachsenen finden: Nachname+Vorname (case-insensitiv)
+        let match=erwachsene.find(p=>norm(p.lastName)===norm(pers.nachname)&&norm(p.firstName)===norm(pers.vorname));
+        // Fallback: Geburtsdatum + Nachname (falls Vorname abweichend geschrieben)
+        if(!match&&pers.gebdat) match=erwachsene.find(p=>norm(p.lastName)===norm(pers.nachname)&&p.birthdate===pers.gebdat);
+        if(!match){ nichtGefunden.push(`${pers.vorname} ${pers.nachname}`); continue; }
+
+        const vorhandene=Array.isArray(match.ehrungen)?[...match.ehrungen]:[];
+        let addedForPerson=0;
+        for(const eh of pers.ehrungen){
+          if(!eh.art){ unbekannteArten.push(`${pers.vorname} ${pers.nachname}: „${eh.ehrRaw}“`); continue; }
+          // Duplikatschutz: gleiche Art + gleiches Datum bereits vorhanden?
+          const exists=vorhandene.some(v=>v.art===eh.art && (v.datum||"")===(eh.datum||""));
+          if(exists) continue;
+          vorhandene.push({
+            id:`imp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            typ:eh.typ, art:eh.art, datum:eh.datum||"",
+          });
+          addedForPerson++;
+        }
+        if(addedForPerson>0){
+          try{
+            await updateDoc(doc(db,"players",match.id),{ehrungen:vorhandene});
+            ehrungenErgaenzt+=addedForPerson;
+            personenAktualisiert++;
+            aktualisierteNamen.push(`${match.firstName} ${match.lastName} (+${addedForPerson})`);
+          }catch(err){
+            nichtGefunden.push(`${pers.vorname} ${pers.nachname} — Speicherfehler`);
+          }
+        }
+      }
+
+      setLog({
+        zeilen:rows.length,
+        personenInCsv:byPerson.size,
+        ehrungenErgaenzt, personenAktualisiert,
+        nichtGefunden, unbekannteArten, aktualisierteNamen,
+      });
+      showToast&&showToast(`${ehrungenErgaenzt} Ehrung(en) ergänzt`, "🏅");
+    }catch(err){
+      showToast&&showToast("Import-Fehler: "+err.message,"❌");
+    }
+    setImporting(false);
+  }
+
+  return <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",marginBottom:6}}>🏅 Ehrungen importieren</div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:10}}>
+      CSV der Geehrten (myTischtennis-Format) hochladen. Die Ehrungen werden den aktiven und passiven Erwachsenen per Name zugeordnet; fehlende Ehrungen werden ergänzt, bereits vorhandene bleiben unverändert.
+    </div>
+    <input ref={inputRef} type="file" accept=".csv" onChange={handleFile} disabled={importing}
+      style={{fontSize:12,color:"var(--text2)"}}/>
+    {importing&&<div style={{marginTop:8,fontSize:12,color:"#f59e0b"}}>⏳ Import läuft…</div>}
+    {log&&<div style={{marginTop:12,background:"var(--bg3)",borderRadius:9,padding:12}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#10b981",marginBottom:8}}>
+        ✅ {log.ehrungenErgaenzt} Ehrung(en) ergänzt bei {log.personenAktualisiert} Person(en)
+      </div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>
+        {log.zeilen} Ehrungs-Zeilen in der Datei · {log.personenInCsv} Personen in der Datei
+      </div>
+      {log.aktualisierteNamen.length>0&&<div style={{marginBottom:8}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:3}}>Aktualisiert:</div>
+        <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>{log.aktualisierteNamen.join(" · ")}</div>
+      </div>}
+      {log.nichtGefunden.length>0&&<div style={{marginBottom:8}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#ef4444",marginBottom:3}}>Nicht zugeordnet ({log.nichtGefunden.length}) — kein passender Erwachsener gefunden:</div>
+        <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>{log.nichtGefunden.join(" · ")}</div>
+      </div>}
+      {log.unbekannteArten.length>0&&<div>
+        <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:3}}>Unbekannte Ehrungsart ({log.unbekannteArten.length}):</div>
+        <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>{log.unbekannteArten.join(" · ")}</div>
+      </div>}
+    </div>}
+  </div>;
+}
+
+
 // Tabelle aller Personen: Funktionen, Gruppe, Status, Datenschutz-Datum.
 // Alle Spalten filter- und sortierbar; Kopfzeile fixiert (sticky).
 function PersonenUebersicht({players}) {
@@ -2554,6 +2670,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
     {isSuperAdmin && <PersonenUebersicht players={players}/>}
+
+    {/* Ehrungen-Import (myTischtennis-CSV) — nur für Admins */}
+    {isSuperAdmin && <EhrungenImport players={players} showToast={showToast}/>}
 
     {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
     <ArtikelFotoVerwaltung showToast={showToast}/>
@@ -8671,6 +8790,64 @@ const VEREINSMITARBEITER_EHRUNGEN = [
 ];
 function getAllEhrungLabel(e) {
   return [...SPIELER_VERDIENST,...VEREINSMITARBEITER_EHRUNGEN].find(a=>a.id===e.art)||{icon:"🏅",label:e.art||"Ehrung"};
+}
+
+// Mapping der Ehrungs-Bezeichnungen aus der myTischtennis-CSV auf die App-IDs.
+const EHRUNG_CSV_MAP = {
+  "spielerverdienstnadel in bronze":      {typ:"spieler",    art:"sv_bronze"},
+  "spielerverdienstnadel in silber":      {typ:"spieler",    art:"sv_silber"},
+  "spielerverdienstnadel in gold":        {typ:"spieler",    art:"sv_gold"},
+  "spielerverdienstnadel in gold (30)":   {typ:"spieler",    art:"sv_gold30"},
+  "spielerverdienstnadel in gold (40)":   {typ:"spieler",    art:"sv_gold40"},
+  "spielerverdienstnadel in gold (50)":   {typ:"spieler",    art:"sv_gold50"},
+  "spielerverdienstnadel in gold (60)":   {typ:"spieler",    art:"sv_gold60"},
+  "spielerverdienstnadel in gold (70)":   {typ:"spieler",    art:"sv_gold70"},
+  "ehrenurkunde":                         {typ:"mitarbeiter",art:"em_urkunde"},
+  "ehrennadel in bronze":                 {typ:"mitarbeiter",art:"em_bronze"},
+  "ehrennadel in silber":                 {typ:"mitarbeiter",art:"em_silber"},
+  "ehrennadel in gold":                   {typ:"mitarbeiter",art:"em_gold"},
+  "ehrennadel in gold mit kranz":         {typ:"mitarbeiter",art:"em_goldkranz"},
+  "ehrennadel in gold mit großem kranz":  {typ:"mitarbeiter",art:"em_goldgrosskranz"},
+};
+// dd.mm.yyyy -> yyyy-mm-dd (Speicherformat der App)
+function ehrungDatumISO(s){
+  const m=String(s||"").trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(!m) return "";
+  return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+}
+// Zerlegt eine mit ; getrennte CSV-Zeile (mit optionalen Anführungszeichen).
+function splitCsvLine(line){
+  const out=[]; let cur=""; let q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){ if(q&&line[i+1]==='"'){cur+='"';i++;} else q=!q; }
+    else if(c===";"&&!q){ out.push(cur); cur=""; }
+    else cur+=c;
+  }
+  out.push(cur);
+  return out;
+}
+// Parst die Geehrten-CSV zu [{nachname,vorname,gebdat,art,typ,datum}]
+function parseEhrungenCSV(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim()!=="");
+  if(lines.length<2) return [];
+  const head=splitCsvLine(lines[0]).map(h=>h.trim());
+  const idx=(name)=>head.findIndex(h=>h.toLowerCase()===name.toLowerCase());
+  const iNach=idx("Nachname/VereinName"), iVor=idx("Vorname/VereinNr"),
+        iGeb=idx("Geburtsdatum"), iEhr=idx("Ehrung"), iAm=idx("EhrungAm");
+  const res=[];
+  for(let r=1;r<lines.length;r++){
+    const c=splitCsvLine(lines[r]);
+    const nach=(c[iNach]||"").trim(), vor=(c[iVor]||"").trim();
+    const ehrRaw=(c[iEhr]||"").trim();
+    if(!nach||!ehrRaw) continue;
+    const map=EHRUNG_CSV_MAP[ehrRaw.toLowerCase()];
+    res.push({
+      nachname:nach, vorname:vor, gebdat:ehrungDatumISO(c[iGeb]||""),
+      ehrRaw, typ:map?.typ||null, art:map?.art||null, datum:ehrungDatumISO(c[iAm]||""),
+    });
+  }
+  return res;
 }
 
 function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
