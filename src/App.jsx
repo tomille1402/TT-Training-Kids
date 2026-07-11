@@ -9235,12 +9235,12 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
               flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
               border:`2px solid ${groupFilter==="all"?"#6b7280":"#6b728044"}`,
               background:groupFilter==="all"?"#6b728022":"transparent",
-              color:groupFilter==="all"?"#9ca3af":"#6b728066"}}>Alle</button>
+              color:groupFilter==="all"?"#9ca3af":"var(--text2)"}}>Alle</button>
             {["Profis","Fortgeschrittene","Anfänger","Trainer"].map(g=>{
               const col=GROUP_COLORS[g]; const on=groupFilter===g;
               return <button key={g} onClick={()=>setGroupFilter(g)} style={{
                 flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
+                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:"var(--text2)",
               }}>{g}</button>;
             })}
           </>}
@@ -9249,7 +9249,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
               const col=GROUP_COLORS[g]||"#64748b"; const on=adminGroupFilters[g];
               return <button key={g} onClick={()=>setAdminGroupFilters(p=>({...p,[g]:!on}))} style={{
                 flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
-                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:col+"66",
+                border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:"var(--text2)",
               }}>{g}</button>;
             })}
           {/* Punkt 4: Text-Label über der Namensliste entfernt (galt nur für Admins ohnehin) */}
@@ -9761,28 +9761,31 @@ export default function App() {
   }
 
   // ── Eltern-Login: mehrere Kinder (und ggf. eigenes Profil) unter einer E-Mail ──
-  // Greift, wenn diese Adresse als elternEmail bei aktiven Kindern hinterlegt ist
-  // und der Nutzer kein Admin/Trainer ist.
+  // Greift, wenn diese Adresse als elternEmail bei aktiven Kindern hinterlegt ist.
+  // Maßgeblich sind die im Datensatz ZUGEORDNETEN Funktionen der Person – NICHT der
+  // per E-Mail-Liste vergebene globale Admin-Status. So sieht z.B. ein Elternteil,
+  // das zufällig in der Admin-E-Mail-Liste steht, trotzdem seine Kinder.
   const ownRoles = myPlayer?.roles || {};
-  const istAdminOderTrainer = isAdmin || isSuperAdmin || ownRoles.admin===true || ownRoles.trainer===true;
-  if (meineKinder.length > 0 && !istAdminOderTrainer) {
+  const hatEigeneFunktion = ownRoles.admin===true || ownRoles.trainer===true;
+  if (meineKinder.length > 0 && !hatEigeneFunktion) {
     return <ElternView user={authUser} players={players} attendance={attendance} rackets={rackets}
       kinder={meineKinder} ownProfile={myPlayer||null}
       viewsForPerson={viewsForPerson} sharedProps={sharedPropsGlobal}
       globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}/>;
   }
 
-  // Rollen aus Spieler-Profil ermitteln
+  // Rollen aus Spieler-Profil ermitteln — die im Datensatz ZUGEORDNETEN Funktionen
+  // sind maßgeblich. Der per E-Mail-Liste vergebene globale Status wirkt nur noch:
+  //   - isSuperAdmin → garantierter Admin-Zugang (Verwaltung), UND
+  //   - isAdmin → nur als Fallback, wenn die Person gar kein Profil/keine Rolle hat.
   const playerRoles = myPlayer?.roles || {};
-  // Punkt 5: Trainer-View NUR bei zugeordneter Trainer-Funktion (nicht automatisch für Admins).
-  // Admins haben ohnehin die Admin-View mit vollem Zugriff.
-  const hasTrainerRole = playerRoles.trainer === true;
-  const hasAdminRole   = isSuperAdmin || playerRoles.admin === true;
+  const hasTrainerRole = playerRoles.trainer === true;              // strikt: nur zugeordnete Funktion
+  const hasAdminRole   = isSuperAdmin || playerRoles.admin === true; // Admin-Ansicht
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
-  // hasPlayerRole: explicit player-role, OR admin, OR has profile but NOT purely erwachsene/MF
-  const hasPlayerRole  = playerRoles.player === true || (isAdmin && !hasErwachseneRole) ||
-    (!!myPlayer && !hasErwachseneRole && !hasMFRole && !playerRoles.trainer && !playerRoles.admin);
+  // Spieler-View: explizite Spieler-Rolle ODER ein Profil ohne andere Sonderrolle.
+  const hasPlayerRole  = playerRoles.player === true ||
+    (!!myPlayer && !hasErwachseneRole && !hasMFRole && !hasTrainerRole && !playerRoles.admin);
 
   // Erwachsene-only: nur eigene Daten
   const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player && !hasMFRole;
@@ -9794,7 +9797,8 @@ export default function App() {
   if (hasPlayerRole && myPlayer)    availableViews.push("player");
   if (hasErwachseneRole)            availableViews.push("erwachsene");
   if (hasMFRole)                    availableViews.push("mannschaftsfuehrer");
-  if (availableViews.length === 0 && isAdmin) availableViews.push("trainer");
+  // Fallback: Person ohne jede zugeordnete Rolle, aber in Admin-E-Mail-Liste → Admin/Trainer-Zugang
+  if (availableViews.length === 0 && (isSuperAdmin || isAdmin)) availableViews.push(isSuperAdmin?"admin":"trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
   if (!myPlayer && !isAdmin) return (
@@ -9823,12 +9827,13 @@ export default function App() {
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
   if (availableViews.length <= 1) {
-    if (isAdmin || hasTrainerRole) return (
+    const only = availableViews[0];
+    if (only==="admin" || only==="trainer") return (
       <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
         isSuperAdmin={hasAdminRole} globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}
         onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)} {...sharedProps}/>
     );
-    // Punkt 3: Erwachsene-only → ErwachseneView (nicht PlayerView)
+    // Erwachsene-only → ErwachseneView (nicht PlayerView)
     if (isErwachseneOnly) return (
       <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer}
         globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
@@ -9838,7 +9843,7 @@ export default function App() {
       <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer} isMF
         globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
     );
-    return <PlayerView user={authUser} players={players} attendance={attendance} {...sharedProps}/>;
+    return <PlayerView user={authUser} players={players} attendance={attendance} forcePlayer={myPlayer} {...sharedProps}/>;
   }
 
   // Mehrere Views → RoleSwitch wrapper
