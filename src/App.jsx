@@ -1704,9 +1704,9 @@ function ArtikelFotoVerwaltung({showToast}) {
       <div style={{fontSize:13,fontWeight:800}}>🖼️ Artikel-Fotos für Bestellungen <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>({anzahlMitFoto}/{BESTELL_ARTIKEL.length})</span></div>
       <span style={{fontSize:13,color:"var(--text3)"}}>{offen?"▲":"▼"}</span>
     </div>
-    <div style={{fontSize:11,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
+    {offen && <div style={{fontSize:11,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
       Hier lädst du die Produktfotos hoch, die im Reiter „Bestellungen" bei den Artikeln erscheinen. Empfohlen: quadratische Bilder unter 1 MB.
-    </div>
+    </div>}
     {offen && <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
       {BESTELL_ARTIKEL.map(a=>(
         <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,padding:"7px 9px"}}>
@@ -1743,6 +1743,7 @@ function ArtikelFotoVerwaltung({showToast}) {
 function EhrungenImport({players, showToast}) {
   const [importing,setImporting]=useState(false);
   const [log,setLog]=useState(null);
+  const [offen,setOffen]=useState(false);
   const inputRef=useRef(null);
 
   const istErwachsener=(p)=> (p.group==="Erwachsene") || (p.roles?.erwachsene===true);
@@ -1821,8 +1822,12 @@ function EhrungenImport({players, showToast}) {
   }
 
   return <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
-    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",marginBottom:6}}>🏅 Ehrungen importieren</div>
-    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setOffen(v=>!v)}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>🏅 Ehrungen importieren</div>
+      <span style={{fontSize:13,color:"var(--text3)"}}>{offen?"▲":"▼"}</span>
+    </div>
+    {offen && <>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,margin:"8px 0 10px"}}>
       CSV der Geehrten (myTischtennis-Format) hochladen. Die Ehrungen werden den aktiven und passiven Erwachsenen per Name zugeordnet; fehlende Ehrungen werden ergänzt, bereits vorhandene bleiben unverändert.
     </div>
     <input ref={inputRef} type="file" accept=".csv" onChange={handleFile} disabled={importing}
@@ -1848,6 +1853,7 @@ function EhrungenImport({players, showToast}) {
         <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>{log.unbekannteArten.join(" · ")}</div>
       </div>}
     </div>}
+    </>}
   </div>;
 }
 
@@ -1855,37 +1861,51 @@ function EhrungenImport({players, showToast}) {
 // Tabelle aller Personen: Funktionen, Gruppe, Status, Datenschutz-Datum.
 // Alle Spalten filter- und sortierbar; Kopfzeile fixiert (sticky).
 function PersonenUebersicht({players}) {
+  const [offen,setOffen]=useState(false);
   const [sortKey,setSortKey]=useState("name");
   const [sortDir,setSortDir]=useState("asc");
-  const [filters,setFilters]=useState({name:"",funktionen:"",group:"",status:"",datenschutz:""});
+  // Mehrfachfilter: Arrays statt Einzelwerte. Funktionen/Gruppe/Status als Sets.
+  const [nameFilter,setNameFilter]=useState("");
+  const [funktFilter,setFunktFilter]=useState([]);   // Rollen-Keys
+  const [gruppeFilter,setGruppeFilter]=useState([]);  // Gruppennamen
+  const [statusFilter,setStatusFilter]=useState([]);  // aktiv/passiv
+  const [dsFilter,setDsFilter]=useState([]);          // ja/nein
 
-  const rollenText=(p)=>{
+  const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"]];
+  const rollenKurz=(p)=>{
     const r=p.roles||{};
     const list=[];
-    if(r.admin) list.push("Admin");
-    if(r.trainer) list.push("Trainer");
-    if(r.player) list.push("Spieler");
-    if(r.erwachsene) list.push("Erwachsene");
-    if(r.mannschaftsfuehrer) list.push("Mannschaftsführer");
-    return list.join(", ")||"—";
+    if(r.admin) list.push("A");
+    if(r.trainer) list.push("T");
+    if(r.player) list.push("S");
+    if(r.erwachsene) list.push("E");
+    if(r.mannschaftsfuehrer) list.push("MF");
+    return list.join("·")||"—";
   };
   const dsText=(p)=> p.datenschutzAccepted ? String(p.datenschutzAccepted).split("-").reverse().join(".") : "—";
   const rows=players.map(p=>({
     id:p.id,
     name:`${p.firstName||""} ${p.lastName||""}`.trim()||p.name||"—",
-    funktionen:rollenText(p),
+    roles:p.roles||{},
+    funktionen:rollenKurz(p),
     group:p.group||"Anfänger",
     status:p.status||"aktiv",
     datenschutz:dsText(p),
     dsSort:p.datenschutzAccepted||"",
   }));
   const filtered=rows.filter(r=>{
-    if(filters.name&&!r.name.toLowerCase().includes(filters.name.toLowerCase())) return false;
-    if(filters.funktionen&&!r.funktionen.toLowerCase().includes(filters.funktionen.toLowerCase())) return false;
-    if(filters.group&&r.group!==filters.group) return false;
-    if(filters.status&&r.status!==filters.status) return false;
-    if(filters.datenschutz==="ja"&&!r.dsSort) return false;
-    if(filters.datenschutz==="nein"&&r.dsSort) return false;
+    if(nameFilter&&!r.name.toLowerCase().includes(nameFilter.toLowerCase())) return false;
+    // Mehrfachfilter Funktionen: Person muss MINDESTENS eine der gewählten Rollen haben
+    if(funktFilter.length>0 && !funktFilter.some(k=>r.roles[k]===true)) return false;
+    // Mehrfachfilter Gruppe: Person muss in einer der gewählten Gruppen sein
+    if(gruppeFilter.length>0 && !gruppeFilter.includes(r.group)) return false;
+    // Mehrfachfilter Status
+    if(statusFilter.length>0 && !statusFilter.includes(r.status)) return false;
+    // Mehrfachfilter Datenschutz
+    if(dsFilter.length>0){
+      const zust=r.dsSort?"ja":"nein";
+      if(!dsFilter.includes(zust)) return false;
+    }
     return true;
   });
   const sorted=[...filtered].sort((a,b)=>{
@@ -1900,62 +1920,76 @@ function PersonenUebersicht({players}) {
     if(sortKey===k) setSortDir(d=>d==="asc"?"desc":"asc");
     else {setSortKey(k);setSortDir("asc");}
   }
+  const toggleIn=(arr,setArr,val)=> setArr(arr.includes(val)?arr.filter(x=>x!==val):[...arr,val]);
   const arrow=(k)=> sortKey===k ? (sortDir==="asc"?" ▲":" ▼") : "";
-  const th={padding:"8px 8px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
-  const td={padding:"6px 8px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",verticalAlign:"top"};
-  const fInp={width:"100%",padding:"4px 6px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",boxSizing:"border-box"};
+  // Punkt 2: schmale Spalten – minimale Paddings, keine Umbrüche, kompakte Schrift
+  const th={padding:"6px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
+  const td={padding:"5px 6px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+  const anzFilterAktiv = (nameFilter?1:0)+funktFilter.length+gruppeFilter.length+statusFilter.length+dsFilter.length;
 
-  const alleGruppen=["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+  // Kleine Chip-Leiste für Mehrfachfilter
+  const FilterChips=({title,options,sel,setSel})=>(
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:3}}>{title}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+        {options.map(([val,lab])=>{
+          const on=sel.includes(val);
+          return <button key={val} onClick={()=>toggleIn(sel,setSel,val)} style={{
+            padding:"3px 9px",borderRadius:14,fontSize:10,fontWeight:700,cursor:"pointer",
+            border:`1px solid ${on?"#3b82f6":"var(--border2)"}`,
+            background:on?"#3b82f622":"transparent",color:on?"#3b82f6":"var(--text3)"}}>{lab}</button>;
+        })}
+      </div>
+    </div>
+  );
 
   return <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-      <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>📋 Personen-Übersicht ({sorted.length})</div>
-      <div style={{fontSize:10,color:"var(--text4)"}}>Spalten anklicken zum Sortieren</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setOffen(v=>!v)}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>📋 Personen-Übersicht <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>({players.length})</span></div>
+      <span style={{fontSize:13,color:"var(--text3)"}}>{offen?"▲":"▼"}</span>
     </div>
-    <div style={{maxHeight:"70vh",overflowY:"auto",overflowX:"auto",borderRadius:8,border:"1px solid var(--border)"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
-        <thead>
-          <tr>
-            <th style={th} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
-            <th style={th} onClick={()=>toggleSort("funktionen")}>Funktionen{arrow("funktionen")}</th>
-            <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
-            <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
-            <th style={th} onClick={()=>toggleSort("datenschutz")}>Datenschutz{arrow("datenschutz")}</th>
-          </tr>
-          <tr>
-            <th style={{...th,top:32,cursor:"default"}}><input value={filters.name} onChange={e=>setFilters(f=>({...f,name:e.target.value}))} placeholder="Filter…" style={fInp}/></th>
-            <th style={{...th,top:32,cursor:"default"}}><input value={filters.funktionen} onChange={e=>setFilters(f=>({...f,funktionen:e.target.value}))} placeholder="Filter…" style={fInp}/></th>
-            <th style={{...th,top:32,cursor:"default"}}>
-              <select value={filters.group} onChange={e=>setFilters(f=>({...f,group:e.target.value}))} style={fInp}>
-                <option value="">Alle</option>{alleGruppen.map(g=><option key={g} value={g}>{g}</option>)}
-              </select>
-            </th>
-            <th style={{...th,top:32,cursor:"default"}}>
-              <select value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))} style={fInp}>
-                <option value="">Alle</option><option value="aktiv">aktiv</option><option value="passiv">passiv</option>
-              </select>
-            </th>
-            <th style={{...th,top:32,cursor:"default"}}>
-              <select value={filters.datenschutz} onChange={e=>setFilters(f=>({...f,datenschutz:e.target.value}))} style={fInp}>
-                <option value="">Alle</option><option value="ja">zugestimmt</option><option value="nein">offen</option>
-              </select>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(r=>(
-            <tr key={r.id}>
-              <td style={{...td,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap"}}>{r.name}</td>
-              <td style={td}>{r.funktionen}</td>
-              <td style={td}>{r.group}</td>
-              <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
-              <td style={td}>{r.datenschutz}</td>
+    {offen && <>
+      {/* Punkt 3: Mehrfachfilter über Chip-Leisten */}
+      <div style={{marginTop:10,marginBottom:10,padding:"10px 10px 4px",background:"var(--bg3)",borderRadius:9}}>
+        <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name filtern…"
+          style={{width:"100%",padding:"6px 8px",fontSize:11,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",boxSizing:"border-box",marginBottom:8}}/>
+        <FilterChips title="Funktionen (mehrere möglich)" options={ROLLEN} sel={funktFilter} setSel={setFunktFilter}/>
+        <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>[g,g])} sel={gruppeFilter} setSel={setGruppeFilter}/>
+        <FilterChips title="Status" options={[["aktiv","aktiv"],["passiv","passiv"]]} sel={statusFilter} setSel={setStatusFilter}/>
+        <FilterChips title="Datenschutz" options={[["ja","zugestimmt"],["nein","offen"]]} sel={dsFilter} setSel={setDsFilter}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4,paddingBottom:6}}>
+          <span style={{fontSize:10,color:"var(--text4)"}}>{sorted.length} von {rows.length} · Spalten anklicken zum Sortieren</span>
+          {anzFilterAktiv>0&&<button onClick={()=>{setNameFilter("");setFunktFilter([]);setGruppeFilter([]);setStatusFilter([]);setDsFilter([]);}}
+            style={{padding:"3px 9px",fontSize:10,fontWeight:700,background:"transparent",border:"1px solid var(--border2)",borderRadius:12,color:"var(--text3)",cursor:"pointer"}}>Filter zurücksetzen</button>}
+        </div>
+      </div>
+      <div style={{maxHeight:"70vh",overflowY:"auto",overflowX:"auto",borderRadius:8,border:"1px solid var(--border)"}}>
+        <table style={{borderCollapse:"collapse",width:"auto"}}>
+          <thead>
+            <tr>
+              <th style={th} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
+              <th style={th} onClick={()=>toggleSort("funktionen")}>Funkt.{arrow("funktionen")}</th>
+              <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
+              <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+              <th style={th} onClick={()=>toggleSort("datenschutz")}>DS{arrow("datenschutz")}</th>
             </tr>
-          ))}
-          {sorted.length===0&&<tr><td colSpan={5} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Treffer</td></tr>}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {sorted.map(r=>(
+              <tr key={r.id}>
+                <td style={{...td,fontWeight:700,color:"var(--text)"}}>{r.name}</td>
+                <td style={td}>{r.funktionen}</td>
+                <td style={td}>{r.group}</td>
+                <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
+                <td style={td}>{r.datenschutz}</td>
+              </tr>
+            ))}
+            {sorted.length===0&&<tr><td colSpan={5} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Funktionen: A=Admin · T=Trainer · S=Spieler · E=Erwachsene · MF=Mannschaftsführer · DS=Datum Datenschutz-Zustimmung</div>
+    </>}
   </div>;
 }
 
@@ -1987,6 +2021,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [saving,setSaving]=useState(false);
   const [loginUpgradeFor,setLoginUpgradeFor]=useState(null);
   const [zeigeLoginProbleme,setZeigeLoginProbleme]=useState(false);
+  const [zeigeReparatur,setZeigeReparatur]=useState(false);
   const [sammelLauft,setSammelLauft]=useState(false);
   const [sammelLog,setSammelLog]=useState(null); // {ok:[], fehler:[], mail:[]}
   const [upgradeEmail,setUpgradeEmail]=useState("");
@@ -2600,10 +2635,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           </div>
           <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
         </div>
-        <div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
+        {zeigeLoginProbleme && <><div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
           Hier sind <b>alle {alleAktiv.length} aktiven Personen</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
           „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
-          E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten. Klick auf den Titel klappt die Liste auf/zu.
+          E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten.
         </div>
         {(()=>{
           const flagFaelle = alleAktiv.filter(p=>p.noLogin===true && !istKuenstlicheEmail(p.email));
@@ -2619,7 +2654,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             </button>
           </div>;
         })()}
-        {zeigeLoginProbleme && <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
           {alleAktiv.map(p=>{
             const st=statusOf(p);
             const krit=hatKeinEchtesLogin(p);
@@ -2636,7 +2671,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 → Login einrichten</button>
             </div>;
           })}
-        </div>}
+        </div></>}
       </div>;
     })()}
 
@@ -2645,8 +2680,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const mitEchterMail = players.filter(p=>p.status!=="passiv" && !istKuenstlicheEmail(p.email));
       if(mitEchterMail.length===0 && !sammelLog) return null;
       return <div style={{background:"#3b82f610",border:"1px solid #3b82f644",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:800,color:"#2563eb",marginBottom:6}}>🔧 Passwort-Mail / Login-Reparatur</div>
-        <div style={{fontSize:11,color:"var(--text2)",marginBottom:10,lineHeight:1.5}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setZeigeReparatur(v=>!v)}>
+          <div style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>🔧 Passwort-Mail / Login-Reparatur</div>
+          <span style={{fontSize:13,color:"#2563eb"}}>{zeigeReparatur?"▲":"▼"}</span>
+        </div>
+        {zeigeReparatur && <>
+        <div style={{fontSize:11,color:"var(--text2)",margin:"8px 0 10px",lineHeight:1.5}}>
           Verschickt an alle {mitEchterMail.length} Personen mit hinterlegter echter E-Mail eine Passwort-Mail und stellt
           sicher, dass ihr Login auf die echte Adresse läuft. Personen, deren Login-Konto noch auf einer Platzhalter-Adresse
           liegt (z. B. Heiko Schmid), werden dabei automatisch auf ihre echte E-Mail umgestellt — alle Daten bleiben erhalten.
@@ -2665,6 +2704,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           </div>}
           <button onClick={()=>setSammelLog(null)} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Schließen</button>
         </div>}
+        </>}
       </div>;
     })()}
 
