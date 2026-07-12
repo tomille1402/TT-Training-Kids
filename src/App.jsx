@@ -5036,9 +5036,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
-    {activeTab==="kalender"&&<KalenderExport/>}
+    {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={false}
@@ -6664,6 +6664,13 @@ const SPIELPLAN_TO_AUFSTELLUNG = {
   "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
   "Jugend 11":"Jugend 11",
 };
+// Umkehrung: Aufstellungs-Name → Spielplan-Name (Erwachsene V → Herren 5).
+const AUFSTELLUNG_TO_SPIELPLAN = {
+  "Erwachsene":"Herren 1", "Erwachsene II":"Herren 2", "Erwachsene III":"Herren 3",
+  "Erwachsene IV":"Herren 4", "Erwachsene V":"Herren 5", "Erwachsene VI":"Herren 6",
+  "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
+  "Jugend 11":"Jugend 11",
+};
 // Erwachsenen-Mannschaftsnummer aus Aufstellungs-Name (Erwachsene=1, Erwachsene II=2, …)
 const ERW_NUM = {"Erwachsene":1,"Erwachsene II":2,"Erwachsene III":3,"Erwachsene IV":4,"Erwachsene V":5,"Erwachsene VI":6};
 function istErwachsenenMannschaft(aufName){ return aufName in ERW_NUM; }
@@ -6686,6 +6693,41 @@ function teamsOfPlayer(player, aufstellungSpieler){
     if(playerMatchesAufName(player,row.name)) teams.add(row.mannschaft);
   }
   return [...teams];
+}
+
+// Prüft, ob eine Aufstellungszeile NES trägt (Nachwuchs-Ergänzungsspieler).
+function rowHatNES(row){
+  if(!row||!row.bem) return false;
+  return String(row.bem).split(/[\s,]+/).map(t=>t.trim()).includes("NES");
+}
+
+// Mannschaften, in denen der Spieler OHNE NES-Status aufgestellt ist (also seine
+// eigentliche Stamm-/Meldemannschaft, nicht bloß als Nachwuchs-Ergänzung).
+function teamsOfPlayerOhneNES(player, aufstellungSpieler){
+  const teams=new Set();
+  for(const row of aufstellungSpieler){
+    if(playerMatchesAufName(player,row.name) && !rowHatNES(row)) teams.add(row.mannschaft);
+  }
+  return [...teams];
+}
+
+// Die für Spielplan/Kalender vorzuwählende Mannschaft einer eingeloggten Person:
+// - Erwachsene: die gemeldete (tiefste) Erwachsenen-Mannschaft = höchste Nummer
+//   (Erwachsene spielen in genau einer Mannschaft, höher nur als Ersatz).
+// - Nachwuchs/Spieler: die Mannschaft, in der sie OHNE NES aufgestellt sind.
+// Rückgabe: Aufstellungs-Mannschaftsname oder "" wenn nicht ermittelbar.
+function stammMannschaftVorauswahl(player, aufstellungSpieler){
+  if(!player) return "";
+  const ohneNES = teamsOfPlayerOhneNES(player, aufstellungSpieler);
+  const erwOhne = ohneNES.filter(istErwachsenenMannschaft);
+  if(erwOhne.length>0) return erwOhne.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0]; // tiefste = höchste Nummer
+  const nwOhne = ohneNES.filter(istNachwuchsMannschaft);
+  if(nwOhne.length>0) return nwOhne[0];
+  // Fallback: falls nur NES-Meldungen existieren, nimm irgendeine zugeordnete
+  const alle = teamsOfPlayer(player, aufstellungSpieler);
+  const erwAlle = alle.filter(istErwachsenenMannschaft);
+  if(erwAlle.length>0) return erwAlle.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
+  return alle[0]||"";
 }
 
 // Aufstellungs-Rang (z.B. "1.5") eines Spielers in einer bestimmten Mannschaft
@@ -7805,7 +7847,7 @@ function buildICS(options){
 // weil Redirects unter /.netlify/functions/ nicht zuverlaessig angewendet werden.
 const KALENDER_FEED_BASE = "/kalender.ics";
 
-function KalenderExport(){
+function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
   const SAISON_OPTS=[
     {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
@@ -7840,27 +7882,67 @@ function KalenderExport(){
   const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
 
   const [selTeams,setSelTeams]=useState([]);
-  const [vorlauf,setVorlauf]=useState(60);
+  const [vorlauf,setVorlauf]=useState(60); // Punkt 4: Erinnerung 1 Stunde
   const [dauer,setDauer]=useState(120);
   const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
-  const [selRubriken,setSelRubriken]=useState([...TERMIN_RUBRIKEN]); // Standard: alle Rubriken an
-  const [puffer,setPuffer]=useState(false);
+  // Punkt 3: Welche Vereinstermine standardmäßig? Spieler → Alle+Nachwuchs,
+  // Erwachsene → Alle+Erwachsene. Sonst (Admin) alle Rubriken.
+  const [selRubriken,setSelRubriken]=useState(
+    vorauswahlPlayer
+      ? (istErwachseneView ? ["Alle","Erwachsene"] : ["Alle","Nachwuchs"])
+      : [...TERMIN_RUBRIKEN]
+  );
+  // Punkt 5: Fahrt-/Auf-/Abbauzeit — bei Spielern voreingestellt, bei Erwachsenen nicht.
+  const [puffer,setPuffer]=useState(!!vorauswahlPlayer && !istErwachseneView);
   const [copied,setCopied]=useState(false);
 
   // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften)
-  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); },[selSaison]);
+  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); kalVorauswahlRef.current=""; },[selSaison]);
 
-  // Punkt 3: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2h),
+  // Punkt 2: Aufstellung laden und die Stammmannschaft des eingeloggten Spielers/
+  // Erwachsenen als Team vorauswählen (Spielplan-Name, passend zu alleMannschaften).
+  const [aufSpielerKal,setAufSpielerKal]=useState([]);
+  useEffect(()=>{
+    if(!vorauswahlPlayer||!selSaison){ setAufSpielerKal([]); return; }
+    const jahre=selSaison.replace("spielplan_","");
+    const aufKey=`aufstellung_${jahre}_V`;
+    const unsub=onSnapshot(doc(db,"config",aufKey),snap=>{
+      const data=snap.exists()&&(snap.data().spieler||[]).length>0
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+      setAufSpielerKal(data);
+    },()=>setAufSpielerKal(AUFSTELLUNG_DATA[`aufstellung_${jahre}_V`]||[]));
+    return unsub;
+  },[vorauswahlPlayer,selSaison]);
+
+  const kalVorauswahlRef=useRef("");
+  useEffect(()=>{
+    if(!vorauswahlPlayer||aufSpielerKal.length===0||alleMannschaften.length===0) return;
+    const key=`${selSaison}|${vorauswahlPlayer.id||""}`;
+    if(kalVorauswahlRef.current===key) return;
+    const aufTeam=stammMannschaftVorauswahl(vorauswahlPlayer, aufSpielerKal);
+    if(!aufTeam) return;
+    const spielplanTeam=AUFSTELLUNG_TO_SPIELPLAN[aufTeam]||aufTeam;
+    const match=alleMannschaften.find(m=>m===spielplanTeam||m.startsWith(spielplanTeam));
+    if(!match) return;
+    kalVorauswahlRef.current=key;
+    setSelTeams([match]);
+  },[vorauswahlPlayer,aufSpielerKal,alleMannschaften,selSaison]);
+
+  // Punkt 4: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2,5h),
   // solange der Nutzer die Dauer nicht manuell geändert hat.
   useEffect(()=>{
     if(dauerManuell) return;
-    if(selTeams.length===0){ setDauer(120); return; } // Standard 2h
+    if(selTeams.length===0){
+      // Ohne Team-Auswahl: nach Rolle vorbelegen (Erwachsene 2,5h, sonst 1,5h Standard)
+      setDauer(istErwachseneView?150:90);
+      return;
+    }
     const nurNachwuchs = selTeams.every(istNachwuchsMannschaft);
     const nurErwachsene = selTeams.every(t=>!istNachwuchsMannschaft(t));
     if(nurNachwuchs) setDauer(90);        // 1,5 Stunden
-    else if(nurErwachsene) setDauer(120); // 2 Stunden
-    else setDauer(120);                   // gemischt → 2 Stunden
-  },[selTeams, dauerManuell]);
+    else if(nurErwachsene) setDauer(150); // 2,5 Stunden
+    else setDauer(150);                   // gemischt → 2,5 Stunden
+  },[selTeams, dauerManuell, istErwachseneView]);
 
   function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
   function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
@@ -8349,7 +8431,7 @@ function TermineView() {
   </div>;
 }
 
-function VereinsSpielplan({nurNachwuchs=false}) {
+function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
   const [einsaetzeData,setEinsaetzeData]=useState({}); // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
@@ -8378,6 +8460,41 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     },()=>setEinsaetzeData({}));
     return unsub;
   },[selSeason]);
+
+  // Aufstellung der gewählten Saison laden (für die Mannschafts-Vorauswahl eines
+  // eingeloggten Spielers/Erwachsenen). Aufstellungs-Doc-Key wird aus der Saison
+  // abgeleitet: spielplan_2026_2027 -> aufstellung_2026_2027_V (Vorrunde).
+  const [aufSpielerSP,setAufSpielerSP]=useState([]);
+  useEffect(()=>{
+    if(!vorauswahlPlayer||!selSeason||selSeason==="_local"){ setAufSpielerSP([]); return; }
+    const jahre=selSeason.replace("spielplan_","");
+    const aufKey=`aufstellung_${jahre}_V`;
+    const unsub=onSnapshot(doc(db,"config",aufKey),snap=>{
+      const data=snap.exists()&&(snap.data().spieler||[]).length>0
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+      setAufSpielerSP(data);
+    },()=>setAufSpielerSP(AUFSTELLUNG_DATA[`aufstellung_${jahre}_V`]||[]));
+    return unsub;
+  },[vorauswahlPlayer,selSeason]);
+
+  // Mannschafts-Vorauswahl: sobald Aufstellung geladen ist, den Mannschaftsfilter
+  // auf die Stammmannschaft des eingeloggten Spielers setzen (einmal pro Saison/Person).
+  const spVorauswahlRef=useRef("");
+  useEffect(()=>{
+    if(!vorauswahlPlayer||aufSpielerSP.length===0) return;
+    const key=`${selSeason}|${vorauswahlPlayer.id||""}`;
+    if(spVorauswahlRef.current===key) return; // schon gesetzt
+    const aufTeam=stammMannschaftVorauswahl(vorauswahlPlayer, aufSpielerSP);
+    if(!aufTeam) return;
+    // Aufstellungs-Name -> Spielplan-Name (Erwachsene V -> Herren 5; Nachwuchs bleibt)
+    const spielplanTeam=AUFSTELLUNG_TO_SPIELPLAN[aufTeam]||aufTeam;
+    // passenden konkreten Spielplan-Mannschaftsnamen finden (kann Suffixe haben)
+    const match=[...new Set(spiele.map(s=>s.mannschaft))].find(m=>
+      m===spielplanTeam || m.startsWith(spielplanTeam)
+    );
+    spVorauswahlRef.current=key;
+    setFilters(f=>({...f, mannschaften:[match||spielplanTeam]}));
+  },[vorauswahlPlayer,aufSpielerSP,selSeason,spiele]);
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
@@ -8449,6 +8566,8 @@ function VereinsSpielplan({nurNachwuchs=false}) {
     if(selManns.length>0 && !selManns.includes(s.mannschaft)) return false;
     if(filters.ort && s.ort!==filters.ort) return false;
     if(filters.gegner && !String(s.gegner||"").toLowerCase().includes(filters.gegner.toLowerCase())) return false;
+    if(filters.tag && s.tag!==filters.tag) return false;
+    if(filters.art && (s.art||"Runde")!==filters.art) return false;
     return true;
   });
 
@@ -8467,7 +8586,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
   // Punkt 4: Vereinstermine als eigene Zeilen einfügen (nur ohne aktive Mannschafts-/Ort-/Gegner-Filter,
   // damit sie nicht weggefiltert wirken; bei Nachwuchs-Ansicht ausgeblendet).
   // Punkt 2: Eine Saison läuft 16.05.–15.05.; nur Termine der gewählten Saison anzeigen.
-  const filtersAktiv = (filters.mannschaften||[]).length>0 || filters.ort || filters.gegner;
+  const filtersAktiv = (filters.mannschaften||[]).length>0 || filters.ort || filters.gegner || filters.tag || filters.art;
   const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
   const terminRows = (nurNachwuchs||filtersAktiv) ? [] : vereinstermine
     .filter(t=>{
@@ -8541,6 +8660,20 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
           style={{flex:"0 0 auto",width:80,padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+        {/* Tag (Wochentag) */}
+        <select value={filters.tag||""} onChange={e=>setFilters(p=>({...p,tag:e.target.value}))}
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Tag</option>
+          {["Mo","Di","Mi","Do","Fr","Sa","So"].filter(tg=>spiele.some(s=>s.tag===tg)).map(tg=>
+            <option key={tg} value={tg}>{tg}</option>)}
+        </select>
+        {/* Art (Runde/Pokal) */}
+        <select value={filters.art||""} onChange={e=>setFilters(p=>({...p,art:e.target.value}))}
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Art</option>
+          {[...new Set(spiele.map(s=>s.art||"Runde"))].sort().map(a=>
+            <option key={a} value={a}>{a}</option>)}
+        </select>
         {/* PDF */}
         {pdfUrl&&<button onClick={()=>{
           const b64=pdfUrl.split(",")[1];
@@ -8554,7 +8687,7 @@ function VereinsSpielplan({nurNachwuchs=false}) {
         }} style={{flex:"0 0 auto",padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
-        {(selManns.length>0||filters.ort||filters.gegner)&&
+        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art)&&
           <button onClick={()=>setFilters({})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
@@ -9307,9 +9440,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false} showToast={showToast}/>}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
-    {activeTab==="kalender"&&<KalenderExport/>}
+    {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||null}
       isAdmin={false}
