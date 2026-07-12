@@ -9548,6 +9548,14 @@ class ErrorBoundary extends React.Component {
   constructor(props){super(props); this.state={error:null};}
   static getDerivedStateFromError(error){return {error};}
   componentDidCatch(error,info){console.error("ErrorBoundary caught:",error,info);}
+  // Wenn sich resetKey ändert (z. B. anderer Spieler ausgewählt), einen zuvor
+  // aufgetretenen Fehlerzustand verwerfen — OHNE die Kinder neu zu mounten,
+  // damit der aktive Tab/State der Kinder erhalten bleibt.
+  componentDidUpdate(prevProps){
+    if(prevProps.resetKey!==this.props.resetKey && this.state.error){
+      this.setState({error:null});
+    }
+  }
   render(){
     if(this.state.error) return <div style={{padding:20,background:"#fee",color:"#900",fontSize:13,fontFamily:"monospace",whiteSpace:"pre-wrap"}}>
       <div style={{fontSize:16,fontWeight:700,marginBottom:10}}>⚠️ Fehler in Komponente</div>
@@ -9791,7 +9799,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     ) : null}/>
     {/* Spieler-View - mit ErrorBoundary */}
     {activeView==="player"&&selectedPlayer&&
-      <ErrorBoundary key={selectedPlayer.id}>
+      <ErrorBoundary resetKey={selectedPlayer.id}>
         <PlayerView user={user} players={players} attendance={attendance}
           forcePlayer={selectedPlayer} hideHeader {...sharedProps}/>
       </ErrorBoundary>}
