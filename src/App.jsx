@@ -7023,6 +7023,18 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     const updated = {...einsaetze, [sk]:{...cur, [feld]:wert}};
     setEinsaetze(updated);
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+    // Zusätzlich ein datensparsames, öffentlich lesbares Spiegeldokument pflegen,
+    // das NUR Betreuer/Fahrer enthält (keine Verfügbarkeiten). Daraus liest der
+    // Kalender-Abo-Feed (Netlify-Function) ohne Login. Doc: config/betreuerFahrer_{saison}.
+    try {
+      const bf={};
+      for(const k in updated){
+        const e=updated[k]||{};
+        const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"";
+        if(b1||b2||f) bf[k]={b1,b2,f};
+      }
+      await setDoc(doc(db,"config",`betreuerFahrer_${selSeasonId}`),{data:bf,lastUpdated:Date.now()});
+    } catch(e){}
   }
 
   const heuteStr=new Date().toLocaleDateString("sv");
@@ -7779,6 +7791,7 @@ function buildICS(options){
     puffer=false,
     heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
     auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
+    einsaetzeData={},             // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
   }=options;
   const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
   const L=[];
@@ -7816,6 +7829,13 @@ function buildICS(options){
     if(puffer && heim && (vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
     if(puffer && auswaerts && (vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
     if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
+    // Fahrer/Betreuer aus den Einsätzen (nur Nachwuchsspiele haben diese Felder).
+    // spielKey identisch zur EinsätzeView berechnen.
+    const sk = `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+    const ei = einsaetzeData[sk]||{};
+    const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean).join(", ");
+    if(betreuer) descParts.push(`Betreuer: ${betreuer}`);
+    if(ei._fahrer) descParts.push(`Fahrer: ${ei._fahrer}`);
     L.push("BEGIN:VEVENT");
     L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
     L.push(`DTSTAMP:${stamp}`);
@@ -7902,6 +7922,16 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     },()=>{});
     return ()=>u2();
   },[]);
+  // Einsätze der gewählten Saison laden — liefert Betreuer/Fahrer je Spiel,
+  // damit diese im Kalender-Bemerkungsfeld (DESCRIPTION) erscheinen.
+  const [einsaetzeData,setEinsaetzeData]=useState({});
+  useEffect(()=>{
+    if(!selSaison){ setEinsaetzeData({}); return; }
+    const u3=onSnapshot(doc(db,"einsaetze",selSaison),snap=>{
+      setEinsaetzeData(snap.exists()?(snap.data().data||{}):{});
+    },()=>setEinsaetzeData({}));
+    return ()=>u3();
+  },[selSaison]);
 
   // Mannschaften aus den Spielen der gewählten Saison ableiten
   const alleMannschaften=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
@@ -8008,7 +8038,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
 
   const icsOptions=()=>({
     teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
-    puffer, spiele, vereinstermine:gefilterteTermine,
+    puffer, spiele, vereinstermine:gefilterteTermine, einsaetzeData,
   });
 
   function download(){
