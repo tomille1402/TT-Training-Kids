@@ -27,14 +27,25 @@ const authHelper = getAuth(appHelper);
 // sodass gewählte Filter/Einstellungen erhalten bleiben, wenn die App verlassen
 // und neu geöffnet wird. Fällt bei Fehlern (z. B. privater Modus) auf den
 // Default zurück und arbeitet dann wie normales useState.
+// Der Schlüssel darf sich zur Laufzeit ändern (z. B. pro betrachteter Person):
+// bei Key-Wechsel wird der zum neuen Key gespeicherte Wert nachgeladen, sonst der
+// Default verwendet. So sieht ein Admin, der zu einem Spieler springt, dessen
+// gespeicherte bzw. voreingestellte Filter — nicht seine eigenen.
 function usePersistentState(key, initial){
-  const [val,setVal]=useState(()=>{
-    try{
-      const raw=localStorage.getItem(key);
-      if(raw!=null) return JSON.parse(raw);
-    }catch(e){}
-    return initial;
-  });
+  function read(k, def){
+    try{ const raw=localStorage.getItem(k); if(raw!=null) return JSON.parse(raw); }catch(e){}
+    return def;
+  }
+  const [val,setVal]=useState(()=>read(key, initial));
+  const prevKey=useRef(key);
+  // Bei Key-Wechsel den Wert des neuen Keys laden (initial = rollenabhängiger Default).
+  useEffect(()=>{
+    if(prevKey.current!==key){
+      prevKey.current=key;
+      setVal(read(key, initial));
+    }
+  },[key]);
+  // Wert unter dem aktuellen Key speichern.
   useEffect(()=>{
     try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
   },[key,val]);
@@ -7900,21 +7911,24 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
   const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
 
-  const [selTeams,setSelTeams]=usePersistentState("ttc_kal_teams",[]);
-  const [vorlauf,setVorlauf]=usePersistentState("ttc_kal_vorlauf",60); // Punkt 4: Erinnerung 1 Stunde
-  const [dauer,setDauer]=usePersistentState("ttc_kal_dauer",120);
-  const [dauerManuell,setDauerManuell]=usePersistentState("ttc_kal_dauerManuell",false);
+  // Persistenz-Keys pro betrachteter Person (siehe Spielplan): Admin sieht beim
+  // Springen zu einer Person deren Einstellungen, nicht die eigenen.
+  const kalScope = vorauswahlPlayer?.id || "admin";
+  const [selTeams,setSelTeams]=usePersistentState(`ttc_kal_teams_${kalScope}`,[]);
+  const [vorlauf,setVorlauf]=usePersistentState(`ttc_kal_vorlauf_${kalScope}`,60); // Punkt 4: Erinnerung 1 Stunde
+  const [dauer,setDauer]=usePersistentState(`ttc_kal_dauer_${kalScope}`,120);
+  const [dauerManuell,setDauerManuell]=usePersistentState(`ttc_kal_dauerManuell_${kalScope}`,false);
   // Punkt 3: Welche Vereinstermine standardmäßig? Spieler → Alle+Nachwuchs,
   // Erwachsene → Alle+Erwachsene. Sonst (Admin) alle Rubriken.
-  const [selRubriken,setSelRubriken]=usePersistentState("ttc_kal_rubriken",
+  const [selRubriken,setSelRubriken]=usePersistentState(`ttc_kal_rubriken_${kalScope}`,
     vorauswahlPlayer
       ? (istErwachseneView ? ["Alle","Erwachsene"] : ["Alle","Nachwuchs"])
       : [...TERMIN_RUBRIKEN]
   );
   // Punkt 5: Fahrt-/Auf-/Abbauzeit — bei Spielern voreingestellt, bei Erwachsenen nicht.
-  const [puffer,setPuffer]=usePersistentState("ttc_kal_puffer",!!vorauswahlPlayer && !istErwachseneView);
+  const [puffer,setPuffer]=usePersistentState(`ttc_kal_puffer_${kalScope}`,!!vorauswahlPlayer && !istErwachseneView);
   // Merkt, ob der Nutzer selbst schon etwas geändert hat → dann Defaults nicht mehr erzwingen.
-  const [kalUserSet,setKalUserSet]=usePersistentState("ttc_kal_userSet",false);
+  const [kalUserSet,setKalUserSet]=usePersistentState(`ttc_kal_userSet_${kalScope}`,false);
   const [copied,setCopied]=useState(false);
 
   // Rollenabhängige Defaults (Rubriken/Puffer) setzen, sobald der eingeloggte
@@ -8476,7 +8490,10 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [loading,setLoading]=useState(true);
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
-  const [filters,setFilters]=usePersistentState("ttc_spielplan_filters",{});
+  // Persistenz-Key pro betrachteter Person: springt ein Admin zu einem Spieler,
+  // sieht er dessen gespeicherte/voreingestellte Filter statt seiner eigenen.
+  const filterScope = vorauswahlPlayer?.id || "admin";
+  const [filters,setFilters]=usePersistentState(`ttc_spielplan_filters_${filterScope}`,{});
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
   const [pdfUrl,setPdfUrl]=useState(null);
@@ -8533,9 +8550,16 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     const match=[...new Set(spiele.map(s=>s.mannschaft))].find(m=>
       m===spielplanTeam || m.startsWith(spielplanTeam)
     );
-    // Rolle aus Stammmannschaft ableiten: Erwachsenen-Mannschaft -> Erwachsene, sonst Nachwuchs
+    // Rolle aus Stammmannschaft ableiten: Erwachsenen-Mannschaft -> Erwachsene, sonst Nachwuchs.
+    // MF-Erwachsene (Mannschaftsführer) bekommen zusätzlich die Rubrik "Halle zu".
     const istErw=istErwachsenenMannschaft(aufTeam);
-    const rubrikDefault=istErw?["Alle","Erwachsene"]:["Alle","Nachwuchs"];
+    const istMF=vorauswahlPlayer?.roles?.mannschaftsfuehrer===true;
+    let rubrikDefault;
+    if(istErw){
+      rubrikDefault = istMF ? ["Alle","Erwachsene","Halle zu"] : ["Alle","Erwachsene"];
+    } else {
+      rubrikDefault = ["Alle","Nachwuchs"];
+    }
     spVorauswahlRef.current=key;
     setFilters(f=>({...f,
       mannschaften:[match||spielplanTeam],
@@ -8706,7 +8730,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         </select>
         {/* Vereinstermin-Rubriken Multi-Select (Alle/Nachwuchs/Erwachsene/Grenzau-Spiele) */}
         {(()=>{
-          const RUBRIKEN=["Alle","Nachwuchs","Erwachsene","Grenzau-Spiele"];
+          const RUBRIKEN=["Alle","Nachwuchs","Erwachsene","Halle zu","Grenzau-Spiele"];
           const selR=filters.rubriken||[];
           return <select value="" onChange={e=>{
               const r=e.target.value; if(!r) return;
