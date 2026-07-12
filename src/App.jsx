@@ -22,6 +22,25 @@ const storage    = getStorage(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
+// ─── PERSISTENTER STATE ───────────────────────────────────────────────────────
+// Wie useState, speichert den Wert aber unter einem Schlüssel in localStorage,
+// sodass gewählte Filter/Einstellungen erhalten bleiben, wenn die App verlassen
+// und neu geöffnet wird. Fällt bei Fehlern (z. B. privater Modus) auf den
+// Default zurück und arbeitet dann wie normales useState.
+function usePersistentState(key, initial){
+  const [val,setVal]=useState(()=>{
+    try{
+      const raw=localStorage.getItem(key);
+      if(raw!=null) return JSON.parse(raw);
+    }catch(e){}
+    return initial;
+  });
+  useEffect(()=>{
+    try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+  },[key,val]);
+  return [val,setVal];
+}
+
 // ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
 // Alle Trainer-E-Mails (sehen Trainer-Bereich, aber NICHT Verwaltung)
 const ADMIN_EMAILS = [
@@ -7881,23 +7900,42 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
   const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
 
-  const [selTeams,setSelTeams]=useState([]);
-  const [vorlauf,setVorlauf]=useState(60); // Punkt 4: Erinnerung 1 Stunde
-  const [dauer,setDauer]=useState(120);
-  const [dauerManuell,setDauerManuell]=useState(false); // true = Nutzer hat Dauer selbst gewählt
+  const [selTeams,setSelTeams]=usePersistentState("ttc_kal_teams",[]);
+  const [vorlauf,setVorlauf]=usePersistentState("ttc_kal_vorlauf",60); // Punkt 4: Erinnerung 1 Stunde
+  const [dauer,setDauer]=usePersistentState("ttc_kal_dauer",120);
+  const [dauerManuell,setDauerManuell]=usePersistentState("ttc_kal_dauerManuell",false);
   // Punkt 3: Welche Vereinstermine standardmäßig? Spieler → Alle+Nachwuchs,
   // Erwachsene → Alle+Erwachsene. Sonst (Admin) alle Rubriken.
-  const [selRubriken,setSelRubriken]=useState(
+  const [selRubriken,setSelRubriken]=usePersistentState("ttc_kal_rubriken",
     vorauswahlPlayer
       ? (istErwachseneView ? ["Alle","Erwachsene"] : ["Alle","Nachwuchs"])
       : [...TERMIN_RUBRIKEN]
   );
   // Punkt 5: Fahrt-/Auf-/Abbauzeit — bei Spielern voreingestellt, bei Erwachsenen nicht.
-  const [puffer,setPuffer]=useState(!!vorauswahlPlayer && !istErwachseneView);
+  const [puffer,setPuffer]=usePersistentState("ttc_kal_puffer",!!vorauswahlPlayer && !istErwachseneView);
+  // Merkt, ob der Nutzer selbst schon etwas geändert hat → dann Defaults nicht mehr erzwingen.
+  const [kalUserSet,setKalUserSet]=usePersistentState("ttc_kal_userSet",false);
   const [copied,setCopied]=useState(false);
 
-  // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften)
-  useEffect(()=>{ setSelTeams([]); setDauerManuell(false); kalVorauswahlRef.current=""; },[selSaison]);
+  // Rollenabhängige Defaults (Rubriken/Puffer) setzen, sobald der eingeloggte
+  // Spieler bekannt ist — aber nur, wenn der Nutzer noch nichts selbst gewählt hat.
+  // Nötig, weil vorauswahlPlayer beim ersten Render evtl. noch null ist.
+  const kalDefaultRef=useRef(false);
+  useEffect(()=>{
+    if(kalUserSet||kalDefaultRef.current||!vorauswahlPlayer) return;
+    kalDefaultRef.current=true;
+    setSelRubriken(istErwachseneView?["Alle","Erwachsene"]:["Alle","Nachwuchs"]);
+    setPuffer(!istErwachseneView);
+    if(!dauerManuell) setDauer(istErwachseneView?150:90);
+  },[vorauswahlPlayer,istErwachseneView,kalUserSet,dauerManuell]);
+
+  // Beim Saisonwechsel die Mannschaftsauswahl zurücksetzen (andere Mannschaften) —
+  // aber nur, wenn der Nutzer nicht ohnehin eine eigene gespeicherte Wahl hat.
+  const kalVorauswahlRef=useRef("");
+  useEffect(()=>{
+    if(kalUserSet) return; // gespeicherte Nutzerwahl behalten
+    setSelTeams([]); kalVorauswahlRef.current="";
+  },[selSaison,kalUserSet]);
 
   // Punkt 2: Aufstellung laden und die Stammmannschaft des eingeloggten Spielers/
   // Erwachsenen als Team vorauswählen (Spielplan-Name, passend zu alleMannschaften).
@@ -7914,8 +7952,8 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     return unsub;
   },[vorauswahlPlayer,selSaison]);
 
-  const kalVorauswahlRef=useRef("");
   useEffect(()=>{
+    if(kalUserSet) return; // Nutzer hat selbst gewählt → Vorauswahl nicht erzwingen
     if(!vorauswahlPlayer||aufSpielerKal.length===0||alleMannschaften.length===0) return;
     const key=`${selSaison}|${vorauswahlPlayer.id||""}`;
     if(kalVorauswahlRef.current===key) return;
@@ -7926,7 +7964,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     if(!match) return;
     kalVorauswahlRef.current=key;
     setSelTeams([match]);
-  },[vorauswahlPlayer,aufSpielerKal,alleMannschaften,selSaison]);
+  },[vorauswahlPlayer,aufSpielerKal,alleMannschaften,selSaison,kalUserSet]);
 
   // Punkt 4: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2,5h),
   // solange der Nutzer die Dauer nicht manuell geändert hat.
@@ -7944,11 +7982,11 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     else setDauer(150);                   // gemischt → 2,5 Stunden
   },[selTeams, dauerManuell, istErwachseneView]);
 
-  function toggleTeam(t){ setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
-  function selectNachwuchs(){ setSelTeams(NACHWUCHS); }
-  function selectAlle(){ setSelTeams(alleMannschaften); }
-  function selectKeine(){ setSelTeams([]); }
-  function toggleRubrik(r){ setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
+  function toggleTeam(t){ setKalUserSet(true); setSelTeams(p=>p.includes(t)?p.filter(x=>x!==t):[...p,t]); }
+  function selectNachwuchs(){ setKalUserSet(true); setSelTeams(NACHWUCHS); }
+  function selectAlle(){ setKalUserSet(true); setSelTeams(alleMannschaften); }
+  function selectKeine(){ setKalUserSet(true); setSelTeams([]); }
+  function toggleRubrik(r){ setKalUserSet(true); setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
 
   // Vereinstermine nach ausgewählten Rubriken filtern (Termin ohne Rubrik zählt als "Alle")
   const gefilterteTermine = vereinstermine.filter(t=>selRubriken.includes(t.rubrik||"Alle"));
@@ -8070,7 +8108,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
       <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
         <div style={{flex:1,minWidth:130}}>
           <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Erinnerung vorher</label>
-          <select value={vorlauf} onChange={e=>setVorlauf(Number(e.target.value))} style={sel}>
+          <select value={vorlauf} onChange={e=>{setKalUserSet(true);setVorlauf(Number(e.target.value));}} style={sel}>
             <option value={0}>keine</option><option value={15}>15 Min</option>
             <option value={30}>30 Min</option><option value={60}>1 Stunde</option>
             <option value={120}>2 Stunden</option><option value={1440}>1 Tag</option>
@@ -8078,7 +8116,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
         </div>
         <div style={{flex:1,minWidth:130}}>
           <label style={{fontSize:11,color:"var(--text2)",display:"block",marginBottom:4}}>Dauer pro Spiel</label>
-          <select value={dauer} onChange={e=>{setDauer(Number(e.target.value));setDauerManuell(true);}} style={sel}>
+          <select value={dauer} onChange={e=>{setKalUserSet(true);setDauer(Number(e.target.value));setDauerManuell(true);}} style={sel}>
             <option value={90}>1,5 Stunden</option><option value={120}>2 Stunden</option>
             <option value={150}>2,5 Stunden</option><option value={180}>3 Stunden</option>
             <option value={210}>3,5 Stunden</option><option value={240}>4 Stunden</option>
@@ -8093,7 +8131,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     {/* Fahrt-/Auf-/Abbauzeiten (Punkt 4) */}
     <div style={box}>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:700,color:"var(--text)",cursor:"pointer"}}>
-        <input type="checkbox" checked={puffer} onChange={e=>setPuffer(e.target.checked)}/>
+        <input type="checkbox" checked={puffer} onChange={e=>{setKalUserSet(true);setPuffer(e.target.checked);}}/>
         Fahrt- & Auf-/Abbauzeit einrechnen
       </label>
       <div style={{fontSize:11,color:"var(--text3)",marginTop:8,lineHeight:1.5}}>
@@ -8438,7 +8476,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [loading,setLoading]=useState(true);
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
-  const [filters,setFilters]=useState({});
+  const [filters,setFilters]=usePersistentState("ttc_spielplan_filters",{});
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
   const [pdfUrl,setPdfUrl]=useState(null);
@@ -8479,9 +8517,12 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
 
   // Mannschafts-Vorauswahl: sobald Aufstellung geladen ist, den Mannschaftsfilter
   // auf die Stammmannschaft des eingeloggten Spielers setzen (einmal pro Saison/Person).
+  // Zusätzlich Rubrik-Vorauswahl für Vereinstermine je Rolle setzen.
   const spVorauswahlRef=useRef("");
   useEffect(()=>{
     if(!vorauswahlPlayer||aufSpielerSP.length===0) return;
+    // Wenn der Nutzer bereits selbst Filter gesetzt und gespeichert hat, NICHT überschreiben.
+    if(filters._userSet) return;
     const key=`${selSeason}|${vorauswahlPlayer.id||""}`;
     if(spVorauswahlRef.current===key) return; // schon gesetzt
     const aufTeam=stammMannschaftVorauswahl(vorauswahlPlayer, aufSpielerSP);
@@ -8492,9 +8533,15 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     const match=[...new Set(spiele.map(s=>s.mannschaft))].find(m=>
       m===spielplanTeam || m.startsWith(spielplanTeam)
     );
+    // Rolle aus Stammmannschaft ableiten: Erwachsenen-Mannschaft -> Erwachsene, sonst Nachwuchs
+    const istErw=istErwachsenenMannschaft(aufTeam);
+    const rubrikDefault=istErw?["Alle","Erwachsene"]:["Alle","Nachwuchs"];
     spVorauswahlRef.current=key;
-    setFilters(f=>({...f, mannschaften:[match||spielplanTeam]}));
-  },[vorauswahlPlayer,aufSpielerSP,selSeason,spiele]);
+    setFilters(f=>({...f,
+      mannschaften:[match||spielplanTeam],
+      rubriken: f.rubriken!==undefined ? f.rubriken : rubrikDefault,
+    }));
+  },[vorauswahlPlayer,aufSpielerSP,selSeason,spiele,filters._userSet]);
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
@@ -8583,14 +8630,20 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
   });
 
-  // Punkt 4: Vereinstermine als eigene Zeilen einfügen (nur ohne aktive Mannschafts-/Ort-/Gegner-Filter,
-  // damit sie nicht weggefiltert wirken; bei Nachwuchs-Ansicht ausgeblendet).
-  // Punkt 2: Eine Saison läuft 16.05.–15.05.; nur Termine der gewählten Saison anzeigen.
-  const filtersAktiv = (filters.mannschaften||[]).length>0 || filters.ort || filters.gegner || filters.tag || filters.art;
+  // Vereinstermine als eigene Zeilen einfügen. Sie werden nach dem Rubrik-Filter
+  // (filters.rubriken) gefiltert; ein Termin ohne Rubrik zählt als "Alle".
+  // Nur Ort-/Gegner-/Tag-/Art-Filter blenden Termine aus (für Termine sinnlos),
+  // der Mannschaftsfilter jedoch NICHT — Termine sollen neben der eigenen
+  // Mannschaft sichtbar bleiben. In der reinen Nachwuchs-Ansicht ausgeblendet.
+  const detailFilterAktiv = !!(filters.ort || filters.gegner || filters.tag || filters.art);
+  const rubrikenSel = filters.rubriken; // undefined = alle anzeigen
   const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
-  const terminRows = (nurNachwuchs||filtersAktiv) ? [] : vereinstermine
+  const terminRows = (nurNachwuchs||detailFilterAktiv) ? [] : vereinstermine
     .filter(t=>{
-      if(selSeasonStartjahr==null) return true; // keine Saison erkennbar → alle zeigen
+      // Rubrik-Filter: wenn gesetzt, nur passende Rubriken (Termin ohne Rubrik = "Alle")
+      if(Array.isArray(rubrikenSel) && rubrikenSel.length>0 && !rubrikenSel.includes(t.rubrik||"Alle")) return false;
+      if(Array.isArray(rubrikenSel) && rubrikenSel.length===0) return false; // nichts gewählt → keine Termine
+      if(selSeasonStartjahr==null) return true;
       return terminSaisonStartjahr(t.datumStart)===selSeasonStartjahr;
     })
     .map(t=>({
@@ -8604,6 +8657,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
       gegner:t.veranstaltung||"",
       ergebnis:"",
       aenderung:"",
+      _rubrik:t.rubrik||"Alle",
       _datumEnde:t.datumEnde,
       _uhrzeitEnde:t.uhrzeitEnde,
     }));
@@ -8644,31 +8698,44 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         {/* Mannschaft Multi-Select als natives Dropdown */}
         <select value="" onChange={e=>{
             const m=e.target.value; if(!m) return;
-            setFilters(p=>{const sel=p.mannschaften||[];return {...p,mannschaften:sel.includes(m)?sel.filter(x=>x!==m):[...sel,m]};});
+            setFilters(p=>{const sel=p.mannschaften||[];return {...p,_userSet:true,mannschaften:sel.includes(m)?sel.filter(x=>x!==m):[...sel,m]};});
           }}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Mannschaft{selManns.length>0?` (${selManns.length})`:""}</option>
           {MANNS.map(m=><option key={m} value={m}>{selManns.includes(m)?"☑ ":"☐ "}{m}</option>)}
         </select>
+        {/* Vereinstermin-Rubriken Multi-Select (Alle/Nachwuchs/Erwachsene/Grenzau-Spiele) */}
+        {(()=>{
+          const RUBRIKEN=["Alle","Nachwuchs","Erwachsene","Grenzau-Spiele"];
+          const selR=filters.rubriken||[];
+          return <select value="" onChange={e=>{
+              const r=e.target.value; if(!r) return;
+              setFilters(p=>{const cur=Array.isArray(p.rubriken)?p.rubriken:[];return {...p,_userSet:true,rubriken:cur.includes(r)?cur.filter(x=>x!==r):[...cur,r]};});
+            }}
+            style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+            <option value="">Termine{selR.length>0?` (${selR.length})`:""}</option>
+            {RUBRIKEN.map(r=><option key={r} value={r}>{selR.includes(r)?"☑ ":"☐ "}{r}</option>)}
+          </select>;
+        })()}
         {/* Ort */}
-        <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,ort:e.target.value}))}
+        <select value={filters.ort||""} onChange={e=>setFilters(p=>({...p,_userSet:true,ort:e.target.value}))}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Ort</option>
           <option value="Heim">Heim</option>
           <option value="Auswärts">Auswärts</option>
         </select>
         {/* Gegner */}
-        <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,gegner:e.target.value}))}
+        <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,_userSet:true,gegner:e.target.value}))}
           style={{flex:"0 0 auto",width:80,padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
         {/* Tag (Wochentag) */}
-        <select value={filters.tag||""} onChange={e=>setFilters(p=>({...p,tag:e.target.value}))}
+        <select value={filters.tag||""} onChange={e=>setFilters(p=>({...p,_userSet:true,tag:e.target.value}))}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Tag</option>
           {["Mo","Di","Mi","Do","Fr","Sa","So"].filter(tg=>spiele.some(s=>s.tag===tg)).map(tg=>
             <option key={tg} value={tg}>{tg}</option>)}
         </select>
         {/* Art (Runde/Pokal) */}
-        <select value={filters.art||""} onChange={e=>setFilters(p=>({...p,art:e.target.value}))}
+        <select value={filters.art||""} onChange={e=>setFilters(p=>({...p,_userSet:true,art:e.target.value}))}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Art</option>
           {[...new Set(spiele.map(s=>s.art||"Runde"))].sort().map(a=>
@@ -8687,14 +8754,14 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         }} style={{flex:"0 0 auto",padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
-        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art)&&
-          <button onClick={()=>setFilters({})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||(filters.rubriken&&filters.rubriken.length>0))&&
+          <button onClick={()=>setFilters({rubriken:[],_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
     {/* Ausgewählte Mannschaften als Chips */}
     {(filters.mannschaften||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
       {(filters.mannschaften||[]).map(m=>
-        <span key={m} onClick={()=>setFilters(p=>({...p,mannschaften:(p.mannschaften||[]).filter(x=>x!==m)}))}
+        <span key={m} onClick={()=>setFilters(p=>({...p,_userSet:true,mannschaften:(p.mannschaften||[]).filter(x=>x!==m)}))}
           style={{background:"#10b98122",color:"#10b981",borderRadius:5,padding:"2px 7px",fontSize:10,cursor:"pointer",fontWeight:600}}>
           {m} ✕
         </span>)}
