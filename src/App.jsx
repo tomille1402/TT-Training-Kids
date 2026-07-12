@@ -6296,32 +6296,52 @@ function AufstellungUpload({showToast}) {
     const ERW_MANN={1:"Erwachsene",2:"Erwachsene II",3:"Erwachsene III",4:"Erwachsene IV",5:"Erwachsene V",6:"Erwachsene VI"};
     // Bekannte click-tt-Status-/Bemerkungs-Kürzel (Spalten "A", "Status", "Bem.").
     const STATUS_TOKENS=["SBE","DE","JES","RES","SPV","WES","NES","SES","Antrag","gA","eA","A"];
-    // Extrahiert aus dem Zeilenrest nach der Nationalität die Status-Kürzel in Reihenfolge.
+    // Bekannte Nationalitäts-Kürzel (3 Großbuchstaben). Können im PDF direkt an ein
+    // Status-Kürzel geklebt sein (z.B. "ROUgA"), daher separate Behandlung.
+    const NAT_TOKENS=["GER","ROU","POL","TUR","ITA","CRO","ESP","AUT","NED","BEL","FRA","SUI","UKR","RUS","HUN","CZE","SVK","GRE","POR"];
+    // Extrahiert aus dem Zeilenrest (nach Name/Jahrgang) die Status-Kürzel.
+    // Trennt zusammengeklebte Nat+Status ("ROUgA" -> "ROU gA") vor dem Tokenisieren.
     function extractStatus(rest){
       if(!rest) return "";
+      let r=String(rest);
+      for(const nat of NAT_TOKENS){ r=r.replace(new RegExp(nat+"(?=[a-zA-Z])","g"), nat+" "); }
       const found=[];
-      // Tokenweise scannen; nur bekannte Kürzel übernehmen (Duplikate vermeiden).
-      for(const tok of rest.split(/[\s,]+/)){
+      for(const tok of r.split(/[\s,]+/)){
         const t=tok.trim();
         if(STATUS_TOKENS.includes(t) && !found.includes(t)) found.push(t);
       }
       return found.join(", ");
     }
-    // Namen mit Unicode-Buchstaben (é, è, á, ñ, ć …) korrekt erfassen (u-Flag + \p{L})
-    // Q-TTR kann Zahl, Zahl mit "*" (vorläufig) oder "-" sein
-    // Gruppe 5 = Nationalität, Gruppe 6 = Rest der Zeile (Status/Bemerkung) bis Zeilenende.
-    const RANG_RE=/([1-6])\.(\d{1,2})\s+(\d{3,4}\*?|-)\s+(\p{Lu}[\p{L}.\-]+,\s*[\p{L}.\- ]+?)\s*\(\d{4}\/\s*[mw]\s*\)\s*(GER|ROU|POL|TUR|ITA|CRO|ESP|AUT|[A-Z]{3})?([^\n]*)/gu;
+    // ZEILENWEISES Matching (robust gegen umbrochenen Jahrgang und mehrspaltiges
+    // PDF-Layout): Anker ist die Rang-Nummer N.M irgendwo in der Zeile. Danach
+    // Q-TTR (Zahl, Zahl* oder "-") und der Name "Nachname, Vorname". Der Name endet
+    // vor "(JAHR", vor einem Nat-Kürzel ODER am Zeilenende — die schließende
+    // Jahrgang-Klammer darf also in der Folgezeile stehen.
+    // Namen mit Unicode-Buchstaben (é, è, á, ñ, ć, ä …) via \p{L} + u-Flag.
+    const natAlt = NAT_TOKENS.join("|");
+    const LINE_RE = new RegExp(
+      "\\b([1-6])\\.(\\d{1,2})\\s+(\\d{3,4}\\*?|-)\\s+" +      // Rang + Q-TTR
+      "(\\p{Lu}[\\p{L}.\\-]+,\\s*[\\p{L}.\\- ]+?)" +           // Name "Nachname, Vorname" (lazy)
+      "\\s*(?:\\(\\d{4}|\\b(?:"+natAlt+")\\b|$)" +             // Ende: "(JAHR" | Nat-Kürzel | Zeilenende
+      "([^\\n]*)",                                             // Rest der Zeile (für Status)
+      "gu"
+    );
     const NW_HEAD=/Kontaktadresse\s+(Mädchen \d+|Jugend \d+)/;
     const rows=[]; const seen=new Set();
     for(const t of pages){
       const nw=t.match(NW_HEAD); const nwTeam=nw?nw[1]:null;
-      let m; RANG_RE.lastIndex=0;
-      while((m=RANG_RE.exec(t))!==null){
+      // Zeilenweise verarbeiten: pro Zeile höchstens ein Spieler-Match, damit sich
+      // aufeinanderfolgende Zeilen nicht gegenseitig "verschlucken".
+      for(const line of t.split("\n")){
+        LINE_RE.lastIndex=0;
+        const m=LINE_RE.exec(line);
+        if(!m) continue;
         const d1=parseInt(m[1]); const rang=`${m[1]}.${m[2]}`;
-        const qttr=(m[3]==='-')?'':m[3].replace('*',''); const name=m[4].trim().replace(/\s+/g,' ');
+        const qttr=(m[3]==='-')?'':m[3].replace('*','');
+        const name=m[4].trim().replace(/\s+/g,' ');
         const mann=nwTeam?nwTeam:ERW_MANN[d1]; if(!mann) continue;
         const k=mann+"|"+name; if(seen.has(k)) continue; seen.add(k);
-        const bem=extractStatus(m[6]||"");
+        const bem=extractStatus(m[5]||"");
         const row={mannschaft:mann,rang,qTtr:qttr,name};
         if(bem) row.bem=bem;
         rows.push(row);
