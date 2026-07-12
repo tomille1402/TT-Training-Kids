@@ -6906,6 +6906,42 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     return unsub;
   },[selSeasonId]);
 
+  // Aus einer Einsätze-Map das datensparsame Betreuer/Fahrer-Spiegelobjekt bauen.
+  function buildBetreuerFahrerSpiegel(quelle){
+    const bf={};
+    for(const k in quelle){
+      const e=quelle[k]||{};
+      const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"";
+      if(b1||b2||f) bf[k]={b1,b2,f};
+    }
+    return bf;
+  }
+
+  // Einmaliger Abgleich: sorgt dafür, dass bereits erfasste Betreuer/Fahrer im
+  // öffentlichen Spiegeldokument landen, auch wenn sie vor diesem Update oder ohne
+  // erfolgreiches Spiegel-Schreiben gesetzt wurden. Läuft nur, wenn der Betrachter
+  // schreibberechtigt ist und der Spiegel tatsächlich vom Soll abweicht.
+  const spiegelSyncRef=useRef("");
+  useEffect(()=>{
+    if(!viewerCanEditAll) return;                 // nur Trainer/MF/Admin lösen den Abgleich aus
+    if(Object.keys(einsaetze).length===0) return; // noch nichts geladen
+    const soll=buildBetreuerFahrerSpiegel(einsaetze);
+    if(Object.keys(soll).length===0) return;      // nichts zu spiegeln
+    const syncKey=selSeasonId+"|"+JSON.stringify(soll);
+    if(spiegelSyncRef.current===syncKey) return;  // schon abgeglichen
+    spiegelSyncRef.current=syncKey;
+    (async()=>{
+      try{
+        const ref=doc(db,"config",`betreuerFahrer_${selSeasonId}`);
+        const snap=await getDoc(ref);
+        const ist=snap.exists()?(snap.data().data||{}):{};
+        if(JSON.stringify(ist)!==JSON.stringify(soll)){
+          await setDoc(ref,{data:soll,lastUpdated:Date.now()});
+        }
+      }catch(e){}
+    })();
+  },[einsaetze,selSeasonId,viewerCanEditAll]);
+
   const curSeasonOpt = SEASON_OPTS.find(s=>s.id===selSeasonId)||SEASON_OPTS[0];
   const spiele = spielplaene[selSeasonId]||[];
   const aufSpieler = aufstellungen[curSeasonOpt.auf]||[];
@@ -7023,18 +7059,21 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     const updated = {...einsaetze, [sk]:{...cur, [feld]:wert}};
     setEinsaetze(updated);
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
-    // Zusätzlich ein datensparsames, öffentlich lesbares Spiegeldokument pflegen,
-    // das NUR Betreuer/Fahrer enthält (keine Verfügbarkeiten). Daraus liest der
-    // Kalender-Abo-Feed (Netlify-Function) ohne Login. Doc: config/betreuerFahrer_{saison}.
+    // Zusätzlich das datensparsame, öffentlich lesbare Spiegeldokument pflegen,
+    // aus dem der Kalender-Abo-Feed (Netlify-Function) ohne Login liest.
+    // Doc: config/betreuerFahrer_{saison}. Ein Fehler hier wird gemeldet, damit ein
+    // fehlendes Regel-Deployment o.ä. nicht unbemerkt bleibt.
     try {
-      const bf={};
-      for(const k in updated){
-        const e=updated[k]||{};
-        const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"";
-        if(b1||b2||f) bf[k]={b1,b2,f};
-      }
+      const bf=buildBetreuerFahrerSpiegel(updated);
       await setDoc(doc(db,"config",`betreuerFahrer_${selSeasonId}`),{data:bf,lastUpdated:Date.now()});
-    } catch(e){}
+    } catch(e){
+      console.error("Betreuer/Fahrer-Spiegel konnte nicht gespeichert werden:",e);
+      if(typeof window!=="undefined") window.alert(
+        "Hinweis: Betreuer/Fahrer wurden gespeichert, konnten aber nicht für das Kalender-Abo veröffentlicht werden.\n\n"+
+        "Mögliche Ursache: die aktualisierten Firestore-Regeln sind noch nicht in der Firebase Console deployt.\n\n"+
+        "Details: "+(e?.message||e)
+      );
+    }
   }
 
   const heuteStr=new Date().toLocaleDateString("sv");
