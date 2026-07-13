@@ -15,6 +15,8 @@ const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "DEIN_PROJECT_ID";
 const API_KEY    = process.env.FIREBASE_API_KEY || ""; // optional
 
 function icsEscape(s){return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
+// Muss identisch zur App sein, damit der spielKey exakt übereinstimmt.
+function normName(s){return (s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");}
 function icsDateTime(isoDate,uhrzeit){const p=(isoDate||"").split("-");const t=((uhrzeit||"00:00").split(":"));if(p.length<3)return null;return `${p[0]}${p[1]}${p[2]}T${(t[0]||"00").padStart(2,"0")}${(t[1]||"00").padStart(2,"0")}00`;}
 function icsAddMinutes(isoDate,uhrzeit,minutes){const[y,m,d]=(isoDate||"").split("-").map(Number);const[hh,mi]=((uhrzeit||"00:00").split(":")).map(Number);const dt=new Date(y,(m||1)-1,d||1,hh||0,mi||0);dt.setMinutes(dt.getMinutes()+minutes);const p=n=>String(n).padStart(2,"0");return `${dt.getFullYear()}${p(dt.getMonth()+1)}${p(dt.getDate())}T${p(dt.getHours())}${p(dt.getMinutes())}00`;}
 function icsUid(parts){return parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g,"")).join("-")+"@ttc-niederzeuzheim";}
@@ -45,7 +47,7 @@ function convertValue(v){
 
 function buildICS(opts){
   const {teams=[],vorlaufMin=60,dauerMin=180,includeTermine=false,spiele=[],vereinstermine=[],
-    puffer=false,heimVor=60,heimNach=30,auswVor=60,auswNach=30}=opts;
+    puffer=false,heimVor=60,heimNach=30,auswVor=60,auswNach=30,einsaetzeData={}}=opts;
   const teamSet=teams.length>0?new Set(teams):null;
   const L=[];
   L.push("BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TTC Niederzeuzheim//Trainings-App//DE",
@@ -66,9 +68,25 @@ function buildICS(opts){
     if(puffer&&heim&&(vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
     if(puffer&&auswaerts&&(vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
     if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
+    // Fahrer/Betreuer aus dem Spiegeldokument (Struktur {b1,b2,f}). spielKey identisch zur App.
+    const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+    const ei=einsaetzeData[sk]||{};
+    // Betreuer/Fahrer als eigene Zeilen GANZ UNTEN anfügen, rollenabhängig:
+    //  Auswärts: "Fahrer: …" dann "Betreuer: …"
+    //  Heim:     "Betreuer 1: …" dann "Betreuer 2: …"
+    const bfZeilen=[];
+    if(heim){
+      if(ei.b1) bfZeilen.push(`Betreuer 1: ${ei.b1}`);
+      if(ei.b2) bfZeilen.push(`Betreuer 2: ${ei.b2}`);
+    } else {
+      if(ei.f)  bfZeilen.push(`Fahrer: ${ei.f}`);
+      if(ei.b1) bfZeilen.push(`Betreuer: ${ei.b1}`);
+    }
+    let descText=descParts.join(" · ");
+    if(bfZeilen.length>0) descText+="\n"+bfZeilen.join("\n");
     L.push("BEGIN:VEVENT",`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`,`DTSTAMP:${stamp}`,
       `DTSTART:${start}`,`DTEND:${end}`,`SUMMARY:${icsEscape(titel)}`,`LOCATION:${icsEscape(ortText)}`,`CATEGORIES:${icsEscape(s.mannschaft)}`,
-      `DESCRIPTION:${icsEscape(descParts.join(" · "))}`);
+      `DESCRIPTION:${icsEscape(descText)}`);
     if(vorlaufMin>0) L.push("BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:${icsEscape(titel)}`,`TRIGGER:-PT${vorlaufMin}M`,"END:VALARM");
     L.push("END:VEVENT");
   }
@@ -90,7 +108,22 @@ function buildICS(opts){
     }
   }
   L.push("END:VCALENDAR");
-  return L.join("\r\n");
+  return L.map(foldIcsLine).join("\r\n");
+}
+// Faltet eine ICS-Zeile auf max. 75 Oktette (UTF-8); Folgezeilen mit führendem
+// Leerzeichen (RFC 5545). Ohne Faltung ignorieren strikte Kalender lange Zeilen.
+function foldIcsLine(line){
+  const enc = s => Buffer.byteLength(s,"utf8");
+  if(enc(line) <= 75) return line;
+  let out="", cur="", curBytes=0;
+  for(const ch of line){
+    const b = enc(ch);
+    const limit = out==="" ? 75 : 74;
+    if(curBytes + b > limit){ out += (out==="" ? "" : "\r\n ") + cur; cur=ch; curBytes=b; }
+    else { cur+=ch; curBytes+=b; }
+  }
+  out += (out==="" ? "" : "\r\n ") + cur;
+  return out;
 }
 
 exports.handler = async (event) => {
@@ -134,8 +167,14 @@ exports.handler = async (event) => {
         vereinstermine=vereinstermine.filter(t=>rub.includes(t.rubrik||"Alle"));
       }
     }
+    // Betreuer/Fahrer aus dem datensparsamen, öffentlich lesbaren Spiegeldokument
+    // laden (nur Namen, keine Verfügbarkeiten). Doc: config/betreuerFahrer_{saison}.
+    // Beim Abo wird der Feed bei jedem Abruf neu gebaut → Änderungen sind automatisch aktuell.
+    let einsaetzeData={};
+    const bfDoc=await getDocData("config/betreuerFahrer_"+saisonKey);
+    if(bfDoc&&bfDoc.data) einsaetzeData=bfDoc.data;
 
-    const ics=buildICS({teams,vorlaufMin,dauerMin,includeTermine,puffer,spiele,vereinstermine});
+    const ics=buildICS({teams,vorlaufMin,dauerMin,includeTermine,puffer,spiele,vereinstermine,einsaetzeData});
     return {
       statusCode:200,
       headers:{
