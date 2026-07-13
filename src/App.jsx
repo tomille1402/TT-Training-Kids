@@ -7995,6 +7995,7 @@ function foldIcsLine(line){
   out += (out==="" ? "" : "\r\n ") + cur;
   return out;
 }
+
 // ─── KALENDER-EXPORT UI (Download + Abo-Link) ────────────────────────────────
 // Basis-URL des Abo-Feeds. Wir nutzen den kurzen Redirect /kalender.ics (definiert
 // in netlify.toml), da er zuverlaessig greift und auf .ics endet. Der direkte
@@ -9823,7 +9824,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     if(g==="Gast" && !hasAdminRole) return false;
     return true;
   });
-  const erwachsenePlayers = allActive.filter(p=>(p.group||"Anfänger")==="Erwachsene");
+  // Erwachsene = per Gruppe ODER per Funktion (roles.erwachsene). Wichtig: nur die
+  // Gruppe zu prüfen ließ Personen weg, die z.B. als Profi geführt sind, aber die
+  // Funktion "Erwachsene" haben (u.a. Admins) — sie fehlten dann in der Auswahlleiste.
+  const erwachsenePlayers = allActive.filter(p=>(p.group||"Anfänger")==="Erwachsene" || p.roles?.erwachsene===true);
   const mfPlayers = allActive.filter(p=>p.roles?.mannschaftsfuehrer===true);
 
   // Erwachsene-only: only see own data, no chip selection
