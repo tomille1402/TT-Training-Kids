@@ -47,15 +47,27 @@ function convertValue(v){
 
 function buildICS(opts){
   const {teams=[],vorlaufMin=60,dauerMin=180,includeTermine=false,spiele=[],vereinstermine=[],
-    puffer=false,heimVor=60,heimNach=30,auswVor=60,auswNach=30,einsaetzeData={}}=opts;
-  const teamSet=teams.length>0?new Set(teams):null;
+    puffer=false,heimVor=60,heimNach=30,auswVor=60,auswNach=30,einsaetzeData={},
+    betreuerName=""}=opts;
+  const SENTINEL_BETREUT="__betreut__";
+  const echteTeams=teams.filter(t=>t!==SENTINEL_BETREUT);
+  const betreutAktiv=teams.includes(SENTINEL_BETREUT);
+  const teamSet=echteTeams.length>0?new Set(echteTeams):(betreutAktiv?new Set():null);
+  const eigenBetreuer=normName(betreuerName||"");
+  function istBetreutesSpiel(s){
+    if(!betreutAktiv||!eigenBetreuer) return false;
+    const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+    const ei=einsaetzeData[sk]||{};
+    return normName(ei.b1||"")===eigenBetreuer || normName(ei.b2||"")===eigenBetreuer;
+  }
+  const teamPasst=s=>(teamSet===null)?true:(teamSet.has(s.mannschaft)||istBetreutesSpiel(s));
   const L=[];
   L.push("BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TTC Niederzeuzheim//Trainings-App//DE",
     "CALSCALE:GREGORIAN","METHOD:PUBLISH","X-WR-CALNAME:TTC Niederzeuzheim – Spieltermine","X-WR-TIMEZONE:Europe/Berlin");
   const d=new Date();const p=n=>String(n).padStart(2,"0");
   const stamp=`${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
   for(const s of spiele){
-    if(teamSet&&!teamSet.has(s.mannschaft)) continue;
+    if(!teamPasst(s)) continue;
     const spielStart=icsDateTime(s.datum,s.uhrzeit); if(!spielStart) continue;
     const heim=/heim/i.test(s.ort||""); const auswaerts=/ausw/i.test(s.ort||"");
     let vorMin=0,nachMin=0;
@@ -174,13 +186,21 @@ exports.handler = async (event) => {
     const bfDoc=await getDocData("config/betreuerFahrer_"+saisonKey);
     if(bfDoc&&bfDoc.data) einsaetzeData=bfDoc.data;
 
-    const ics=buildICS({teams,vorlaufMin,dauerMin,includeTermine,puffer,spiele,vereinstermine,einsaetzeData});
+    const ics=buildICS({teams,vorlaufMin,dauerMin,includeTermine,puffer,spiele,vereinstermine,einsaetzeData,
+      betreuerName:q.betreuer||""});
     return {
       statusCode:200,
       headers:{
         "Content-Type":"text/calendar; charset=utf-8",
         "Content-Disposition":'inline; filename="ttc-termine.ics"',
-        "Cache-Control":"public, max-age=3600",
+        // Caching unterbinden: der Feed wird bei jedem Abruf frisch aus Firestore
+        // gebaut, daher darf keine Zwischenschicht (CDN/Client) eine alte Version
+        // ausliefern. Ohne dies lieferte "public, max-age=3600" den Feed bis zu
+        // einer Stunde lang gecacht aus.
+        "Cache-Control":"no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma":"no-cache",
+        "Expires":"0",
+        "Netlify-CDN-Cache-Control":"no-cache, max-age=0",
         "Access-Control-Allow-Origin":"*",
       },
       body:ics,
