@@ -7937,9 +7937,33 @@ function buildICS(options){
   }
 
   L.push("END:VCALENDAR");
-  // CRLF-Zeilenenden gemäß RFC 5545
-  return L.join("\r\n");
+  // CRLF-Zeilenenden gemäß RFC 5545 + Line-Folding (max. 75 Oktette pro Zeile).
+  // Ohne Faltung ignorieren strikte Kalender (z. B. Apple) lange DESCRIPTION-Zeilen
+  // teilweise — dadurch fehlten Betreuer/Fahrer im Kalender.
+  return L.map(foldIcsLine).join("\r\n");
 }
+
+// Faltet eine ICS-Zeile auf max. 75 Oktette (UTF-8). Folgezeilen beginnen mit einem
+// einzelnen Leerzeichen (RFC 5545, "content line folding"). Mehrbyte-Zeichen (Umlaute)
+// werden nicht in der Mitte getrennt.
+function foldIcsLine(line){
+  const enc = s => (typeof TextEncoder!=="undefined") ? new TextEncoder().encode(s).length
+    : unescape(encodeURIComponent(s)).length; // Fallback für Byte-Länge
+  if(enc(line) <= 75) return line;
+  let out="", cur="", curBytes=0;
+  for(const ch of line){          // iteriert über volle Unicode-Zeichen
+    const b = enc(ch);
+    // erste Zeile 75, Folgezeilen 74 Nutzbytes (1 Byte für führendes Leerzeichen)
+    const limit = out==="" ? 75 : 74;
+    if(curBytes + b > limit){
+      out += (out==="" ? "" : "\r\n ") + cur;
+      cur = ch; curBytes = b;
+    } else {
+      cur += ch; curBytes += b;
+    }
+  }
+  out += (out==="" ? "" : "\r\n ") + cur;
+  return out;
 
 // ─── KALENDER-EXPORT UI (Download + Abo-Link) ────────────────────────────────
 // Basis-URL des Abo-Feeds. Wir nutzen den kurzen Redirect /kalender.ics (definiert
@@ -8093,31 +8117,6 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   });
 
   function download(){
-    // ─── DIAGNOSE (temporär) ─────────────────────────────────────────────────
-    // Prüft, ob für die exportierten Spiele Betreuer/Fahrer-Daten gefunden werden.
-    // Zeigt das Ergebnis kurz an, damit die Ursache eingrenzbar ist.
-    try {
-      const teamSetD = selTeams.length>0 ? new Set(selTeams) : null;
-      const eKeys = Object.keys(einsaetzeData||{});
-      const eMitBF = eKeys.filter(k=>{const e=einsaetzeData[k]||{};return e._betreuer1||e._betreuer2||e._fahrer;});
-      let treffer=0; const beispielSpiel=[], beispielEinsatz=eMitBF.slice(0,3);
-      for(const s of spiele){
-        if(teamSetD && !teamSetD.has(s.mannschaft)) continue;
-        const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
-        if(beispielSpiel.length<3) beispielSpiel.push(sk);
-        const e=einsaetzeData[sk]||{};
-        if(e._betreuer1||e._betreuer2||e._fahrer) treffer++;
-      }
-      const msg =
-        "Kalender-Diagnose:\n"+
-        `• Einsätze-Datensätze geladen: ${eKeys.length}\n`+
-        `• davon mit Betreuer/Fahrer: ${eMitBF.length}\n`+
-        `• Spiele im Export mit Treffer: ${treffer}\n\n`+
-        "Beispiel-Schlüssel im EXPORT:\n"+beispielSpiel.join("\n")+"\n\n"+
-        "Beispiel-Schlüssel in EINSÄTZEN:\n"+beispielEinsatz.join("\n");
-      window.alert(msg);
-    } catch(e){ console.error(e); }
-    // ─────────────────────────────────────────────────────────────────────────
     const ics=buildICS(icsOptions());
     const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
     const url=URL.createObjectURL(blob);
