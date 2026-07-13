@@ -8093,6 +8093,31 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   });
 
   function download(){
+    // ─── DIAGNOSE (temporär) ─────────────────────────────────────────────────
+    // Prüft, ob für die exportierten Spiele Betreuer/Fahrer-Daten gefunden werden.
+    // Zeigt das Ergebnis kurz an, damit die Ursache eingrenzbar ist.
+    try {
+      const teamSetD = selTeams.length>0 ? new Set(selTeams) : null;
+      const eKeys = Object.keys(einsaetzeData||{});
+      const eMitBF = eKeys.filter(k=>{const e=einsaetzeData[k]||{};return e._betreuer1||e._betreuer2||e._fahrer;});
+      let treffer=0; const beispielSpiel=[], beispielEinsatz=eMitBF.slice(0,3);
+      for(const s of spiele){
+        if(teamSetD && !teamSetD.has(s.mannschaft)) continue;
+        const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+        if(beispielSpiel.length<3) beispielSpiel.push(sk);
+        const e=einsaetzeData[sk]||{};
+        if(e._betreuer1||e._betreuer2||e._fahrer) treffer++;
+      }
+      const msg =
+        "Kalender-Diagnose:\n"+
+        `• Einsätze-Datensätze geladen: ${eKeys.length}\n`+
+        `• davon mit Betreuer/Fahrer: ${eMitBF.length}\n`+
+        `• Spiele im Export mit Treffer: ${treffer}\n\n`+
+        "Beispiel-Schlüssel im EXPORT:\n"+beispielSpiel.join("\n")+"\n\n"+
+        "Beispiel-Schlüssel in EINSÄTZEN:\n"+beispielEinsatz.join("\n");
+      window.alert(msg);
+    } catch(e){ console.error(e); }
+    // ─────────────────────────────────────────────────────────────────────────
     const ics=buildICS(icsOptions());
     const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
     const url=URL.createObjectURL(blob);
