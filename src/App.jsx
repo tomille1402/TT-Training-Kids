@@ -7872,9 +7872,21 @@ function buildICS(options){
     // spielKey identisch zur EinsätzeView berechnen.
     const sk = `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
     const ei = einsaetzeData[sk]||{};
-    const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean).join(", ");
-    if(betreuer) descParts.push(`Betreuer: ${betreuer}`);
-    if(ei._fahrer) descParts.push(`Fahrer: ${ei._fahrer}`);
+    // Betreuer/Fahrer werden als eigene Zeilen GANZ UNTEN angefügt (echter
+    // Zeilenumbruch in der ICS-DESCRIPTION), im rollenabhängigen Format:
+    //  Auswärts: "Fahrer: …" dann "Betreuer: …"
+    //  Heim:     "Betreuer 1: …" dann "Betreuer 2: …"
+    const bfZeilen=[];
+    if(heim){
+      if(ei._betreuer1) bfZeilen.push(`Betreuer 1: ${ei._betreuer1}`);
+      if(ei._betreuer2) bfZeilen.push(`Betreuer 2: ${ei._betreuer2}`);
+    } else {
+      if(ei._fahrer)    bfZeilen.push(`Fahrer: ${ei._fahrer}`);
+      if(ei._betreuer1) bfZeilen.push(`Betreuer: ${ei._betreuer1}`);
+    }
+    // Haupttext mit " · " verbinden; Betreuer/Fahrer danach je auf eigener Zeile.
+    let descText = descParts.join(" · ");
+    if(bfZeilen.length>0) descText += "\n" + bfZeilen.join("\n");
     L.push("BEGIN:VEVENT");
     L.push(`UID:${icsUid([s.datum,s.uhrzeit,s.mannschaft,s.gegner])}`);
     L.push(`DTSTAMP:${stamp}`);
@@ -7883,7 +7895,7 @@ function buildICS(options){
     L.push(`SUMMARY:${icsEscape(titel)}`);
     L.push(`LOCATION:${icsEscape(ortText)}`);
     L.push(`CATEGORIES:${icsEscape(s.mannschaft)}`);
-    L.push(`DESCRIPTION:${icsEscape(descParts.join(" · "))}`);
+    L.push(`DESCRIPTION:${icsEscape(descText)}`);
     if(vorlaufMin>0){
       // Erinnerung bezieht sich auf den Kalender-Start (also inkl. Puffer)
       L.push("BEGIN:VALARM");
