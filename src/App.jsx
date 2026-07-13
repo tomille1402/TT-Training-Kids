@@ -6768,6 +6768,28 @@ function rangOfPlayerInTeam(player, aufName, aufstellungSpieler){
   return "";
 }
 
+// Einheitliche spielKey-Berechnung (identisch in EinsätzeView, Kalender, Function).
+function spielKeyFromSpiel(s){
+  return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+}
+
+// Der Anzeigename einer Person, wie er als Betreuer/Fahrer gespeichert wird: "Vorname Nachname".
+function personAnzeigeName(player){
+  if(!player) return "";
+  return `${(player.firstName||"").trim()} ${(player.lastName||"").trim()}`.trim();
+}
+
+// Prüft, ob die Person als Betreuer (1 oder 2) dieses Spiels eingetragen ist.
+// einsaetzeData: {spielKey:{_betreuer1,_betreuer2,_fahrer}}. Vergleich normalisiert,
+// damit Leerzeichen-/Punkt-Unterschiede nicht stören.
+function personIstBetreuer(player, spiel, einsaetzeData){
+  if(!player||!spiel||!einsaetzeData) return false;
+  const eigen=normName(personAnzeigeName(player));
+  if(!eigen) return false;
+  const ei=einsaetzeData[spielKeyFromSpiel(spiel)]||{};
+  return normName(ei._betreuer1||"")===eigen || normName(ei._betreuer2||"")===eigen;
+}
+
 // Wochentag-Kurzform (2 Buchstaben) aus ISO-Datum
 const EINSATZ_TAGE=["So","Mo","Di","Mi","Do","Fr","Sa"];
 function wochentagKurz(isoDatum){
@@ -7831,8 +7853,16 @@ function buildICS(options){
     heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
     auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
     einsaetzeData={},             // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
+    betreutPlayer=null,           // Person, deren betreute Spiele zusätzlich aufgenommen werden
   }=options;
-  const teamSet = teams.length>0 ? new Set(teams) : null; // null = alle
+  // "betreute Spiele" als Sentinel im teams-Array. Echte Mannschaften separat.
+  const echteTeams = teams.filter(t=>t!==SENTINEL_BETREUT);
+  const betreutAktiv = teams.includes(SENTINEL_BETREUT);
+  const teamSet = echteTeams.length>0 ? new Set(echteTeams) : (betreutAktiv ? new Set() : null);
+  // null = alle Mannschaften; leeres Set (nur Betreut gewählt) = keine regulären, nur betreute.
+  const istBetreutesSpiel = s => betreutAktiv && betreutPlayer
+    && personIstBetreuer(betreutPlayer, s, einsaetzeData);
+  const teamPasst = s => (teamSet===null) ? true : (teamSet.has(s.mannschaft) || istBetreutesSpiel(s));
   const L=[];
   L.push("BEGIN:VCALENDAR");
   L.push("VERSION:2.0");
@@ -7847,7 +7877,7 @@ function buildICS(options){
 
   // Spiele
   for(const s of spiele){
-    if(teamSet && !teamSet.has(s.mannschaft)) continue;
+    if(!teamPasst(s)) continue;
     const spielStart=icsDateTime(s.datum, s.uhrzeit);
     if(!spielStart) continue;
     const heim = /heim/i.test(s.ort||"");
@@ -8077,13 +8107,19 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     const key=`${selSaison}|${vorauswahlPlayer.id||""}`;
     if(kalVorauswahlRef.current===key) return;
     const aufTeam=stammMannschaftVorauswahl(vorauswahlPlayer, aufSpielerKal);
-    if(!aufTeam) return;
-    const spielplanTeam=AUFSTELLUNG_TO_SPIELPLAN[aufTeam]||aufTeam;
-    const match=alleMannschaften.find(m=>m===spielplanTeam||m.startsWith(spielplanTeam));
-    if(!match) return;
+    const spielplanTeam=aufTeam?(AUFSTELLUNG_TO_SPIELPLAN[aufTeam]||aufTeam):null;
+    const match=spielplanTeam?alleMannschaften.find(m=>m===spielplanTeam||m.startsWith(spielplanTeam)):null;
+    // Punkt 4: Erwachsene UND Trainer bekommen "betreute Spiele" vorbelegt, damit
+    // diese immer im Kalender landen. Rolle: Erwachsenen-Ansicht ODER Trainer-Flag.
+    const istTrainer=vorauswahlPlayer.roles?.trainer===true;
+    const mitBetreut = istErwachseneView || istTrainer;
+    const vorauswahl=[];
+    if(match) vorauswahl.push(match);
+    if(mitBetreut) vorauswahl.push(SENTINEL_BETREUT);
+    if(vorauswahl.length===0) return;
     kalVorauswahlRef.current=key;
-    setSelTeams([match]);
-  },[vorauswahlPlayer,aufSpielerKal,alleMannschaften,selSaison,kalUserSet]);
+    setSelTeams(vorauswahl);
+  },[vorauswahlPlayer,aufSpielerKal,alleMannschaften,selSaison,kalUserSet,istErwachseneView]);
 
   // Punkt 4: Dauer automatisch nach Auswahl vorbelegen (Nachwuchs 1,5h, Erwachsene 2,5h),
   // solange der Nutzer die Dauer nicht manuell geändert hat.
@@ -8114,6 +8150,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   const icsOptions=()=>({
     teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
     puffer, spiele, vereinstermine:gefilterteTermine, einsaetzeData,
+    betreutPlayer:vorauswahlPlayer,
   });
 
   function download(){
@@ -8130,6 +8167,11 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     const params=new URLSearchParams();
     params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
+    // Wenn "betreute Spiele" gewählt sind, den Betreuer-Namen mitgeben, damit der
+    // Abo-Feed (Function) die betreuten Spiele derselben Person filtern kann.
+    if(selTeams.includes(SENTINEL_BETREUT) && vorauswahlPlayer){
+      params.set("betreuer", personAnzeigeName(vorauswahlPlayer));
+    }
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
     // Rubriken: nur setzen wenn nicht alle Standard-Rubriken gewählt sind
@@ -8192,6 +8234,11 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
           </label>
         ))}
         {alleMannschaften.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Keine Mannschaften in dieser Saison.</div>}
+        {/* Punkt 3: betreute Spiele als eigene Ausprägung unterhalb der Mannschaften */}
+        {vorauswahlPlayer&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",borderTop:"1px solid var(--border2)",marginTop:4,paddingTop:8}}>
+          <input type="checkbox" checked={selTeams.includes(SENTINEL_BETREUT)} onChange={()=>toggleTeam(SENTINEL_BETREUT)}/>
+          betreute Spiele<span style={{fontSize:10,color:"var(--text4)"}}> (Spiele, für die du als Betreuer bestimmt bist)</span>
+        </label>}
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
@@ -8588,6 +8635,10 @@ function TermineView() {
   </div>;
 }
 
+// Sentinel-Wert im Mannschaftsfilter für "betreute Spiele" (Spiele, für die der
+// eingeloggte Nutzer als Betreuer bestimmt ist).
+const SENTINEL_BETREUT="__betreut__";
+
 function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
@@ -8739,7 +8790,23 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     if(String(s.gegner||"").toLowerCase().includes("spielfrei")||String(s.mannschaft||"").toLowerCase().includes("spielfrei")) return false;
     if(nurNachwuchs && !nachwuchsMannschaften.some(nm=>s.mannschaft===nm||s.mannschaft.startsWith(nm))) return false;
     const selManns=filters.mannschaften||[];
-    if(selManns.length>0 && !selManns.includes(s.mannschaft)) return false;
+    // Ist dieses Spiel eines, für das der eingeloggte Nutzer als Betreuer bestimmt ist?
+    const istBetreut = vorauswahlPlayer ? personIstBetreuer(vorauswahlPlayer, s, einsaetzeData) : false;
+    const betreutFilterAktiv = selManns.includes(SENTINEL_BETREUT);
+    // Punkt 2: Ist NUR "betreute Spiele" gewählt (ohne echte Mannschaften), zeige
+    // ausschließlich betreute Spiele.
+    const echteManns = selManns.filter(m=>m!==SENTINEL_BETREUT);
+    if(betreutFilterAktiv && echteManns.length===0){
+      if(!istBetreut) return false;
+      // die übrigen Detailfilter (Ort/Gegner/Tag/Art) trotzdem anwenden
+    } else if(echteManns.length>0){
+      // Punkt 1: betreute Spiele werden IMMER zusätzlich gezeigt, egal welcher
+      // Mannschaftsfilter gesetzt ist. Nicht-betreute Spiele müssen zur Auswahl passen.
+      if(!echteManns.includes(s.mannschaft) && !istBetreut) return false;
+    }
+    // Betreute Spiele umgehen auch die Detailfilter, damit sie – wie gefordert –
+    // immer sichtbar bleiben (Punkt 1). Ausnahme: der reine Betreut-Filter oben.
+    if(istBetreut && echteManns.length>0) return true;
     if(filters.ort && s.ort!==filters.ort) return false;
     if(filters.gegner && !String(s.gegner||"").toLowerCase().includes(filters.gegner.toLowerCase())) return false;
     if(filters.tag && s.tag!==filters.tag) return false;
@@ -8832,6 +8899,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Mannschaft{selManns.length>0?` (${selManns.length})`:""}</option>
           {MANNS.map(m=><option key={m} value={m}>{selManns.includes(m)?"☑ ":"☐ "}{m}</option>)}
+          {vorauswahlPlayer&&<option value={SENTINEL_BETREUT}>{selManns.includes(SENTINEL_BETREUT)?"☑ ":"☐ "}betreute Spiele</option>}
         </select>
         {/* Vereinstermin-Rubriken Multi-Select (Alle/Nachwuchs/Erwachsene/Grenzau-Spiele) */}
         {(()=>{
