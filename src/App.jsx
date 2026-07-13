@@ -7994,7 +7994,7 @@ function foldIcsLine(line){
   }
   out += (out==="" ? "" : "\r\n ") + cur;
   return out;
-
+}
 // ─── KALENDER-EXPORT UI (Download + Abo-Link) ────────────────────────────────
 // Basis-URL des Abo-Feeds. Wir nutzen den kurzen Redirect /kalender.ics (definiert
 // in netlify.toml), da er zuverlaessig greift und auf .ics endet. Der direkte
