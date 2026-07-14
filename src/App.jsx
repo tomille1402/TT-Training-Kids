@@ -1923,6 +1923,43 @@ function PersonenUebersicht({players}) {
     return list.join("·")||"—";
   };
   const dsText=(p)=> p.datenschutzAccepted ? String(p.datenschutzAccepted).split("-").reverse().join(".") : "—";
+
+  // Einmaliger Nachhol-Abgleich: Wenn an einer E-Mail-Adresse mehrere Spieler hängen
+  // und die Datenschutz-Erklärung nur bei einem bestätigt wurde, das Datum auf alle
+  // zugehörigen Spieler übertragen, die noch keines haben. Verknüpfung über die
+  // Anmelde-E-Mail (email) ODER die Eltern-E-Mail (elternEmail).
+  const [dsSyncLauft,setDsSyncLauft]=useState(false);
+  async function datenschutzNachziehen(){
+    const gruppen=new Map(); // normalisierte Mail -> [player,...]
+    for(const p of players){
+      for(const mail of [p.email, p.elternEmail]){
+        const m=(mail||"").trim().toLowerCase();
+        if(!m) continue;
+        if(!gruppen.has(m)) gruppen.set(m,[]);
+        gruppen.get(m).push(p);
+      }
+    }
+    const updates=[]; const gesehen=new Set();
+    for(const [,gruppe] of gruppen){
+      const daten=gruppe.map(p=>p.datenschutzAccepted).filter(Boolean).sort();
+      if(daten.length===0) continue;       // niemand in der Gruppe hat bestätigt
+      const fruehestes=daten[0];
+      for(const p of gruppe){
+        if(!p.datenschutzAccepted && !gesehen.has(p.id)){
+          updates.push({id:p.id, datum:fruehestes});
+          gesehen.add(p.id);
+        }
+      }
+    }
+    if(updates.length===0){ alert("Nichts nachzuziehen: alle zusammenhängenden Spieler haben bereits ein Datum."); return; }
+    if(!window.confirm(`${updates.length} Spieler erhalten das Datenschutz-Datum eines an derselben E-Mail hängenden Spielers. Fortfahren?`)) return;
+    setDsSyncLauft(true);
+    try {
+      await Promise.all(updates.map(u=>updateDoc(doc(db,"players",u.id),{datenschutzAccepted:u.datum})));
+      alert(`Fertig: ${updates.length} Spieler aktualisiert.`);
+    } catch(e){ alert("Fehler: "+e.message); }
+    setDsSyncLauft(false);
+  }
   const rows=players.map(p=>({
     id:p.id,
     name:`${p.firstName||""} ${p.lastName||""}`.trim()||p.name||"—",
@@ -2029,6 +2066,18 @@ function PersonenUebersicht({players}) {
         </table>
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Funktionen: A=Admin · T=Trainer · S=Spieler · E=Erwachsene · MF=Mannschaftsführer · DS=Datum Datenschutz-Zustimmung</div>
+      {/* Nachhol-Abgleich für Datenschutz-Daten bei geteilten E-Mail-Adressen */}
+      <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border2)"}}>
+        <button onClick={datenschutzNachziehen} disabled={dsSyncLauft}
+          style={{padding:"8px 12px",fontSize:11,fontWeight:700,background:dsSyncLauft?"var(--border2)":"#3b82f622",
+            border:"1px solid #3b82f644",borderRadius:8,color:"#3b82f6",cursor:dsSyncLauft?"wait":"pointer"}}>
+          {dsSyncLauft?"Wird übertragen…":"🔒 Datenschutz-Datum auf mitverbundene Spieler übertragen"}
+        </button>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:5,lineHeight:1.5}}>
+          Überträgt das vorhandene Zustimmungsdatum auf alle Spieler, die an derselben E-Mail-Adresse hängen
+          (z.B. Geschwister unter einer Eltern-Adresse) und noch kein Datum haben. Einmalig auszuführen.
+        </div>
+      </div>
     </>}
   </div>;
 }
@@ -10061,7 +10110,7 @@ const DATENSCHUTZ_TEXT = [
   ]},
 ];
 
-function DatenschutzGate({playerId, onAccepted, onSignOut}) {
+function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut}) {
   const [saving,setSaving]=useState(false);
   function druckenPDF(){
     const w=window.open("","_blank");
@@ -10081,7 +10130,11 @@ function DatenschutzGate({playerId, onAccepted, onSignOut}) {
     setSaving(true);
     try {
       const heute=new Date().toLocaleDateString("sv"); // YYYY-MM-DD
-      await updateDoc(doc(db,"players",playerId),{datenschutzAccepted:heute});
+      // Eine Bestätigung deckt ALLE Spieler ab, die an derselben E-Mail-Adresse
+      // hängen (eigenes Profil + weitere Kinder mit gleicher elternEmail/email).
+      // Daher das Datum bei allen zugehörigen Profilen setzen.
+      const ids=[...new Set([playerId,...verwandtePlayerIds])].filter(Boolean);
+      await Promise.all(ids.map(id=>updateDoc(doc(db,"players",id),{datenschutzAccepted:heute})));
       onAccepted(heute);
     } catch(e){alert("Fehler beim Speichern: "+e.message); setSaving(false);}
   }
@@ -10389,7 +10442,15 @@ export default function App() {
 
   // ── Datenschutz-Gate: Profil ohne Akzeptanz-Datum muss zuerst zustimmen ──
   if (myPlayer && !myPlayer.datenschutzAccepted && !datenschutzOk) {
-    return <DatenschutzGate playerId={myPlayer.id}
+    // Alle Spieler ermitteln, die an derselben Anmelde-E-Mail hängen (als eigenes
+    // Login-Konto ODER als Eltern-E-Mail eines Kindes). Eine Bestätigung deckt alle ab.
+    const loginMail = authUser.email?.toLowerCase();
+    const verwandte = players.filter(p =>
+      p.id!==myPlayer.id &&
+      ((p.email && p.email.toLowerCase()===loginMail) ||
+       (p.elternEmail && p.elternEmail.toLowerCase()===loginMail))
+    ).map(p=>p.id);
+    return <DatenschutzGate playerId={myPlayer.id} verwandtePlayerIds={verwandte}
       onAccepted={()=>setDatenschutzOk(true)} onSignOut={handleSignOut}/>;
   }
 
