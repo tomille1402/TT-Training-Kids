@@ -353,11 +353,15 @@ function sizesForGroup(group){
 const TRIKOT_SIZES = ["140","152","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
 // Anzüge (Hose, Jacke): 3XS–5XL
 const ANZUG_SIZES  = ["3XS","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
+// Hoodie (JOOLA Unisex Fleece): XS–2XL
+const HOODIE_SIZES = ["XS","S","M","L","XL","2XL"];
 
 // Katalog. geschlecht: "h"=Herren, "d"=Damen, "u"=unisex.
-// sizeType: "trikot" | "anzug" | null (Druck ohne Größe).
+// sizeType: "trikot" | "anzug" | "hoodie" | null (Druck ohne Größe).
 // sizeQuelle: aus welchem Verwaltungsfeld die Größe vorbelegt wird ("tshirt"/"anzug").
 // folgtArtikel: (nur Druck) Menge = Menge dieses Hauptartikels; bei Array = Summe.
+// Anzeige-Reihenfolge = Reihenfolge in diesem Array (NICHT die id). Der Hoodie steht
+// daher direkt unter der Anzug-Jacke; seine Druck-Artikel (14/15) stehen am Listenende.
 const BESTELL_ARTIKEL = [
   {id:1,  name:"Polo Donic Nuvon Herren",            preisKatalog:44.90, preisSpin:31.43, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"h", sizeType:"trikot", sizeQuelle:"tshirt"},
   {id:2,  name:"Polo Donic Nuvon Damen",             preisKatalog:43.90, preisSpin:30.73, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot", sizeQuelle:"tshirt"},
@@ -365,12 +369,15 @@ const BESTELL_ARTIKEL = [
   {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot"},
   {id:5,  name:"Anzug Hose Andro Salivan unisex",    preisKatalog:44.95, preisSpin:31.47, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
   {id:6,  name:"Anzug Jacke Andro Salivan unisex",   preisKatalog:54.95, preisSpin:38.47, preisTTC:35.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
+  {id:13, name:"JOOLA Unisex Fleece Hoodie",         preisKatalog:64.90, preisSpin:45.43, preisTTC:40.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"hoodie"},
   {id:7,  name:"Druck Vorname vorne Polo",           preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[1,2]},
   {id:8,  name:"Druck Vereinsname hinten Polo",      preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[1,2]},
   {id:9,  name:"Druck Vorname vorne Anzug Jacke",    preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
   {id:10, name:"Druck Vorname vorne Anzug Hose",     preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[5]},
   {id:11, name:"Druck Vereinsname hinten Anzug Jacke",preisKatalog:6.50, preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
   {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"trikot", sizeQuelle:"tshirt"},
+  {id:14, name:"Druck Vorname vorne Hoodie",         preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[13]},
+  {id:15, name:"Druck Vereinsname hinten Hoodie",    preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[13]},
 ];
 // Größenliste je Artikel
 const NACHWUCHS_TSHIRT_SIZES = ["116","128","140","152","164"];
@@ -378,15 +385,18 @@ function sizesForArtikel(a){
   // Punkt 9: T-Shirt Nimatsu Nachwuchs hat eigene Kindergrößen
   if(a.id===12) return NACHWUCHS_TSHIRT_SIZES;
   if(a.sizeType==="anzug") return ANZUG_SIZES;
+  if(a.sizeType==="hoodie") return HOODIE_SIZES;
   if(a.sizeType==="trikot") return TRIKOT_SIZES;
   return [];
 }
-// Anfänger/Gast dürfen nur Artikel 12, alle anderen die Artikel 1–11.
-// Zusätzlich Filter nach Geschlecht: männlich → Herren+unisex, weiblich → Damen+unisex.
+// Anfänger/Gast dürfen nur den Nachwuchs-Artikel (id 12), alle anderen Gruppen
+// (Profis, Fortgeschrittene, Erwachsene) alle übrigen Artikel — inkl. Hoodie (13)
+// und dessen Druck-Artikel (14/15), die damit wie der Anzug nur diesen Gruppen
+// angeboten werden. Filter über die Artikel-Eigenschaften statt fester ID-Bereiche.
 function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
   let list = (g==="Anfänger"||g==="Gast") ? BESTELL_ARTIKEL.filter(a=>a.id===12)
-                                          : BESTELL_ARTIKEL.filter(a=>a.id>=1 && a.id<=11);
+                                          : BESTELL_ARTIKEL.filter(a=>a.id!==12);
   if(gender==="m") list = list.filter(a=>a.geschlecht==="h"||a.geschlecht==="u");
   else if(gender==="w") list = list.filter(a=>a.geschlecht==="d"||a.geschlecht==="u");
   return list;
