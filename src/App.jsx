@@ -4224,13 +4224,41 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     return u;
   },[]);
 
+  // Aufstellung der aktuellen Saison laden, um die Spieler einer Mannschaft zu
+  // ermitteln (für MF: alle Spieler der eigenen Mannschaft, nicht nur solche mit
+  // gesetztem mannschaftsfuehrerTeam-Feld).
+  const [aufSpieler,setAufSpieler]=useState([]);
+  useEffect(()=>{
+    const aufKey="aufstellung_2026_2027_V";
+    const u=onSnapshot(doc(db,"config",aufKey),snap=>{
+      const data=snap.exists()&&(snap.data().spieler||[]).length>0
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+      setAufSpieler(data);
+    },()=>setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    return u;
+  },[]);
+
   // MF: nur Bestellungen der eigenen Mannschaft. Admin: alle.
   const meineMannschaft = me?.mannschaftsfuehrerTeam||"";
+
+  // Namen aller Spieler ermitteln, die in der MF-Mannschaft aufgestellt sind
+  // (Aufstellungs-Mannschaftsname, z.B. "Erwachsene VI"). Abgleich normalisiert.
+  const mannschaftSpielerIds = (()=>{
+    if(!meineMannschaft || aufSpieler.length===0) return new Set();
+    const ids=new Set();
+    for(const p of players){
+      // Spieler zählt zur Mannschaft, wenn er in der Aufstellung dieser Mannschaft steht.
+      const teams=teamsOfPlayer(p, aufSpieler);
+      if(teams.includes(meineMannschaft)) ids.add(p.id);
+    }
+    return ids;
+  })();
 
   // Spieler, für die MF/Admin eine Bestellung anlegen/bearbeiten dürfen
   const bearbeitbarePersonen = players.filter(p=>{
     if(isAdmin) return (p.group||"")!=="Trainer"; // alle Spieler & Erwachsene
-    if(isMF && meineMannschaft) return p.mannschaftsfuehrerTeam===meineMannschaft;
+    // MF: alle Spieler der eigenen Mannschaft (über Aufstellung) — plus man selbst.
+    if(isMF && meineMannschaft) return mannschaftSpielerIds.has(p.id) || p.id===me?.id;
     return false;
   }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
 
@@ -4246,9 +4274,9 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   const sichtbar = alle.filter(b=>{
     if(isAdmin) return true;
     if(isMF && meineMannschaft) {
-      // Spieler der Mannschaft ermitteln (über players)
-      const pl = players.find(p=>p.id===b.playerId);
-      return pl && (pl.mannschaftsfuehrerTeam===meineMannschaft || b.mannschaft===meineMannschaft);
+      // Bestellung sichtbar, wenn der zugehörige Spieler zur MF-Mannschaft gehört
+      // (über Aufstellung) oder die Bestellung selbst dieser Mannschaft zugeordnet ist.
+      return mannschaftSpielerIds.has(b.playerId) || b.mannschaft===meineMannschaft;
     }
     return false;
   });
@@ -4751,6 +4779,9 @@ function GeburtstageTab({players,showToast}) {
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Immer die tatsächlich eingeloggte Person (unabhängig von forcePlayer) — für den
+  // Bestellungen-Reiter, damit stets die eigene Bestellung erfasst/geändert wird.
+  const loginPlayer=players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null;
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
@@ -5124,7 +5155,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
       viewerCanEditAll={false}/>}
 
-    {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={loginPlayer} isAdmin={false}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
 
     <style>{`
@@ -9690,6 +9721,10 @@ function EhrungenView({player}) {
 function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Immer die tatsächlich EINGELOGGTE Person (unabhängig von forcePlayer/Funktionswechsel).
+  // Für den Bestellungen-Reiter maßgeblich, damit dort stets die eigene Bestellung
+  // erfasst/geändert wird und nicht die der gerade betrachteten Person.
+  const loginPlayer=players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null;
   const [toast,setToast]=useState(null);
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
@@ -9751,8 +9786,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
-    {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false} showToast={showToast}/>}
-    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={loginPlayer} isAdmin={false} showToast={showToast}/>}
+    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={loginPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
