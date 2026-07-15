@@ -9809,7 +9809,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
     {activeTab==="bestellungen"&&<BestellungenView me={loginPlayer} isAdmin={false} showToast={showToast}/>}
-    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={loginPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
+    {/* Übersicht: maßgeblich ist die betrachtete Person (der ausgewählte Mannschaftsführer),
+        damit die Mannschaft dieses MF gilt — nicht die eingeloggte Person. */}
+    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
