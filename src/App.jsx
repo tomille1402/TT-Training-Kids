@@ -389,14 +389,15 @@ function sizesForArtikel(a){
   if(a.sizeType==="trikot") return TRIKOT_SIZES;
   return [];
 }
-// Anfänger/Gast dürfen nur den Nachwuchs-Artikel (id 12), alle anderen Gruppen
-// (Profis, Fortgeschrittene, Erwachsene) alle übrigen Artikel — inkl. Hoodie (13)
-// und dessen Druck-Artikel (14/15), die damit wie der Anzug nur diesen Gruppen
-// angeboten werden. Filter über die Artikel-Eigenschaften statt fester ID-Bereiche.
+// Anfänger/Fortgeschrittene/Gast dürfen nur den Nachwuchs-Artikel (id 12),
+// nur Profis und Erwachsene die übrigen Artikel — inkl. Hoodie (13) und dessen
+// Druck-Artikel (14/15), die damit wie der Anzug nur diesen Gruppen angeboten
+// werden. Filter über die Artikel-Eigenschaften statt fester ID-Bereiche.
 function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
-  let list = (g==="Anfänger"||g==="Gast") ? BESTELL_ARTIKEL.filter(a=>a.id===12)
-                                          : BESTELL_ARTIKEL.filter(a=>a.id!==12);
+  const nurNachwuchs = (g==="Anfänger"||g==="Fortgeschrittene"||g==="Gast");
+  let list = nurNachwuchs ? BESTELL_ARTIKEL.filter(a=>a.id===12)
+                          : BESTELL_ARTIKEL.filter(a=>a.id!==12);
   if(gender==="m") list = list.filter(a=>a.geschlecht==="h"||a.geschlecht==="u");
   else if(gender==="w") list = list.filter(a=>a.geschlecht==="d"||a.geschlecht==="u");
   return list;
@@ -4264,11 +4265,14 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     return ids;
   })();
 
-  // Spieler, für die MF/Admin eine Bestellung anlegen/bearbeiten dürfen
+  // Spieler, für die MF/Admin eine Bestellung anlegen/bearbeiten dürfen.
+  // MF: ausschließlich Spieler der eigenen Mannschaft (über die Aufstellung ermittelt).
+  // Der MF selbst ist i.d.R. in seiner Mannschaft aufgestellt und damit enthalten;
+  // ist er es nicht, wird er zusätzlich aufgenommen, damit er zumindest für sich
+  // bestellen kann.
   const bearbeitbarePersonen = players.filter(p=>{
     if(isAdmin) return (p.group||"")!=="Trainer"; // alle Spieler & Erwachsene
-    // MF: alle Spieler der eigenen Mannschaft (über Aufstellung) — plus man selbst.
-    if(isMF && meineMannschaft) return mannschaftSpielerIds.has(p.id) || p.id===me?.id;
+    if(isMF) return mannschaftSpielerIds.has(p.id) || p.id===me?.id;
     return false;
   }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
 
@@ -4375,16 +4379,24 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     </div>
 
     {/* Bestellung für eine Person anlegen/bearbeiten (MF + Admin) */}
-    {bearbeitbarePersonen.length>0 && <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
+    {(isAdmin || isMF) && <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12,marginBottom:14}}>
       <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>✏️ Bestellung für eine Person eingeben/bearbeiten</div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <select id="best-person-sel" defaultValue="" style={{flex:1,minWidth:180,padding:"8px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
-          <option value="">Person wählen…</option>
-          {bearbeitbarePersonen.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.mannschaftsfuehrerTeam?` · ${p.mannschaftsfuehrerTeam}`:""}</option>)}
-        </select>
-        <button onClick={()=>{const v=document.getElementById("best-person-sel").value; if(v) setEditPlayerId(v);}}
-          style={{padding:"8px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>Öffnen</button>
-      </div>
+      {bearbeitbarePersonen.length>0
+        ? <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <select id="best-person-sel" defaultValue="" style={{flex:1,minWidth:180,padding:"8px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13}}>
+              <option value="">Person wählen…</option>
+              {bearbeitbarePersonen.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.mannschaftsfuehrerTeam?` · ${p.mannschaftsfuehrerTeam}`:""}</option>)}
+            </select>
+            <button onClick={()=>{const v=document.getElementById("best-person-sel").value; if(v) setEditPlayerId(v);}}
+              style={{padding:"8px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>Öffnen</button>
+          </div>
+        : <div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5}}>
+            {!meineMannschaft
+              ? "Dir ist noch keine Mannschaft als Mannschaftsführer zugeordnet. Bitte in der Verwaltung im Profil das Feld „Mannschaftsführer-Team“ setzen, dann erscheinen hier die Spieler deiner Mannschaft."
+              : aufSpieler.length===0
+                ? "Aufstellung wird geladen…"
+                : `Für die Mannschaft „${meineMannschaft}“ sind in der aktuellen Aufstellung keine Spieler hinterlegt.`}
+          </div>}
     </div>}
 
     {sichtbar.length===0
