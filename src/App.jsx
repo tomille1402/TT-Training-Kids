@@ -9771,6 +9771,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   // Erwachsenen-/MF-Ansicht: bei geteilter E-Mail das Erwachsenen-Profil wählen,
   // damit die Erwachsenen-Artikel erscheinen (nicht das Kind-Profil).
   const loginPlayer=findLoginPlayer(players, user?.email, true);
+  const [toast,setToast]=useState(null);
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
@@ -10119,8 +10120,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
     {/* Erwachsene-View */}
     {activeView==="erwachsene"&&selectedPlayer&&
-      <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer}
-        isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>}
+      <ErrorBoundary resetKey={selectedPlayer.id}>
+        <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer}
+          isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>
+      </ErrorBoundary>}
     {activeView==="erwachsene"&&!selectedPlayer&&
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
         <div style={{fontSize:32,marginBottom:8}}>👪</div>
@@ -10128,8 +10131,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       </div>}
     {/* Mannschaftsführer-View — gleiche Ansicht wie Erwachsene */}
     {activeView==="mannschaftsfuehrer"&&selectedPlayer&&
-      <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer} isMF
-        isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>}
+      <ErrorBoundary resetKey={selectedPlayer.id}>
+        <ErwachseneView user={user} players={players} forcePlayer={selectedPlayer} isMF
+          isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} onSignOut={onSignOut} inRSW={true}/>
+      </ErrorBoundary>}
     {activeView==="mannschaftsfuehrer"&&!selectedPlayer&&
       <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>
         <div style={{fontSize:32,marginBottom:8}}>📋</div>
