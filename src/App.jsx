@@ -409,6 +409,26 @@ function anzahlForArtikel(a, items){
   }
   return items[a.id]?.anzahl||0;
 }
+// Ermittelt das zur Anmelde-E-Mail passende Profil. An einer E-Mail können mehrere
+// Spieler hängen (z.B. ein Erwachsener und sein Kind als Anfänger). Über
+// bevorzugeErwachsen wird gesteuert, welches Profil in der jeweiligen Ansicht
+// maßgeblich ist: in der Erwachsenen-/MF-Ansicht das Erwachsenen-Profil, in der
+// reinen Spieler-(Kinder-)Ansicht das Nicht-Erwachsenen-Profil. So sieht der
+// Erwachsene die Erwachsenen-Artikel, auch wenn ein Kind dieselbe E-Mail nutzt.
+function istErwachsenerPlayer(p){
+  return (p?.group==="Erwachsene") || (p?.roles?.erwachsene===true);
+}
+function findLoginPlayer(players, email, bevorzugeErwachsen=false){
+  const mail=(email||"").toLowerCase();
+  if(!mail) return null;
+  const treffer=players.filter(p=>p.email?.toLowerCase()===mail);
+  if(treffer.length<=1) return treffer[0]||null;
+  // Mehrere Profile an dieser E-Mail: passendes bevorzugen.
+  const erw=treffer.find(istErwachsenerPlayer);
+  const nichtErw=treffer.find(p=>!istErwachsenerPlayer(p));
+  if(bevorzugeErwachsen) return erw||treffer[0];
+  return nichtErw||treffer[0];
+}
 const VEREIN_KONTO = {
   inhaber:"TTC 1979 Niederzeuzheim e. V.",
   iban:"DE78 5105 0015 0520 0127 61",
@@ -1073,8 +1093,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
-    {activeTab==="bestellungen"&&<BestellungenView me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} isAdmin={isSuperAdmin} showToast={showToast}/>}
-    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={findLoginPlayer(players, user?.email, true)} isAdmin={isSuperAdmin} showToast={showToast}/>}
+    {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={findLoginPlayer(players, user?.email, true)} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
@@ -4803,7 +4823,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
   // Immer die tatsächlich eingeloggte Person (unabhängig von forcePlayer) — für den
   // Bestellungen-Reiter, damit stets die eigene Bestellung erfasst/geändert wird.
-  const loginPlayer=players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null;
+  // Spieler-(Kinder-)Ansicht: bei geteilter E-Mail das Nicht-Erwachsenen-Profil
+  // (das Kind) wählen, damit dessen Artikel/Daten erscheinen.
+  const loginPlayer=findLoginPlayer(players, user?.email, false);
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
@@ -9746,8 +9768,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   // Immer die tatsächlich EINGELOGGTE Person (unabhängig von forcePlayer/Funktionswechsel).
   // Für den Bestellungen-Reiter maßgeblich, damit dort stets die eigene Bestellung
   // erfasst/geändert wird und nicht die der gerade betrachteten Person.
-  const loginPlayer=players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null;
-  const [toast,setToast]=useState(null);
+  // Erwachsenen-/MF-Ansicht: bei geteilter E-Mail das Erwachsenen-Profil wählen,
+  // damit die Erwachsenen-Artikel erscheinen (nicht das Kind-Profil).
+  const loginPlayer=findLoginPlayer(players, user?.email, true);
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
