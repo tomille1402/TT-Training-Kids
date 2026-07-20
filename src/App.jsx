@@ -4373,7 +4373,11 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   }
 
   // Alle Bestellzeilen über alle Personen für die Detailtabelle aufbereiten
-  const th={padding:"6px 6px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",background:"var(--bg2)",position:"sticky",top:0};
+  // Kopfzeile bleibt beim Scrollen oben stehen (sticky). Wichtig dafür: der
+  // umgebende Container scrollt vertikal (overflow/maxHeight) und die Tabelle
+  // nutzt borderCollapse:"separate" — bei "collapse" verschwinden sonst die
+  // Rahmenlinien der fixierten Kopfzeile beim Scrollen.
+  const th={padding:"6px 6px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",background:"var(--bg2)",position:"sticky",top:0,zIndex:3};
   const td={padding:"5px 6px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
 
   // Gesamtsummen
@@ -4421,8 +4425,8 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
 
     {sichtbar.length===0
       ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Bestellungen vorhanden.</div>
-      : <div style={{overflowX:"auto",border:"1px solid var(--border)",borderRadius:10}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:920}}>
+      : <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
+        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:920}}>
           <thead><tr>
             <th style={th}>Person</th>
             <th style={th}>Artikel</th>
