@@ -4315,6 +4315,39 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     return false;
   });
 
+  // Sortierung: Voreinstellung erst nach Gruppe, dann nach Name. Alle Spalten
+  // sortierbar per Klick auf die Überschrift.
+  const [sortSpalten,setSortSpalten]=useState([{key:"gruppe",dir:"asc"},{key:"name",dir:"asc"}]);
+  function toggleSort(key){
+    setSortSpalten(prev=>{
+      const vorhanden=prev.find(s=>s.key===key);
+      if(vorhanden && prev[0]?.key===key){
+        // bereits primär → Richtung umkehren
+        return [{key,dir:vorhanden.dir==="asc"?"desc":"asc"}, ...prev.filter(s=>s.key!==key)];
+      }
+      // sonst als primäre Sortierung nach vorne, bisherige als sekundär behalten
+      return [{key,dir:"asc"}, ...prev.filter(s=>s.key!==key)];
+    });
+  }
+
+  // Basis-Personen für die Übersicht: aktiv UND (Funktion Spieler ODER Erwachsene).
+  // Für MF auf die eigene Mannschaft beschränkt. Dopplungen über die Spieler-ID
+  // ausgeschlossen (players ist bereits eindeutig je Dokument).
+  const istRelevantePerson = (p)=>{
+    if(p.status==="passiv") return false;
+    const r=p.roles||{};
+    const g=p.group||"";
+    const istSpieler = r.player===true || g==="Profis" || g==="Fortgeschrittene" || g==="Anfänger";
+    const istErwachsen = r.erwachsene===true || g==="Erwachsene";
+    return istSpieler || istErwachsen;
+  };
+  const basisPersonen = players.filter(p=>{
+    if(!istRelevantePerson(p)) return false;
+    if(isAdmin) return true;
+    if(isMF && meineMannschaft) return mannschaftSpielerIds.has(p.id) || p.id===me?.id;
+    return false;
+  });
+
   async function toggleGeldeingang(b){
     if(!isAdmin) return;
     await setDoc(doc(db,"bestellungen",b.id),{geldeingang:!b.geldeingang},{merge:true}).catch(()=>{});
@@ -4390,6 +4423,90 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     return s + art.reduce((ss,a)=>ss + anzahlForArtikel(a,it0)*a.preisSpin, 0);
   },0);
 
+  // Je Person die Bestellung (falls vorhanden) und die zugehörigen Artikelzeilen.
+  // Personen OHNE Bestellung erhalten eine Platzhalterzeile ("keine Bestellung").
+  const eur0 = (n)=>eur(n||0);
+  const personenZeilen = basisPersonen.map(pl=>{
+    const b = alle.find(x=>x.playerId===pl.id) || null;
+    const grp = pl.group||"";
+    const it0 = b?.items||{};
+    const art = b ? bestellArtikelForGroup(grp, pl.gender).filter(a=>anzahlForArtikel(a,it0)>0) : [];
+    const artikelZeilen = art.map(a=>{
+      const anz=anzahlForArtikel(a,it0);
+      const it=it0[a.id]||{};
+      return {artikel:a.name, anzahl:anz, groesse:it.groesse||"—",
+        preisKatalog:a.preisKatalog, preisSpin:a.preisSpin, preisSpinGesamt:anz*a.preisSpin,
+        preisTTC:a.preisTTC, preisTTCGesamt:anz*a.preisTTC};
+    });
+    const summeSpin = artikelZeilen.reduce((s,z)=>s+z.preisSpinGesamt,0);
+    const summeTTC  = artikelZeilen.reduce((s,z)=>s+z.preisTTCGesamt,0);
+    return {
+      id: pl.id,
+      gruppe: grp,
+      name: `${pl.firstName||""} ${pl.lastName||""}`.trim(),
+      nachname: pl.lastName||"", vorname: pl.firstName||"",
+      hatBestellung: artikelZeilen.length>0,
+      artikelZeilen,
+      anzahlGesamt: artikelZeilen.reduce((s,z)=>s+z.anzahl,0),
+      summeSpin, summeTTC,
+      final: !!b?.final, bezahlt: !!b?.bezahlt, geldeingang: !!b?.geldeingang,
+      bestellDoc: b,
+    };
+  });
+
+  // Sortierung anwenden: mehrstufig nach sortSpalten (primär, sekundär, …).
+  const cmpWert = (z,key)=>{
+    switch(key){
+      case "gruppe": return z.gruppe.toLowerCase();
+      case "name":   return z.name.toLowerCase();
+      case "artikel":return z.hatBestellung ? z.artikelZeilen[0].artikel.toLowerCase() : "\uffff"; // ohne Bestellung ans Ende
+      case "anzahl": return z.anzahlGesamt;
+      case "groesse":return z.hatBestellung ? (z.artikelZeilen[0].groesse||"") : "";
+      case "preisKatalog": return z.hatBestellung ? z.artikelZeilen[0].preisKatalog : -1;
+      case "preisSpin":    return z.hatBestellung ? z.artikelZeilen[0].preisSpin : -1;
+      case "preisSpinGesamt": return z.summeSpin;
+      case "preisTTC":     return z.hatBestellung ? z.artikelZeilen[0].preisTTC : -1;
+      case "preisTTCGesamt": return z.summeTTC;
+      case "final":  return z.final?1:0;
+      case "bezahlt":return z.bezahlt?1:0;
+      case "geldeingang": return z.geldeingang?1:0;
+      default: return "";
+    }
+  };
+  const sortierteZeilen = [...personenZeilen].sort((a,b)=>{
+    for(const {key,dir} of sortSpalten){
+      const va=cmpWert(a,key), vb=cmpWert(b,key);
+      let c=0;
+      if(typeof va==="number"&&typeof vb==="number") c=va-vb;
+      else c=String(va).localeCompare(String(vb),"de");
+      if(c!==0) return dir==="desc"?-c:c;
+    }
+    return 0;
+  });
+
+  // Kopfzellen-Definition (Reihenfolge = Spaltenreihenfolge). Gruppe ganz vorne.
+  const SPALTEN=[
+    {key:"gruppe",label:"Gruppe",align:"left"},
+    {key:"name",label:"Person",align:"left"},
+    {key:"artikel",label:"Artikel",align:"left"},
+    {key:"anzahl",label:"Anzahl",align:"center"},
+    {key:"groesse",label:"Größe",align:"center"},
+    {key:"preisKatalog",label:"Preis Katalog",align:"right"},
+    {key:"preisSpin",label:"Preis Spin & Speed",align:"right"},
+    {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right"},
+    {key:"preisTTC",label:"Preis TTC",align:"right"},
+    {key:"preisTTCGesamt",label:"Preis TTC gesamt",align:"right"},
+    {key:"final",label:"bestellt",align:"center"},
+    {key:"bezahlt",label:"bezahlt",align:"center"},
+    {key:"geldeingang",label:"Geldeingang",align:"center"},
+  ];
+  const sortPfeil=(key)=>{
+    const s=sortSpalten.find(x=>x.key===key);
+    if(!s) return "";
+    const rang=sortSpalten.findIndex(x=>x.key===key);
+    return (s.dir==="asc"?" ▲":" ▼")+(rang===0?"":`${rang+1}`);
+  };
+
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
       <div style={{fontSize:17,fontWeight:800}}>📦 Bestellungen Übersicht</div>
@@ -4423,59 +4540,65 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
           </div>}
     </div>}
 
-    {sichtbar.length===0
-      ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Noch keine Bestellungen vorhanden.</div>
+    {basisPersonen.length===0
+      ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Keine passenden Personen vorhanden.</div>
       : <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
-        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:920}}>
+        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:980}}>
           <thead><tr>
-            <th style={th}>Person</th>
-            <th style={th}>Artikel</th>
-            <th style={{...th,textAlign:"center"}}>Anzahl</th>
-            <th style={{...th,textAlign:"center"}}>Größe</th>
-            <th style={{...th,textAlign:"right"}}>Preis Katalog</th>
-            <th style={{...th,textAlign:"right"}}>Preis Spin &amp; Speed</th>
-            <th style={{...th,textAlign:"right"}}>Preis Spin &amp; Speed gesamt</th>
-            <th style={{...th,textAlign:"right"}}>Preis TTC</th>
-            <th style={{...th,textAlign:"right"}}>Preis TTC gesamt</th>
-            <th style={{...th,textAlign:"center"}}>bestellt</th>
-            <th style={{...th,textAlign:"center"}}>bezahlt</th>
-            <th style={{...th,textAlign:"center"}}>Geldeingang</th>
+            {SPALTEN.map(sp=>(
+              <th key={sp.key} onClick={()=>toggleSort(sp.key)}
+                style={{...th,textAlign:sp.align,cursor:"pointer",userSelect:"none"}}
+                title="Klicken zum Sortieren">
+                {sp.label}<span style={{color:"#10b981",fontSize:9}}>{sortPfeil(sp.key)}</span>
+              </th>
+            ))}
           </tr></thead>
           <tbody>
-            {sichtbar.map(b=>{
-              const pl=players.find(p=>p.id===b.playerId);
-              const grp=pl?.group||b.group||"";
-              const it0=b.items||{};
-              const art=bestellArtikelForGroup(grp, pl?.gender).filter(a=>anzahlForArtikel(a,it0)>0);
-              if(art.length===0) return null;
-              return art.map((a,idx)=>{
-                const anz=anzahlForArtikel(a, it0);
-                const it=b.items[a.id]||{};
-                const gesamt=anz*a.preisTTC;
-                const gesamtSpin=anz*a.preisSpin;
-                return <tr key={b.id+"_"+a.id}>
-                  {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={art.length}>{b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:"?")}</td>}
-                  <td style={td}>{a.name}</td>
-                  <td style={{...td,textAlign:"center"}}>{anz}</td>
-                  <td style={{...td,textAlign:"center"}}>{it.groesse||"—"}</td>
-                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisKatalog)}</td>
-                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(a.preisSpin)}</td>
-                  <td style={{...td,textAlign:"right",fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{eur(gesamtSpin)}</td>
-                  <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(a.preisTTC)}</td>
-                  <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(gesamt)}</td>
-                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>{b.final?"✅":"—"}</td>}
-                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>{b.bezahlt?"✅":"—"}</td>}
-                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={art.length}>
-                    {isAdmin
-                      ? <input type="checkbox" checked={!!b.geldeingang} onChange={()=>toggleGeldeingang(b)} title="Geldeingang bestätigen"/>
-                      : (b.geldeingang?"✅":"—")}
-                  </td>}
+            {sortierteZeilen.map(z=>{
+              // Person ohne Bestellung: eine Platzhalterzeile mit "keine Bestellung".
+              if(!z.hatBestellung){
+                return <tr key={z.id}>
+                  <td style={{...td,fontWeight:600}}>{z.gruppe||"—"}</td>
+                  <td style={{...td,fontWeight:700}}>{z.name||"?"}</td>
+                  <td style={{...td,color:"var(--text4)",fontStyle:"italic"}}>keine Bestellung</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
                 </tr>;
-              });
+              }
+              const n=z.artikelZeilen.length;
+              return z.artikelZeilen.map((az,idx)=>(
+                <tr key={z.id+"_"+idx}>
+                  {idx===0 && <td style={{...td,fontWeight:600}} rowSpan={n}>{z.gruppe||"—"}</td>}
+                  {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={n}>{z.name||"?"}</td>}
+                  <td style={td}>{az.artikel}</td>
+                  <td style={{...td,textAlign:"center"}}>{az.anzahl}</td>
+                  <td style={{...td,textAlign:"center"}}>{az.groesse}</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(az.preisKatalog)}</td>
+                  <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(az.preisSpin)}</td>
+                  <td style={{...td,textAlign:"right",fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{eur(az.preisSpinGesamt)}</td>
+                  <td style={{...td,textAlign:"right",whiteSpace:"nowrap"}}>{eur(az.preisTTC)}</td>
+                  <td style={{...td,textAlign:"right",fontWeight:700,whiteSpace:"nowrap"}}>{eur(az.preisTTCGesamt)}</td>
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={n}>{z.final?"✅":"—"}</td>}
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={n}>{z.bezahlt?"✅":"—"}</td>}
+                  {idx===0 && <td style={{...td,textAlign:"center"}} rowSpan={n}>
+                    {isAdmin
+                      ? <input type="checkbox" checked={z.geldeingang} onChange={()=>toggleGeldeingang(z.bestellDoc)} title="Geldeingang bestätigen"/>
+                      : (z.geldeingang?"✅":"—")}
+                  </td>}
+                </tr>
+              ));
             })}
           </tbody>
           <tfoot><tr>
-            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={6}>Gesamtsumme</td>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={7}>Gesamtsumme</td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtSpinAlle)}</td>
             <td style={{...td,borderTop:"2px solid var(--border2)"}}></td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtTTC)}</td>
@@ -10522,7 +10645,27 @@ export default function App() {
   }
 
   // ── Spieler-Profil suchen ──
-  const myPlayer = players.find(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
+  // An einer E-Mail können mehrere Profile hängen. Wird einfach das erste genommen,
+  // kann das ein Profil ohne (oder mit weniger) Funktionen sein — dann fehlen z.B.
+  // Spieler-Ansicht und Menüzeile, obwohl die Person Spieler+Trainer ist. Daher bei
+  // mehreren Treffern das Profil mit den MEISTEN zugeordneten Funktionen wählen und
+  // Trainer-Profile ohne Spieler-Rolle nur nachrangig.
+  const myPlayerCandidates = players.filter(p => p.email?.toLowerCase() === authUser.email?.toLowerCase());
+  const roleScore = (p) => {
+    const r = p?.roles || {};
+    return (r.player?1:0)+(r.trainer?1:0)+(r.admin?1:0)+(r.erwachsene?1:0)+(r.mannschaftsfuehrer?1:0);
+  };
+  const myPlayer = myPlayerCandidates.length<=1
+    ? myPlayerCandidates[0]
+    : [...myPlayerCandidates].sort((a,b)=>{
+        // Profile mit Spieler-Rolle bevorzugen, dann nach Rollen-Anzahl, dann aktiv vor passiv
+        const ap=a.roles?.player?1:0, bp=b.roles?.player?1:0;
+        if(ap!==bp) return bp-ap;
+        const rs=roleScore(b)-roleScore(a);
+        if(rs!==0) return rs;
+        const aa=a.status!=="passiv"?1:0, ba=b.status!=="passiv"?1:0;
+        return ba-aa;
+      })[0];
 
   // Eltern-Login: alle aktiven Kinder, bei denen diese Adresse als elternEmail hinterlegt ist
   const meineKinder = players.filter(p =>
@@ -10557,8 +10700,13 @@ export default function App() {
     if (r.trainer === true) views.push("trainer");
     const erwachsene = r.erwachsene === true;
     const mf = r.mannschaftsfuehrer === true;
-    // Spieler-View, wenn explizite Spieler-Rolle ODER Profil ohne reine Erwachsene/MF-Sonderrolle
-    const player = r.player === true || (!!person && !erwachsene && !mf && !r.trainer && !r.admin);
+    // Zu einer Spielergruppe gehören = ist Spieler (auch wenn zusätzlich Trainer).
+    const g = person?.group || "";
+    const inSpielerGruppe = g==="Profis" || g==="Fortgeschrittene" || g==="Anfänger" || g==="Gast";
+    // Spieler-View, wenn explizite Spieler-Rolle ODER Spielergruppe ODER Profil ohne
+    // reine Erwachsene/MF/Trainer/Admin-Sonderrolle.
+    const player = r.player === true || inSpielerGruppe
+      || (!!person && !erwachsene && !mf && !r.trainer && !r.admin);
     if (player)     views.push("player");
     if (erwachsene) views.push("erwachsene");
     if (mf)         views.push("mannschaftsfuehrer");
@@ -10589,14 +10737,18 @@ export default function App() {
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true; // Admin-Ansicht
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
-  // Spieler-View: explizite Spieler-Rolle ODER ein Profil ohne andere Sonderrolle.
-  const hasPlayerRole  = playerRoles.player === true ||
+  // Zu einer Spielergruppe gehören = ist Spieler (auch wenn zusätzlich Trainer).
+  const myGroupRSW = myPlayer?.group || "";
+  const inSpielerGruppe = myGroupRSW==="Profis" || myGroupRSW==="Fortgeschrittene" || myGroupRSW==="Anfänger" || myGroupRSW==="Gast";
+  // Spieler-View: explizite Spieler-Rolle ODER Spielergruppe ODER ein Profil ohne
+  // andere Sonderrolle.
+  const hasPlayerRole  = playerRoles.player === true || inSpielerGruppe ||
     (!!myPlayer && !hasErwachseneRole && !hasMFRole && !hasTrainerRole && !playerRoles.admin);
 
   // Erwachsene-only: nur eigene Daten
-  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player && !hasMFRole;
+  const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !hasPlayerRole && !hasMFRole;
   // MF-only: sieht dieselbe Ansicht wie Erwachsene (sukzessive mehr Reiter/Rechte)
-  const isMFOnly = hasMFRole && !hasAdminRole && !hasTrainerRole && !playerRoles.player && !hasErwachseneRole;
+  const isMFOnly = hasMFRole && !hasAdminRole && !hasTrainerRole && !hasPlayerRole && !hasErwachseneRole;
   const availableViews = [];
   if (hasAdminRole)                 availableViews.push("admin");
   if (hasTrainerRole)               availableViews.push("trainer");
