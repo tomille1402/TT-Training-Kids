@@ -393,11 +393,33 @@ function sizesForArtikel(a){
 // nur Profis und Erwachsene die übrigen Artikel — inkl. Hoodie (13) und dessen
 // Druck-Artikel (14/15), die damit wie der Anzug nur diesen Gruppen angeboten
 // werden. Filter über die Artikel-Eigenschaften statt fester ID-Bereiche.
+// ─────────────────────────────────────────────────────────────────────────────
+// FESTE REGEL — NICHT VERSEHENTLICH ÄNDERN:
+// Spieler der Gruppen "Anfänger" und "Fortgeschrittene" (sowie Gäste, die aber
+// ohnehin nicht bestellen) dürfen AUSSCHLIESSLICH die Nachwuchs-Artikel sehen:
+// das T-Shirt Nimatsu Nachwuchs und dessen Druck-Artikel. Alle übrigen Artikel
+// (Polo, Short, Rock, Anzug, Hoodie samt Drucken) sind nur für Profis und
+// Erwachsene bestimmt.
+// Wer diese Zuordnung ändert, ändert eine ausdrücklich gewünschte Vorgabe.
+// Gegenprobe: NACHWUCHS_GRUPPEN + NACHWUCHS_ARTIKEL_IDS unten.
+// ─────────────────────────────────────────────────────────────────────────────
+const NACHWUCHS_GRUPPEN = ["Anfänger","Fortgeschrittene","Gast"];
+// Artikel, die diese Gruppen sehen dürfen: T-Shirt Nimatsu Nachwuchs (12) und
+// alle Druck-Artikel, die an diesem T-Shirt hängen (folgtArtikel enthält 12).
+const NACHWUCHS_ARTIKEL_IDS = [12];
+function istNachwuchsArtikel(a){
+  if(NACHWUCHS_ARTIKEL_IDS.includes(a.id)) return true;
+  // Druck-Artikel, der ausschließlich an Nachwuchs-Artikeln hängt
+  if(a.druck && Array.isArray(a.folgtArtikel) && a.folgtArtikel.length>0){
+    return a.folgtArtikel.every(id=>NACHWUCHS_ARTIKEL_IDS.includes(id));
+  }
+  return false;
+}
 function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
-  const nurNachwuchs = (g==="Anfänger"||g==="Fortgeschrittene"||g==="Gast");
-  let list = nurNachwuchs ? BESTELL_ARTIKEL.filter(a=>a.id===12)
-                          : BESTELL_ARTIKEL.filter(a=>a.id!==12);
+  const nurNachwuchs = NACHWUCHS_GRUPPEN.includes(g);
+  let list = nurNachwuchs ? BESTELL_ARTIKEL.filter(istNachwuchsArtikel)
+                          : BESTELL_ARTIKEL.filter(a=>!istNachwuchsArtikel(a));
   if(gender==="m") list = list.filter(a=>a.geschlecht==="h"||a.geschlecht==="u");
   else if(gender==="w") list = list.filter(a=>a.geschlecht==="d"||a.geschlecht==="u");
   return list;
@@ -5034,11 +5056,10 @@ function GeburtstageTab({players,showToast}) {
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
   const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
-  // Immer die tatsächlich eingeloggte Person (unabhängig von forcePlayer) — für den
-  // Bestellungen-Reiter, damit stets die eigene Bestellung erfasst/geändert wird.
-  // Spieler-(Kinder-)Ansicht: bei geteilter E-Mail das Nicht-Erwachsenen-Profil
-  // (das Kind) wählen, damit dessen Artikel/Daten erscheinen.
-  const loginPlayer=findLoginPlayer(players, user?.email, false);
+  // Hinweis: Der Bestellungen-Reiter nutzt bewusst myPlayer (die ANGEZEIGTE Person),
+  // damit die Artikelauswahl immer zur Gruppe dieser Person passt — z.B. sieht ein
+  // Anfänger/Fortgeschrittener nur den Nachwuchs-Artikel, auch wenn ein Trainer
+  // oder Elternteil die Ansicht geöffnet hat.
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("stats");
   const [expandedEx,setExpandedEx]=useState(null);
@@ -5412,7 +5433,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       roles={(forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase()))?.roles||{player:true}}
       viewerCanEditAll={false}/>}
 
-    {activeTab==="bestellungen"&&<BestellungenView me={loginPlayer} isAdmin={false}/>}
+    {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
 
     <style>{`
