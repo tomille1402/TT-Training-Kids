@@ -8737,6 +8737,10 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     return `${origin}${KALENDER_FEED_BASE}?${params.toString()}`;
   })();
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
+  // Android/Samsung kennt "webcal:" nicht — dort führt der zuverlässige Weg über
+  // Google Kalender, der einen Kalender per Web-Adresse abonnieren kann.
+  const googleAboUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(aboUrl)}`;
+  const istAndroid = typeof navigator!=="undefined" && /Android/i.test(navigator.userAgent||"");
 
   function copyLink(){
     navigator.clipboard?.writeText(aboUrl).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
@@ -8865,14 +8869,33 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
         Einmal abonnieren — neue und geänderte Spiele erscheinen automatisch.
       </div>
-      <a href={webcalUrl} style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
-        color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8}}>
-        + In Kalender abonnieren
-      </a>
+      {istAndroid
+        ? <>
+            {/* Android/Samsung: über Google Kalender abonnieren */}
+            <a href={googleAboUrl} target="_blank" rel="noopener noreferrer"
+              style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
+                color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+              + Mit Google Kalender abonnieren
+            </a>
+            <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginBottom:8}}>
+              Der Link öffnet Google Kalender im Browser. Dort auf „Hinzufügen“ tippen —
+              danach erscheinen die Termine automatisch auch in der Kalender-App des Handys.
+              Am Handy klappt das am besten, wenn du dabei in deinem Google-Konto angemeldet bist.
+            </div>
+          </>
+        : <a href={webcalUrl} style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
+            color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+            + In Kalender abonnieren
+          </a>}
       <button onClick={copyLink} style={{width:"100%",padding:"9px",background:"var(--bg3)",border:"1px solid var(--border2)",
         borderRadius:9,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>
         {copied?"✓ Link kopiert":"🔗 Abo-Link kopieren"}
       </button>
+      <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginTop:8}}>
+        {istAndroid
+          ? "Klappt der Knopf nicht, kopiere den Link und füge ihn in Google Kalender unter „Weitere Kalender → Per URL“ ein (am Rechner unter calendar.google.com)."
+          : "Alternativ den Link kopieren und im Kalenderprogramm unter „Kalender abonnieren“ einfügen."}
+      </div>
     </div>
 
     {/* Download-Weg */}
