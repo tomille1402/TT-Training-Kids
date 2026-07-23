@@ -4723,6 +4723,104 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
 // ─── MEINE VERWALTUNG (Selbstauskunft, nur eigene Daten) ─────────────────────
 // Zeigt die eigenen Stammdaten read-only. Editierbar nur: Handynummer,
 // T-Shirt-Größe, Anzugs-Größe. Alles andere kann nur der Admin ändern.
+// ─── PUSH-NACHRICHTEN ────────────────────────────────────────────────────────
+// Öffentlicher VAPID-Schlüssel. Wird zusammen mit dem privaten Schlüssel erzeugt
+// (siehe PUSH_SETUP.md). Der private Schlüssel gehört NUR in die Serverumgebung
+// (Netlify-Umgebungsvariable), niemals in diese Datei.
+const VAPID_PUBLIC_KEY = "";   // ← hier den öffentlichen Schlüssel eintragen
+
+// Wandelt den Base64-URL-Schlüssel in das vom Browser erwartete Format um.
+function base64UrlZuUint8Array(base64String){
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g,"+").replace(/_/g,"/");
+  const roh = window.atob(base64);
+  const arr = new Uint8Array(roh.length);
+  for(let i=0;i<roh.length;i++) arr[i] = roh.charCodeAt(i);
+  return arr;
+}
+
+// Unterstützt dieses Gerät/dieser Browser überhaupt Push?
+function pushMoeglich(){
+  return typeof window!=="undefined" && "serviceWorker" in navigator &&
+    "PushManager" in window && "Notification" in window;
+}
+
+// Läuft die App als installierte App (Home-Bildschirm)? Auf iPhone/iPad ist das
+// Voraussetzung dafür, dass Benachrichtigungen ankommen.
+function alsAppInstalliert(){
+  if(typeof window==="undefined") return false;
+  return window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+    window.navigator.standalone === true;
+}
+
+function istAppleGeraet(){
+  if(typeof navigator==="undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent||"") ||
+    (navigator.platform==="MacIntel" && (navigator.maxTouchPoints||0) > 1);
+}
+
+// Push für diese Person aktivieren: Erlaubnis holen, Abo anlegen, in Firestore
+// speichern. Gibt eine verständliche Meldung zurück, wenn etwas nicht klappt.
+async function pushAktivieren(playerId){
+  if(!pushMoeglich()) throw new Error("Dieses Gerät unterstützt keine Benachrichtigungen.");
+  if(istAppleGeraet() && !alsAppInstalliert()){
+    throw new Error("Auf iPhone/iPad musst du die App zuerst über „Teilen → Zum Home-Bildschirm“ hinzufügen. Danach kannst du die Benachrichtigungen dort aktivieren.");
+  }
+  if(!VAPID_PUBLIC_KEY){
+    throw new Error("Benachrichtigungen sind noch nicht eingerichtet (Schlüssel fehlt). Bitte an den Administrator wenden.");
+  }
+  const erlaubnis = await Notification.requestPermission();
+  if(erlaubnis!=="granted"){
+    throw new Error("Du hast Benachrichtigungen nicht erlaubt. Du kannst das in den Einstellungen deines Browsers ändern.");
+  }
+  const reg = await navigator.serviceWorker.ready;
+  let abo = await reg.pushManager.getSubscription();
+  if(!abo){
+    abo = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64UrlZuUint8Array(VAPID_PUBLIC_KEY)
+    });
+  }
+  const daten = abo.toJSON();
+  // Abo je Person speichern. Ein Mensch kann mehrere Geräte nutzen, daher wird
+  // je Gerät ein eigener Eintrag über den Endpunkt-Schlüssel abgelegt.
+  await setDoc(doc(db,"pushAbos",playerId),{
+    playerId,
+    aktiv: true,
+    geaendert: new Date().toLocaleDateString("sv"),
+    geraete: { [geraeteSchluessel(daten.endpoint)]: {
+      endpoint: daten.endpoint,
+      p256dh: daten.keys?.p256dh || "",
+      auth: daten.keys?.auth || "",
+      angelegt: new Date().toLocaleDateString("sv")
+    } }
+  },{merge:true});
+  return true;
+}
+
+// Kurzer, stabiler Schlüssel aus der Endpunkt-Adresse (für die Geräte-Zuordnung).
+function geraeteSchluessel(endpoint){
+  const s = String(endpoint||"");
+  let h = 0;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)-h + s.charCodeAt(i))|0; }
+  return "g"+Math.abs(h).toString(36);
+}
+
+// Push für dieses Gerät abmelden und in Firestore als inaktiv kennzeichnen.
+async function pushDeaktivieren(playerId){
+  try{
+    if(pushMoeglich()){
+      const reg = await navigator.serviceWorker.ready;
+      const abo = await reg.pushManager.getSubscription();
+      if(abo) await abo.unsubscribe();
+    }
+  }catch(e){ /* Abmeldung im Browser fehlgeschlagen – Einstellung trotzdem speichern */ }
+  await setDoc(doc(db,"pushAbos",playerId),{
+    playerId, aktiv:false, geaendert:new Date().toLocaleDateString("sv")
+  },{merge:true});
+  return true;
+}
+
 function MeineVerwaltung({me, showToast, group}) {
   const notify = typeof showToast==="function" ? showToast : (()=>{});
   const [phone,setPhone]     = useState(me?.phone||"");
@@ -4736,6 +4834,64 @@ function MeineVerwaltung({me, showToast, group}) {
     setPhone(me?.phone||""); setTshirt(me?.tshirtSize||""); setAnzug(me?.anzugSize||"");
     setDirty(false);
   },[me?.id, me?.phone, me?.tshirtSize, me?.anzugSize]);
+
+  // ── Push-Nachrichten ──
+  const [pushAn,setPushAn]         = useState(false);   // tatsächlich angemeldet?
+  const [pushLaeuft,setPushLaeuft] = useState(false);
+  const [pushHinweis,setPushHinweis]= useState("");
+  const autoVersuchtRef            = useRef(false);
+
+  // Aktuellen Zustand ermitteln und – als Voreinstellung – beim ersten Öffnen
+  // aktivieren, sofern die Person das nicht ausdrücklich abgeschaltet hat.
+  useEffect(()=>{
+    let abgebrochen=false;
+    (async()=>{
+      if(!me?.id || !pushMoeglich()) return;
+      let gespeichertAktiv=null;   // null = noch nie entschieden
+      try{
+        const snap=await getDoc(doc(db,"pushAbos",me.id));
+        if(snap.exists() && typeof snap.data().aktiv==="boolean") gespeichertAktiv=snap.data().aktiv;
+      }catch(e){ /* Einstellung nicht lesbar – wie "noch nie entschieden" behandeln */ }
+
+      let angemeldet=false;
+      try{
+        const reg=await navigator.serviceWorker.ready;
+        angemeldet=!!(await reg.pushManager.getSubscription());
+      }catch(e){ /* Service Worker noch nicht bereit */ }
+
+      if(abgebrochen) return;
+      setPushAn(angemeldet && gespeichertAktiv!==false);
+
+      // Voreinstellung "aktiviert": nur beim allerersten Mal automatisch anfragen,
+      // und nur wenn die Erlaubnis noch nicht abgelehnt wurde. Wer bewusst
+      // deaktiviert hat (gespeichertAktiv===false), wird nicht erneut gefragt.
+      if(gespeichertAktiv===null && !angemeldet && !autoVersuchtRef.current
+         && Notification.permission!=="denied"
+         && !(istAppleGeraet() && !alsAppInstalliert())){
+        autoVersuchtRef.current=true;
+        try{
+          await pushAktivieren(me.id);
+          if(!abgebrochen){ setPushAn(true); setPushHinweis(""); }
+        }catch(e){
+          if(!abgebrochen) setPushHinweis(e.message||"");
+        }
+      }
+    })();
+    return ()=>{abgebrochen=true;};
+  },[me?.id]);
+
+  async function pushUmschalten(neu){
+    if(!me?.id) return;
+    setPushLaeuft(true); setPushHinweis("");
+    try{
+      if(neu){ await pushAktivieren(me.id); setPushAn(true); notify("Benachrichtigungen aktiviert","🔔"); }
+      else   { await pushDeaktivieren(me.id); setPushAn(false); notify("Benachrichtigungen deaktiviert","🔕"); }
+    }catch(e){
+      setPushHinweis(e.message||"Das hat nicht geklappt.");
+      setPushAn(false);
+    }
+    setPushLaeuft(false);
+  }
 
   if(!me) return <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>
     Keine persönlichen Daten gefunden.
@@ -4815,6 +4971,36 @@ function MeineVerwaltung({me, showToast, group}) {
         cursor:(saving||!dirty)?"default":"pointer",border:"none",
         background:(saving||!dirty)?"var(--bg3)":"#10b981",color:(saving||!dirty)?"var(--text3)":"#fff",
       }}>{saving?"⏳ Speichern…":dirty?"💾 Änderungen speichern":"✓ Gespeichert"}</button>
+    </div>
+
+    {/* Benachrichtigungen */}
+    <div style={box}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>🔔 Benachrichtigungen</div>
+      {!pushMoeglich()
+        ? <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>
+            Dieser Browser unterstützt keine Benachrichtigungen. Tipp: Die Termine lassen sich
+            über den Reiter „Kalender“ abonnieren – dann erinnert dich dein Kalender automatisch.
+          </div>
+        : <>
+          <label style={{display:"flex",alignItems:"center",gap:10,cursor:pushLaeuft?"wait":"pointer"}}>
+            <input type="checkbox" checked={pushAn} disabled={pushLaeuft}
+              onChange={e=>pushUmschalten(e.target.checked)}
+              style={{width:18,height:18,cursor:pushLaeuft?"wait":"pointer"}}/>
+            <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>
+              {pushLaeuft ? "Einen Moment…" : "Vor bevorstehenden Terminen erinnern"}
+            </span>
+          </label>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.6}}>
+            Du bekommst eine kurze Meldung auf dein Gerät, bevor ein Spiel, Training oder
+            Vereinstermin ansteht. Du kannst das hier jederzeit wieder abschalten.
+            {istAppleGeraet() && !alsAppInstalliert() &&
+              " Auf iPhone und iPad funktioniert das nur, wenn die App über „Teilen → Zum Home-Bildschirm“ hinzugefügt wurde."}
+          </div>
+          {pushHinweis && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
+            background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
+            {pushHinweis}
+          </div>}
+        </>}
     </div>
 
     {/* Read-only-Bereich */}
@@ -10449,15 +10635,26 @@ function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut
   }
   async function akzeptieren(){
     setSaving(true);
+    const heute=new Date().toLocaleDateString("sv"); // YYYY-MM-DD
+    // Zuerst das EIGENE Profil speichern — das ist der entscheidende Vorgang.
     try {
-      const heute=new Date().toLocaleDateString("sv"); // YYYY-MM-DD
-      // Eine Bestätigung deckt ALLE Spieler ab, die an derselben E-Mail-Adresse
-      // hängen (eigenes Profil + weitere Kinder mit gleicher elternEmail/email).
-      // Daher das Datum bei allen zugehörigen Profilen setzen.
-      const ids=[...new Set([playerId,...verwandtePlayerIds])].filter(Boolean);
-      await Promise.all(ids.map(id=>updateDoc(doc(db,"players",id),{datenschutzAccepted:heute})));
-      onAccepted(heute);
-    } catch(e){alert("Fehler beim Speichern: "+e.message); setSaving(false);}
+      await updateDoc(doc(db,"players",playerId),{datenschutzAccepted:heute});
+    } catch(e){
+      const rechteFehlen = String(e?.code||e?.message||"").toLowerCase().includes("permission");
+      alert(rechteFehlen
+        ? "Die Zustimmung konnte nicht gespeichert werden, weil dein Benutzerkonto nicht mit deinem Profil verknüpft ist.\n\nBitte wende dich an den Administrator – er kann das in der Verwaltung korrigieren (Profil neu mit dem Login verknüpfen)."
+        : "Fehler beim Speichern: "+(e?.message||""));
+      setSaving(false);
+      return;
+    }
+    // Zusätzlich bei weiteren Profilen derselben E-Mail eintragen (z.B. Geschwister).
+    // Schlägt das fehl (fehlende Rechte), ist das kein Grund, die eigene
+    // Zustimmung scheitern zu lassen — der Admin kann es später nachziehen.
+    for(const id of [...new Set(verwandtePlayerIds)].filter(x=>x&&x!==playerId)){
+      try { await updateDoc(doc(db,"players",id),{datenschutzAccepted:heute}); }
+      catch(e){ /* bewusst ignoriert – Nachhol-Funktion in der Verwaltung vorhanden */ }
+    }
+    onAccepted(heute);
   }
   return <div style={{position:"fixed",inset:0,zIndex:99999,background:"var(--bg)",display:"flex",
     flexDirection:"column",padding:0}}>
@@ -10537,6 +10734,8 @@ function ElternView({user, players, attendance, rackets, kinder, ownProfile, vie
 
 export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
+  const [verknuepfLaeuft, setVerknuepfLaeuft] = useState(false);
+  const [verknuepfFehler, setVerknuepfFehler] = useState("");
   const [players,      setPlayers]      = useState([]);
   const [attendance,   setAttendance]   = useState({});
   const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:""});
@@ -10780,6 +10979,55 @@ export default function App() {
     p.elternEmail && p.elternEmail.toLowerCase() === authUser.email?.toLowerCase() &&
     p.id !== myPlayer?.id
   );
+
+  // ── Profil-ID stimmt nicht mit dem Benutzerkonto überein ──
+  // Firestore erlaubt Änderungen am eigenen Profil nur, wenn die Dokument-ID der
+  // Kennung des Benutzerkontos entspricht. Wurde ein Profil vom Admin angelegt und
+  // erst später ein Login mit derselben Adresse erstellt, passt das nicht zusammen
+  // — dann scheitert z.B. die Datenschutz-Zustimmung mit einer Rechte-Meldung.
+  // Die Person kann das hier selbst in Ordnung bringen: Das Profil wird unter der
+  // richtigen Kennung neu angelegt. Das alte Profil bleibt vorerst bestehen und
+  // wird vom Administrator entfernt, damit nichts verloren geht.
+  if (myPlayer && myPlayer.id !== authUser.uid && !players.some(p=>p.id===authUser.uid)) {
+    return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",
+      justifyContent:"center",padding:24}}>
+      <div style={{maxWidth:460,background:"var(--bg2)",border:"1px solid var(--border2)",
+        borderRadius:14,padding:"22px 20px"}}>
+        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:10}}>🔧 Profil muss verknüpft werden</div>
+        <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7}}>
+          Hallo {myPlayer.firstName}! Dein Profil wurde angelegt, bevor dein Benutzerkonto
+          erstellt wurde. Deshalb sind beide noch nicht miteinander verknüpft — dadurch
+          lassen sich Änderungen wie die Datenschutz-Zustimmung nicht speichern.
+        </div>
+        <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7,marginTop:10}}>
+          Ein Klick genügt, dann ist alles in Ordnung. Deine Daten bleiben erhalten.
+        </div>
+        {verknuepfFehler && <div style={{fontSize:11,color:"#f59e0b",marginTop:12,lineHeight:1.6,
+          background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px"}}>
+          {verknuepfFehler}
+        </div>}
+        <button disabled={verknuepfLaeuft} onClick={async()=>{
+          setVerknuepfLaeuft(true); setVerknuepfFehler("");
+          try{
+            const {id, ...daten} = myPlayer;
+            await setDoc(doc(db,"players",authUser.uid), {...daten, id:authUser.uid, updatedAt:Date.now()});
+          }catch(e){
+            setVerknuepfFehler("Das hat nicht geklappt: "+(e?.message||"")+
+              "\nBitte wende dich an den Administrator.");
+            setVerknuepfLaeuft(false);
+          }
+        }} style={{marginTop:16,width:"100%",padding:"11px 14px",
+          background:verknuepfLaeuft?"var(--border2)":"linear-gradient(135deg,#3b82f6,#2563eb)",
+          border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,
+          cursor:verknuepfLaeuft?"wait":"pointer"}}>
+          {verknuepfLaeuft?"⏳ Wird verknüpft…":"Profil jetzt verknüpfen"}
+        </button>
+        <button onClick={handleSignOut} style={{marginTop:8,width:"100%",padding:"9px 14px",
+          background:"transparent",border:"1px solid var(--border2)",borderRadius:9,
+          color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+      </div>
+    </div>;
+  }
 
   // ── Datenschutz-Gate: Profil ohne Akzeptanz-Datum muss zuerst zustimmen ──
   if (myPlayer && !myPlayer.datenschutzAccepted && !datenschutzOk) {
