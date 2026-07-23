@@ -10,6 +10,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="TTC NZ" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>TTC Niederzeuzheim – Trainingsheft</title>
     <style>
       :root {
@@ -26,5 +28,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Service Worker registrieren (Voraussetzung für Push-Nachrichten).
+      // Fehler werden bewusst still behandelt: die App muss auch ohne
+      // Benachrichtigungen uneingeschränkt funktionieren.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function () {});
+        });
+      }
+    </script>
   </body>
 </html>
