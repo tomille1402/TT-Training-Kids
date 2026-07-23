@@ -4269,6 +4269,13 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   const [alle,setAlle]=useState([]); // Array von Bestell-Dokumenten
   const [exporting,setExporting]=useState(false);
   const [editPlayerId,setEditPlayerId]=useState(null); // Spieler, dessen Bestellung bearbeitet wird
+  // WICHTIG: Alle useState/useEffect müssen VOR jedem vorzeitigen return stehen.
+  // Weiter unten wird bei gewählter Person früh ausgestiegen (Bestellung bearbeiten);
+  // stünden Hooks danach, käme es beim Öffnen zum Absturz der Ansicht.
+  // Sortierung: Voreinstellung erst nach Gruppe, dann nach Name.
+  const [sortSpalten,setSortSpalten]=useState([{key:"gruppe",dir:"asc"},{key:"name",dir:"asc"}]);
+  // Filter je Spalte. Leerer Wert = kein Filter.
+  const [filter,setFilter]=useState({});
 
   useEffect(()=>{
     const u=onSnapshot(collection(db,"bestellungen"),snap=>{
@@ -4337,11 +4344,6 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     return false;
   });
 
-  // Sortierung: Voreinstellung erst nach Gruppe, dann nach Name. Alle Spalten
-  // sortierbar per Klick auf die Überschrift.
-  const [sortSpalten,setSortSpalten]=useState([{key:"gruppe",dir:"asc"},{key:"name",dir:"asc"}]);
-  // Filter je Spalte (Punkt 1). Leerer Wert = kein Filter.
-  const [filter,setFilter]=useState({});
   const setSpaltenFilter=(key,val)=>setFilter(prev=>({...prev,[key]:val}));
   const filterAktiv = Object.values(filter).some(v=>v!==undefined&&v!=="");
   function toggleSort(key){
