@@ -4318,6 +4318,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   // Sortierung: Voreinstellung erst nach Gruppe, dann nach Name. Alle Spalten
   // sortierbar per Klick auf die Überschrift.
   const [sortSpalten,setSortSpalten]=useState([{key:"gruppe",dir:"asc"},{key:"name",dir:"asc"}]);
+  // Filter je Spalte (Punkt 1). Leerer Wert = kein Filter.
+  const [filter,setFilter]=useState({});
+  const setSpaltenFilter=(key,val)=>setFilter(prev=>({...prev,[key]:val}));
+  const filterAktiv = Object.values(filter).some(v=>v!==undefined&&v!=="");
   function toggleSort(key){
     setSortSpalten(prev=>{
       const vorhanden=prev.find(s=>s.key===key);
@@ -4333,17 +4337,26 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   // Basis-Personen für die Übersicht: aktiv UND (Funktion Spieler ODER Erwachsene).
   // Für MF auf die eigene Mannschaft beschränkt. Dopplungen über die Spieler-ID
   // ausgeschlossen (players ist bereits eindeutig je Dokument).
+  // Wer erscheint in der Übersicht?
+  //  - nur aktive Personen (nicht passiv)
+  //  - Gäste NIE (Punkt 4)
+  //  - aufgenommen wird, wer die Funktion Spieler ODER Erwachsene hat; die Funktion
+  //    zählt dabei über die Rolle ODER die Gruppenzugehörigkeit
+  //  - ein Admin mit Funktion Erwachsene wird dadurch mit aufgenommen (Punkt 3)
+  //  - ein Trainer OHNE Spieler-/Erwachsenen-Funktion bleibt außen vor (Punkt 5)
   const istRelevantePerson = (p)=>{
     if(p.status==="passiv") return false;
     const r=p.roles||{};
     const g=p.group||"";
-    const istSpieler = r.player===true || g==="Profis" || g==="Fortgeschrittene" || g==="Anfänger";
+    if(g==="Gast") return false;                    // Punkt 4: Gäste ausschließen
+    const istSpieler   = r.player===true || g==="Profis" || g==="Fortgeschrittene" || g==="Anfänger";
     const istErwachsen = r.erwachsene===true || g==="Erwachsene";
-    return istSpieler || istErwachsen;
+    return istSpieler || istErwachsen;              // Punkte 3+5
   };
   const basisPersonen = players.filter(p=>{
     if(!istRelevantePerson(p)) return false;
     if(isAdmin) return true;
+    // Punkt 2: MF sieht ALLE Spieler seiner Mannschaft — auch ohne Bestellung.
     if(isMF && meineMannschaft) return mannschaftSpielerIds.has(p.id) || p.id===me?.id;
     return false;
   });
@@ -4411,6 +4424,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   // nutzt borderCollapse:"separate" — bei "collapse" verschwinden sonst die
   // Rahmenlinien der fixierten Kopfzeile beim Scrollen.
   const th={padding:"6px 6px",fontSize:10,fontWeight:700,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap",background:"var(--bg2)",position:"sticky",top:0,zIndex:3};
+  // Filterzeile klebt direkt unter der Überschriftenzeile (deren Höhe ≈ 27px).
+  const thFilter={padding:"3px 5px",background:"var(--bg2)",borderBottom:"2px solid var(--border2)",position:"sticky",top:27,zIndex:3,whiteSpace:"nowrap"};
+  const filterInput={width:"100%",minWidth:60,boxSizing:"border-box",padding:"3px 5px",fontSize:10,
+    background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)"};
   const td={padding:"5px 6px",fontSize:11,borderBottom:"1px solid var(--border)",verticalAlign:"middle"};
 
   // Gesamtsummen
@@ -4454,6 +4471,47 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     };
   });
 
+  // Filter anwenden (Punkt 1). Spalten, die zu einzelnen Artikelzeilen gehören,
+  // filtern innerhalb der Person: es bleiben nur passende Artikelzeilen übrig;
+  // hat eine Person danach keine passende Zeile mehr, entfällt sie ganz.
+  const txt = (v)=>String(v??"").toLowerCase();
+  const artikelSpalten = ["artikel","anzahl","groesse","preisKatalog","preisSpin","preisSpinGesamt","preisTTC","preisTTCGesamt"];
+  const jaNeinPasst = (wert, f)=> f===""||f===undefined ? true : (f==="ja" ? !!wert : !wert);
+  const gefilterteZeilen = personenZeilen.map(z=>{
+    // Personen-Ebene
+    if(filter.gruppe && !txt(z.gruppe).includes(txt(filter.gruppe))) return null;
+    if(filter.name   && !txt(z.name).includes(txt(filter.name))) return null;
+    if(!jaNeinPasst(z.final, filter.final)) return null;
+    if(!jaNeinPasst(z.bezahlt, filter.bezahlt)) return null;
+    if(!jaNeinPasst(z.geldeingang, filter.geldeingang)) return null;
+    // Artikel-Ebene
+    const artikelFilterAktiv = artikelSpalten.some(k=>filter[k]!==undefined&&filter[k]!=="");
+    if(!artikelFilterAktiv) return z;
+    if(!z.hatBestellung){
+      // Ohne Bestellung: nur behalten, wenn der Artikel-Filter zu "keine Bestellung" passt
+      const f=filter.artikel;
+      const nurArtikelText = f!==undefined&&f!=="" && artikelSpalten.every(k=>k==="artikel"||!filter[k]);
+      return (nurArtikelText && "keine bestellung".includes(txt(f))) ? z : null;
+    }
+    const az = z.artikelZeilen.filter(a=>{
+      if(filter.artikel && !txt(a.artikel).includes(txt(filter.artikel))) return false;
+      if(filter.anzahl!==undefined && filter.anzahl!=="" && String(a.anzahl)!==String(filter.anzahl)) return false;
+      if(filter.groesse && !txt(a.groesse).includes(txt(filter.groesse))) return false;
+      for(const k of ["preisKatalog","preisSpin","preisSpinGesamt","preisTTC","preisTTCGesamt"]){
+        if(filter[k]!==undefined && filter[k]!==""){
+          const soll=parseFloat(String(filter[k]).replace(",","."));
+          if(!isNaN(soll) && Math.abs((a[k]||0)-soll)>0.005) return false;
+        }
+      }
+      return true;
+    });
+    if(az.length===0) return null;
+    return {...z, artikelZeilen:az,
+      anzahlGesamt: az.reduce((s,x)=>s+x.anzahl,0),
+      summeSpin: az.reduce((s,x)=>s+x.preisSpinGesamt,0),
+      summeTTC:  az.reduce((s,x)=>s+x.preisTTCGesamt,0)};
+  }).filter(Boolean);
+
   // Sortierung anwenden: mehrstufig nach sortSpalten (primär, sekundär, …).
   const cmpWert = (z,key)=>{
     switch(key){
@@ -4473,7 +4531,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       default: return "";
     }
   };
-  const sortierteZeilen = [...personenZeilen].sort((a,b)=>{
+  const sortierteZeilen = [...gefilterteZeilen].sort((a,b)=>{
     for(const {key,dir} of sortSpalten){
       const va=cmpWert(a,key), vb=cmpWert(b,key);
       let c=0;
@@ -4486,20 +4544,22 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
 
   // Kopfzellen-Definition (Reihenfolge = Spaltenreihenfolge). Gruppe ganz vorne.
   const SPALTEN=[
-    {key:"gruppe",label:"Gruppe",align:"left"},
-    {key:"name",label:"Person",align:"left"},
-    {key:"artikel",label:"Artikel",align:"left"},
-    {key:"anzahl",label:"Anzahl",align:"center"},
-    {key:"groesse",label:"Größe",align:"center"},
-    {key:"preisKatalog",label:"Preis Katalog",align:"right"},
-    {key:"preisSpin",label:"Preis Spin & Speed",align:"right"},
-    {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right"},
-    {key:"preisTTC",label:"Preis TTC",align:"right"},
-    {key:"preisTTCGesamt",label:"Preis TTC gesamt",align:"right"},
-    {key:"final",label:"bestellt",align:"center"},
-    {key:"bezahlt",label:"bezahlt",align:"center"},
-    {key:"geldeingang",label:"Geldeingang",align:"center"},
+    {key:"gruppe",label:"Gruppe",align:"left",filter:"select"},
+    {key:"name",label:"Person",align:"left",filter:"text"},
+    {key:"artikel",label:"Artikel",align:"left",filter:"text"},
+    {key:"anzahl",label:"Anzahl",align:"center",filter:"text"},
+    {key:"groesse",label:"Größe",align:"center",filter:"text"},
+    {key:"preisKatalog",label:"Preis Katalog",align:"right",filter:"text"},
+    {key:"preisSpin",label:"Preis Spin & Speed",align:"right",filter:"text"},
+    {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right",filter:"text"},
+    {key:"preisTTC",label:"Preis TTC",align:"right",filter:"text"},
+    {key:"preisTTCGesamt",label:"Preis TTC gesamt",align:"right",filter:"text"},
+    {key:"final",label:"bestellt",align:"center",filter:"janein"},
+    {key:"bezahlt",label:"bezahlt",align:"center",filter:"janein"},
+    {key:"geldeingang",label:"Geldeingang",align:"center",filter:"janein"},
   ];
+  // Auswahlwerte für den Gruppen-Filter aus den tatsächlich vorhandenen Gruppen
+  const gruppenWerte=[...new Set(basisPersonen.map(p=>p.group||"").filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
   const sortPfeil=(key)=>{
     const s=sortSpalten.find(x=>x.key===key);
     if(!s) return "";
@@ -4515,8 +4575,12 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
         border:"none",borderRadius:8,color:exporting?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:exporting?"wait":"pointer"}}>
         {exporting?"⏳ Export…":"📊 Als Excel herunterladen"}</button>}
     </div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
-      {isAdmin?"Alle Bestellungen der Spieler und Erwachsenen.":`Bestellungen deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span>{isAdmin?"Alle Spieler und Erwachsenen des Vereins.":`Spieler deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}</span>
+      {filterAktiv && <>
+        <span style={{color:"#10b981",fontWeight:700}}>{sortierteZeilen.length} von {personenZeilen.length} Personen</span>
+        <button onClick={()=>setFilter({})} style={{padding:"3px 9px",background:"#ef444422",border:"1px solid #ef444444",borderRadius:6,color:"#ef4444",fontSize:10,fontWeight:700,cursor:"pointer"}}>Filter zurücksetzen</button>
+      </>}
     </div>
 
     {/* Bestellung für eine Person anlegen/bearbeiten (MF + Admin) */}
@@ -4544,15 +4608,37 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       ? <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13}}>Keine passenden Personen vorhanden.</div>
       : <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
         <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:980}}>
-          <thead><tr>
-            {SPALTEN.map(sp=>(
-              <th key={sp.key} onClick={()=>toggleSort(sp.key)}
-                style={{...th,textAlign:sp.align,cursor:"pointer",userSelect:"none"}}
-                title="Klicken zum Sortieren">
-                {sp.label}<span style={{color:"#10b981",fontSize:9}}>{sortPfeil(sp.key)}</span>
-              </th>
-            ))}
-          </tr></thead>
+          <thead>
+            <tr>
+              {SPALTEN.map(sp=>(
+                <th key={sp.key} onClick={()=>toggleSort(sp.key)}
+                  style={{...th,textAlign:sp.align,cursor:"pointer",userSelect:"none"}}
+                  title="Klicken zum Sortieren">
+                  {sp.label}<span style={{color:"#10b981",fontSize:9}}>{sortPfeil(sp.key)}</span>
+                </th>
+              ))}
+            </tr>
+            {/* Filterzeile (Punkt 1): je Spalte ein Eingabe- bzw. Auswahlfeld */}
+            <tr>
+              {SPALTEN.map(sp=>(
+                <th key={sp.key+"_f"} style={{...thFilter,textAlign:sp.align}}>
+                  {sp.filter==="select"
+                    ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
+                        <option value="">alle</option>
+                        {gruppenWerte.map(g=><option key={g} value={g}>{g}</option>)}
+                      </select>
+                    : sp.filter==="janein"
+                    ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
+                        <option value="">alle</option>
+                        <option value="ja">ja</option>
+                        <option value="nein">nein</option>
+                      </select>
+                    : <input type="text" value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)}
+                        placeholder="…" style={filterInput}/>}
+                </th>
+              ))}
+            </tr>
+          </thead>
           <tbody>
             {sortierteZeilen.map(z=>{
               // Person ohne Bestellung: eine Platzhalterzeile mit "keine Bestellung".
