@@ -2135,6 +2135,223 @@ function PersonenUebersicht({players}) {
   </div>;
 }
 
+// ─── PUSH-REGELN (Admin pflegt, wann und an wen erinnert wird) ───────────────
+// Auswählbare Empfänger-Funktionen für Vereinstermine (Mehrfachauswahl möglich).
+const PUSH_FUNKTIONEN = [
+  {key:"player",           label:"Spieler"},
+  {key:"erwachsene",       label:"Erwachsene"},
+  {key:"trainer",          label:"Trainer"},
+  {key:"admin",            label:"Admin"},
+  {key:"mannschaftsfuehrer",label:"Mannschaftsführer"},
+];
+// Voreingestellte Nachwuchs-Mannschaften (vom Admin per Häkchen änderbar).
+const PUSH_NACHWUCHS_DEFAULT = ["Mädchen 11","Mädchen 13","Mädchen 15","Jugend 11"];
+
+// Standard-Regelsatz. tage = Liste "Tage vor dem Termin" (0 = am Tag selbst).
+// Für Vereinstermine steht je Rubrik eine eigene Regel; empfaenger = Funktionsschlüssel.
+function pushRegelnDefault(){
+  return {
+    version: 1,
+    sendeStunde: 8,                       // täglicher Versand um 08:00
+    nachwuchsMannschaften: [...PUSH_NACHWUCHS_DEFAULT],
+    spiele: {
+      nachwuchs: { aktiv:true, tage:[3,0], nurZusage:true },   // 3 Tage vorher + am Spieltag
+      erwachsene:{ aktiv:true, tage:[3,0], nurZusage:true },
+    },
+    // Vereinstermine je Rubrik. Empfänger als Funktions-Liste (Mehrfachauswahl).
+    vereinstermine: {
+      "Alle":        { aktiv:true,  tage:[14,3,1], empfaenger:["player","erwachsene"] },
+      "Erwachsene":  { aktiv:true,  tage:[14,3,1], empfaenger:["erwachsene"] },
+      "Nachwuchs":   { aktiv:true,  tage:[14,3,1], empfaenger:["player"] },
+      "Halle zu":    { aktiv:false, tage:[14,3,1], empfaenger:[] },
+      "Vorstand":    { aktiv:false, tage:[14,3,1], empfaenger:[] },
+      "Grenzau-Spiele":{ aktiv:false, tage:[14,3,1], empfaenger:[] },
+    },
+  };
+}
+
+// Tage-Liste ↔ Text ("3, 0" ⇄ [3,0]); leere/ungültige Werte werden entfernt.
+function tageZuText(tage){ return (tage||[]).join(", "); }
+function textZuTage(text){
+  return String(text||"").split(/[,;\s]+/).map(s=>parseInt(s,10))
+    .filter(n=>!isNaN(n)&&n>=0).slice(0,10);
+}
+
+function PushRegelnVerwaltung({showToast}){
+  const notify = typeof showToast==="function" ? showToast : (()=>{});
+  const [regeln,setRegeln]=useState(null);
+  const [mannschaften,setMannschaften]=useState([]); // alle bekannten Mannschaftsnamen
+  const [speichern,setSpeichern]=useState(false);
+  const [dirty,setDirty]=useState(false);
+
+  // Regeln laden (oder Standard verwenden)
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","pushRegeln"),snap=>{
+      if(snap.exists() && snap.data().regeln){
+        // Standard mit gespeicherten Werten überlagern, damit neue Felder ergänzt werden
+        const d=pushRegelnDefault();
+        const g=snap.data().regeln;
+        setRegeln({
+          ...d, ...g,
+          spiele:{...d.spiele, ...(g.spiele||{})},
+          vereinstermine:{...d.vereinstermine, ...(g.vereinstermine||{})},
+          nachwuchsMannschaften: g.nachwuchsMannschaften || d.nachwuchsMannschaften,
+        });
+      } else {
+        setRegeln(pushRegelnDefault());
+      }
+    },()=>setRegeln(pushRegelnDefault()));
+    return u;
+  },[]);
+
+  // Alle Mannschaftsnamen aus der aktuellen Aufstellung sammeln (für Nachwuchs-Häkchen)
+  useEffect(()=>{
+    const aufKey="aufstellung_2026_2027_V";
+    const u=onSnapshot(doc(db,"config",aufKey),snap=>{
+      const data=snap.exists()&&(snap.data().spieler||[]).length>0
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+      const namen=[...new Set(data.map(r=>r.mannschaft).filter(Boolean))]
+        .sort((a,b)=>a.localeCompare(b,"de"));
+      setMannschaften(namen);
+    },()=>setMannschaften([]));
+    return u;
+  },[]);
+
+  function aendern(fn){ setRegeln(r=>{ const kopie=JSON.parse(JSON.stringify(r)); fn(kopie); return kopie; }); setDirty(true); }
+
+  async function speichereRegeln(){
+    if(!regeln) return;
+    setSpeichern(true);
+    try{
+      await setDoc(doc(db,"config","pushRegeln"),{regeln,lastUpdated:Date.now()});
+      setDirty(false); notify("Push-Regeln gespeichert","🔔");
+    }catch(e){
+      notify("Fehler beim Speichern: "+(e?.message||""),"❌");
+    }
+    setSpeichern(false);
+  }
+
+  if(!regeln) return <div style={{padding:16,color:"var(--text3)",fontSize:12}}>Lädt…</div>;
+
+  const th={padding:"7px 8px",fontSize:11,fontWeight:800,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap"};
+  const td={padding:"7px 8px",fontSize:12,borderBottom:"1px solid var(--border)",verticalAlign:"top"};
+  const tageInput={width:90,padding:"5px 7px",fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)"};
+
+  // Eine Empfänger-Mehrfachauswahl (Funktions-Chips)
+  const empfChips=(aktuelle,onToggle)=> <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+    {PUSH_FUNKTIONEN.map(f=>{
+      const an=aktuelle.includes(f.key);
+      return <button key={f.key} onClick={()=>onToggle(f.key)} style={{
+        padding:"3px 9px",fontSize:11,fontWeight:600,borderRadius:20,cursor:"pointer",
+        border:`1px solid ${an?"#3b82f6":"var(--border2)"}`,
+        background:an?"#3b82f622":"transparent",color:an?"#3b82f6":"var(--text3)"}}>
+        {f.label}{an?" ✓":""}</button>;
+    })}
+  </div>;
+
+  const toggleInList=(list,key)=> list.includes(key) ? list.filter(x=>x!==key) : [...list,key];
+
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,marginBottom:12}}>
+      Hier legst du fest, wann und an wen Benachrichtigungen vor Terminen gehen. Die
+      Zeitpunkte sind „Tage vor dem Termin“ — <b>0</b> bedeutet am Tag selbst. Mehrere
+      Zeitpunkte durch Komma trennen (z. B. <b>3, 0</b>). Versand täglich um {regeln.sendeStunde}:00 Uhr.
+    </div>
+
+    {/* Spiele */}
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"6px 0 6px"}}>🏓 Spiele</div>
+    <div style={{overflowX:"auto",border:"1px solid var(--border)",borderRadius:10,marginBottom:18}}>
+      <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:520}}>
+        <thead><tr>
+          <th style={th}>Art</th><th style={th}>Empfänger</th>
+          <th style={th}>Turnus</th><th style={th}>Zeitpunkt (Tage vorher)</th><th style={th}>aktiv</th>
+        </tr></thead>
+        <tbody>
+          {[["nachwuchs","Spiel Nachwuchs"],["erwachsene","Spiel Erwachsene"]].map(([k,label])=>{
+            const r=regeln.spiele[k];
+            return <tr key={k}>
+              <td style={{...td,fontWeight:700}}>{label}</td>
+              <td style={td}>Spieler der Mannschaft mit Zusage „Ja“ bei Einsätzen</td>
+              <td style={td}>{(r.tage||[]).length}×</td>
+              <td style={td}>
+                <input defaultValue={tageZuText(r.tage)} style={tageInput}
+                  onBlur={e=>aendern(x=>{x.spiele[k].tage=textZuTage(e.target.value);})}/>
+              </td>
+              <td style={td}>
+                <input type="checkbox" checked={r.aktiv} onChange={()=>aendern(x=>{x.spiele[k].aktiv=!x.spiele[k].aktiv;})}/>
+              </td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Vereinstermine je Rubrik */}
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"6px 0 6px"}}>📌 Vereinstermine (je Rubrik)</div>
+    <div style={{overflowX:"auto",border:"1px solid var(--border)",borderRadius:10,marginBottom:18}}>
+      <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:640}}>
+        <thead><tr>
+          <th style={th}>Rubrik</th><th style={th}>Empfänger (Funktionen)</th>
+          <th style={th}>Turnus</th><th style={th}>Zeitpunkt (Tage vorher)</th><th style={th}>aktiv</th>
+        </tr></thead>
+        <tbody>
+          {TERMIN_RUBRIKEN.map(rub=>{
+            const r=regeln.vereinstermine[rub] || {aktiv:false,tage:[14,3,1],empfaenger:[]};
+            return <tr key={rub}>
+              <td style={{...td,fontWeight:700}}>{rub}</td>
+              <td style={td}>{empfChips(r.empfaenger||[], (fk)=>aendern(x=>{
+                const cur=x.vereinstermine[rub]||{aktiv:false,tage:[14,3,1],empfaenger:[]};
+                cur.empfaenger=toggleInList(cur.empfaenger||[],fk); x.vereinstermine[rub]=cur;
+              }))}</td>
+              <td style={td}>{(r.tage||[]).length}×</td>
+              <td style={td}>
+                <input defaultValue={tageZuText(r.tage)} style={tageInput}
+                  onBlur={e=>aendern(x=>{
+                    const cur=x.vereinstermine[rub]||{aktiv:false,empfaenger:[]};
+                    cur.tage=textZuTage(e.target.value); x.vereinstermine[rub]=cur;
+                  })}/>
+              </td>
+              <td style={td}>
+                <input type="checkbox" checked={!!r.aktiv} onChange={()=>aendern(x=>{
+                  const cur=x.vereinstermine[rub]||{tage:[14,3,1],empfaenger:[]};
+                  cur.aktiv=!cur.aktiv; x.vereinstermine[rub]=cur;
+                })}/>
+              </td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Nachwuchs-Mannschaften */}
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"6px 0 6px"}}>👦 Welche Mannschaften zählen als Nachwuchs?</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>
+      Bestimmt, ob ein Spiel unter „Spiel Nachwuchs“ oder „Spiel Erwachsene“ fällt.
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:18}}>
+      {mannschaften.length===0
+        ? <span style={{fontSize:11,color:"var(--text4)"}}>Aufstellung wird geladen…</span>
+        : mannschaften.map(m=>{
+            const an=regeln.nachwuchsMannschaften.includes(m);
+            return <button key={m} onClick={()=>aendern(x=>{
+              x.nachwuchsMannschaften = toggleInList(x.nachwuchsMannschaften,m);
+            })} style={{padding:"4px 10px",fontSize:11,fontWeight:600,borderRadius:20,cursor:"pointer",
+              border:`1px solid ${an?"#10b981":"var(--border2)"}`,
+              background:an?"#10b98122":"transparent",color:an?"#10b981":"var(--text3)"}}>
+              {m}{an?" ✓":""}</button>;
+          })}
+    </div>
+
+    <button disabled={speichern||!dirty} onClick={speichereRegeln} style={{
+      padding:"10px 18px",borderRadius:9,border:"none",fontSize:13,fontWeight:700,
+      cursor:speichern||!dirty?"default":"pointer",
+      background:dirty?"linear-gradient(135deg,#3b82f6,#2563eb)":"var(--bg3)",
+      color:dirty?"#fff":"var(--text4)"}}>
+      {speichern?"⏳ Speichern…":dirty?"💾 Regeln speichern":"✓ Gespeichert"}
+    </button>
+  </div>;
+}
+
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -2158,6 +2375,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showGrp,setShowGrp]=useState({});
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
+  const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -3702,6 +3920,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <TerminVerwaltung showToast={showToast}/>
       </div>}
     </div>
+
+    {/* ─── Push-Regeln (Benachrichtigungen vor Terminen) ─── */}
+    {isSuperAdmin && <div style={{marginTop:18,background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
+      <div onClick={()=>setShowPushRegeln(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>🔔 Push-Regeln · Erinnerungen vor Terminen</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showPushRegeln?"▲":"▼"}</span>
+      </div>
+      {showPushRegeln&&<div style={{padding:"0 14px 16px"}}>
+        <PushRegelnVerwaltung showToast={showToast}/>
+      </div>}
+    </div>}
   </div>;
 }
 
@@ -4729,7 +4958,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
 // Öffentlicher VAPID-Schlüssel. Wird zusammen mit dem privaten Schlüssel erzeugt
 // (siehe PUSH_SETUP.md). Der private Schlüssel gehört NUR in die Serverumgebung
 // (Netlify-Umgebungsvariable), niemals in diese Datei.
-const VAPID_PUBLIC_KEY = "BLFyJrWx5IvqMrfTFX4Ca3kxymFh-GwyoXO1Ax3oUlrz5aQIt-0AKGDURww5m1lfIPCanIqlOE256C51LqDB6Vk";   // ← hier den öffentlichen Schlüssel eintragen
+const VAPID_PUBLIC_KEY = "";   // ← hier den öffentlichen Schlüssel eintragen
 
 // Wandelt den Base64-URL-Schlüssel in das vom Browser erwartete Format um.
 function base64UrlZuUint8Array(base64String){
