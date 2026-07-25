@@ -319,6 +319,22 @@ module.exports.handler = async (event) => {
       await patchDoc("config/pushVersand", { gesendet: zusammen, lastRun: Date.now() });
     }
 
+    // Gesendete Nachrichten zusätzlich für die Anzeige in der App ablegen.
+    // Jede Person sieht beim Öffnen der App die neuen, sie betreffenden Meldungen.
+    // Gespeichert wird je Nachricht ein Dokument mit Empfänger-IDs und Zeitpunkt.
+    if(!dryRun){
+      for(const job of zuSenden){
+        if(!neuHistorie[job.sendeId]) continue; // nur tatsächlich Verschicktes
+        try{
+          await patchDoc("appNachrichten/"+job.sendeId, {
+            titel: job.titel, text: job.text,
+            empfaenger: job.empfaengerIds,
+            erstellt: heute, ts: Date.now()
+          });
+        }catch(e){ /* Anzeige ist Zusatz – Fehler hier nicht kritisch */ }
+      }
+    }
+
     const bericht = {
       datum: heute, dryRun,
       jobs: zuSenden.length,
