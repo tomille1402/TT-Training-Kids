@@ -1,6 +1,13 @@
 [build]
   functions = "netlify/functions"
 
+# Täglicher Versand der Termin-Erinnerungen.
+# 6:00 UTC = 8:00 Uhr deutscher Sommerzeit (MESZ). Im Winter (MEZ) entspricht
+# das 7:00 Uhr — für eine Morgen-Erinnerung völlig ausreichend. Wer exakt 8 Uhr
+# ganzjährig will, müsste zwei Cron-Zeilen mit Monatsfiltern nutzen.
+[functions."pushversand"]
+  schedule = "0 6 * * *"
+
 # Schöner Pfad für den Kalender-Feed: /.netlify/functions/calendar.ics
 [[redirects]]
   from = "/.netlify/functions/calendar.ics"
