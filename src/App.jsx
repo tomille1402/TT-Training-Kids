@@ -138,15 +138,27 @@ function generateTrainingDays() {
 
 const { tuesdays: ALL_TUESDAYS, fridays: ALL_FRIDAYS } = generateTrainingDays();
 
+// Zusätzliche Sondertrainings (z.B. in den Ferien), je Gruppe. Diese Tage werden
+// zusätzlich zu den regulären Trainingstagen berücksichtigt – auch wenn sie in
+// Ferien oder auf einen sonst trainingsfreien Wochentag fallen.
+const SONDER_TRAINING = {
+  "Fortgeschrittene": ["2026-07-28","2026-08-04"],
+  "Profis":           ["2026-07-28","2026-07-31","2026-08-04","2026-08-07"],
+};
+// Alle Sondertrainings-Tage über alle Gruppen (für die Tagesauswahl im Trainer-Bereich).
+const ALLE_SONDER_TAGE = [...new Set(Object.values(SONDER_TRAINING).flat())].sort();
+
 function getTrainingDaysForGroup(group, trainerDays) {
-  if (group === "Profis") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
+  const sonder = SONDER_TRAINING[group] || [];
+  const mitSonder = (tage) => [...new Set([...tage, ...sonder])].sort();
+  if (group === "Profis") return mitSonder([...ALL_TUESDAYS, ...ALL_FRIDAYS]);
   if (group === "Trainer") {
     // Trainer: days from their trainingDays field ("Di", "Fr", "Di+Fr")
     if (!trainerDays || trainerDays === "Di+Fr") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
     if (trainerDays === "Fr") return ALL_FRIDAYS;
     return ALL_TUESDAYS; // default: Di only
   }
-  return ALL_TUESDAYS;
+  return mitSonder(ALL_TUESDAYS);
 }
 
 function getTrainingTime(group, dateStr) {
@@ -1150,7 +1162,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
 // ─── ADMIN TRAINING TAB ───────────────────────────────────────────────────────
 function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
-  const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS])].sort();
+  const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS,...ALLE_SONDER_TAGE])].sort();
   const nearest = getNearestTrainingDay(allDays);
   const [selDate,setSelDate]=useState(nearest);
   const [sessionData,setSessionData]=useState(null);
@@ -1183,6 +1195,11 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 
   const isFriday = selDate ? new Date(selDate).getDay()===5 : false;
   const isTuesday = selDate ? new Date(selDate).getDay()===2 : false;
+  const istSonderTag = selDate ? ALLE_SONDER_TAGE.includes(selDate) : false;
+  // An einem Sondertrainings-Tag nur die Gruppen zeigen, für die er vorgesehen ist.
+  const sonderGruppen = istSonderTag
+    ? Object.keys(SONDER_TRAINING).filter(g=>SONDER_TRAINING[g].includes(selDate))
+    : null;
   const relevantPlayers = players.filter(p=>{
     if (p.group==="Trainer") {
       // Trainer nur an ihren Trainingstagen zeigen
@@ -1191,7 +1208,9 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       if (isTuesday && td==="Fr") return false; // Di-Training aber nur Fr-Trainer
       return true;
     }
-    if (isFriday && p.group!=="Profis") return false;
+    // Sondertag: nur die dafür vorgesehenen Gruppen
+    if (sonderGruppen && !sonderGruppen.includes(p.group)) return false;
+    if (!istSonderTag && isFriday && p.group!=="Profis") return false;
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
@@ -2442,6 +2461,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
+  const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -3038,33 +3058,44 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </div>
 
-    {/* Doppelprofile erkennen (gleiche E-Mail, verschiedene Dokument-ID) und auflösen */}
+    {/* Doppelprofile erkennen und auflösen. Kriterium: gleiche E-Mail UND gleicher
+        Vor- und Nachname. So werden gewollte Eltern-Logins (gleiche Mail, aber
+        anderer Name als das Kind) NICHT faelschlich als Duplikat angezeigt. */}
     {(()=>{
-      // Gruppen gleicher E-Mail mit mehr als einem Profil bilden (nur echte Adressen)
-      const proMail={};
+      // Gruppen nach E-Mail + Vorname + Nachname bilden (nur echte Adressen)
+      const proSchluessel={};
       for(const p of players){
         const mail=(p.email||"").toLowerCase().trim();
         if(!mail || mail.endsWith("@ttc-intern.de")) continue;
-        (proMail[mail]=proMail[mail]||[]).push(p);
+        const vn=(p.firstName||"").toLowerCase().trim();
+        const nn=(p.lastName||"").toLowerCase().trim();
+        const key=mail+"|"+vn+"|"+nn;
+        (proSchluessel[key]=proSchluessel[key]||[]).push(p);
       }
-      const dupletten=Object.entries(proMail).filter(([,arr])=>arr.length>1);
+      const dupletten=Object.entries(proSchluessel).filter(([,arr])=>arr.length>1);
       if(dupletten.length===0) return null;
+      const gesamtDubletten=dupletten.reduce((s,[,arr])=>s+arr.length,0);
 
-      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:14,marginBottom:14}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#f59e0b",marginBottom:6}}>⚠️ Doppelte Profile gefunden</div>
+      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
+        <div onClick={()=>setShowDupletten(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#f59e0b"}}>⚠️ Doppelte Profile gefunden · {dupletten.length}</div>
+          <span style={{fontSize:11,color:"#f59e0b"}}>{showDupletten?"▲":"▼"}</span>
+        </div>
+        {showDupletten&&<div style={{padding:"0 14px 14px"}}>
         <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:10}}>
-          Für die folgenden Personen gibt es mehrere Profile mit derselben E-Mail-Adresse.
-          Das führt zu doppelten Einträgen in den Übersichten. Behalte das verknüpfte
-          Profil (mit Login) und entferne die Dublette. Die Bestellung wird dabei, falls
-          nötig, auf das behaltene Profil übernommen.
+          Für die folgenden Personen gibt es mehrere Profile mit derselben E-Mail-Adresse
+          und demselben Namen. Das führt zu doppelten Einträgen in den Übersichten. Behalte
+          das verknüpfte Profil (mit Login) und entferne die Dublette. Die Bestellung wird
+          dabei, falls nötig, auf das behaltene Profil übernommen.
         </div>
         {dupletten.map(([mail,arr])=>{
           // Das mit Login verknüpfte Profil ist das, dessen ID der Auth-UID entspricht.
           // Da wir die UID hier nicht kennen, markieren wir das neueste (updatedAt) als
           // "vermutlich aktiv"; der Admin entscheidet bewusst per Knopf.
           const sortiert=[...arr].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+          const kopf=`${sortiert[0].firstName||""} ${sortiert[0].lastName||""}`.trim()+" · "+(sortiert[0].email||"");
           return <div key={mail} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:10,marginBottom:8}}>
-            <div style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:6}}>{mail}</div>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:6}}>{kopf}</div>
             {sortiert.map((p,idx)=>(
               <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
                 padding:"6px 8px",background:idx===0?"#10b98111":"transparent",borderRadius:6,marginBottom:4}}>
@@ -3099,6 +3130,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             ))}
           </div>;
         })}
+        </div>}
       </div>;
     })()}
 
