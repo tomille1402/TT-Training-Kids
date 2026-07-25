@@ -763,10 +763,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   const setShowOnlyPresent = onSetShowOnlyPresent || setShowOnlyPresentLocal;
   // Punkt 7: Teilnahme-Drilldown
   const [teilnahmePlayer,setTeilnahmePlayer]=useState(null);
-  // Punkt 6: Geburtstags-Popup
-  const [birthdayPopupDismissed,setBirthdayPopupDismissed]=useState(()=>{
-    try { return localStorage.getItem("ttc_bday_dismissed_admin")||""; } catch(_) { return ""; }
-  });
 
   function toggleGroupFilter(g){setGroupFilters(f=>({...f,[g]:!f[g]}));}
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2200);}
@@ -830,36 +826,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     }
     return result;
   }
-  const recentBirthdays = getBirthdaysSince(birthdaySince);
-  // Punkt 7: dauerhaftes Wegklicken — Signatur aus Trainingstag + IDs; in localStorage gemerkt
-  const bdaySignatur = (lastTraining||"") + "|" + recentBirthdays.map(p=>p.id).sort().join(",");
-  const showBirthdayPopup = recentBirthdays.length > 0 && birthdayPopupDismissed !== bdaySignatur;
-  function dismissBirthdays(){
-    try { localStorage.setItem("ttc_bday_dismissed_admin", bdaySignatur); } catch(_) {}
-    setBirthdayPopupDismissed(bdaySignatur);
-  }
 
   return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
-
-    {/* Punkt 6: Geburtstags-Popup */}
-    {showBirthdayPopup&&<Modal onClose={dismissBirthdays}>
-      <div style={{textAlign:"center",marginBottom:16}}>
-        <div style={{fontSize:40,marginBottom:8}}>🎂</div>
-        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>Geburtstage seit letztem Training</div>
-        <div style={{fontSize:12,color:"var(--text3)"}}>seit {lastTraining?formatDateDE(lastTraining):"heute"}</div>
-      </div>
-      {recentBirthdays.map(p=>(
-        <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
-            <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {formatDateDE(p.birthdate)} — {p.birthdate?new Date().getFullYear()-new Date(p.birthdate).getFullYear():""} Jahre</div>
-          </div>
-        </div>
-      ))}
-      <button onClick={dismissBirthdays} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Erledigt – nicht mehr anzeigen</button>
-    </Modal>}
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
     {teilnahmePlayer&&<Modal onClose={()=>setTeilnahmePlayer(null)}>
@@ -882,7 +851,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <BirthdayBtn players={players} attendance={attendance}/>
+            <BirthdayBtn players={players} attendance={attendance}
+              meId={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())?.id}
+              istAdmin={isSuperAdmin}/>
             {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
             <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
             <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
@@ -5761,6 +5732,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={false}/>
           <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
@@ -7101,8 +7073,8 @@ function EinheitenTab({user, players}) {
   </div>;
 }
 
-// ─── BIRTHDAY BUTTON COMPONENT ────────────────────────────────────────────────
-function BirthdayBtn({players, attendance}) {
+// ─── GLOCKEN-BUTTON: Geburtstage + Nachrichten ───────────────────────────────
+function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
   const [showPopup,setShowPopup] = useState(false);
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -7133,54 +7105,111 @@ function BirthdayBtn({players, attendance}) {
     }
   }
 
-  // Punkt 7: dauerhaftes Wegklicken. Signatur = Trainingstag + IDs der aktuellen
-  // Geburtstage. Wurde genau diese Liste als erledigt markiert, erscheint nichts mehr.
-  // Kommen neue Geburtstage hinzu (neuer Trainingszyklus), ändert sich die Signatur
-  // und der Hinweis erscheint wieder.
+  // ── Geburtstage: dauerhaftes Wegklicken über Signatur ──
   const signatur = lastTrainingDay + "|" + recentBirthdays.map(p=>p.id).sort().join(",");
-  const STORAGE_KEY = "ttc_bday_dismissed";
-  const [dismissedSig,setDismissedSig] = useState(()=>{
-    try { return localStorage.getItem(STORAGE_KEY)||""; } catch(_) { return ""; }
+  const BDAY_KEY = "ttc_bday_dismissed";
+  const [bdayDismissed,setBdayDismissed] = useState(()=>{
+    try { return localStorage.getItem(BDAY_KEY)||""; } catch(_) { return ""; }
   });
-  function erledigt(){
-    try { localStorage.setItem(STORAGE_KEY, signatur); } catch(_) {}
-    setDismissedSig(signatur);
-    setShowPopup(false);
+  const geburtstageOffen = recentBirthdays.length>0 && bdayDismissed!==signatur;
+
+  // ── Nachrichten laden ──
+  const [nachrichten,setNachrichten] = useState([]);
+  const [nachrGelesen,setNachrGelesen] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("ttc_nachr_gelesen")||"[]"); } catch(_) { return []; }
+  });
+  useEffect(()=>{
+    const grenze = new Date(Date.now()-30*86400000).toLocaleDateString("sv");
+    const u = onSnapshot(collection(db,"appNachrichten"), snap=>{
+      const liste=[];
+      snap.forEach(d=>{
+        const n={id:d.id,...d.data()};
+        if((n.erstellt||"") < grenze) return;               // nur letzte 30 Tage
+        // Admin sieht ALLE Nachrichten; alle anderen nur die eigenen.
+        if(!istAdmin){
+          if(!Array.isArray(n.empfaenger) || !meId || !n.empfaenger.includes(meId)) return;
+        }
+        liste.push(n);
+      });
+      liste.sort((a,b)=>(b.ts||0)-(a.ts||0));
+      setNachrichten(liste);
+    }, ()=>setNachrichten([]));
+    return u;
+  },[meId,istAdmin]);
+
+  const offeneNachrichten = nachrichten.filter(n=>!nachrGelesen.includes(n.id));
+
+  function nachrichtWegklicken(id){
+    const neu=[...new Set([...nachrGelesen,id])].slice(-300);
+    setNachrGelesen(neu);
+    try { localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); } catch(_){}
+  }
+  function geburtstageErledigt(){
+    try { localStorage.setItem(BDAY_KEY, signatur); } catch(_){}
+    setBdayDismissed(signatur);
   }
 
-  if (recentBirthdays.length === 0) return null;
-  if (dismissedSig === signatur) return null; // bereits als erledigt weggeklickt
+  // Zähler: offene Geburtstage (1 Sammelposten) + offene Nachrichten
+  const anzahl = (geburtstageOffen?recentBirthdays.length:0) + offeneNachrichten.length;
+  // Button nur zeigen, wenn es überhaupt etwas gibt (offen ODER als Verlauf vorhanden)
+  const hatInhalt = geburtstageOffen || nachrichten.length>0 || recentBirthdays.length>0;
+  if (!hatInhalt) return null;
 
   return <>
     <button onClick={()=>setShowPopup(true)} style={{
-      background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:8,
-      color:"#f59e0b",fontSize:12,padding:"4px 8px",cursor:"pointer",flexShrink:0,
-    }}>🎂 {recentBirthdays.length}</button>
+      position:"relative",background:"#3b82f622",border:"1px solid #3b82f644",borderRadius:8,
+      color:"#3b82f6",fontSize:14,padding:"4px 8px",cursor:"pointer",flexShrink:0,
+    }}>🔔{anzahl>0 && <span style={{
+      position:"absolute",top:-6,right:-6,background:"#ef4444",color:"#fff",borderRadius:10,
+      fontSize:10,fontWeight:700,minWidth:16,height:16,display:"flex",alignItems:"center",
+      justifyContent:"center",padding:"0 3px"}}>{anzahl}</span>}</button>
 
     {showPopup&&<div style={{
       position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0008",zIndex:800,
       display:"flex",alignItems:"center",justifyContent:"center",padding:20,
     }} onClick={()=>setShowPopup(false)}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:"var(--bg2)",borderRadius:16,padding:20,maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",
+        background:"var(--bg2)",borderRadius:16,padding:20,maxWidth:420,width:"100%",maxHeight:"80vh",overflowY:"auto",
       }}>
-        <div style={{textAlign:"center",marginBottom:16}}>
-          <div style={{fontSize:40,marginBottom:8}}>🎂</div>
-          <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>Geburtstage seit letztem Training</div>
-          <div style={{fontSize:11,color:"var(--text3)"}}>Gruppenspezifische Trainingstage berücksichtigt</div>
-        </div>
-        {recentBirthdays.map(p=>(
-          <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
-              <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
-              <div style={{fontSize:10,color:"var(--text4)"}}>seit {new Date(p.lastDay).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})}</div>
+        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:14,textAlign:"center"}}>🔔 Benachrichtigungen</div>
+
+        {/* Nachrichten */}
+        {offeneNachrichten.length>0 && <>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Nachrichten</div>
+          {offeneNachrichten.map(n=>(
+            <div key={n.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"flex-start",gap:10}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:2}}>{n.titel}</div>
+                <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+              </div>
+              <button onClick={()=>nachrichtWegklicken(n.id)} title="Wegklicken" style={{
+                background:"transparent",border:"1px solid var(--border2)",borderRadius:6,
+                color:"var(--text3)",fontSize:14,padding:"2px 8px",cursor:"pointer",flexShrink:0}}>✓</button>
             </div>
-          </div>
-        ))}
-        <button onClick={erledigt} style={{width:"100%",marginTop:8,padding:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Erledigt – nicht mehr anzeigen</button>
-        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:8,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Nur schließen</button>
+          ))}
+        </>}
+
+        {/* Geburtstage */}
+        {geburtstageOffen && <>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",margin:"12px 0 6px"}}>🎂 Geburtstage seit letztem Training</div>
+          {recentBirthdays.map(p=>(
+            <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
+                <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
+              </div>
+            </div>
+          ))}
+          <button onClick={geburtstageErledigt} style={{width:"100%",marginTop:4,padding:9,background:"#10b98122",border:"1px solid #10b98144",borderRadius:9,color:"#10b981",fontSize:13,fontWeight:700,cursor:"pointer"}}>✓ Geburtstage erledigt</button>
+        </>}
+
+        {/* Leerzustand */}
+        {offeneNachrichten.length===0 && !geburtstageOffen && <div style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"14px 0"}}>
+          Keine neuen Benachrichtigungen.
+        </div>}
+
+        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Schließen</button>
       </div>
     </div>}
   </>;
@@ -10648,6 +10677,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
             fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
           }}>{t.icon} {t.label}</button>)}
         </div>
+        {!inRSW&&<BirthdayBtn players={players} attendance={{}} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>}
         {!inRSW&&<ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>}
         {!inRSW&&<button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
@@ -10844,7 +10874,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           }}>{cfg.icon} {cfg.label}</button>;
         })}
         <div style={{flex:1}}/>
-        <BirthdayBtn players={players} attendance={attendance}/>
+        <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
         <button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
@@ -11149,61 +11179,6 @@ function ElternView({user, players, attendance, rackets, kinder, ownProfile, vie
         globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
         onPlayerAdded={()=>{}} {...sharedProps}/>
     : <div style={{minHeight:"100vh",background:"var(--bg)",padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>;
-}
-
-// Zeigt beim Öffnen der App die neuen, die Person betreffenden Push-Nachrichten.
-// Wegklickbar; weggeklickte Nachrichten erscheinen nicht erneut (lokal gemerkt).
-function NachrichtenPopup({ meId }){
-  const [nachrichten,setNachrichten]=useState([]);
-  const [gelesen,setGelesen]=useState(()=>{
-    try{ return JSON.parse(localStorage.getItem("ttc_nachr_gelesen")||"[]"); }catch(_){ return []; }
-  });
-
-  useEffect(()=>{
-    if(!meId) return;
-    // Nur Nachrichten der letzten 30 Tage laden (ältere sind nicht mehr relevant).
-    const grenze = new Date(Date.now()-30*86400000).toLocaleDateString("sv");
-    const u=onSnapshot(collection(db,"appNachrichten"),snap=>{
-      const liste=[];
-      snap.forEach(d=>{
-        const n={id:d.id,...d.data()};
-        if(!Array.isArray(n.empfaenger)) return;
-        if(!n.empfaenger.includes(meId)) return;      // nur eigene
-        if((n.erstellt||"") < grenze) return;         // nur neue
-        liste.push(n);
-      });
-      liste.sort((a,b)=>(b.ts||0)-(a.ts||0));
-      setNachrichten(liste);
-    },()=>setNachrichten([]));
-    return u;
-  },[meId]);
-
-  const offen = nachrichten.filter(n=>!gelesen.includes(n.id));
-  if(offen.length===0) return null;
-
-  function wegklicken(){
-    const neu=[...new Set([...gelesen, ...offen.map(n=>n.id)])].slice(-200);
-    setGelesen(neu);
-    try{ localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); }catch(_){}
-  }
-
-  return <Modal onClose={wegklicken}>
-    <div style={{textAlign:"center",marginBottom:16}}>
-      <div style={{fontSize:40,marginBottom:8}}>🔔</div>
-      <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>
-        {offen.length===1?"Neue Benachrichtigung":`${offen.length} neue Benachrichtigungen`}
-      </div>
-    </div>
-    {offen.map(n=>(
-      <div key={n.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
-        <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:2}}>{n.titel}</div>
-        <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
-      </div>
-    ))}
-    <button onClick={wegklicken} style={{width:"100%",marginTop:8,padding:10,
-      background:"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,
-      color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Verstanden</button>
-  </Modal>;
 }
 
 export default function App() {
@@ -11640,8 +11615,9 @@ export default function App() {
     onSignOut:handleSignOut, clubConfig,
   };
 
-  // Hüllt eine Ansicht so ein, dass das Nachrichten-Popup in JEDER Ansicht erscheint.
-  const mitPopup = (view) => <>{view}<NachrichtenPopup meId={myPlayer?.id}/></>;
+  // Die Benachrichtigungen (Nachrichten + Geburtstage) sitzen jetzt im Glocken-Button
+  // in der Kopfzeile jeder Ansicht. Kein separates Popup mehr nötig.
+  const mitPopup = (view) => view;
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
   if (availableViews.length <= 1) {
