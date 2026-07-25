@@ -2143,6 +2143,7 @@ const PUSH_FUNKTIONEN = [
   {key:"trainer",          label:"Trainer"},
   {key:"admin",            label:"Admin"},
   {key:"mannschaftsfuehrer",label:"Mannschaftsführer"},
+  {key:"vorstand",         label:"Vorstand"},
 ];
 // Auswählbare Empfänger für Spiele (Mehrfachauswahl). "stammPlusZusage" = feste
 // Aufstellung der Mannschaft (bei Nachwuchs ohne NES) PLUS alle mit Ja-Zusage.
@@ -2525,6 +2526,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
     ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
+    ["Rolle Vorstand","_roleVorstand"],
     ["Stamm/Ersatz","stammErsatz"],["Anzugs-Groesse","anzugSize"],
     ["T-Shirt Groesse","tshirtSize"],["T-Shirt DTTB","tshirtDTTB"],["T-Shirt TTC","tshirtTTC"],
     ["Trainingstage","trainingDays"],["Trainingsstart","trainingStart"],["Trainingsende","trainingEnd"],
@@ -2557,6 +2559,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           else if(key==="_roleAdmin") r[label]=p.roles?.admin?"ja":"";
           else if(key==="_roleErwachsene") r[label]=p.roles?.erwachsene?"ja":"";
           else if(key==="_roleMF") r[label]=p.roles?.mannschaftsfuehrer?"ja":"";
+          else if(key==="_roleVorstand") r[label]=p.roles?.vorstand?"ja":"";
           else r[label]=p[key]??"";
         });
         return r;
@@ -3438,7 +3441,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
                     {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
-                    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}].map(role=>{
+                    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},
+                    {key:"vorstand",icon:"🏛️",label:"Vorstand"}].map(role=>{
                     const isOn=(editPlayer.roles||{})[role.key]===true;
                     return <button key={role.key} onClick={()=>setEditPlayer(prev=>({...prev,roles:{...(prev.roles||{}),[role.key]:!isOn}}))} style={{
                       padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
