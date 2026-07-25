@@ -265,17 +265,20 @@ module.exports.handler = async (event) => {
     }
 
     // 2) Vereinstermine je Rubrik
+    const terminDiagnose = [];  // für den Trockenlauf: warum wurde übersprungen?
     for(const t of vereinstermine){
       const datum = t.datumStart || t.datum;
-      if(!datum) continue;
+      const name = t.veranstaltung || t.titel || "(ohne Titel)";
+      if(!datum){ terminDiagnose.push({name, grund:"kein Datum"}); continue; }
       const rubrik = t.rubrik || "Alle";
       const regel = (regeln.vereinstermine||{})[rubrik];
-      if(!regel || !regel.aktiv) continue;
+      if(!regel){ terminDiagnose.push({name, datum, rubrik, grund:"keine Push-Regel für diese Rubrik (evtl. frei eingegebene Rubrik)"}); continue; }
+      if(!regel.aktiv){ terminDiagnose.push({name, datum, rubrik, grund:"Regel für diese Rubrik ist nicht aktiv"}); continue; }
       const diff = tageBis(datum, heute);
-      if(!(regel.tage||[]).includes(diff)) continue;
+      if(!(regel.tage||[]).includes(diff)){ terminDiagnose.push({name, datum, rubrik, grund:`heute ${diff} Tage vorher – kein eingestellter Zeitpunkt (${(regel.tage||[]).join(", ")})`}); continue; }
 
       const ids = terminEmpfaenger(regel.empfaenger, players);
-      if(!ids.length) continue;
+      if(!ids.length){ terminDiagnose.push({name, datum, rubrik, grund:"keine Empfänger (Funktionen ohne passende Personen oder leer)"}); continue; }
 
       const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
       const uhr = (t.uhrzeitStart||t.uhrzeit) ? ` ${t.uhrzeitStart||t.uhrzeit} Uhr` : "";
@@ -341,6 +344,9 @@ module.exports.handler = async (event) => {
       gesendet, uebersprungen, fehler,
       details: zuSenden.map(j=>({ sendeId:j.sendeId, empfaenger:j.empfaengerIds.length, titel:j.titel }))
     };
+    // Beim Trockenlauf zusätzlich zeigen, welche Vereinstermine NICHT ausgelöst
+    // haben und warum – hilfreich, um fehlende Erinnerungen zu diagnostizieren.
+    if(dryRun) bericht.vereinstermineUebersprungen = terminDiagnose;
     return { statusCode:200, headers:{"Content-Type":"application/json"}, body: JSON.stringify(bericht,null,2) };
 
   }catch(e){
