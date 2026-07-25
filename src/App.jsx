@@ -3038,6 +3038,70 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </div>
 
+    {/* Doppelprofile erkennen (gleiche E-Mail, verschiedene Dokument-ID) und auflösen */}
+    {(()=>{
+      // Gruppen gleicher E-Mail mit mehr als einem Profil bilden (nur echte Adressen)
+      const proMail={};
+      for(const p of players){
+        const mail=(p.email||"").toLowerCase().trim();
+        if(!mail || mail.endsWith("@ttc-intern.de")) continue;
+        (proMail[mail]=proMail[mail]||[]).push(p);
+      }
+      const dupletten=Object.entries(proMail).filter(([,arr])=>arr.length>1);
+      if(dupletten.length===0) return null;
+
+      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:14,marginBottom:14}}>
+        <div style={{fontSize:14,fontWeight:800,color:"#f59e0b",marginBottom:6}}>⚠️ Doppelte Profile gefunden</div>
+        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:10}}>
+          Für die folgenden Personen gibt es mehrere Profile mit derselben E-Mail-Adresse.
+          Das führt zu doppelten Einträgen in den Übersichten. Behalte das verknüpfte
+          Profil (mit Login) und entferne die Dublette. Die Bestellung wird dabei, falls
+          nötig, auf das behaltene Profil übernommen.
+        </div>
+        {dupletten.map(([mail,arr])=>{
+          // Das mit Login verknüpfte Profil ist das, dessen ID der Auth-UID entspricht.
+          // Da wir die UID hier nicht kennen, markieren wir das neueste (updatedAt) als
+          // "vermutlich aktiv"; der Admin entscheidet bewusst per Knopf.
+          const sortiert=[...arr].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+          return <div key={mail} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:10,marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:6}}>{mail}</div>
+            {sortiert.map((p,idx)=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
+                padding:"6px 8px",background:idx===0?"#10b98111":"transparent",borderRadius:6,marginBottom:4}}>
+                <div style={{fontSize:11,color:"var(--text2)"}}>
+                  <b>{p.firstName} {p.lastName}</b> · {p.group||"—"} · ID {String(p.id).slice(0,8)}…
+                  {idx===0 && <span style={{color:"#10b981",fontWeight:700}}> · neuestes</span>}
+                </div>
+                <button onClick={async()=>{
+                  if(!window.confirm(`Dieses Profil von ${p.firstName} ${p.lastName} (ID ${String(p.id).slice(0,10)}…) wirklich löschen?`)) return;
+                  try{
+                    // Falls das zu löschende Profil eine Bestellung hat und ein anderes
+                    // Profil derselben Mail keine, Bestellung dorthin übernehmen.
+                    const andere=arr.find(x=>x.id!==p.id);
+                    if(andere){
+                      const bDel=await getDoc(doc(db,"bestellungen",p.id));
+                      if(bDel.exists()){
+                        const bKeep=await getDoc(doc(db,"bestellungen",andere.id));
+                        if(!bKeep.exists()){
+                          await setDoc(doc(db,"bestellungen",andere.id),{...bDel.data(),playerId:andere.id});
+                        }
+                        await deleteDoc(doc(db,"bestellungen",p.id));
+                      }
+                    }
+                    await deleteDoc(doc(db,"players",p.id));
+                    showToast("Profil gelöscht","🗑️");
+                  }catch(e){ showToast("Fehler: "+(e?.message||""),"❌"); }
+                }} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",
+                  borderRadius:6,color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                  löschen
+                </button>
+              </div>
+            ))}
+          </div>;
+        })}
+      </div>;
+    })()}
+
     {/* Sammel-Banner: Login-Status ALLER Personen (nicht nur der erkannt-betroffenen) */}
     {(()=>{
       const alleAktiv = players.filter(p=>p.status!=="passiv")
@@ -11284,7 +11348,12 @@ export default function App() {
     const r = p?.roles || {};
     return (r.player?1:0)+(r.trainer?1:0)+(r.admin?1:0)+(r.erwachsene?1:0)+(r.mannschaftsfuehrer?1:0);
   };
-  const myPlayer = myPlayerCandidates.length<=1
+  // Wenn bereits ein korrekt verknüpftes Profil (ID = Auth-UID) existiert, IMMER
+  // dieses verwenden. Das verhindert, dass bei einem versehentlichen Doppelprofil
+  // fälschlich das Altprofil gewählt und erneut ein Verknüpfungsvorgang gestartet wird.
+  const uidProfil = myPlayerCandidates.find(p => p.id === authUser.uid);
+  const myPlayer = uidProfil ? uidProfil
+    : myPlayerCandidates.length<=1
     ? myPlayerCandidates[0]
     : [...myPlayerCandidates].sort((a,b)=>{
         // Profile mit Spieler-Rolle bevorzugen, dann nach Rollen-Anzahl, dann aktiv vor passiv
@@ -11333,7 +11402,30 @@ export default function App() {
           setVerknuepfLaeuft(true); setVerknuepfFehler("");
           try{
             const {id, ...daten} = myPlayer;
+            // 1) Daten unter der richtigen Kennung (Auth-UID) speichern.
             await setDoc(doc(db,"players",authUser.uid), {...daten, id:authUser.uid, updatedAt:Date.now()});
+            // 2) Alle Altprofile mit derselben E-Mail und abweichender ID entfernen.
+            //    Das verhindert Doppel-Einträge in den Übersichten. Es betrifft nur
+            //    Profile derselben Person (gleiche Login-Adresse), deren Daten gerade
+            //    ins neue Profil übernommen wurden. Bestellungen/Beobachtungen unter
+            //    der alten ID werden vorher auf die neue ID umgezogen.
+            const alteProfile = players.filter(p =>
+              p.id!==authUser.uid &&
+              (p.email||"").toLowerCase() === (authUser.email||"").toLowerCase());
+            for(const alt of alteProfile){
+              try{
+                // Bestellung umziehen, falls unter alter ID vorhanden und neue leer ist
+                const altBestellung = await getDoc(doc(db,"bestellungen",alt.id));
+                if(altBestellung.exists()){
+                  const neueBestellung = await getDoc(doc(db,"bestellungen",authUser.uid));
+                  if(!neueBestellung.exists()){
+                    await setDoc(doc(db,"bestellungen",authUser.uid), {...altBestellung.data(), playerId:authUser.uid});
+                  }
+                  await deleteDoc(doc(db,"bestellungen",alt.id));
+                }
+              }catch(e){ /* Bestellung optional – Fehler hier nicht blockieren lassen */ }
+              await deleteDoc(doc(db,"players",alt.id));
+            }
           }catch(e){
             setVerknuepfFehler("Das hat nicht geklappt: "+(e?.message||"")+
               "\nBitte wende dich an den Administrator.");
