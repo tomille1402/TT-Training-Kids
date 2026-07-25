@@ -11119,6 +11119,61 @@ function ElternView({user, players, attendance, rackets, kinder, ownProfile, vie
     : <div style={{minHeight:"100vh",background:"var(--bg)",padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>;
 }
 
+// Zeigt beim Öffnen der App die neuen, die Person betreffenden Push-Nachrichten.
+// Wegklickbar; weggeklickte Nachrichten erscheinen nicht erneut (lokal gemerkt).
+function NachrichtenPopup({ meId }){
+  const [nachrichten,setNachrichten]=useState([]);
+  const [gelesen,setGelesen]=useState(()=>{
+    try{ return JSON.parse(localStorage.getItem("ttc_nachr_gelesen")||"[]"); }catch(_){ return []; }
+  });
+
+  useEffect(()=>{
+    if(!meId) return;
+    // Nur Nachrichten der letzten 30 Tage laden (ältere sind nicht mehr relevant).
+    const grenze = new Date(Date.now()-30*86400000).toLocaleDateString("sv");
+    const u=onSnapshot(collection(db,"appNachrichten"),snap=>{
+      const liste=[];
+      snap.forEach(d=>{
+        const n={id:d.id,...d.data()};
+        if(!Array.isArray(n.empfaenger)) return;
+        if(!n.empfaenger.includes(meId)) return;      // nur eigene
+        if((n.erstellt||"") < grenze) return;         // nur neue
+        liste.push(n);
+      });
+      liste.sort((a,b)=>(b.ts||0)-(a.ts||0));
+      setNachrichten(liste);
+    },()=>setNachrichten([]));
+    return u;
+  },[meId]);
+
+  const offen = nachrichten.filter(n=>!gelesen.includes(n.id));
+  if(offen.length===0) return null;
+
+  function wegklicken(){
+    const neu=[...new Set([...gelesen, ...offen.map(n=>n.id)])].slice(-200);
+    setGelesen(neu);
+    try{ localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); }catch(_){}
+  }
+
+  return <Modal onClose={wegklicken}>
+    <div style={{textAlign:"center",marginBottom:16}}>
+      <div style={{fontSize:40,marginBottom:8}}>🔔</div>
+      <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:4}}>
+        {offen.length===1?"Neue Benachrichtigung":`${offen.length} neue Benachrichtigungen`}
+      </div>
+    </div>
+    {offen.map(n=>(
+      <div key={n.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
+        <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:2}}>{n.titel}</div>
+        <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+      </div>
+    ))}
+    <button onClick={wegklicken} style={{width:"100%",marginTop:8,padding:10,
+      background:"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,
+      color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Verstanden</button>
+  </Modal>;
+}
+
 export default function App() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [verknuepfLaeuft, setVerknuepfLaeuft] = useState(false);
@@ -11553,29 +11608,32 @@ export default function App() {
     onSignOut:handleSignOut, clubConfig,
   };
 
+  // Hüllt eine Ansicht so ein, dass das Nachrichten-Popup in JEDER Ansicht erscheint.
+  const mitPopup = (view) => <>{view}<NachrichtenPopup meId={myPlayer?.id}/></>;
+
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
   if (availableViews.length <= 1) {
     const only = availableViews[0];
-    if (only==="admin" || only==="trainer") return (
+    if (only==="admin" || only==="trainer") return mitPopup(
       <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
         isSuperAdmin={hasAdminRole} globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}
         onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)} {...sharedProps}/>
     );
     // Erwachsene-only → ErwachseneView (nicht PlayerView)
-    if (isErwachseneOnly) return (
+    if (isErwachseneOnly) return mitPopup(
       <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer}
         globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
     );
     // Mannschaftsführer-only → gleiche Ansicht wie Erwachsene (vorerst)
-    if (isMFOnly) return (
+    if (isMFOnly) return mitPopup(
       <ErwachseneView user={authUser} players={players} forcePlayer={myPlayer} isMF
         globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme} {...sharedProps}/>
     );
-    return <PlayerView user={authUser} players={players} attendance={attendance} forcePlayer={myPlayer} {...sharedProps}/>;
+    return mitPopup(<PlayerView user={authUser} players={players} attendance={attendance} forcePlayer={myPlayer} {...sharedProps}/>);
   }
 
   // Mehrere Views → RoleSwitch wrapper
-  return (
+  return mitPopup(
     <RoleSwitchWrapper
       user={authUser}
       players={players}
