@@ -2144,6 +2144,14 @@ const PUSH_FUNKTIONEN = [
   {key:"admin",            label:"Admin"},
   {key:"mannschaftsfuehrer",label:"Mannschaftsführer"},
 ];
+// Auswählbare Empfänger für Spiele (Mehrfachauswahl). "stammPlusZusage" = feste
+// Aufstellung der Mannschaft (bei Nachwuchs ohne NES) PLUS alle mit Ja-Zusage.
+const PUSH_SPIEL_EMPFAENGER = [
+  {key:"stammPlusZusage", label:"Stammspieler (inkl. Zusager)"},
+  {key:"zusage",          label:"Spieler mit Zusage"},
+  {key:"trainer",         label:"Trainer"},
+  {key:"admin",           label:"Admin"},
+];
 // Voreingestellte Nachwuchs-Mannschaften (vom Admin per Häkchen änderbar).
 const PUSH_NACHWUCHS_DEFAULT = ["Mädchen 11","Mädchen 13","Mädchen 15","Jugend 11"];
 
@@ -2155,8 +2163,9 @@ function pushRegelnDefault(){
     sendeStunde: 8,                       // täglicher Versand um 08:00
     nachwuchsMannschaften: [...PUSH_NACHWUCHS_DEFAULT],
     spiele: {
-      nachwuchs: { aktiv:true, tage:[3,0], nurZusage:true },   // 3 Tage vorher + am Spieltag
-      erwachsene:{ aktiv:true, tage:[3,0], nurZusage:true },
+      // Empfänger als Mehrfachauswahl; Voreinstellung: Stammspieler inkl. Zusager.
+      nachwuchs: { aktiv:true, tage:[3,0], empfaenger:["stammPlusZusage"] },   // 3 Tage vorher + am Spieltag
+      erwachsene:{ aktiv:true, tage:[3,0], empfaenger:["stammPlusZusage"] },
     },
     // Vereinstermine je Rubrik. Empfänger als Funktions-Liste (Mehrfachauswahl).
     vereinstermine: {
@@ -2175,6 +2184,19 @@ function tageZuText(tage){ return (tage||[]).join(", "); }
 function textZuTage(text){
   return String(text||"").split(/[,;\s]+/).map(s=>parseInt(s,10))
     .filter(n=>!isNaN(n)&&n>=0).slice(0,10);
+}
+// Passt die Anzahl der Zeitpunkte an den gewählten Turnus (1–5) an. Vorhandene
+// Werte bleiben erhalten; neue Plätze werden mit einem sinnvollen Vorschlag gefüllt.
+function passeTurnusAn(alt, anzahl){
+  const n=Math.max(1,Math.min(5,anzahl||1));
+  const arr=[...(alt||[])];
+  if(arr.length>n) return arr.slice(0,n);
+  const vorschlag=[7,3,1,0,14];   // wird der Reihe nach für neue Plätze genutzt
+  while(arr.length<n){
+    const kandidat=vorschlag.find(v=>!arr.includes(v));
+    arr.push(kandidat!==undefined?kandidat:0);
+  }
+  return arr;
 }
 
 function PushRegelnVerwaltung({showToast}){
@@ -2235,7 +2257,8 @@ function PushRegelnVerwaltung({showToast}){
 
   const th={padding:"7px 8px",fontSize:11,fontWeight:800,color:"var(--text2)",textAlign:"left",borderBottom:"2px solid var(--border2)",whiteSpace:"nowrap"};
   const td={padding:"7px 8px",fontSize:12,borderBottom:"1px solid var(--border)",verticalAlign:"top"};
-  const tageInput={width:90,padding:"5px 7px",fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)"};
+  const turnusSelect={padding:"5px 6px",fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",cursor:"pointer"};
+  const tagEinzelInput={width:42,padding:"5px 4px",fontSize:12,textAlign:"center",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)"};
 
   // Eine Empfänger-Mehrfachauswahl (Funktions-Chips)
   const empfChips=(aktuelle,onToggle)=> <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -2253,9 +2276,9 @@ function PushRegelnVerwaltung({showToast}){
 
   return <div>
     <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,marginBottom:12}}>
-      Hier legst du fest, wann und an wen Benachrichtigungen vor Terminen gehen. Die
-      Zeitpunkte sind „Tage vor dem Termin“ — <b>0</b> bedeutet am Tag selbst. Mehrere
-      Zeitpunkte durch Komma trennen (z. B. <b>3, 0</b>). Versand täglich um {regeln.sendeStunde}:00 Uhr.
+      Hier legst du fest, wann und an wen Benachrichtigungen vor Terminen gehen. Der
+      <b> Turnus</b> bestimmt, wie oft erinnert wird (1–5×); je Erinnerung gibst du die
+      <b> Tage vor dem Termin</b> an — <b>0</b> bedeutet am Tag selbst. Versand täglich um {regeln.sendeStunde}:00 Uhr.
     </div>
 
     {/* Spiele */}
@@ -2269,13 +2292,41 @@ function PushRegelnVerwaltung({showToast}){
         <tbody>
           {[["nachwuchs","Spiel Nachwuchs"],["erwachsene","Spiel Erwachsene"]].map(([k,label])=>{
             const r=regeln.spiele[k];
+            const empf=r.empfaenger||["stammPlusZusage"];
             return <tr key={k}>
               <td style={{...td,fontWeight:700}}>{label}</td>
-              <td style={td}>Spieler der Mannschaft mit Zusage „Ja“ bei Einsätzen</td>
-              <td style={td}>{(r.tage||[]).length}×</td>
+              <td style={td}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {PUSH_SPIEL_EMPFAENGER.map(f=>{
+                  const an=empf.includes(f.key);
+                  return <button key={f.key} onClick={()=>aendern(x=>{
+                    const cur=x.spiele[k].empfaenger||["stammPlusZusage"];
+                    x.spiele[k].empfaenger = cur.includes(f.key)?cur.filter(y=>y!==f.key):[...cur,f.key];
+                  })} style={{padding:"3px 9px",fontSize:11,fontWeight:600,borderRadius:20,cursor:"pointer",
+                    border:`1px solid ${an?"#3b82f6":"var(--border2)"}`,
+                    background:an?"#3b82f622":"transparent",color:an?"#3b82f6":"var(--text3)"}}>
+                    {f.label}{an?" ✓":""}</button>;
+                })}
+              </div></td>
               <td style={td}>
-                <input defaultValue={tageZuText(r.tage)} style={tageInput}
-                  onBlur={e=>aendern(x=>{x.spiele[k].tage=textZuTage(e.target.value);})}/>
+                <select value={(r.tage||[]).length||1} onChange={e=>aendern(x=>{
+                  const n=parseInt(e.target.value,10);
+                  const alt=x.spiele[k].tage||[];
+                  x.spiele[k].tage = passeTurnusAn(alt,n);
+                })} style={turnusSelect}>
+                  {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}×</option>)}
+                </select>
+              </td>
+              <td style={td}>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {(r.tage||[]).map((tag,idx)=>(
+                    <input key={idx} defaultValue={tag} style={tagEinzelInput} title="Tage vor dem Termin (0 = am Tag selbst)"
+                      onBlur={e=>aendern(x=>{
+                        const arr=[...(x.spiele[k].tage||[])];
+                        const v=parseInt(e.target.value,10);
+                        arr[idx]=isNaN(v)||v<0?0:v; x.spiele[k].tage=arr;
+                      })}/>
+                  ))}
+                </div>
               </td>
               <td style={td}>
                 <input type="checkbox" checked={r.aktiv} onChange={()=>aendern(x=>{x.spiele[k].aktiv=!x.spiele[k].aktiv;})}/>
@@ -2303,13 +2354,27 @@ function PushRegelnVerwaltung({showToast}){
                 const cur=x.vereinstermine[rub]||{aktiv:false,tage:[14,3,1],empfaenger:[]};
                 cur.empfaenger=toggleInList(cur.empfaenger||[],fk); x.vereinstermine[rub]=cur;
               }))}</td>
-              <td style={td}>{(r.tage||[]).length}×</td>
               <td style={td}>
-                <input defaultValue={tageZuText(r.tage)} style={tageInput}
-                  onBlur={e=>aendern(x=>{
-                    const cur=x.vereinstermine[rub]||{aktiv:false,empfaenger:[]};
-                    cur.tage=textZuTage(e.target.value); x.vereinstermine[rub]=cur;
-                  })}/>
+                <select value={(r.tage||[]).length||1} onChange={e=>aendern(x=>{
+                  const n=parseInt(e.target.value,10);
+                  const cur=x.vereinstermine[rub]||{aktiv:false,empfaenger:[]};
+                  cur.tage=passeTurnusAn(cur.tage||[],n); x.vereinstermine[rub]=cur;
+                })} style={turnusSelect}>
+                  {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}×</option>)}
+                </select>
+              </td>
+              <td style={td}>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {(r.tage||[]).map((tag,idx)=>(
+                    <input key={idx} defaultValue={tag} style={tagEinzelInput} title="Tage vor dem Termin (0 = am Tag selbst)"
+                      onBlur={e=>aendern(x=>{
+                        const cur=x.vereinstermine[rub]||{aktiv:false,empfaenger:[]};
+                        const arr=[...(cur.tage||[])];
+                        const v=parseInt(e.target.value,10);
+                        arr[idx]=isNaN(v)||v<0?0:v; cur.tage=arr; x.vereinstermine[rub]=cur;
+                      })}/>
+                  ))}
+                </div>
               </td>
               <td style={td}>
                 <input type="checkbox" checked={!!r.aktiv} onChange={()=>aendern(x=>{
