@@ -7169,10 +7169,14 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
       display:"flex",alignItems:"center",justifyContent:"center",padding:20,
     }} onClick={()=>setShowPopup(false)}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:"var(--bg2)",borderRadius:16,padding:20,maxWidth:420,width:"100%",maxHeight:"80vh",overflowY:"auto",
+        background:"var(--bg2)",borderRadius:16,maxWidth:420,width:"100%",maxHeight:"85vh",
+        display:"flex",flexDirection:"column",overflow:"hidden",
       }}>
-        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",marginBottom:14,textAlign:"center"}}>🔔 Benachrichtigungen</div>
+        {/* Kopf – fixiert */}
+        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",padding:"18px 20px 12px",textAlign:"center",flexShrink:0}}>🔔 Benachrichtigungen</div>
 
+        {/* Liste – scrollbar */}
+        <div style={{overflowY:"auto",padding:"0 20px",flex:1}}>
         {/* Nachrichten */}
         {offeneNachrichten.length>0 && <>
           <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Nachrichten</div>
@@ -7208,8 +7212,12 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
         {offeneNachrichten.length===0 && !geburtstageOffen && <div style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"14px 0"}}>
           Keine neuen Benachrichtigungen.
         </div>}
+        </div>
 
-        <button onClick={()=>setShowPopup(false)} style={{width:"100%",marginTop:12,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Schließen</button>
+        {/* Fuß – fixiert */}
+        <div style={{padding:"12px 20px 18px",flexShrink:0}}>
+          <button onClick={()=>setShowPopup(false)} style={{width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Schließen</button>
+        </div>
       </div>
     </div>}
   </>;
