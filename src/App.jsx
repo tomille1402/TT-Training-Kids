@@ -1103,7 +1103,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={findLoginPlayer(players, user?.email, true)} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
 
     {/* ── VERWALTUNG TAB ── */}
-    {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} user={user} showToast={showToast}/>}
+    {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} selectedPlayer={curPlayer} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
@@ -6156,8 +6156,7 @@ function ErfolgeTab({player, hideTraining=false}) {
 }
 
 // ─── BEOBACHTUNGEN TAB (Trainerbereich) ───────────────────────────────────────
-function BeobachtungenAdminTab({players,user,showToast}) {
-  const [selPlayerId,setSelPlayerId] = useState(players[0]?.id||null);
+function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
   const [observations,setObservations] = useState([]);
   const [loading,setLoading] = useState(false);
   const [showForm,setShowForm] = useState(false);
@@ -6166,7 +6165,8 @@ function BeobachtungenAdminTab({players,user,showToast}) {
   const [editingId,setEditingId] = useState(null);
   const [editForm,setEditForm] = useState({});
 
-  const selPlayer = players.find(p=>p.id===selPlayerId)||players[0];
+  // Maßgeblich ist die im Menü ausgewählte Person (selectedPlayer); Fallback: erste Person.
+  const selPlayer = selectedPlayer || players[0];
 
   // Beobachtungen laden wenn Spieler wechselt
   useEffect(()=>{
@@ -10672,7 +10672,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
-      <BeobachtungenAdminTab players={[myPlayer]} user={user} showToast={showToast}/>}
+      <BeobachtungenAdminTab players={[myPlayer]} selectedPlayer={myPlayer} user={user} showToast={showToast}/>}
     {activeTab==="beobachtungen"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
