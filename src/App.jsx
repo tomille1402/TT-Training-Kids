@@ -7167,16 +7167,18 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     {showPopup&&<div style={{
       position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0008",zIndex:800,
       display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+      overflowY:"auto",
     }} onClick={()=>setShowPopup(false)}>
       <div onClick={e=>e.stopPropagation()} style={{
-        background:"var(--bg2)",borderRadius:16,maxWidth:420,width:"100%",maxHeight:"85vh",
+        background:"var(--bg2)",borderRadius:16,maxWidth:420,width:"100%",
+        maxHeight:"calc(100vh - 40px)",
         display:"flex",flexDirection:"column",overflow:"hidden",
       }}>
         {/* Kopf – fixiert */}
         <div style={{fontSize:17,fontWeight:800,color:"var(--text)",padding:"18px 20px 12px",textAlign:"center",flexShrink:0}}>🔔 Benachrichtigungen</div>
 
         {/* Liste – scrollbar */}
-        <div style={{overflowY:"auto",padding:"0 20px",flex:1}}>
+        <div style={{overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"0 20px",flex:"1 1 auto",minHeight:0}}>
         {/* Nachrichten */}
         {offeneNachrichten.length>0 && <>
           <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Nachrichten</div>
