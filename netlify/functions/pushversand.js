@@ -132,6 +132,12 @@ function heuteISO(offsetTage=0){
 }
 function normName(s){ return (s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,""); }
 function spielKeyOf(s){ return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_"); }
+// Wandelt ein ISO-Datum (JJJJ-MM-TT) in deutsches Format TT.MM.JJJJ um.
+// Andere/unerwartete Formate werden unverändert zurückgegeben.
+function deDatum(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso||"");
+}
 
 module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue };
 
@@ -259,7 +265,7 @@ module.exports.handler = async (event) => {
         sendeId: `spiel_${sk}_d${diff}`,
         empfaengerIds: ids,
         titel: `🏓 ${s.mannschaft} – Spiel ${wann}`,
-        text: `${s.datum}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""}${gegen}${ort}`,
+        text: `${deDatum(s.datum)}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""}${gegen}${ort}`,
         url: "/"
       });
     }
@@ -287,7 +293,7 @@ module.exports.handler = async (event) => {
         sendeId: `termin_${datum}_${normName(t.veranstaltung||t.titel||rubrik)}_d${diff}`,
         empfaengerIds: ids,
         titel: `📌 ${t.veranstaltung||t.titel||"Vereinstermin"} ${wann}`,
-        text: `${datum}${uhr}${ort}`,
+        text: `${deDatum(datum)}${uhr}${ort}`,
         url: "/"
       });
     }
@@ -298,7 +304,11 @@ module.exports.handler = async (event) => {
     //      Spieler-Geburtstag: alle aktiven Spieler; Alter nur für Trainer + Admin.
     //      Erwachsenen-Geburtstag: alle aktiven Erwachsenen; Alter nur für Admin + Vorstand.
     //    Zusätzlich erhält das Geburtstagskind eine persönliche Glückwunsch-Nachricht.
-    const gebRegel = (regeln.geburtstage) || null;
+    // Geburtstags-Regel: falls im gespeicherten Dokument (noch) nicht vorhanden,
+    // sinnvollen Standard verwenden (aktiv, am Geburtstag). So funktioniert der
+    // Versand sofort nach dem Deploy, auch ohne vorheriges Speichern der Regeln.
+    const gebRegel = regeln.geburtstage || { aktiv:true, tage:[0] };
+    const gebDiagnose = [];  // für den Trockenlauf: warum wurde ein Geburtstag nicht ausgelöst?
     if(gebRegel && gebRegel.aktiv){
       const gebTage = gebRegel.tage || [0];
       const heuteD = new Date(heute+"T12:00:00Z");
@@ -323,21 +333,26 @@ module.exports.handler = async (event) => {
       const alterBerechtigtErw     = new Set(players.filter(p=>istAktiv(p) && (hatRolle(p,"admin")||hatRolle(p,"vorstand"))).map(p=>p.id));
 
       for(const p of players){
-        if(!p.birthdate || !istAktiv(p) || p.group==="Gast") continue;
+        const pname = `${p.firstName||""} ${p.lastName||""}`.trim();
+        if(!p.birthdate){ continue; } // ohne Geburtsdatum stillschweigend überspringen
+        if(!istAktiv(p)){ gebDiagnose.push({name:pname, grund:"passiv"}); continue; }
+        if(p.group==="Gast"){ gebDiagnose.push({name:pname, grund:"Gast"}); continue; }
         const istSpieler = hatRolle(p,"player");
         const istErw     = hatRolle(p,"erwachsene");
-        if(!istSpieler && !istErw) continue;
+        if(!istSpieler && !istErw){ gebDiagnose.push({name:pname, grund:"weder Spieler- noch Erwachsenen-Funktion"}); continue; }
 
         const bd = new Date(p.birthdate);
-        // Nächster Geburtstag relativ zu heute: prüfen, ob er in gebTage Tagen ansteht
-        const gebDiesesJahr = new Date(Date.UTC(heuteD.getUTCFullYear(), bd.getMonth(), bd.getDate(), 12, 0, 0));
+        // Nächster Geburtstag relativ zu heute: prüfen, ob er in gebTage Tagen ansteht.
+        // Durchgängig UTC-Methoden nutzen, damit die Berechnung unabhängig von der
+        // Server-Zeitzone stimmt (birthdate kommt als YYYY-MM-DD = UTC-Mitternacht).
+        const gebDiesesJahr = new Date(Date.UTC(heuteD.getUTCFullYear(), bd.getUTCMonth(), bd.getUTCDate(), 12, 0, 0));
         const diff = Math.round((gebDiesesJahr - heuteD)/86400000);
-        if(!gebTage.includes(diff)) continue;
+        if(!gebTage.includes(diff)){ gebDiagnose.push({name:pname, geburtstag:p.birthdate, grund:`${diff} Tage bis zum Geburtstag – nicht im Zeitfenster (${gebTage.join(", ")})`}); continue; }
 
-        const alter = heuteD.getUTCFullYear() - bd.getFullYear();
+        const alter = heuteD.getUTCFullYear() - bd.getUTCFullYear();
         const name = `${p.firstName||""} ${p.lastName||""}`.trim();
         const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
-        const gebDatum = `${String(bd.getDate()).padStart(2,"0")}.${String(bd.getMonth()+1).padStart(2,"0")}.`;
+        const gebDatum = `${String(bd.getUTCDate()).padStart(2,"0")}.${String(bd.getUTCMonth()+1).padStart(2,"0")}.`;
 
         // Empfängerkreis + Berechtigte für Alter je nach Gruppe wählen
         const kreis = istErw ? erwKreis : spielerKreis;
@@ -433,6 +448,8 @@ module.exports.handler = async (event) => {
     // Beim Trockenlauf zusätzlich zeigen, welche Vereinstermine NICHT ausgelöst
     // haben und warum – hilfreich, um fehlende Erinnerungen zu diagnostizieren.
     if(dryRun) bericht.vereinstermineUebersprungen = terminDiagnose;
+    if(dryRun) bericht.geburtstageRegel = gebRegel;
+    if(dryRun) bericht.geburtstageNichtAusgeloest = gebDiagnose;
     return { statusCode:200, headers:{"Content-Type":"application/json; charset=utf-8"}, body: JSON.stringify(bericht,null,2) };
 
   }catch(e){
