@@ -1,6 +1,13 @@
 [build]
   functions = "netlify/functions"
 
+# Der VAPID-PUBLIC-Key ist absichtlich öffentlich (er gehört in den Client-Code, damit
+# Browser Push-Abos anlegen können). Netlifys Secrets-Scanner schlägt sonst fehl, weil
+# der Wert sowohl als Umgebungsvariable als auch im Code steht. Nur den PUBLIC-Key vom
+# Scan ausnehmen — der PRIVATE Schlüssel (VAPID_PRIVATE_KEY) bleibt bewusst geschützt.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "VAPID_PUBLIC_KEY"
+
 # Täglicher Versand der Termin-Erinnerungen.
 # 6:00 UTC = 8:00 Uhr deutscher Sommerzeit (MESZ). Im Winter (MEZ) entspricht
 # das 7:00 Uhr — für eine Morgen-Erinnerung völlig ausreichend. Wer exakt 8 Uhr
