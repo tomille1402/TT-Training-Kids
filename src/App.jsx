@@ -7165,60 +7165,55 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
       justifyContent:"center",padding:"0 3px"}}>{anzahl}</span>}</button>
 
     {showPopup&&<div style={{
-      position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0008",zIndex:800,
-      display:"flex",alignItems:"center",justifyContent:"center",padding:20,
-    }} onClick={()=>setShowPopup(false)}>
-      <div onClick={e=>e.stopPropagation()} style={{
-        background:"var(--bg2)",borderRadius:16,maxWidth:420,width:"100%",
-        maxHeight:"calc(100vh - 40px)",
-        display:"flex",flexDirection:"column",overflow:"hidden",
-      }}>
-        {/* Kopf – fixiert */}
-        <div style={{fontSize:17,fontWeight:800,color:"var(--text)",padding:"18px 20px 12px",textAlign:"center",flexShrink:0}}>🔔 Benachrichtigungen</div>
+      position:"fixed",top:0,left:0,right:0,bottom:0,background:"var(--bg)",zIndex:9000,
+      display:"flex",flexDirection:"column",
+    }}>
+      {/* Kopf – fixiert, mit Schließen */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+        padding:"16px 18px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>🔔 Benachrichtigungen</div>
+        <button onClick={()=>setShowPopup(false)} title="Schließen" style={{
+          background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,
+          color:"var(--text2)",fontSize:18,padding:"4px 12px",cursor:"pointer",lineHeight:1,flexShrink:0}}>✕</button>
+      </div>
 
-        {/* Liste – scrollbar */}
-        <div style={{overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"4px 20px 8px",flex:"1 1 auto",minHeight:0}}>
+      {/* Liste – scrollbar über die volle Höhe */}
+      <div style={{overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 18px 24px",flex:"1 1 auto",minHeight:0,maxWidth:600,width:"100%",margin:"0 auto"}}>
         {/* Nachrichten */}
         {offeneNachrichten.length>0 && <>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Nachrichten</div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Nachrichten</div>
           {offeneNachrichten.map(n=>(
-            <div key={n.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"flex-start",gap:10}}>
+            <div key={n.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:12}}>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:2}}>{n.titel}</div>
-                <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+                <div style={{fontWeight:700,color:"var(--text)",fontSize:15,marginBottom:3}}>{n.titel}</div>
+                <div style={{fontSize:14,color:"var(--text2)"}}>{n.text}</div>
               </div>
-              <button onClick={()=>nachrichtWegklicken(n.id)} title="Wegklicken" style={{
-                background:"transparent",border:"1px solid var(--border2)",borderRadius:6,
-                color:"var(--text3)",fontSize:14,padding:"2px 8px",cursor:"pointer",flexShrink:0}}>✓</button>
+              <button onClick={()=>nachrichtWegklicken(n.id)} title="Als gelesen markieren" style={{
+                background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
+                color:"#10b981",fontSize:16,padding:"6px 12px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
             </div>
           ))}
         </>}
 
         {/* Geburtstage */}
         {geburtstageOffen && <>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",margin:"12px 0 6px"}}>🎂 Geburtstage seit letztem Training</div>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",margin:"16px 0 8px"}}>🎂 Geburtstage seit letztem Training</div>
           {recentBirthdays.map(p=>(
-            <div key={p.id} style={{background:"var(--bg3)",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:24}}>{p.avatar||"🎂"}</span>
+            <div key={p.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:26}}>{p.avatar||"🎂"}</span>
               <div style={{flex:1}}>
-                <div style={{fontWeight:700,color:"var(--text)"}}>{p.firstName} {p.lastName}</div>
-                <div style={{fontSize:12,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
+                <div style={{fontWeight:700,color:"var(--text)",fontSize:15}}>{p.firstName} {p.lastName}</div>
+                <div style={{fontSize:13,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
               </div>
             </div>
           ))}
-          <button onClick={geburtstageErledigt} style={{width:"100%",marginTop:4,padding:9,background:"#10b98122",border:"1px solid #10b98144",borderRadius:9,color:"#10b981",fontSize:13,fontWeight:700,cursor:"pointer"}}>✓ Geburtstage erledigt</button>
+          <button onClick={geburtstageErledigt} style={{width:"100%",marginTop:6,padding:11,background:"#10b98122",border:"1px solid #10b98144",borderRadius:10,color:"#10b981",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Geburtstage erledigt</button>
         </>}
 
         {/* Leerzustand */}
-        {offeneNachrichten.length===0 && !geburtstageOffen && <div style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"14px 0"}}>
+        {offeneNachrichten.length===0 && !geburtstageOffen && <div style={{fontSize:14,color:"var(--text3)",textAlign:"center",padding:"40px 0"}}>
           Keine neuen Benachrichtigungen.
         </div>}
-        </div>
-
-        {/* Fuß – fixiert */}
-        <div style={{padding:"12px 20px 18px",flexShrink:0}}>
-          <button onClick={()=>setShowPopup(false)} style={{width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Schließen</button>
-        </div>
       </div>
     </div>}
   </>;
