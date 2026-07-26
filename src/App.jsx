@@ -5127,7 +5127,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
 // Öffentlicher VAPID-Schlüssel. Wird zusammen mit dem privaten Schlüssel erzeugt
 // (siehe PUSH_SETUP.md). Der private Schlüssel gehört NUR in die Serverumgebung
 // (Netlify-Umgebungsvariable), niemals in diese Datei.
-const VAPID_PUBLIC_KEY = "";   // ← hier den öffentlichen Schlüssel eintragen
+const VAPID_PUBLIC_KEY = "BLFyJrWx5IvqMrfTFX4Ca3kxymFh-GwyoXO1Ax3oUlrz5aQIt-0AKGDURww5m1lfIPCanIqlOE256C51LqDB6Vk";
 
 // Wandelt den Base64-URL-Schlüssel in das vom Browser erwartete Format um.
 function base64UrlZuUint8Array(base64String){
