@@ -292,6 +292,92 @@ module.exports.handler = async (event) => {
       });
     }
 
+    // 3) Geburtstage — aktive Personen mit Funktion Spieler bzw. Erwachsene.
+    //    Steuerung über Push-Regel regeln.geburtstage (aktiv, tage, turnus).
+    //    Empfängerkreis + Alters-Anzeige unterscheiden sich je nach Gruppe:
+    //      Spieler-Geburtstag: alle aktiven Spieler; Alter nur für Trainer + Admin.
+    //      Erwachsenen-Geburtstag: alle aktiven Erwachsenen; Alter nur für Admin + Vorstand.
+    //    Zusätzlich erhält das Geburtstagskind eine persönliche Glückwunsch-Nachricht.
+    const gebRegel = (regeln.geburtstage) || null;
+    if(gebRegel && gebRegel.aktiv){
+      const gebTage = gebRegel.tage || [0];
+      const heuteD = new Date(heute+"T12:00:00Z");
+      const istAktiv = (p)=> p.status!=="passiv";
+      const hatRolle = (p,fk)=>{
+        const r=p.roles||{}, g=p.group||"";
+        if(fk==="player") return r.player===true || g==="Profis"||g==="Fortgeschrittene"||g==="Anfänger";
+        if(fk==="erwachsene") return r.erwachsene===true || g==="Erwachsene";
+        if(fk==="trainer") return r.trainer===true;
+        if(fk==="admin") return r.admin===true;
+        if(fk==="vorstand") return r.vorstand===true;
+        return false;
+      };
+      // Empfängergruppen einmalig bilden.
+      // Spieler-Geburtstag: alle aktiven Spieler PLUS Trainer und Admin (diese sehen das Alter).
+      // Erwachsenen-Geburtstag: alle aktiven Erwachsenen (Admin und Vorstand sehen das Alter).
+      const spielerKreis = players.filter(p=>istAktiv(p) && p.group!=="Gast" &&
+        (hatRolle(p,"player")||hatRolle(p,"trainer")||hatRolle(p,"admin"))).map(p=>p.id);
+      const erwKreis = players.filter(p=>istAktiv(p) && p.group!=="Gast" &&
+        (hatRolle(p,"erwachsene")||hatRolle(p,"admin")||hatRolle(p,"vorstand"))).map(p=>p.id);
+      const alterBerechtigtSpieler = new Set(players.filter(p=>istAktiv(p) && (hatRolle(p,"trainer")||hatRolle(p,"admin"))).map(p=>p.id));
+      const alterBerechtigtErw     = new Set(players.filter(p=>istAktiv(p) && (hatRolle(p,"admin")||hatRolle(p,"vorstand"))).map(p=>p.id));
+
+      for(const p of players){
+        if(!p.birthdate || !istAktiv(p) || p.group==="Gast") continue;
+        const istSpieler = hatRolle(p,"player");
+        const istErw     = hatRolle(p,"erwachsene");
+        if(!istSpieler && !istErw) continue;
+
+        const bd = new Date(p.birthdate);
+        // Nächster Geburtstag relativ zu heute: prüfen, ob er in gebTage Tagen ansteht
+        const gebDiesesJahr = new Date(Date.UTC(heuteD.getUTCFullYear(), bd.getMonth(), bd.getDate(), 12, 0, 0));
+        const diff = Math.round((gebDiesesJahr - heuteD)/86400000);
+        if(!gebTage.includes(diff)) continue;
+
+        const alter = heuteD.getUTCFullYear() - bd.getFullYear();
+        const name = `${p.firstName||""} ${p.lastName||""}`.trim();
+        const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
+        const gebDatum = `${String(bd.getDate()).padStart(2,"0")}.${String(bd.getMonth()+1).padStart(2,"0")}.`;
+
+        // Empfängerkreis + Berechtigte für Alter je nach Gruppe wählen
+        const kreis = istErw ? erwKreis : spielerKreis;
+        const alterSet = istErw ? alterBerechtigtErw : alterBerechtigtSpieler;
+        // Empfänger ohne das Geburtstagskind selbst (das bekommt die Glückwunsch-Nachricht)
+        const empfMitAlter  = kreis.filter(id=> id!==p.id && alterSet.has(id));
+        const empfOhneAlter = kreis.filter(id=> id!==p.id && !alterSet.has(id));
+
+        const basisId = `geb_${gebDiesesJahr.toISOString().slice(0,10)}_${normName(name)}`;
+        if(empfMitAlter.length){
+          zuSenden.push({
+            sendeId: `${basisId}_mitalter`,
+            empfaengerIds: empfMitAlter,
+            titel: `🎂 ${name} hat ${wann} Geburtstag`,
+            text: `${gebDatum} — wird ${alter} Jahre`,
+            url: "/"
+          });
+        }
+        if(empfOhneAlter.length){
+          zuSenden.push({
+            sendeId: `${basisId}_ohnealter`,
+            empfaengerIds: empfOhneAlter,
+            titel: `🎂 ${name} hat ${wann} Geburtstag`,
+            text: `${gebDatum}`,
+            url: "/"
+          });
+        }
+        // Persönlicher Glückwunsch ans Geburtstagskind (nur am Tag selbst)
+        if(diff===0){
+          zuSenden.push({
+            sendeId: `${basisId}_glueckwunsch`,
+            empfaengerIds: [p.id],
+            titel: `🎉 Alles Gute zum Geburtstag, ${p.firstName||name}!`,
+            text: `Der ganze TTC 1979 Niederzeuzheim wünscht dir einen wunderschönen Tag! 🥳🏓`,
+            url: "/"
+          });
+        }
+      }
+    }
+
     // Versand ausführen
     let gesendet=0, uebersprungen=0, fehler=0;
     const neuHistorie = {};
