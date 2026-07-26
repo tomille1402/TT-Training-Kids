@@ -322,12 +322,12 @@ module.exports.handler = async (event) => {
       await patchDoc("config/pushVersand", { gesendet: zusammen, lastRun: Date.now() });
     }
 
-    // Gesendete Nachrichten zusätzlich für die Anzeige in der App ablegen.
-    // Jede Person sieht beim Öffnen der App die neuen, sie betreffenden Meldungen.
-    // Gespeichert wird je Nachricht ein Dokument mit Empfänger-IDs und Zeitpunkt.
+    // Nachrichten für die Anzeige in der App ablegen – UNABHÄNGIG davon, ob ein
+    // Push tatsächlich zugestellt wurde. So erscheint die Meldung hinter der Glocke
+    // auch für Personen ohne aktives Push-Abo. Die sendeId (Datum + Termin + Zeitpunkt)
+    // ist der Dokumentname, daher entstehen bei erneuten Läufen keine Duplikate.
     if(!dryRun){
       for(const job of zuSenden){
-        if(!neuHistorie[job.sendeId]) continue; // nur tatsächlich Verschicktes
         try{
           await patchDoc("appNachrichten/"+job.sendeId, {
             titel: job.titel, text: job.text,
@@ -347,7 +347,7 @@ module.exports.handler = async (event) => {
     // Beim Trockenlauf zusätzlich zeigen, welche Vereinstermine NICHT ausgelöst
     // haben und warum – hilfreich, um fehlende Erinnerungen zu diagnostizieren.
     if(dryRun) bericht.vereinstermineUebersprungen = terminDiagnose;
-    return { statusCode:200, headers:{"Content-Type":"application/json"}, body: JSON.stringify(bericht,null,2) };
+    return { statusCode:200, headers:{"Content-Type":"application/json; charset=utf-8"}, body: JSON.stringify(bericht,null,2) };
 
   }catch(e){
     return { statusCode:500, body:"Fehler: "+(e&&e.message||e) };
