@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
 import {
   getAuth, signInWithEmailAndPassword, signOut,
@@ -7164,7 +7165,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
       fontSize:10,fontWeight:700,minWidth:16,height:16,display:"flex",alignItems:"center",
       justifyContent:"center",padding:"0 3px"}}>{anzahl}</span>}</button>
 
-    {showPopup&&<div style={{
+    {showPopup&&createPortal(<div style={{
       position:"fixed",top:0,left:0,right:0,bottom:0,background:"var(--bg)",zIndex:9000,
       display:"flex",flexDirection:"column",
     }}>
@@ -7215,7 +7216,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
           Keine neuen Benachrichtigungen.
         </div>}
       </div>
-    </div>}
+    </div>, document.body)}
   </>;
 }
 
