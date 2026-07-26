@@ -743,11 +743,12 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     },()=>{});
     return unsub;
   },[]);
-  // Sync external player selection from RSW chips
+  // Sync external player selection from RSW chips.
+  // Nur die Auswahl übernehmen – den aktiven Reiter NICHT wechseln, damit man beim
+  // Spielerwechsel im aktuellen Bereich (z.B. Verwaltung, Beobachtungen) bleibt.
   useEffect(()=>{
     if(externalPlayer){
       setSelectedPlayer(externalPlayer.id);
-      setActiveTab("uebungen");
     }
   },[externalPlayer?.id]);
   const [toast,setToast]=useState(null);
@@ -5707,8 +5708,14 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     return true;
   });
 
-  // Punkt 6: Wenn der aktive Reiter für diese Gruppe ausgeblendet ist, auf "stats" zurück
-  useEffect(()=>{ if(!TABS.some(t=>t.key===activeTab)) setActiveTab("stats"); },[myGroup]);
+  // Wenn der aktive Reiter für diese Gruppe ausgeblendet ist, auf "stats" zurück.
+  // Dependency umfasst activeTab und die verfügbaren Tab-Keys, damit der Reset NUR
+  // dann greift, wenn der aktuelle Reiter tatsächlich nicht (mehr) verfügbar ist –
+  // und NICHT bei jedem Spielerwechsel, wenn der Reiter weiterhin gültig ist.
+  const tabKeys = TABS.map(t=>t.key).join(",");
+  useEffect(()=>{
+    if(!TABS.some(t=>t.key===activeTab)) setActiveTab("stats");
+  },[tabKeys, activeTab]);
 
   // Punkt 6: Avatar selbst ändern
   async function changeMyAvatar(av) {
