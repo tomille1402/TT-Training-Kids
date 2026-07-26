@@ -2168,6 +2168,11 @@ function pushRegelnDefault(){
       "Vorstand":    { aktiv:false, tage:[14,3,1], empfaenger:[] },
       "Grenzau-Spiele":{ aktiv:false, tage:[14,3,1], empfaenger:[] },
     },
+    // Geburtstage: 1 Zeitpunkt (0 = am Geburtstag). Empfängerkreis + Alters-Anzeige
+    // sind fest geregelt (Spieler-Geb.: alle Spieler, Alter für Trainer/Admin;
+    // Erwachsenen-Geb.: alle Erwachsenen, Alter für Admin/Vorstand), daher hier
+    // nur an/aus und Zeitpunkt konfigurierbar.
+    geburtstage: { aktiv:true, tage:[0] },
   };
 }
 
@@ -2209,6 +2214,7 @@ function PushRegelnVerwaltung({showToast}){
           ...d, ...g,
           spiele:{...d.spiele, ...(g.spiele||{})},
           vereinstermine:{...d.vereinstermine, ...(g.vereinstermine||{})},
+          geburtstage:{...d.geburtstage, ...(g.geburtstage||{})},
           nachwuchsMannschaften: g.nachwuchsMannschaften || d.nachwuchsMannschaften,
         });
       } else {
@@ -2378,6 +2384,31 @@ function PushRegelnVerwaltung({showToast}){
           })}
         </tbody>
       </table>
+    </div>
+
+    {/* Geburtstage */}
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"14px 0 6px"}}>🎂 Geburtstage</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>
+      Erinnert an Geburtstage aktiver Mitglieder. Spieler-Geburtstage gehen an alle aktiven
+      Spieler (Alter nur für Trainer und Admin), Erwachsenen-Geburtstage an alle aktiven
+      Erwachsenen (Alter nur für Admin und Vorstand). Das Geburtstagskind erhält einen
+      persönlichen Glückwunsch. Gäste sowie passive Mitglieder bleiben unberücksichtigt.
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"var(--text)"}}>
+        <input type="checkbox" checked={regeln.geburtstage?.aktiv||false} onChange={e=>{
+          const on=e.target.checked;
+          setRegeln(x=>({...x, geburtstage:{...(x.geburtstage||{tage:[0]}), aktiv:on}})); setDirty(true);
+        }}/>
+        aktiv
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)"}}>
+        Zeitpunkt (Tage vorher, 0 = am Geburtstag):
+        <input type="text" value={tageZuText(regeln.geburtstage?.tage||[0])} onChange={e=>{
+          const tage=textZuTage(e.target.value);
+          setRegeln(x=>({...x, geburtstage:{...(x.geburtstage||{aktiv:true}), tage:tage.length?tage:[0]}})); setDirty(true);
+        }} style={{width:90,padding:"5px 8px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:13}}/>
+      </label>
     </div>
 
     {/* Nachwuchs-Mannschaften */}
@@ -7074,45 +7105,12 @@ function EinheitenTab({user, players}) {
   </div>;
 }
 
-// ─── GLOCKEN-BUTTON: Geburtstage + Nachrichten ───────────────────────────────
+// ─── GLOCKEN-BUTTON: Benachrichtigungen (inkl. Geburtstage) ──────────────────
 function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
   const [showPopup,setShowPopup] = useState(false);
 
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayStr = today.toLocaleDateString("sv");
-
-  // Punkt 4: Per-player last training day based on group+trainingDays
-  function getLastTrainingForPlayer(p) {
-    const grp = p.group||"Anfänger";
-    const days = getTrainingDaysForGroup(grp, p.trainingDays);
-    return [...days].reverse().find(d=>d<=todayStr) || null;
-  }
-
-  const todayDateStr = today.toLocaleDateString("sv");
-  const lastTuesday = [...ALL_TUESDAYS].reverse().find(d=>d<=todayDateStr) || ALL_TUESDAYS[0];
-  const lastFriday  = [...ALL_FRIDAYS].reverse().find(d=>d<=todayDateStr)  || ALL_FRIDAYS[0];
-  const lastTrainingDay = lastTuesday > lastFriday ? lastTuesday : lastFriday;
-  const birthdaySince2 = new Date(lastTrainingDay);
-  birthdaySince2.setHours(0,0,0,0);
-
-  const recentBirthdays = [];
-  const activePlayers = players.filter(p=>p.birthdate && p.status!=="passiv" && p.group!=="Erwachsene");
-  for (const p of activePlayers) {
-    const bd = new Date(p.birthdate);
-    const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());
-    thisYear.setHours(0,0,0,0);
-    if (thisYear >= birthdaySince2 && thisYear <= today) {
-      recentBirthdays.push({...p, age: today.getFullYear()-bd.getFullYear(), bday:thisYear, lastDay:lastTrainingDay});
-    }
-  }
-
-  // ── Geburtstage: dauerhaftes Wegklicken über Signatur ──
-  const signatur = lastTrainingDay + "|" + recentBirthdays.map(p=>p.id).sort().join(",");
-  const BDAY_KEY = "ttc_bday_dismissed";
-  const [bdayDismissed,setBdayDismissed] = useState(()=>{
-    try { return localStorage.getItem(BDAY_KEY)||""; } catch(_) { return ""; }
-  });
-  const geburtstageOffen = recentBirthdays.length>0 && bdayDismissed!==signatur;
+  // Geburtstage werden jetzt serverseitig als normale Benachrichtigungen erzeugt
+  // (siehe pushversand.js) und erscheinen wie andere Nachrichten in der Liste.
 
   // ── Nachrichten laden ──
   const [nachrichten,setNachrichten] = useState([]);
@@ -7145,15 +7143,11 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     setNachrGelesen(neu);
     try { localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); } catch(_){}
   }
-  function geburtstageErledigt(){
-    try { localStorage.setItem(BDAY_KEY, signatur); } catch(_){}
-    setBdayDismissed(signatur);
-  }
 
-  // Zähler: offene Geburtstage (1 Sammelposten) + offene Nachrichten
-  const anzahl = (geburtstageOffen?recentBirthdays.length:0) + offeneNachrichten.length;
-  // Button nur zeigen, wenn es überhaupt etwas gibt (offen ODER als Verlauf vorhanden)
-  const hatInhalt = geburtstageOffen || nachrichten.length>0 || recentBirthdays.length>0;
+  // Zähler + Sichtbarkeit basieren jetzt allein auf den Benachrichtigungen
+  // (Geburtstage sind darin als normale Nachrichten enthalten).
+  const anzahl = offeneNachrichten.length;
+  const hatInhalt = nachrichten.length>0;
   if (!hatInhalt) return null;
 
   return <>
@@ -7181,39 +7175,21 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
 
       {/* Liste – scrollbar über die volle Höhe */}
       <div style={{overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 18px 24px",flex:"1 1 auto",minHeight:0,maxWidth:600,width:"100%",margin:"0 auto"}}>
-        {/* Nachrichten */}
-        {offeneNachrichten.length>0 && <>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Nachrichten</div>
-          {offeneNachrichten.map(n=>(
-            <div key={n.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:12}}>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,color:"var(--text)",fontSize:15,marginBottom:3}}>{n.titel}</div>
-                <div style={{fontSize:14,color:"var(--text2)"}}>{n.text}</div>
-              </div>
-              <button onClick={()=>nachrichtWegklicken(n.id)} title="Als gelesen markieren" style={{
-                background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
-                color:"#10b981",fontSize:16,padding:"6px 12px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
+        {/* Alle Benachrichtigungen (inkl. Geburtstage) – chronologisch, einzeln wegklickbar */}
+        {offeneNachrichten.map(n=>(
+          <div key={n.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,color:"var(--text)",fontSize:15,marginBottom:3}}>{n.titel}</div>
+              <div style={{fontSize:14,color:"var(--text2)"}}>{n.text}</div>
             </div>
-          ))}
-        </>}
-
-        {/* Geburtstage */}
-        {geburtstageOffen && <>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text3)",margin:"16px 0 8px"}}>🎂 Geburtstage seit letztem Training</div>
-          {recentBirthdays.map(p=>(
-            <div key={p.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
-              <span style={{fontSize:26}}>{p.avatar||"🎂"}</span>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,color:"var(--text)",fontSize:15}}>{p.firstName} {p.lastName}</div>
-                <div style={{fontSize:13,color:"#f59e0b"}}>🎂 {p.bday.toLocaleDateString("de-DE")} — {p.age} Jahre</div>
-              </div>
-            </div>
-          ))}
-          <button onClick={geburtstageErledigt} style={{width:"100%",marginTop:6,padding:11,background:"#10b98122",border:"1px solid #10b98144",borderRadius:10,color:"#10b981",fontSize:14,fontWeight:700,cursor:"pointer"}}>✓ Geburtstage erledigt</button>
-        </>}
+            <button onClick={()=>nachrichtWegklicken(n.id)} title="Als gelesen markieren" style={{
+              background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
+              color:"#10b981",fontSize:16,padding:"6px 12px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
+          </div>
+        ))}
 
         {/* Leerzustand */}
-        {offeneNachrichten.length===0 && !geburtstageOffen && <div style={{fontSize:14,color:"var(--text3)",textAlign:"center",padding:"40px 0"}}>
+        {offeneNachrichten.length===0 && <div style={{fontSize:14,color:"var(--text3)",textAlign:"center",padding:"40px 0"}}>
           Keine neuen Benachrichtigungen.
         </div>}
       </div>
