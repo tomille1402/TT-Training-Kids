@@ -1,3 +1,4 @@
+// === TTC-App · Version 255 · erstellt 26.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -15,6 +16,11 @@ import {
   getDownloadURL, deleteObject
 } from "firebase/storage";
 import { firebaseConfig } from "./firebaseConfig";
+
+// Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
+// damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
+const APP_VERSION = "255";
+const APP_DATUM   = "26.07.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -671,6 +677,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
         </div>
       )}
       <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>{clubConfig.loginFooter||"Noch kein Konto? Wende dich an deinen Trainer."}</div>
+      <div style={{textAlign:"center",fontSize:11,color:"var(--text4)",marginTop:10,opacity:0.7}}>Version {APP_VERSION} · {APP_DATUM}</div>
     </div>
   </div>;
 }
@@ -5174,11 +5181,25 @@ async function pushAktivieren(playerId){
     throw new Error("Du hast Benachrichtigungen nicht erlaubt. Du kannst das in den Einstellungen deines Browsers ändern.");
   }
   const reg = await navigator.serviceWorker.ready;
+  const gewuenschterKey = base64UrlZuUint8Array(VAPID_PUBLIC_KEY);
   let abo = await reg.pushManager.getSubscription();
+  // Wenn bereits ein Abo existiert, prüfen, ob es mit dem AKTUELLEN Schlüssel erstellt
+  // wurde. Ein Abo mit altem/anderem Schlüssel kann vom Server nicht bedient werden –
+  // in dem Fall abmelden und neu anlegen. Sonst schlägt subscribe() fehl oder es werden
+  // Push-Nachrichten nie zugestellt.
+  if(abo){
+    const vorhanden = new Uint8Array(abo.options?.applicationServerKey || new ArrayBuffer(0));
+    let gleich = vorhanden.length === gewuenschterKey.length;
+    if(gleich){ for(let i=0;i<gewuenschterKey.length;i++){ if(vorhanden[i]!==gewuenschterKey[i]){ gleich=false; break; } } }
+    if(!gleich){
+      try { await abo.unsubscribe(); } catch(_){}
+      abo = null;
+    }
+  }
   if(!abo){
     abo = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: base64UrlZuUint8Array(VAPID_PUBLIC_KEY)
+      applicationServerKey: gewuenschterKey
     });
   }
   const daten = abo.toJSON();
