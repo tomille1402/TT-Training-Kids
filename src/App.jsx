@@ -7166,8 +7166,9 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
       justifyContent:"center",padding:"0 3px"}}>{anzahl}</span>}</button>
 
     {showPopup&&createPortal(<div style={{
-      position:"fixed",top:0,left:0,right:0,bottom:0,background:"var(--bg)",zIndex:9000,
-      display:"flex",flexDirection:"column",
+      position:"fixed",top:0,left:0,width:"100vw",height:"100dvh",zIndex:2147483000,
+      background:"var(--bg)",display:"flex",flexDirection:"column",
+      paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",
     }}>
       {/* Kopf – fixiert, mit Schließen */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
@@ -10706,7 +10707,15 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {/* Punkt 2: Geburtstage Tab - nur Erwachsene Personen */}
     {activeTab==="geburtstage"&&<GeburtstageTabErwachsene players={players}/>}
-    {activeTab==="bestellungen"&&<BestellungenView me={loginPlayer} isAdmin={false} showToast={showToast}/>}
+    {/* Bestellungen: Betrachtet der Admin/Funktionswechsel gezielt eine ANDERE Person
+        (forcePlayer weicht vom eigenen Login ab), zeigen wir deren Bestellung – so sieht
+        der Admin genau das, was die Person aufgegeben hat, inkl. korrektem Namen im
+        Verwendungszweck. In der eigenen Ansicht (forcePlayer ist die eigene Person oder
+        leer) bleibt es beim Login-Profil, damit bei geteilter E-Mail das Erwachsenen-
+        Profil (nicht das Kind-Profil) maßgeblich ist. */}
+    {activeTab==="bestellungen"&&<BestellungenView
+      me={(forcePlayer && forcePlayer.id!==loginPlayer?.id) ? forcePlayer : loginPlayer}
+      isAdmin={false} showToast={showToast}/>}
     {/* Übersicht: maßgeblich ist die betrachtete Person (der ausgewählte Mannschaftsführer),
         damit die Mannschaft dieses MF gilt — nicht die eingeloggte Person. */}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
