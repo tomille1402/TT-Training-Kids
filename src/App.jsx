@@ -1,4 +1,4 @@
-// === TTC-App · Version 258 · erstellt 27.07.2026 ===
+// === TTC-App · Version 259 · erstellt 27.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "258";
+const APP_VERSION = "259";
 const APP_DATUM   = "27.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2734,12 +2734,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         elternteil1:      editPlayer.elternteil1||"Mutter",
         elternVorname1:   editPlayer.elternVorname1||"",
         elternNachname1:  editPlayer.elternNachname1||"",
-        elternEmail1:     (editPlayer.elternEmail1||"").trim().toLowerCase(),
+        // E-Mail 1 (meist Mutter): fällt auf die echte Kind-Anmelde-E-Mail zurück,
+        // da bei Kindern ohne eigenes Konto dort die Adresse eines Elternteils steht.
+        elternEmail1:     ((editPlayer.elternEmail1 || (!istKuenstlicheEmail(editPlayer.email)?editPlayer.email:"") || "").trim().toLowerCase()),
         elternHandy1:     editPlayer.elternHandy1||"",
         elternteil2:      editPlayer.elternteil2||"Vater",
         elternVorname2:   editPlayer.elternVorname2||"",
         elternNachname2:  editPlayer.elternNachname2||"",
-        elternEmail2:     ((editPlayer.elternEmail2||editPlayer.elternEmail||"").trim().toLowerCase()),
+        elternEmail2:     ((editPlayer.elternEmail2||"").trim().toLowerCase()),
         elternHandy2:     editPlayer.elternHandy2||"",
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
@@ -3678,7 +3680,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 1 (Login)</label>
-                    <input type="text" value={editPlayer.elternEmail1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail1:e.target.value}))}
+                    <input type="text" value={editPlayer.elternEmail1 || (!istKuenstlicheEmail(editPlayer.email)?editPlayer.email:"") || ""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail1:e.target.value}))}
                       placeholder="mutter@email.de"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
@@ -3712,7 +3714,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 2 (Login)</label>
-                    <input type="text" value={editPlayer.elternEmail2||editPlayer.elternEmail||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail2:e.target.value}))}
+                    <input type="text" value={editPlayer.elternEmail2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail2:e.target.value}))}
                       placeholder="vater@email.de"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
