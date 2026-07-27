@@ -1,4 +1,4 @@
-// === TTC-App · Version 256 · erstellt 26.07.2026 ===
+// === TTC-App · Version 257 · erstellt 27.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "256";
-const APP_DATUM   = "26.07.2026";
+const APP_VERSION = "257";
+const APP_DATUM   = "27.07.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -459,6 +459,24 @@ function anzahlForArtikel(a, items){
 function istErwachsenerPlayer(p){
   return (p?.group==="Erwachsene") || (p?.roles?.erwachsene===true);
 }
+// Alle Eltern-Login-Adressen eines Kindes (normalisiert, ohne Leereinträge).
+// Berücksichtigt die beiden getrennten Eltern-E-Mails (elternEmail1/2, z.B. für
+// getrennt lebende Eltern) sowie das frühere Einzelfeld elternEmail (Kompatibilität).
+function elternLoginMails(p){
+  if(!p) return [];
+  const set=new Set();
+  for(const m of [p.elternEmail1, p.elternEmail2, p.elternEmail]){
+    const v=(m||"").trim().toLowerCase();
+    if(v && v.includes("@")) set.add(v);
+  }
+  return [...set];
+}
+// Prüft, ob eine Adresse als Eltern-Login für dieses Kind hinterlegt ist.
+function istElternLogin(p, email){
+  const m=(email||"").trim().toLowerCase();
+  return !!m && elternLoginMails(p).includes(m);
+}
+
 function findLoginPlayer(players, email, bevorzugeErwachsen=false){
   const mail=(email||"").toLowerCase();
   if(!mail) return null;
@@ -1984,7 +2002,7 @@ function PersonenUebersicht({players}) {
   async function datenschutzNachziehen(){
     const gruppen=new Map(); // normalisierte Mail -> [player,...]
     for(const p of players){
-      for(const mail of [p.email, p.elternEmail]){
+      for(const mail of [p.email, ...elternLoginMails(p)]){
         const m=(mail||"").trim().toLowerCase();
         if(!m) continue;
         if(!gruppen.has(m)) gruppen.set(m,[]);
@@ -2553,7 +2571,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
     ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
     ["Elternteil 1","elternteil1"],["Vorname 1","elternVorname1"],["Nachname 1","elternNachname1"],
+    ["E-Mail 1","elternEmail1"],["Handy 1","elternHandy1"],
     ["Elternteil 2","elternteil2"],["Vorname 2","elternVorname2"],["Nachname 2","elternNachname2"],
+    ["E-Mail 2","elternEmail2"],["Handy 2","elternHandy2"],
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
     ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
@@ -2714,9 +2734,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         elternteil1:      editPlayer.elternteil1||"Mutter",
         elternVorname1:   editPlayer.elternVorname1||"",
         elternNachname1:  editPlayer.elternNachname1||"",
+        elternEmail1:     (editPlayer.elternEmail1||"").trim().toLowerCase(),
+        elternHandy1:     editPlayer.elternHandy1||"",
         elternteil2:      editPlayer.elternteil2||"Vater",
         elternVorname2:   editPlayer.elternVorname2||"",
         elternNachname2:  editPlayer.elternNachname2||"",
+        elternEmail2:     ((editPlayer.elternEmail2||editPlayer.elternEmail||"").trim().toLowerCase()),
+        elternHandy2:     editPlayer.elternHandy2||"",
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
@@ -3620,16 +3644,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <input type="text" value={editPlayer.email||""} onChange={e=>setEditPlayer(prev=>({...prev,email:e.target.value}))}
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
               </div>
-              {/* Eltern-E-Mail: ermöglicht einem Elternteil, mit EINEM Login mehrere Kinder zu betreuen */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>👨‍👩‍👧 Eltern-Login (E-Mail)</label>
-                <input type="text" value={editPlayer.elternEmail||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail:e.target.value}))}
-                  placeholder="z. B. elternteil@email.de"
-                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-                <div style={{fontSize:10,color:"var(--text4)",marginTop:4,lineHeight:1.4}}>
-                  Trägst du hier die E-Mail eines Elternteils ein, kann sich dieses mit seinem eigenen Login anmelden und dieses Kind mitverwalten. Mehrere Kinder mit derselben Eltern-E-Mail erscheinen unter einem Login zum Umschalten.
+              {/* Hinweis: Das frühere separate Eltern-Login-Feld ist entfallen. Die beiden
+                  E-Mail-Felder bei „Eltern" (unten) dienen jetzt als eigenständige Logins –
+                  so können sich z.B. getrennt lebende Eltern unabhängig anmelden. */}
+              {editPlayer.roles?.player===true && <div style={{marginBottom:10,padding:"8px 12px",background:"#3b82f611",border:"1px solid #3b82f633",borderRadius:9}}>
+                <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5}}>
+                  👨‍👩‍👧 <b>Eltern-Login:</b> Trage unten bei „Eltern" die E-Mail eines oder beider Elternteile ein. Jede eingetragene E-Mail ist ein eigener Login, mit dem dieses Kind mitverwaltet werden kann – ideal auch für getrennt lebende Eltern. Mehrere Kinder mit derselben Eltern-E-Mail erscheinen unter einem Login zum Umschalten.
                 </div>
-              </div>
+              </div>}
               {/* Punkt 10: Namen der Eltern — nur bei Personen mit Spieler-Funktion */}
               {editPlayer.roles?.player===true && <div style={{marginBottom:10,padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9}}>
                 <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>👪 Eltern</div>
@@ -3652,6 +3674,21 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
                 </div>
+                {/* E-Mail + Handy Elternteil 1 – die E-Mail dient zugleich als eigenständiges Eltern-Login */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 1 (Login)</label>
+                    <input type="text" value={editPlayer.elternEmail1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail1:e.target.value}))}
+                      placeholder="mutter@email.de"
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📱 Handy 1</label>
+                    <input type="text" value={editPlayer.elternHandy1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy1:e.target.value}))}
+                      placeholder="0170 1234567"
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Elternteil 2</label>
@@ -3668,6 +3705,21 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>Nachname 2</label>
                     <input type="text" value={editPlayer.elternNachname2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternNachname2:e.target.value}))}
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+                {/* E-Mail + Handy Elternteil 2 – die E-Mail dient zugleich als eigenständiges Eltern-Login */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 2 (Login)</label>
+                    <input type="text" value={editPlayer.elternEmail2??editPlayer.elternEmail??""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail2:e.target.value}))}
+                      placeholder="vater@email.de"
+                      style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📱 Handy 2</label>
+                    <input type="text" value={editPlayer.elternHandy2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy2:e.target.value}))}
+                      placeholder="0170 1234567"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
                 </div>
@@ -11445,10 +11497,11 @@ export default function App() {
         return ba-aa;
       })[0];
 
-  // Eltern-Login: alle aktiven Kinder, bei denen diese Adresse als elternEmail hinterlegt ist
+  // Eltern-Login: alle aktiven Kinder, bei denen diese Adresse als eine der
+  // Eltern-E-Mails hinterlegt ist (getrennt lebende Eltern: beide unabhängig).
   const meineKinder = players.filter(p =>
     p.status!=="passiv" &&
-    p.elternEmail && p.elternEmail.toLowerCase() === authUser.email?.toLowerCase() &&
+    istElternLogin(p, authUser.email) &&
     p.id !== myPlayer?.id
   );
 
@@ -11532,7 +11585,7 @@ export default function App() {
     const verwandte = players.filter(p =>
       p.id!==myPlayer.id &&
       ((p.email && p.email.toLowerCase()===loginMail) ||
-       (p.elternEmail && p.elternEmail.toLowerCase()===loginMail))
+       istElternLogin(p, loginMail))
     ).map(p=>p.id);
     return <DatenschutzGate playerId={myPlayer.id} verwandtePlayerIds={verwandte}
       onAccepted={()=>setDatenschutzOk(true)} onSignOut={handleSignOut}/>;
