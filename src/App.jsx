@@ -1,4 +1,4 @@
-// === TTC-App · Version 257 · erstellt 27.07.2026 ===
+// === TTC-App · Version 258 · erstellt 27.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "257";
+const APP_VERSION = "258";
 const APP_DATUM   = "27.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3712,7 +3712,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 2 (Login)</label>
-                    <input type="text" value={editPlayer.elternEmail2??editPlayer.elternEmail??""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail2:e.target.value}))}
+                    <input type="text" value={editPlayer.elternEmail2||editPlayer.elternEmail||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail2:e.target.value}))}
                       placeholder="vater@email.de"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
