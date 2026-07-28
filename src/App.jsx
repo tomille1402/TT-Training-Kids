@@ -1,4 +1,4 @@
-// === TTC-App · Version 265 · erstellt 28.07.2026 ===
+// === TTC-App · Version 266 · erstellt 28.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "265";
+const APP_VERSION = "266";
 const APP_DATUM   = "28.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8231,12 +8231,18 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       try{
         const sp = players.find(p=>p.id===targetPlayerId);
         const spielerName = sp ? `${sp.firstName||""} ${sp.lastName||""}`.trim() : "Ein Spieler";
+        // Der Spielplan nutzt Namen wie "Herren 2", das MF-Feld (mannschaftsfuehrerTeam)
+        // dagegen den Aufstellungs-Namen wie "Erwachsene II". Für die MF-Zuordnung den
+        // Namen übersetzen; für die Anzeige bleibt der (bekannte) Spielplan-Name erhalten.
+        const spielplanName = spiel.mannschaft||"";
+        const aufstellungName = SPIELPLAN_TO_AUFSTELLUNG[spielplanName] || spielplanName;
         fetch("/.netlify/functions/einsatzalarm",{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({
             spielerName,
-            mannschaft: spiel.mannschaft||"",
+            mannschaft: spielplanName,          // für die Anzeige in der Meldung
+            mannschaftAufstellung: aufstellungName, // für die MF-Zuordnung (mannschaftsfuehrerTeam)
             gegner: spiel.gegner||"",
             datum: spiel.datum||"",
             alterStatus: "ja",
