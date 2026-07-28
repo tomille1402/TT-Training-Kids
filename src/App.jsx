@@ -1,4 +1,4 @@
-// === TTC-App · Version 264 · erstellt 28.07.2026 ===
+// === TTC-App · Version 265 · erstellt 28.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "264";
+const APP_VERSION = "265";
 const APP_DATUM   = "28.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -426,6 +426,10 @@ const NACHWUCHS_GRUPPEN = ["Anfänger","Fortgeschrittene","Gast"];
 // Artikel, die diese Gruppen sehen dürfen: T-Shirt Nimatsu Nachwuchs (12) und
 // alle Druck-Artikel, die an diesem T-Shirt hängen (folgtArtikel enthält 12).
 const NACHWUCHS_ARTIKEL_IDS = [12];
+// Zusätzliche Artikel je Nachwuchs-Gruppe: Fortgeschrittene dürfen neben dem
+// T-Shirt auch den Rock (id 4) bestellen (der Geschlechter-Filter blendet ihn bei
+// männlichen Personen ohnehin aus).
+const NACHWUCHS_ZUSATZ_ARTIKEL = { "Fortgeschrittene": [4] };
 function istNachwuchsArtikel(a){
   if(NACHWUCHS_ARTIKEL_IDS.includes(a.id)) return true;
   // Druck-Artikel, der ausschließlich an Nachwuchs-Artikeln hängt
@@ -437,8 +441,10 @@ function istNachwuchsArtikel(a){
 function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
   const nurNachwuchs = NACHWUCHS_GRUPPEN.includes(g);
-  let list = nurNachwuchs ? BESTELL_ARTIKEL.filter(istNachwuchsArtikel)
-                          : BESTELL_ARTIKEL.filter(a=>!istNachwuchsArtikel(a));
+  const zusatzIds = NACHWUCHS_ZUSATZ_ARTIKEL[g] || [];
+  let list = nurNachwuchs
+    ? BESTELL_ARTIKEL.filter(a=>istNachwuchsArtikel(a) || zusatzIds.includes(a.id))
+    : BESTELL_ARTIKEL.filter(a=>!istNachwuchsArtikel(a));
   if(gender==="m") list = list.filter(a=>a.geschlecht==="h"||a.geschlecht==="u");
   else if(gender==="w") list = list.filter(a=>a.geschlecht==="d"||a.geschlecht==="u");
   return list;
@@ -8209,12 +8215,36 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
     const prevEntry = cur[targetPlayerId]||{};
+    const vorherStatus = prevEntry.status||"";
     const newEntry = (prevEntry.status===statusKey)
       ? {...prevEntry, status:""}
       : {...prevEntry, status:statusKey};
+    const nachherStatus = newEntry.status||"";
     const updated = {...einsaetze, [sk]:{...cur, [targetPlayerId]:newEntry}};
     setEinsaetze(updated);
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+
+    // Sofort-Benachrichtigung an MF + Admin, wenn ein Spieler von "verfügbar" (ja)
+    // auf einen anderen Status wechselt. Bewusst NUR in diesem Fall (nicht beim
+    // erstmaligen Eintrag und nicht bei Wechsel ZU "ja").
+    if(vorherStatus==="ja" && nachherStatus!=="ja"){
+      try{
+        const sp = players.find(p=>p.id===targetPlayerId);
+        const spielerName = sp ? `${sp.firstName||""} ${sp.lastName||""}`.trim() : "Ein Spieler";
+        fetch("/.netlify/functions/einsatzalarm",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            spielerName,
+            mannschaft: spiel.mannschaft||"",
+            gegner: spiel.gegner||"",
+            datum: spiel.datum||"",
+            alterStatus: "ja",
+            neuerStatus: nachherStatus
+          })
+        }).catch(()=>{}); // Fehler hier darf die Statusänderung nicht blockieren
+      }catch(e){ /* Benachrichtigung ist Zusatz */ }
+    }
   }
   async function setNote(spiel, targetPlayerId, note){
     const sk=spielKey(spiel);
