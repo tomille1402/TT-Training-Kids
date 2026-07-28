@@ -22,6 +22,15 @@ const STATUS_TEXT = {
 // Normalisiert einen Mannschaftsnamen für den Vergleich (MF-Zuordnung).
 function normMann(s){ return String(s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,""); }
 
+// Spielplan-Namen (z.B. "Herren 2") → Aufstellungs-/MF-Namen (z.B. "Erwachsene II").
+// Muss zur Tabelle in der App (SPIELPLAN_TO_AUFSTELLUNG) passen.
+const SPIELPLAN_TO_AUFSTELLUNG = {
+  "Herren 1":"Erwachsene", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
+  "Herren 4":"Erwachsene IV", "Herren 5":"Erwachsene V", "Herren 6":"Erwachsene VI",
+  "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
+  "Jugend 11":"Jugend 11",
+};
+
 exports.handler = async (event) => {
   // CORS/Preflight zulassen (die App ruft von derselben Domain, aber sicher ist sicher).
   if(event.httpMethod === "OPTIONS"){
@@ -37,6 +46,10 @@ exports.handler = async (event) => {
 
   const spielerName = String(body.spielerName||"").trim();
   const mannschaft  = String(body.mannschaft||"").trim();
+  // Für die MF-Zuordnung maßgeblich ist der Aufstellungs-Name (mannschaftsfuehrerTeam).
+  // Die App sendet ihn als mannschaftAufstellung; fehlt er (ältere App), auf den
+  // Spielplan-Namen zurückfallen und serverseitig übersetzen.
+  const mannschaftAufstellung = String(body.mannschaftAufstellung || SPIELPLAN_TO_AUFSTELLUNG[mannschaft] || mannschaft).trim();
   const gegner      = String(body.gegner||"").trim();
   const datum       = String(body.datum||"").trim();
   const alterStatus = String(body.alterStatus||"").trim();
@@ -56,7 +69,8 @@ exports.handler = async (event) => {
     const players = playersDoc || [];
 
     // Empfänger bestimmen: zuständiger MF dieser Mannschaft + alle aktiven Admins.
-    const ziel = normMann(mannschaft);
+    // MF-Zuordnung über den Aufstellungs-Namen (entspricht mannschaftsfuehrerTeam).
+    const ziel = normMann(mannschaftAufstellung);
     const empfaengerIds = new Set();
     for(const p of players){
       if(p.status === "passiv") continue;
