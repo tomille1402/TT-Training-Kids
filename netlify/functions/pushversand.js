@@ -443,8 +443,18 @@ module.exports.handler = async (event) => {
       datum: heute, dryRun,
       jobs: zuSenden.length,
       gesendet, uebersprungen, fehler,
-      details: zuSenden.map(j=>({ sendeId:j.sendeId, empfaenger:j.empfaengerIds.length, titel:j.titel }))
+      details: zuSenden.map(j=>({
+        sendeId:j.sendeId,
+        empfaenger:j.empfaengerIds.length,
+        // Wie viele der vorgesehenen Empfänger haben tatsächlich ein aktives Push-Abo
+        // (also erreichbare Geräte)? 0 bedeutet: niemand hat Push aktiviert.
+        erreichbareGeraete: j.empfaengerIds.reduce((s,pid)=> s + ((aboMap[pid]||[]).length), 0),
+        titel:j.titel
+      }))
     };
+    // Gesamtzahl aller registrierten Push-Abos (über alle Personen) – schnelle Kontrolle,
+    // ob überhaupt jemand Benachrichtigungen aktiviert hat.
+    if(dryRun) bericht.aktivePushAbosGesamt = Object.values(aboMap).reduce((s,arr)=> s + (arr?arr.length:0), 0);
     // Beim Trockenlauf zusätzlich zeigen, welche Vereinstermine NICHT ausgelöst
     // haben und warum – hilfreich, um fehlende Erinnerungen zu diagnostizieren.
     if(dryRun) bericht.vereinstermineUebersprungen = terminDiagnose;
