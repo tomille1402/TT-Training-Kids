@@ -1,4 +1,4 @@
-// === TTC-App · Version 263 · erstellt 28.07.2026 ===
+// === TTC-App · Version 264 · erstellt 28.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "263";
+const APP_VERSION = "264";
 const APP_DATUM   = "28.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1980,6 +1980,30 @@ function PersonenUebersicht({players}) {
   const [gruppeFilter,setGruppeFilter]=useState([]);  // Gruppennamen
   const [statusFilter,setStatusFilter]=useState([]);  // aktiv/passiv
   const [dsFilter,setDsFilter]=useState([]);          // ja/nein
+  const [pushFilter,setPushFilter]=useState([]);      // erteilt/abgelehnt/offen
+
+  // Push-Zustimmungen laden (geräteübergreifend aus der Datenbank). Wird nur einmal beim
+  // Öffnen der Übersicht geladen. Ergibt je Person: erteilt / abgelehnt / offen.
+  const [pushMap,setPushMap]=useState(null);
+  useEffect(()=>{
+    if(!offen || pushMap!==null) return;
+    let ab=false;
+    (async()=>{
+      try{
+        const snap=await getDocs(collection(db,"pushAbos"));
+        const map={};
+        snap.forEach(d=>{
+          const data=d.data()||{};
+          const geraete=data.geraete||{};
+          const gueltige=Object.values(geraete).filter(g=>g&&g.endpoint&&g.p256dh&&g.auth).length;
+          map[d.id]= (data.aktiv===true && gueltige>0) ? "erteilt" : (data.aktiv===false ? "abgelehnt" : "offen");
+        });
+        if(!ab) setPushMap(map);
+      }catch(e){ if(!ab) setPushMap({}); }
+    })();
+    return ()=>{ ab=true; };
+  },[offen, pushMap]);
+  const pushStatus=(id)=> (pushMap && pushMap[id]) ? pushMap[id] : "offen";
 
   const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"]];
   const rollenKurz=(p)=>{
@@ -2039,6 +2063,7 @@ function PersonenUebersicht({players}) {
     status:p.status||"aktiv",
     datenschutz:dsText(p),
     dsSort:p.datenschutzAccepted||"",
+    push:pushStatus(p.id),
   }));
   const filtered=rows.filter(r=>{
     if(nameFilter&&!r.name.toLowerCase().includes(nameFilter.toLowerCase())) return false;
@@ -2053,6 +2078,8 @@ function PersonenUebersicht({players}) {
       const zust=r.dsSort?"ja":"nein";
       if(!dsFilter.includes(zust)) return false;
     }
+    // Mehrfachfilter Push-Zustimmung
+    if(pushFilter.length>0 && !pushFilter.includes(r.push)) return false;
     return true;
   });
   const sorted=[...filtered].sort((a,b)=>{
@@ -2072,7 +2099,7 @@ function PersonenUebersicht({players}) {
   // Punkt 2: schmale Spalten – minimale Paddings, keine Umbrüche, kompakte Schrift
   const th={padding:"6px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
   const td={padding:"5px 6px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
-  const anzFilterAktiv = (nameFilter?1:0)+funktFilter.length+gruppeFilter.length+statusFilter.length+dsFilter.length;
+  const anzFilterAktiv = (nameFilter?1:0)+funktFilter.length+gruppeFilter.length+statusFilter.length+dsFilter.length+pushFilter.length;
 
   // Kleine Chip-Leiste für Mehrfachfilter
   const FilterChips=({title,options,sel,setSel})=>(
@@ -2104,9 +2131,10 @@ function PersonenUebersicht({players}) {
         <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>[g,g])} sel={gruppeFilter} setSel={setGruppeFilter}/>
         <FilterChips title="Status" options={[["aktiv","aktiv"],["passiv","passiv"]]} sel={statusFilter} setSel={setStatusFilter}/>
         <FilterChips title="Datenschutz" options={[["ja","zugestimmt"],["nein","offen"]]} sel={dsFilter} setSel={setDsFilter}/>
+        <FilterChips title="Push-Nachrichten" options={[["erteilt","✅ erteilt"],["abgelehnt","🚫 abgelehnt"],["offen","⏳ offen"]]} sel={pushFilter} setSel={setPushFilter}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4,paddingBottom:6}}>
           <span style={{fontSize:10,color:"var(--text4)"}}>{sorted.length} von {rows.length} · Spalten anklicken zum Sortieren</span>
-          {anzFilterAktiv>0&&<button onClick={()=>{setNameFilter("");setFunktFilter([]);setGruppeFilter([]);setStatusFilter([]);setDsFilter([]);}}
+          {anzFilterAktiv>0&&<button onClick={()=>{setNameFilter("");setFunktFilter([]);setGruppeFilter([]);setStatusFilter([]);setDsFilter([]);setPushFilter([]);}}
             style={{padding:"3px 9px",fontSize:10,fontWeight:700,background:"transparent",border:"1px solid var(--border2)",borderRadius:12,color:"var(--text3)",cursor:"pointer"}}>Filter zurücksetzen</button>}
         </div>
       </div>
@@ -2119,6 +2147,7 @@ function PersonenUebersicht({players}) {
               <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
               <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
               <th style={th} onClick={()=>toggleSort("datenschutz")}>DS{arrow("datenschutz")}</th>
+              <th style={th} onClick={()=>toggleSort("push")}>Push{arrow("push")}</th>
             </tr>
           </thead>
           <tbody>
@@ -2129,13 +2158,17 @@ function PersonenUebersicht({players}) {
                 <td style={td}>{r.group}</td>
                 <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
                 <td style={td}>{r.datenschutz}</td>
+                <td style={{...td,fontWeight:700,whiteSpace:"nowrap",
+                  color:r.push==="erteilt"?"#10b981":r.push==="abgelehnt"?"#ef4444":"#f59e0b"}}>
+                  {r.push==="erteilt"?"✅":r.push==="abgelehnt"?"🚫":"⏳"} {r.push}
+                </td>
               </tr>
             ))}
-            {sorted.length===0&&<tr><td colSpan={5} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+            {sorted.length===0&&<tr><td colSpan={6} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
           </tbody>
         </table>
       </div>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Funktionen: A=Admin · T=Trainer · S=Spieler · E=Erwachsene · MF=Mannschaftsführer · DS=Datum Datenschutz-Zustimmung</div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Funktionen: A=Admin · T=Trainer · S=Spieler · E=Erwachsene · MF=Mannschaftsführer · DS=Datum Datenschutz-Zustimmung · Push: ✅ erteilt (Gerät angemeldet) · 🚫 abgelehnt · ⏳ offen (noch nicht bearbeitet)</div>
       {/* Nachhol-Abgleich für Datenschutz-Daten bei geteilten E-Mail-Adressen */}
       <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border2)"}}>
         <button onClick={datenschutzNachziehen} disabled={dsSyncLauft}
@@ -2491,9 +2524,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
-  const [showPushStatus,setShowPushStatus]=useState(false); // Push-Zustimmungs-Übersicht (standardmäßig zu)
-  const [pushAbosMap,setPushAbosMap]=useState(null);        // {playerId: {aktiv, geraeteAnzahl}} – null = noch nicht geladen
-  const [pushAbosLaedt,setPushAbosLaedt]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -2512,43 +2542,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const effectiveGlobalTheme = localGlobalTheme || globalTheme || "dark";
   const [joinImporting,setJoinImporting]=useState(false);
   const [joinNotFound,setJoinNotFound]=useState([]);
-
-  // Push-Zustimmungs-Übersicht: alle pushAbos-Dokumente laden und den Status je Person
-  // ermitteln. Aktives Abo mit gültigen Geräteschlüsseln = erteilt; aktiv:false =
-  // abgelehnt/deaktiviert; kein Dokument = noch nicht bearbeitet.
-  useEffect(()=>{
-    if(!showPushStatus || pushAbosMap!==null) return;
-    let ab=false;
-    (async()=>{
-      setPushAbosLaedt(true);
-      try{
-        const snap=await getDocs(collection(db,"pushAbos"));
-        const map={};
-        snap.forEach(d=>{
-          const data=d.data()||{};
-          const geraete=data.geraete||{};
-          const gueltige=Object.values(geraete).filter(g=>g&&g.endpoint&&g.p256dh&&g.auth).length;
-          map[d.id]={ aktiv: data.aktiv===true, geraeteAnzahl: gueltige, geaendert: data.geaendert||"" };
-        });
-        if(!ab) setPushAbosMap(map);
-      }catch(e){
-        if(!ab) setPushAbosMap({});
-      }finally{
-        if(!ab) setPushAbosLaedt(false);
-      }
-    })();
-    return ()=>{ ab=true; };
-  },[showPushStatus, pushAbosMap]);
-
-  // Status einer Person: "erteilt" | "abgelehnt" | "offen"
-  function pushStatusVon(playerId){
-    if(!pushAbosMap) return "offen";
-    const e=pushAbosMap[playerId];
-    if(!e) return "offen";                        // kein Dokument = noch nicht bearbeitet
-    if(e.aktiv && e.geraeteAnzahl>0) return "erteilt";
-    if(!e.aktiv) return "abgelehnt";              // bewusst deaktiviert
-    return "offen";                               // aktiv, aber ohne gültiges Gerät → faktisch offen
-  }
 
   function parseDateStr(raw) {
     if (!raw && raw!==0) return "";
@@ -3134,69 +3127,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </button>
       </div>
     </div>
-
-    {/* Push-Zustimmungs-Übersicht: zeigt pro Spieler und Erwachsenem, ob die
-        Benachrichtigungen erteilt, abgelehnt oder noch nicht bearbeitet wurden.
-        Grundlage sind die in der Datenbank gespeicherten Abos (geräteübergreifend),
-        nicht das aktuelle Gerät des Admins. */}
-    {(()=>{
-      const relevante = players.filter(p=>p.status!=="passiv" &&
-        (p.roles?.player===true || p.roles?.erwachsene===true ||
-         ["Profis","Fortgeschrittene","Anfänger","Erwachsene"].includes(p.group||"")));
-      const spielerListe = relevante.filter(p=>p.roles?.player===true ||
-        ["Profis","Fortgeschrittene","Anfänger"].includes(p.group||"")).sort((a,b)=>(a.lastName||"").localeCompare(b.lastName||"","de"));
-      const erwachseneListe = relevante.filter(p=>(p.roles?.erwachsene===true || (p.group||"")==="Erwachsene") &&
-        !(p.roles?.player===true || ["Profis","Fortgeschrittene","Anfänger"].includes(p.group||""))).sort((a,b)=>(a.lastName||"").localeCompare(b.lastName||"","de"));
-
-      const badge = (status)=>{
-        if(status==="erteilt") return {txt:"✅ erteilt", col:"#10b981", bg:"#10b98118"};
-        if(status==="abgelehnt") return {txt:"🚫 abgelehnt", col:"#ef4444", bg:"#ef444418"};
-        return {txt:"⏳ offen", col:"#f59e0b", bg:"#f59e0b18"};
-      };
-      const zeileFor = (p)=>{
-        const st = pushStatusVon(p.id);
-        const b = badge(st);
-        return <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"7px 10px",borderBottom:"1px solid var(--border)"}}>
-          <span style={{fontSize:13,color:"var(--text)"}}>{p.firstName} {p.lastName}</span>
-          <span style={{fontSize:11,fontWeight:700,color:b.col,background:b.bg,padding:"3px 9px",borderRadius:20,flexShrink:0}}>{b.txt}</span>
-        </div>;
-      };
-
-      // Zusammenfassung zählt nur, wenn Daten geladen sind
-      const zaehl = (liste)=> liste.reduce((acc,p)=>{ acc[pushStatusVon(p.id)]++; return acc; },{erteilt:0,abgelehnt:0,offen:0});
-      const sp = zaehl(spielerListe), er = zaehl(erwachseneListe);
-
-      return <div style={{background:"#3b82f610",border:"1px solid #3b82f544",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
-        <div onClick={()=>setShowPushStatus(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:14,fontWeight:800,color:"#3b82f6"}}>🔔 Push-Zustimmungen</div>
-          <span style={{fontSize:11,color:"#3b82f6"}}>{showPushStatus?"▲":"▼"}</span>
-        </div>
-        {showPushStatus&&<div style={{padding:"0 14px 14px"}}>
-          <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
-            Ob Benachrichtigungen ankommen, hängt vom jeweiligen Gerät der Person ab – jede/r muss
-            auf dem eigenen Gerät zustimmen. Diese Übersicht zeigt den in der Datenbank gespeicherten
-            Stand: <b style={{color:"#10b981"}}>erteilt</b> (mindestens ein Gerät angemeldet),
-            <b style={{color:"#ef4444"}}> abgelehnt</b> (bewusst deaktiviert) oder
-            <b style={{color:"#f59e0b"}}> offen</b> (noch nicht bearbeitet).
-          </div>
-          {pushAbosLaedt && <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Lädt…</div>}
-          {!pushAbosLaedt && <>
-            <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"6px 0 4px"}}>
-              🏓 Spieler <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>· ✅ {sp.erteilt} · 🚫 {sp.abgelehnt} · ⏳ {sp.offen}</span>
-            </div>
-            <div style={{background:"var(--bg2)",borderRadius:9,overflow:"hidden",marginBottom:14}}>
-              {spielerListe.length? spielerListe.map(zeileFor) : <div style={{fontSize:12,color:"var(--text3)",padding:"8px 10px"}}>Keine Spieler.</div>}
-            </div>
-            <div style={{fontSize:13,fontWeight:800,color:"var(--text)",margin:"6px 0 4px"}}>
-              👤 Erwachsene <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>· ✅ {er.erteilt} · 🚫 {er.abgelehnt} · ⏳ {er.offen}</span>
-            </div>
-            <div style={{background:"var(--bg2)",borderRadius:9,overflow:"hidden"}}>
-              {erwachseneListe.length? erwachseneListe.map(zeileFor) : <div style={{fontSize:12,color:"var(--text3)",padding:"8px 10px"}}>Keine Erwachsenen.</div>}
-            </div>
-          </>}
-        </div>}
-      </div>;
-    })()}
 
     {/* Doppelprofile erkennen und auflösen. Kriterium: gleiche E-Mail UND gleicher
         Vor- und Nachname. So werden gewollte Eltern-Logins (gleiche Mail, aber
