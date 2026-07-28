@@ -1,4 +1,4 @@
-// === TTC-App · Version 259 · erstellt 27.07.2026 ===
+// === TTC-App · Version 261 · erstellt 28.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "259";
-const APP_DATUM   = "27.07.2026";
+const APP_VERSION = "261";
+const APP_DATUM   = "28.07.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -5294,6 +5294,91 @@ async function pushDeaktivieren(playerId){
     playerId, aktiv:false, geaendert:new Date().toLocaleDateString("sv")
   },{merge:true});
   return true;
+}
+
+// Auffälliger Banner, der nach dem Login zum Aktivieren der Benachrichtigungen auffordert –
+// solange für diese Person auf diesem Gerät noch kein aktives Push-Abo besteht. Ein Klick
+// löst die Browser-Erlaubnis aus und legt das Abo an. Der Banner verschwindet danach.
+// Wer ihn wegklickt oder Push bewusst abgelehnt hat, wird nicht weiter behelligt.
+function PushBanner({ meId }) {
+  const [sichtbar,setSichtbar] = useState(false);
+  const [laeuft,setLaeuft]     = useState(false);
+  const [fehler,setFehler]     = useState("");
+  const [weggeklickt,setWeggeklickt] = useState(()=>{
+    try { return sessionStorage.getItem("ttc_push_banner_zu")==="1"; } catch(_) { return false; }
+  });
+
+  // iOS ohne installierte App kann kein Push – dann Banner nur als Installations-Hinweis.
+  const appleOhneInstall = istAppleGeraet() && !alsAppInstalliert();
+
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      if(!meId || !pushMoeglich()){ return; }
+      if(Notification.permission==="denied"){ return; } // bewusst abgelehnt – nicht drängen
+      let gespeichertAktiv=null;
+      try{
+        const snap=await getDoc(doc(db,"pushAbos",meId));
+        if(snap.exists() && typeof snap.data().aktiv==="boolean") gespeichertAktiv=snap.data().aktiv;
+      }catch(_){}
+      if(gespeichertAktiv===false){ return; } // hat bewusst deaktiviert
+      let angemeldet=false;
+      try{
+        const reg=await navigator.serviceWorker.ready;
+        angemeldet=!!(await reg.pushManager.getSubscription());
+      }catch(_){}
+      if(ab) return;
+      // Banner zeigen, wenn (noch) kein aktives Abo besteht
+      setSichtbar(!(angemeldet && gespeichertAktiv!==false));
+    })();
+    return ()=>{ ab=true; };
+  },[meId]);
+
+  if(!sichtbar || weggeklickt) return null;
+
+  async function aktivieren(){
+    if(appleOhneInstall){
+      setFehler("Auf iPhone/iPad zuerst über „Teilen → Zum Home-Bildschirm“ hinzufügen, dann hier aktivieren.");
+      return;
+    }
+    setLaeuft(true); setFehler("");
+    try{
+      await pushAktivieren(meId);
+      setSichtbar(false);
+    }catch(e){
+      setFehler(e?.message || "Aktivieren nicht möglich.");
+    }finally{
+      setLaeuft(false);
+    }
+  }
+  function schliessen(){
+    try{ sessionStorage.setItem("ttc_push_banner_zu","1"); }catch(_){}
+    setWeggeklickt(true);
+  }
+
+  return createPortal(
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:2147482000,
+      background:"linear-gradient(90deg,#10b981,#059669)",color:"#fff",
+      padding:"10px 14px",display:"flex",alignItems:"center",gap:12,
+      boxShadow:"0 2px 10px rgba(0,0,0,0.25)",
+      paddingTop:"calc(10px + env(safe-area-inset-top))"}}>
+      <span style={{fontSize:22,flexShrink:0}}>🔔</span>
+      <div style={{flex:1,fontSize:13,lineHeight:1.35,fontWeight:600}}>
+        {appleOhneInstall
+          ? "Für Benachrichtigungen die App über „Teilen → Zum Home-Bildschirm“ hinzufügen."
+          : "Aktiviere Benachrichtigungen, um keine Termine, Spiele und Geburtstage zu verpassen."}
+        {fehler && <div style={{fontWeight:500,fontSize:12,marginTop:4,opacity:0.95}}>{fehler}</div>}
+      </div>
+      {!appleOhneInstall && <button onClick={aktivieren} disabled={laeuft} style={{
+        flexShrink:0,background:"#fff",color:"#059669",border:"none",borderRadius:8,
+        padding:"8px 14px",fontSize:13,fontWeight:800,cursor:laeuft?"default":"pointer",
+        opacity:laeuft?0.7:1}}>{laeuft?"…":"Aktivieren"}</button>}
+      <button onClick={schliessen} title="Ausblenden" style={{
+        flexShrink:0,background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",
+        borderRadius:8,padding:"8px 11px",fontSize:15,fontWeight:800,cursor:"pointer",lineHeight:1}}>✕</button>
+    </div>,
+    document.body
+  );
 }
 
 function MeineVerwaltung({me, showToast, group}) {
@@ -11627,10 +11712,12 @@ export default function App() {
   const ownRoles = myPlayer?.roles || {};
   const hatEigeneFunktion = ownRoles.admin===true || ownRoles.trainer===true;
   if (meineKinder.length > 0 && !hatEigeneFunktion) {
-    return <ElternView user={authUser} players={players} attendance={attendance} rackets={rackets}
+    const bannerId = myPlayer?.id || meineKinder[0]?.id;
+    return <><PushBanner meId={bannerId}/>
+      <ElternView user={authUser} players={players} attendance={attendance} rackets={rackets}
       kinder={meineKinder} ownProfile={myPlayer||null}
       viewsForPerson={viewsForPerson} sharedProps={sharedPropsGlobal}
-      globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}/>;
+      globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}/></>;
   }
 
   // Rollen aus Spieler-Profil ermitteln — die im Datensatz ZUGEORDNETEN Funktionen
@@ -11689,8 +11776,9 @@ export default function App() {
   };
 
   // Die Benachrichtigungen (Nachrichten + Geburtstage) sitzen jetzt im Glocken-Button
-  // in der Kopfzeile jeder Ansicht. Kein separates Popup mehr nötig.
-  const mitPopup = (view) => view;
+  // in der Kopfzeile jeder Ansicht. Zusätzlich blendet der PushBanner oben eine
+  // Aufforderung zum Aktivieren der Benachrichtigungen ein, solange kein Abo besteht.
+  const mitPopup = (view) => <><PushBanner meId={myPlayer?.id}/>{view}</>;
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
   if (availableViews.length <= 1) {
