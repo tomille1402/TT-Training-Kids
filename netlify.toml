@@ -1,3 +1,4 @@
+# === TTC-App · Version 268 · netlify.toml · erstellt 29.07.2026 ===
 [build]
   functions = "netlify/functions"
 
