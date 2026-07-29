@@ -396,6 +396,14 @@ module.exports.handler = async (event) => {
     // Versand ausführen
     let gesendet=0, uebersprungen=0, fehler=0;
     const neuHistorie = {};
+    const sendeDiagnose = [];  // pro Gerät: Endpunkt-Typ + HTTP-Status (für Fehlersuche)
+    const dienstVon = (ep)=>{
+      if(/fcm\.googleapis\.com|android\.googleapis\.com/.test(ep)) return "Android/FCM";
+      if(/\.push\.apple\.com/.test(ep)) return "Apple";
+      if(/mozilla|mozaws/.test(ep)) return "Firefox";
+      if(/notify\.windows\.com|wns/.test(ep)) return "Windows";
+      return "andere";
+    };
     for(const job of zuSenden){
       if(historie[job.sendeId]===heute){ uebersprungen++; continue; }
       let irgendwasGesendet = false;
@@ -411,8 +419,8 @@ module.exports.handler = async (event) => {
               vapid
             );
             if(r.ok){ gesendet++; irgendwasGesendet=true; }
-            else fehler++;
-          }catch(e){ fehler++; }
+            else { fehler++; sendeDiagnose.push({ dienst:dienstVon(g.endpoint||""), status:r.status, playerId:pid }); }
+          }catch(e){ fehler++; sendeDiagnose.push({ dienst:dienstVon(g.endpoint||""), status:"Ausnahme", fehler:(e&&e.message)||String(e), playerId:pid }); }
         }
       }
       if(irgendwasGesendet) neuHistorie[job.sendeId]=heute;
@@ -460,6 +468,9 @@ module.exports.handler = async (event) => {
     if(dryRun) bericht.vereinstermineUebersprungen = terminDiagnose;
     if(dryRun) bericht.geburtstageRegel = gebRegel;
     if(dryRun) bericht.geburtstageNichtAusgeloest = gebDiagnose;
+    // Fehlgeschlagene Zustellungen immer zeigen (auch beim echten Lauf), damit
+    // Android/FCM-Probleme sichtbar werden. Leere Liste = alle erfolgreich.
+    if(sendeDiagnose.length) bericht.zustellFehler = sendeDiagnose;
     return { statusCode:200, headers:{"Content-Type":"application/json; charset=utf-8"}, body: JSON.stringify(bericht,null,2) };
 
   }catch(e){
