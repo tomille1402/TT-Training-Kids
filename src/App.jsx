@@ -1,4 +1,4 @@
-// === TTC-App · Version 268 · erstellt 29.07.2026 ===
+// === TTC-App · Version 269 · erstellt 29.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "268";
+const APP_VERSION = "269";
 const APP_DATUM   = "29.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2530,6 +2530,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
+  const [showAlarmLog,setShowAlarmLog]=useState(false);     // Einsatz-Benachrichtigungen (standardmäßig zu)
+  const [alarmLog,setAlarmLog]=useState(null);              // null = noch nicht geladen
+  const [alarmLogLaedt,setAlarmLogLaedt]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
   const [deleteConfirmFor,setDeleteConfirmFor]=useState(null);
   const [saving,setSaving]=useState(false);
@@ -2548,6 +2551,32 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const effectiveGlobalTheme = localGlobalTheme || globalTheme || "dark";
   const [joinImporting,setJoinImporting]=useState(false);
   const [joinNotFound,setJoinNotFound]=useState([]);
+
+  // Einsatz-Benachrichtigungen laden: die letzten Sofort-Alarme (Verfügbarkeit von
+  // "verfügbar" auf anderen Status geändert), inkl. wer informiert wurde und ob es ankam.
+  useEffect(()=>{
+    if(!showAlarmLog || alarmLog!==null) return;
+    let ab=false;
+    (async()=>{
+      setAlarmLogLaedt(true);
+      try{
+        const snap=await getDocs(collection(db,"einsatzalarmLog"));
+        const list=[];
+        snap.forEach(d=>list.push({ id:d.id, ...(d.data()||{}) }));
+        list.sort((a,b)=>(b.ts||0)-(a.ts||0));   // neueste zuerst
+        if(!ab) setAlarmLog(list.slice(0,50));    // die letzten 50 genügen
+      }catch(e){
+        if(!ab) setAlarmLog([]);
+      }finally{
+        if(!ab) setAlarmLogLaedt(false);
+      }
+    })();
+    return ()=>{ ab=true; };
+  },[showAlarmLog, alarmLog]);
+
+  // Lesbares Label für einen Einsatz-Status und deutsches Datum (für die Alarm-Übersicht).
+  const STATUS_LABEL_EINSATZ = (s)=>({ja:"verfügbar",nein:"verhindert",vielleicht:"vielleicht",verletzt:"verletzt","":"ohne Angabe"}[s]||s||"—");
+  const deDatumApp = (iso)=> iso ? String(iso).split("-").reverse().join(".") : "";
 
   function parseDateStr(raw) {
     if (!raw && raw!==0) return "";
@@ -3132,6 +3161,52 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
         </button>
       </div>
+    </div>
+
+    {/* Einsatz-Benachrichtigungen: Protokoll der Sofort-Alarme, wenn ein Spieler
+        seine Verfügbarkeit von "verfügbar" auf einen anderen Status geändert hat.
+        Zeigt je Empfänger (MF/Admin), ob die Push-Nachricht zugestellt werden konnte. */}
+    <div style={{background:"#f59e0b10",border:"1px solid #f59e0b44",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
+      <div onClick={()=>setShowAlarmLog(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"#d97706"}}>⚠️ Einsatz-Benachrichtigungen</div>
+        <span style={{fontSize:11,color:"#d97706"}}>{showAlarmLog?"▲":"▼"}</span>
+      </div>
+      {showAlarmLog&&<div style={{padding:"0 14px 14px"}}>
+        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+          Protokoll der letzten Sofort-Benachrichtigungen (Spieler hat Verfügbarkeit von
+          „verfügbar“ auf einen anderen Status geändert). Je Empfänger (Mannschaftsführer,
+          Admin) ist erkennbar, ob die Push-Nachricht zugestellt werden konnte
+          (<b style={{color:"#10b981"}}>✅ zugestellt</b>,
+          <b style={{color:"#ef4444"}}> ❌ nicht zugestellt</b>,
+          <b style={{color:"#f59e0b"}}> ⚠️ kein Push-Abo</b>). Die Nachricht in der App
+          (hinter der Glocke) erscheint unabhängig davon.
+        </div>
+        {alarmLogLaedt && <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Lädt…</div>}
+        {!alarmLogLaedt && alarmLog && alarmLog.length===0 &&
+          <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Noch keine Einsatz-Benachrichtigungen protokolliert.</div>}
+        {!alarmLogLaedt && alarmLog && alarmLog.map(a=>{
+          const d = a.ts ? new Date(a.ts) : null;
+          const wann = d ? d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+          return <div key={a.id} style={{background:"var(--bg2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+            <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+              {a.spielerName} → {STATUS_LABEL_EINSATZ(a.neuerStatus)}
+            </div>
+            <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>
+              {a.mannschaft}{a.gegner?` gegen ${a.gegner}`:""}{a.datum?` · Spiel am ${deDatumApp(a.datum)}`:""}{wann?` · gemeldet ${wann}`:""}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(a.empfaenger||[]).map((e,i)=>{
+                const farbe = !e.abo ? "#f59e0b" : e.zugestellt ? "#10b981" : "#ef4444";
+                const symbol = !e.abo ? "⚠️" : e.zugestellt ? "✅" : "❌";
+                const bg = !e.abo ? "#f59e0b18" : e.zugestellt ? "#10b98118" : "#ef444418";
+                return <span key={i} style={{fontSize:11,fontWeight:600,color:farbe,background:bg,padding:"3px 9px",borderRadius:20}}>
+                  {symbol} {e.name}
+                </span>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>}
     </div>
 
     {/* Doppelprofile erkennen und auflösen. Kriterium: gleiche E-Mail UND gleicher
