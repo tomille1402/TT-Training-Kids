@@ -1,4 +1,4 @@
-// === TTC-App · Version 270 · erstellt 29.07.2026 ===
+// === TTC-App · Version 271 · erstellt 29.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "270";
+const APP_VERSION = "271";
 const APP_DATUM   = "29.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -7958,7 +7958,7 @@ function playerMatchesAufName(player, aufName){
 function teamsOfPlayer(player, aufstellungSpieler){
   const teams=new Set();
   for(const row of aufstellungSpieler){
-    if(playerMatchesAufName(player,row.name)) teams.add(row.mannschaft);
+    if(playerMatchesAufName(player,row.name)) teams.add(normAufName(row.mannschaft));
   }
   return [...teams];
 }
@@ -7974,7 +7974,7 @@ function rowHatNES(row){
 function teamsOfPlayerOhneNES(player, aufstellungSpieler){
   const teams=new Set();
   for(const row of aufstellungSpieler){
-    if(playerMatchesAufName(player,row.name) && !rowHatNES(row)) teams.add(row.mannschaft);
+    if(playerMatchesAufName(player,row.name) && !rowHatNES(row)) teams.add(normAufName(row.mannschaft));
   }
   return [...teams];
 }
@@ -8000,8 +8000,9 @@ function stammMannschaftVorauswahl(player, aufstellungSpieler){
 
 // Aufstellungs-Rang (z.B. "1.5") eines Spielers in einer bestimmten Mannschaft
 function rangOfPlayerInTeam(player, aufName, aufstellungSpieler){
+  const ziel=normAufName(aufName);
   for(const row of aufstellungSpieler){
-    if(row.mannschaft===aufName && playerMatchesAufName(player,row.name)) return row.rang||"";
+    if(normAufName(row.mannschaft)===ziel && playerMatchesAufName(player,row.name)) return row.rang||"";
   }
   return "";
 }
@@ -8205,7 +8206,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const curSeasonOpt = SEASON_OPTS.find(s=>s.id===selSeasonId)||SEASON_OPTS[0];
   const spiele = spielplaene[selSeasonId]||[];
   const aufSpieler = aufstellungen[curSeasonOpt.auf]||[];
-  const allTeams = [...new Set(aufSpieler.map(r=>r.mannschaft))];
+  // Aufstellungsdaten führen die 1. Mannschaft teils noch als "Erwachsene" (ohne
+  // Ziffer). Für die einheitliche Anzeige/Filterung auf "Erwachsene I" normalisieren.
+  const allTeams = [...new Set(aufSpieler.map(r=>normAufName(r.mannschaft)))];
 
   const allowed = erlaubteMannschaften({player:myPlayer, roles, isAdmin, aufstellungSpieler:aufSpieler, allTeams});
 
@@ -8243,8 +8246,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   },[selSeasonId, allowed.join("|"), eigeneMannschaft, myPlayer?.id]);
 
   const teamSpiele = spiele.filter(s=>{
-    const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft;
-    return aufName===selTeam;
+    const aufName = normAufName(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft);
+    return aufName===normAufName(selTeam);
   }).sort((a,b)=>a.datum.localeCompare(b.datum));
 
   const spielberechtigt = (()=>{
