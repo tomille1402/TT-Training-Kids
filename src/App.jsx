@@ -1,4 +1,4 @@
-// === TTC-App · Version 271 · erstellt 29.07.2026 ===
+// === TTC-App · Version 272 · erstellt 29.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "271";
+const APP_VERSION = "272";
 const APP_DATUM   = "29.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -9464,7 +9464,10 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
   // Android/Samsung kennt "webcal:" nicht — dort führt der zuverlässige Weg über
   // Google Kalender, der einen Kalender per Web-Adresse abonnieren kann.
-  const googleAboUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(aboUrl)}`;
+  // WICHTIG: Für das Abonnieren eines EXTERNEN ICS-Feeds ist "addbyurl" der offizielle
+  // Weg. Das früher genutzte "/r?cid=" ist für öffentliche Google-Kalender gedacht und
+  // funktioniert mit beliebigen ICS-Feeds oft NICHT (Kalender bleibt leer).
+  const googleAboUrl = `https://calendar.google.com/calendar/u/0/r/settings/addbyurl?url=${encodeURIComponent(aboUrl)}`;
   const istAndroid = typeof navigator!=="undefined" && /Android/i.test(navigator.userAgent||"");
 
   function copyLink(){
@@ -9603,9 +9606,11 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
               + Mit Google Kalender abonnieren
             </a>
             <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginBottom:8}}>
-              Der Link öffnet Google Kalender im Browser. Dort auf „Hinzufügen“ tippen —
-              danach erscheinen die Termine automatisch auch in der Kalender-App des Handys.
-              Am Handy klappt das am besten, wenn du dabei in deinem Google-Konto angemeldet bist.
+              Der Link öffnet Google Kalender und trägt die Abo-Adresse direkt ein — dort nur
+              noch bestätigen. Danach erscheinen die Termine automatisch auch in der Kalender-App
+              des Handys. Wichtig: dabei in deinem Google-Konto angemeldet sein. Google aktualisiert
+              abonnierte Kalender allerdings nur alle paar Stunden — die Termine können also erst
+              mit etwas Verzögerung (teils erst am nächsten Tag) erscheinen.
             </div>
           </>
         : <a href={webcalUrl} style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
