@@ -1,4 +1,4 @@
-// === TTC-App · Version 266 · erstellt 28.07.2026 ===
+// === TTC-App · Version 268 · erstellt 29.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "266";
-const APP_DATUM   = "28.07.2026";
+const APP_VERSION = "268";
+const APP_DATUM   = "29.07.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
