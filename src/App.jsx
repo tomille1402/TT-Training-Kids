@@ -1,4 +1,4 @@
-// === TTC-App · Version 269 · erstellt 29.07.2026 ===
+// === TTC-App · Version 270 · erstellt 29.07.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "269";
+const APP_VERSION = "270";
 const APP_DATUM   = "29.07.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1557,8 +1557,8 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   // Mannschaftsführer für einen (internen) Mannschaftsnamen ermitteln.
   // Quelle: Spieler-Feld mannschaftsfuehrerTeam (aus AKTUELLE_MANNSCHAFTEN, z.B. "Erwachsene I").
   function mfName(mannName) {
-    const ziel = normMann(mannName);
-    const mf = players.find(p=>normMann(p.mannschaftsfuehrerTeam)===ziel);
+    const ziel = normMann(normAufName(mannName));
+    const mf = players.find(p=>normMann(normAufName(p.mannschaftsfuehrerTeam))===ziel);
     if(!mf) return "noch offen";
     const vn = mf.firstName || "";
     const nn = mf.lastName || "";
@@ -7921,21 +7921,27 @@ function teamLinks(t, seasonCode) {
 // ─── EINSÄTZE (Doodle-Verfügbarkeit pro Spiel) ───────────────────────────────
 // Mapping Spielplan-Name (Herren N / Mädchen N) → Aufstellungs-Name (Erwachsene…)
 const SPIELPLAN_TO_AUFSTELLUNG = {
-  "Herren 1":"Erwachsene", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
+  "Herren 1":"Erwachsene I", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
   "Herren 4":"Erwachsene IV", "Herren 5":"Erwachsene V", "Herren 6":"Erwachsene VI",
   "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
   "Jugend 11":"Jugend 11",
 };
 // Umkehrung: Aufstellungs-Name → Spielplan-Name (Erwachsene V → Herren 5).
 const AUFSTELLUNG_TO_SPIELPLAN = {
-  "Erwachsene":"Herren 1", "Erwachsene II":"Herren 2", "Erwachsene III":"Herren 3",
+  "Erwachsene I":"Herren 1", "Erwachsene II":"Herren 2", "Erwachsene III":"Herren 3",
   "Erwachsene IV":"Herren 4", "Erwachsene V":"Herren 5", "Erwachsene VI":"Herren 6",
   "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
   "Jugend 11":"Jugend 11",
 };
 // Erwachsenen-Mannschaftsnummer aus Aufstellungs-Name (Erwachsene=1, Erwachsene II=2, …)
-const ERW_NUM = {"Erwachsene":1,"Erwachsene II":2,"Erwachsene III":3,"Erwachsene IV":4,"Erwachsene V":5,"Erwachsene VI":6};
-function istErwachsenenMannschaft(aufName){ return aufName in ERW_NUM; }
+const ERW_NUM = {"Erwachsene I":1,"Erwachsene II":2,"Erwachsene III":3,"Erwachsene IV":4,"Erwachsene V":5,"Erwachsene VI":6};
+// Vereinheitlicht den Aufstellungs-/MF-Namen der 1. Mannschaft: früher wurde sie
+// teils "Erwachsene" (ohne Ziffer) genannt, jetzt durchgängig "Erwachsene I".
+// Diese Funktion fängt Alt-Werte ab, damit MF-Zuordnung & Co. zuverlässig greifen.
+function normAufName(aufName){
+  return aufName==="Erwachsene" ? "Erwachsene I" : (aufName||"");
+}
+function istErwachsenenMannschaft(aufName){ return normAufName(aufName) in ERW_NUM; }
 function istNachwuchsMannschaft(aufName){ return /^(Mädchen|Jugend)/.test(aufName); }
 
 // Normalisiere Namen für Vergleich (Aufstellung: "Nachname, Vorname" ↔ player: firstName/lastName)
@@ -7982,13 +7988,13 @@ function stammMannschaftVorauswahl(player, aufstellungSpieler){
   if(!player) return "";
   const ohneNES = teamsOfPlayerOhneNES(player, aufstellungSpieler);
   const erwOhne = ohneNES.filter(istErwachsenenMannschaft);
-  if(erwOhne.length>0) return erwOhne.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0]; // tiefste = höchste Nummer
+  if(erwOhne.length>0) return erwOhne.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0]; // tiefste = höchste Nummer
   const nwOhne = ohneNES.filter(istNachwuchsMannschaft);
   if(nwOhne.length>0) return nwOhne[0];
   // Fallback: falls nur NES-Meldungen existieren, nimm irgendeine zugeordnete
   const alle = teamsOfPlayer(player, aufstellungSpieler);
   const erwAlle = alle.filter(istErwachsenenMannschaft);
-  if(erwAlle.length>0) return erwAlle.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
+  if(erwAlle.length>0) return erwAlle.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0];
   return alle[0]||"";
 }
 
@@ -8051,7 +8057,7 @@ function erlaubteMannschaften({player, roles, isAdmin, aufstellungSpieler, allTe
     const own=teamsOfPlayer(player, aufstellungSpieler);
     for(const t of own){
       if(istErwachsenenMannschaft(t)){
-        const n=ERW_NUM[t];
+        const n=ERW_NUM[normAufName(t)];
         for(const [name,num] of Object.entries(ERW_NUM)){
           if(num<=n && allTeams.includes(name)) result.add(name);
         }
@@ -8213,11 +8219,11 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     if(!myPlayer) return null;
     const own = teamsOfPlayer(myPlayer, aufSpieler).filter(t=>allowed.includes(t));
     const ownErw = own.filter(istErwachsenenMannschaft);
-    if(ownErw.length>0) return ownErw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0]; // tiefste gemeldete
+    if(ownErw.length>0) return ownErw.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0]; // tiefste gemeldete
     if(own.length>0) return own[0]; // Nachwuchs
     // Fallback: höchste Erwachsenen-Nummer unter den erlaubten = Stammmannschaft
     const allowedErw = allowed.filter(istErwachsenenMannschaft);
-    if(allowedErw.length>0) return allowedErw.sort((a,b)=>ERW_NUM[b]-ERW_NUM[a])[0];
+    if(allowedErw.length>0) return allowedErw.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0];
     return allowed[0]||null;
   })();
 
@@ -8249,8 +8255,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const own = teamsOfPlayer(p, aufSpieler);
       let ok=false;
       if(istErwachsenenMannschaft(selTeam)){
-        const target=ERW_NUM[selTeam];
-        for(const t of own){ if(istErwachsenenMannschaft(t) && ERW_NUM[t]>=target){ ok=true; break; } }
+        const target=ERW_NUM[normAufName(selTeam)];
+        for(const t of own){ if(istErwachsenenMannschaft(t) && ERW_NUM[normAufName(t)]>=target){ ok=true; break; } }
       } else {
         ok = own.includes(selTeam);
       }
@@ -8260,7 +8266,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
         if(istErwachsenenMannschaft(selTeam)){
           // tiefste eigene Erwachsenen-Mannschaft (höchste Nummer)
           let bestNum=-1;
-          for(const t of own){ if(istErwachsenenMannschaft(t)&&ERW_NUM[t]>bestNum){bestNum=ERW_NUM[t]; rang=rangOfPlayerInTeam(p,t,aufSpieler);} }
+          for(const t of own){ if(istErwachsenenMannschaft(t)&&ERW_NUM[normAufName(t)]>bestNum){bestNum=ERW_NUM[normAufName(t)]; rang=rangOfPlayerInTeam(p,t,aufSpieler);} }
         } else {
           rang=rangOfPlayerInTeam(p,selTeam,aufSpieler);
         }
