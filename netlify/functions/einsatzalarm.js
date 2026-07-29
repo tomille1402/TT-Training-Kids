@@ -1,4 +1,4 @@
-// === TTC-App · Version 269 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 270 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
 // Sofort-Benachrichtigung, wenn ein Spieler seinen Einsatz-Status von "verfügbar"
 // (grüner Haken / "ja") auf einen anderen Status ändert. Empfänger: der zuständige
 // Mannschaftsführer der betroffenen Mannschaft sowie alle Admins. Es wird sowohl
@@ -26,11 +26,13 @@ function normMann(s){ return String(s||"").toLowerCase().replace(/\s+/g,"").repl
 // Spielplan-Namen (z.B. "Herren 2") → Aufstellungs-/MF-Namen (z.B. "Erwachsene II").
 // Muss zur Tabelle in der App (SPIELPLAN_TO_AUFSTELLUNG) passen.
 const SPIELPLAN_TO_AUFSTELLUNG = {
-  "Herren 1":"Erwachsene", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
+  "Herren 1":"Erwachsene I", "Herren 2":"Erwachsene II", "Herren 3":"Erwachsene III",
   "Herren 4":"Erwachsene IV", "Herren 5":"Erwachsene V", "Herren 6":"Erwachsene VI",
   "Mädchen 11":"Mädchen 11", "Mädchen 13":"Mädchen 13", "Mädchen 15":"Mädchen 15",
   "Jugend 11":"Jugend 11",
 };
+// Alt-Wert der 1. Mannschaft ("Erwachsene" ohne Ziffer) auf "Erwachsene I" vereinheitlichen.
+function normAufName(s){ return s==="Erwachsene" ? "Erwachsene I" : String(s||""); }
 
 exports.handler = async (event) => {
   // CORS/Preflight zulassen (die App ruft von derselben Domain, aber sicher ist sicher).
@@ -71,12 +73,12 @@ exports.handler = async (event) => {
 
     // Empfänger bestimmen: zuständiger MF dieser Mannschaft + alle aktiven Admins.
     // MF-Zuordnung über den Aufstellungs-Namen (entspricht mannschaftsfuehrerTeam).
-    const ziel = normMann(mannschaftAufstellung);
+    const ziel = normMann(normAufName(mannschaftAufstellung));
     const empfaengerIds = new Set();
     for(const p of players){
       if(p.status === "passiv") continue;
       const istMFderMannschaft = p.roles?.mannschaftsfuehrer === true &&
-        normMann(p.mannschaftsfuehrerTeam) === ziel;
+        normMann(normAufName(p.mannschaftsfuehrerTeam)) === ziel;
       const istAdmin = p.roles?.admin === true;
       if(istMFderMannschaft || istAdmin) empfaengerIds.add(p.id);
     }
