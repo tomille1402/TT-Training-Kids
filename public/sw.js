@@ -1,3 +1,4 @@
+/* === TTC-App · Version 268 · public/sw.js · erstellt 29.07.2026 === */
 /* TTC Niederzeuzheim – Service Worker
    Aufgabe: Push-Nachrichten empfangen und anzeigen.
    Bewusst OHNE Caching: die App setzt auf "no-cache", damit Aktualisierungen
@@ -37,7 +38,15 @@ self.addEventListener("push", (event) => {
     }
   };
 
-  event.waitUntil(self.registration.showNotification(titel, optionen));
+  // Nur anzeigen, wenn die Erlaubnis erteilt ist. Sonst wirft showNotification
+  // einen Fehler (z. B. bei einer Testnachricht, bevor jemand "Erlauben" getippt
+  // hat). Den Fehler fangen wir ab, damit er nicht als unbehandelt erscheint.
+  event.waitUntil(
+    (self.Notification && self.Notification.permission === "granted"
+      ? self.registration.showNotification(titel, optionen)
+      : Promise.resolve()
+    ).catch(function () {})
+  );
 });
 
 // Klick auf die Benachrichtigung: App öffnen bzw. vorhandenes Fenster fokussieren
