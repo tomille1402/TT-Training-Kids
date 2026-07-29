@@ -1,4 +1,4 @@
-// === TTC-App · Version 268 · netlify/functions/calendar.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 272 · netlify/functions/calendar.js · erstellt 29.07.2026 ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -194,14 +194,12 @@ exports.handler = async (event) => {
       headers:{
         "Content-Type":"text/calendar; charset=utf-8",
         "Content-Disposition":'inline; filename="ttc-termine.ics"',
-        // Caching unterbinden: der Feed wird bei jedem Abruf frisch aus Firestore
-        // gebaut, daher darf keine Zwischenschicht (CDN/Client) eine alte Version
-        // ausliefern. Ohne dies lieferte "public, max-age=3600" den Feed bis zu
-        // einer Stunde lang gecacht aus.
-        "Cache-Control":"no-cache, no-store, must-revalidate, max-age=0",
-        "Pragma":"no-cache",
-        "Expires":"0",
-        "Netlify-CDN-Cache-Control":"no-cache, max-age=0",
+        // Kurze Cache-Zeit statt komplettem no-store: Google Kalender ruft abonnierte
+        // Feeds nach eigenem Rhythmus ab (typisch alle paar Stunden) und kommt mit einer
+        // kurzen, positiven Cache-Angabe besser zurecht als mit "no-store" (das manche
+        // Abo-Dienste vom Aktualisieren abhält). 1 Stunde ist frisch genug, da der Feed
+        // ohnehin bei jedem echten Abruf neu aus Firestore gebaut wird.
+        "Cache-Control":"public, max-age=3600",
         "Access-Control-Allow-Origin":"*",
       },
       body:ics,
