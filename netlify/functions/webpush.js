@@ -1,3 +1,4 @@
+// === TTC-App · Version 268 · netlify/functions/webpush.js · erstellt 29.07.2026 ===
 // Web-Push mit Node-Bordmitteln (ohne externe Bibliothek).
 // Umsetzt: VAPID-Authentifizierung (JWT, ES256) und Payload-Verschlüsselung
 // nach RFC 8291 (aes128gcm). Reicht für Chrome/Firefox/Edge/Safari-Web-Push.

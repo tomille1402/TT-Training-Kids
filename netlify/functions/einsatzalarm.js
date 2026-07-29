@@ -1,3 +1,4 @@
+// === TTC-App · Version 268 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
 // Sofort-Benachrichtigung, wenn ein Spieler seinen Einsatz-Status von "verfügbar"
 // (grüner Haken / "ja") auf einen anderen Status ändert. Empfänger: der zuständige
 // Mannschaftsführer der betroffenen Mannschaft sowie alle Admins. Es wird sowohl

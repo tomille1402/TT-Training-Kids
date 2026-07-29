@@ -1,3 +1,4 @@
+// === TTC-App · Version 268 · netlify/functions/pushversand.js · erstellt 29.07.2026 ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und

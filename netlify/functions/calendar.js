@@ -1,3 +1,4 @@
+// === TTC-App · Version 268 · netlify/functions/calendar.js · erstellt 29.07.2026 ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
