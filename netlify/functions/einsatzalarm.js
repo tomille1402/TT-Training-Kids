@@ -1,4 +1,4 @@
-// === TTC-App · Version 268 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 269 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
 // Sofort-Benachrichtigung, wenn ein Spieler seinen Einsatz-Status von "verfügbar"
 // (grüner Haken / "ja") auf einen anderen Status ändert. Empfänger: der zuständige
 // Mannschaftsführer der betroffenen Mannschaft sowie alle Admins. Es wird sowohl
@@ -107,11 +107,31 @@ exports.handler = async (event) => {
     const text  = `${mannschaft}${gegnerTeil}${datumTeil}: Status von „verfügbar“ auf „${STATUS_TEXT[neuerStatus]||neuerStatus}“ geändert.`;
     const sendeId = `einsatzalarm_${datum}_${normName(mannschaft)}_${normName(spielerName)}_${Date.now()}`;
 
-    // Push senden
+    // Push-Dienst am Endpunkt erkennen (für die Diagnose).
+    const dienstVon = (ep)=>{
+      if(/fcm\.googleapis\.com|android\.googleapis\.com/.test(ep)) return "Android/FCM";
+      if(/\.push\.apple\.com/.test(ep)) return "Apple";
+      if(/mozilla|mozaws/.test(ep)) return "Firefox";
+      if(/notify\.windows\.com|wns/.test(ep)) return "Windows";
+      return "andere";
+    };
+    // Namen der Empfänger (für die App-Übersicht).
+    const nameVon = (pid)=>{
+      const p = players.find(x=>x.id===pid);
+      return p ? `${p.firstName||""} ${p.lastName||""}`.trim() : pid;
+    };
+
+    // Push senden – je Empfänger den Zustellstatus festhalten.
     let gesendet=0, fehler=0;
+    const zustellDetails = [];     // technische Diagnose (Dienst + HTTP-Status)
+    const empfaengerStatus = [];   // je Empfänger: hatte Gerät? angekommen?
     for(const pid of ids){
-      const geraete = aboMap[pid];
-      if(!geraete) continue;
+      const geraete = aboMap[pid] || [];
+      if(geraete.length===0){
+        empfaengerStatus.push({ id:pid, name:nameVon(pid), abo:false, zugestellt:false });
+        continue;
+      }
+      let einsErfolg=false;
       for(const g of geraete){
         try{
           const r = await sendePush(
@@ -119,9 +139,11 @@ exports.handler = async (event) => {
             { titel, text, url:"/", tag:sendeId },
             vapid
           );
-          if(r && r.ok) gesendet++; else fehler++;
-        }catch(e){ fehler++; }
+          if(r && r.ok){ gesendet++; einsErfolg=true; }
+          else { fehler++; zustellDetails.push({ name:nameVon(pid), dienst:dienstVon(g.endpoint||""), status:(r&&r.status)||"?" }); }
+        }catch(e){ fehler++; zustellDetails.push({ name:nameVon(pid), dienst:dienstVon(g.endpoint||""), status:"Ausnahme" }); }
       }
+      empfaengerStatus.push({ id:pid, name:nameVon(pid), abo:true, zugestellt:einsErfolg });
     }
 
     // In-App-Nachricht ablegen (auch für Empfänger ohne aktives Abo sichtbar).
@@ -133,7 +155,23 @@ exports.handler = async (event) => {
       });
     }catch(e){ /* Anzeige ist Zusatz */ }
 
-    return { statusCode:200, headers:cors(), body: JSON.stringify({ ok:true, ausgeloest:true, empfaenger:ids.length, gesendet, fehler }) };
+    // Protokoll für die App-Übersicht ablegen: was wurde ausgelöst, wer war Empfänger,
+    // kam es an? So kann der Admin in der App nachvollziehen, ob MF informiert wurden.
+    try{
+      await patchDoc("einsatzalarmLog/"+sendeId, {
+        ts: Date.now(),
+        spielerName, mannschaft, mannschaftAufstellung, gegner, datum,
+        neuerStatus,
+        empfaenger: empfaengerStatus,
+        gesendet, fehler
+      });
+    }catch(e){ /* Protokoll ist Zusatz */ }
+
+    return { statusCode:200, headers:cors(), body: JSON.stringify({
+      ok:true, ausgeloest:true, empfaenger:ids.length, gesendet, fehler,
+      empfaengerStatus,
+      zustellFehler: zustellDetails
+    }, null, 2) };
   }catch(e){
     return { statusCode:500, headers:cors(), body: JSON.stringify({ ok:false, fehler: (e&&e.message)||String(e) }) };
   }
