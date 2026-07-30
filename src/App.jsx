@@ -1,5 +1,5 @@
-// === TTC-App · Version 272 · erstellt 29.07.2026 ===
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+// === TTC-App · Version 273 · erstellt 30.07.2026 ===
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
 import {
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "272";
-const APP_DATUM   = "29.07.2026";
+const APP_VERSION = "273";
+const APP_DATUM   = "30.07.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -423,6 +423,84 @@ function sizesForArtikel(a){
 // Gegenprobe: NACHWUCHS_GRUPPEN + NACHWUCHS_ARTIKEL_IDS unten.
 // ─────────────────────────────────────────────────────────────────────────────
 const NACHWUCHS_GRUPPEN = ["Anfänger","Fortgeschrittene","Gast"];
+
+// ── TTR-Liste (Q-TTR des Hessischen TT-Verbands) ────────────────────────────
+// Parst den aus einer Q-TTR-PDF extrahierten Zeilentext. Erwartetes Zeilenformat:
+//   "<Wert> Nachname, Vorname (JJJJ/m|w) [Spielberechtigung] <Wert> <Wert> ..."
+// Die Stichtage stehen im Kopf als mehrere Daten "TT.MM.JJ". Rückgabe:
+//   { stichtage:[neueste…älteste], personen:[{name,vorname,jahrgang,geschlecht,spielber,werte:{stichtag:wert}}] }
+function parseTtrText(zeilen){
+  const stichtage=[];
+  for(const l of zeilen){
+    const dates=(l.match(/\b(\d{2}\.\d{2}\.\d{2})\b/g))||[];
+    if(dates.length>=3){ stichtage.push(...dates); break; }
+  }
+  const N=stichtage.length;
+  const rowRe=/^(\d+\*?|-)\s+(.+?)\s+\((\d{4})\/([mw])\)\s+(.*)$/;
+  const valRe=/^(\d+\*?|-)$/;
+  const personen=[];
+  for(const raw of zeilen){
+    const m=rowRe.exec(String(raw).trim());
+    if(!m) continue;
+    const [,wertAkt,nameGesamt,jahrgang,geschlecht,rest]=m;
+    const toks=rest.split(/\s+/).filter(Boolean);
+    const hinten=[];
+    while(toks.length && valRe.test(toks[toks.length-1]) && hinten.length < N-1){
+      hinten.unshift(toks.pop());
+    }
+    const spielber=toks.join(" ").replace(/^-$/,"").trim();
+    const werteArr=[wertAkt,...hinten];
+    // Name aufteilen: "Nachname, Vorname"
+    const komma=nameGesamt.indexOf(",");
+    const nachname=(komma>=0?nameGesamt.slice(0,komma):nameGesamt).trim();
+    const vorname=(komma>=0?nameGesamt.slice(komma+1):"").trim();
+    const werte={};
+    stichtage.forEach((st,i)=>{ werte[st]=werteArr[i]!==undefined?werteArr[i]:"-"; });
+    personen.push({ nachname, vorname, jahrgang, geschlecht, spielber, werte });
+  }
+  return { stichtage, personen };
+}
+
+// Führt eine neu eingelesene TTR-Liste mit dem bestehenden Datensatz zusammen.
+// Neue Stichtage werden vorne (neueste zuerst) einsortiert; je Person werden die
+// Werte pro Stichtag ergänzt/aktualisiert. Personen werden per Name+Jahrgang gematcht.
+function mergeTtr(bestehend, neu){
+  const persKey=p=>`${(p.nachname||"").toLowerCase().replace(/\s+/g,"")}|${(p.vorname||"").toLowerCase().replace(/\s+/g,"")}|${p.jahrgang||""}`;
+  // Stichtage vereinen, chronologisch absteigend (neueste zuerst) sortieren.
+  const alleStichtage=[...new Set([...(neu.stichtage||[]), ...((bestehend&&bestehend.stichtage)||[])])];
+  const zuSort=st=>{ const [d,m,y]=st.split("."); return new Date(2000+Number(y),Number(m)-1,Number(d)).getTime(); };
+  alleStichtage.sort((a,b)=>zuSort(b)-zuSort(a));
+  // Personen mergen
+  const map={};
+  for(const p of ((bestehend&&bestehend.personen)||[])) map[persKey(p)]={...p, werte:{...(p.werte||{})}};
+  for(const p of (neu.personen||[])){
+    const k=persKey(p);
+    if(!map[k]) map[k]={ nachname:p.nachname, vorname:p.vorname, jahrgang:p.jahrgang, geschlecht:p.geschlecht, spielber:p.spielber, werte:{} };
+    // Spielberechtigung/Geschlecht aus der neuesten Liste übernehmen
+    if(p.spielber) map[k].spielber=p.spielber;
+    if(p.geschlecht) map[k].geschlecht=p.geschlecht;
+    Object.assign(map[k].werte, p.werte||{});
+  }
+  return { stichtage:alleStichtage, personen:Object.values(map) };
+}
+
+// Numerischen QTTR-Wert aus einem Zellwert lesen ("1681", "1024*", "-", "").
+// Rückgabe: Zahl oder null (nicht vergleichbar/leer).
+function ttrNum(v){
+  if(v===undefined||v===null) return null;
+  const s=String(v).replace("*","").trim();
+  if(!s || s==="-") return null;
+  const n=parseInt(s,10);
+  return Number.isFinite(n)?n:null;
+}
+// Delta zwischen zwei Stichtagen (aktuell − vergleich). Rückgabe: Zahl oder null.
+function ttrDelta(werte, stAktuell, stVergleich){
+  const a=ttrNum(werte&&werte[stAktuell]);
+  const b=ttrNum(werte&&werte[stVergleich]);
+  if(a===null||b===null) return null;
+  return a-b;
+}
+
 // Artikel, die diese Gruppen sehen dürfen: T-Shirt Nimatsu Nachwuchs (12) und
 // alle Druck-Artikel, die an diesem T-Shirt hängen (folgtArtikel enthält 12).
 const NACHWUCHS_ARTIKEL_IDS = [12];
@@ -734,6 +812,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
+    {key:"ttr",          label:"TTR",           icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"termine",      label:"Termine",       icon:"📌"},
     {key:"kalender",     label:"Kalender",      icon:"📅"},
@@ -1146,6 +1225,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       roles={isSuperAdmin?{admin:true}:{trainer:true}}
       viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
+    {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin}/>}
 
     <style>{`
@@ -2502,6 +2582,349 @@ function PushRegelnVerwaltung({showToast}){
       color:dirty?"#fff":"var(--text4)"}}>
       {speichern?"⏳ Speichern…":dirty?"💾 Regeln speichern":"✓ Gespeichert"}
     </button>
+  </div>;
+}
+
+// ── TTR-Reiter: filter-/sortierbare Q-TTR-Tabelle mit fixiertem Kopf ──────────
+// Sichtbar für alle Funktionen. Daten stammen aus config/ttrListe (per Upload in
+// der Verwaltung befüllt). Gruppe (Erwachsene/Nachwuchs) und Status (aktiv/passiv)
+// werden über Name-Matching aus den Verwaltungs-Personen abgeleitet.
+function TtrView({ players }) {
+  const [daten,setDaten]=useState(null);   // {stichtage, personen} | null
+  const [laedt,setLaedt]=useState(true);
+  const [sortKey,setSortKey]=useState("aktuell"); // "name" | "gruppe" | "status" | "dQ" | "dJ" | "aktuell" | stichtag
+  const [sortDir,setSortDir]=useState("desc");
+  const [nameFilter,setNameFilter]=useState("");
+  const [gruppeFilter,setGruppeFilter]=useState([]);   // "Erwachsene" | "Nachwuchs"
+  const [statusFilter,setStatusFilter]=useState(["aktiv"]); // Vorfilter: aktiv
+  const [pdfVorhanden,setPdfVorhanden]=useState(false);
+
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      try{
+        const snap=await getDoc(doc(db,"config","ttrListe"));
+        if(!ab){
+          if(snap.exists()){
+            const d=snap.data();
+            setDaten({ stichtage:d.stichtage||[], personen:d.personen||[] });
+            setPdfVorhanden(!!d.pdfName);
+          } else setDaten({ stichtage:[], personen:[] });
+        }
+      }catch(e){ if(!ab) setDaten({ stichtage:[], personen:[] }); }
+      finally{ if(!ab) setLaedt(false); }
+    })();
+    return ()=>{ ab=true; };
+  },[]);
+
+  // Verwaltungs-Personen nach normalisiertem Namen indizieren (Vor-/Nachname).
+  const persIndex=useMemo(()=>{
+    const idx={};
+    for(const p of players){
+      const key=`${(p.firstName||"").toLowerCase().replace(/\s+/g,"")}|${(p.lastName||"").toLowerCase().replace(/\s+/g,"")}`;
+      idx[key]=p;
+    }
+    return idx;
+  },[players]);
+
+  // Gruppe (Erwachsene/Nachwuchs) und Status aus Verwaltung ableiten.
+  function ableiten(tp){
+    const key=`${(tp.vorname||"").toLowerCase().replace(/\s+/g,"")}|${(tp.nachname||"").toLowerCase().replace(/\s+/g,"")}`;
+    const vp=persIndex[key];
+    if(!vp) return { gruppe:"?", status:"passiv" };  // nicht in Verwaltung → passiv
+    const istErw = vp.group==="Erwachsene" || vp.roles?.erwachsene===true;
+    const gruppe = istErw ? "Erwachsene" : "Nachwuchs";
+    const status = vp.status==="passiv" ? "passiv" : "aktiv";
+    return { gruppe, status };
+  }
+
+  const stichtage = daten?.stichtage || [];
+  const stAktuell = stichtage[0] || null;
+  const stVorquartal = stichtage[1] || null;
+  // Vorjahr = 4 Quartale zurück (gleicher Stichtag ein Jahr früher); Fallback: ältester.
+  const stVorjahr = stichtage[4] || stichtage[stichtage.length-1] || null;
+
+  // Zeilen aufbereiten
+  const rows=useMemo(()=>{
+    if(!daten) return [];
+    return daten.personen.map(tp=>{
+      const {gruppe,status}=ableiten(tp);
+      const dQ=ttrDelta(tp.werte, stAktuell, stVorquartal);
+      const dJ=ttrDelta(tp.werte, stAktuell, stVorjahr);
+      return {
+        name:`${tp.nachname}, ${tp.vorname}`,
+        nachname:tp.nachname, vorname:tp.vorname,
+        gruppe, status, dQ, dJ,
+        werte:tp.werte, aktuell:ttrNum(tp.werte[stAktuell])
+      };
+    });
+  },[daten, players, stAktuell, stVorquartal, stVorjahr]);
+
+  const gefiltert=rows.filter(r=>{
+    if(nameFilter && !r.name.toLowerCase().includes(nameFilter.toLowerCase())) return false;
+    if(gruppeFilter.length>0 && !gruppeFilter.includes(r.gruppe)) return false;
+    if(statusFilter.length>0 && !statusFilter.includes(r.status)) return false;
+    return true;
+  });
+
+  const sorted=[...gefiltert].sort((a,b)=>{
+    let av,bv;
+    if(sortKey==="name"){ av=a.name.toLowerCase(); bv=b.name.toLowerCase(); }
+    else if(sortKey==="gruppe"){ av=a.gruppe; bv=b.gruppe; }
+    else if(sortKey==="status"){ av=a.status; bv=b.status; }
+    else if(sortKey==="dQ"){ av=a.dQ??-99999; bv=b.dQ??-99999; }
+    else if(sortKey==="dJ"){ av=a.dJ??-99999; bv=b.dJ??-99999; }
+    else if(sortKey==="aktuell"){ av=a.aktuell??-99999; bv=b.aktuell??-99999; }
+    else { av=ttrNum(a.werte[sortKey])??-99999; bv=ttrNum(b.werte[sortKey])??-99999; }
+    if(av<bv) return sortDir==="asc"?-1:1;
+    if(av>bv) return sortDir==="asc"?1:-1;
+    return 0;
+  });
+
+  function toggleSort(k){
+    if(sortKey===k) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortKey(k); setSortDir(k==="name"||k==="gruppe"||k==="status"?"asc":"desc"); }
+  }
+  const arrow=k=> sortKey===k ? (sortDir==="asc"?" ▲":" ▼") : "";
+
+  async function openTtrPdf(){
+    try{
+      const snap=await getDoc(doc(db,"config","ttrListe"));
+      const pdfUrl=snap.exists()?snap.data().pdfUrl:null;
+      if(!pdfUrl){ alert("Es ist keine PDF gespeichert."); return; }
+      const b64=pdfUrl.split(",")[1];
+      const bin=atob(b64); const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+      const a=document.createElement("a"); a.href=blobUrl; a.download="TTR_Liste.pdf";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
+    }catch(e){ alert("PDF konnte nicht geöffnet werden."); }
+  }
+
+  const th={padding:"7px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
+  const td={padding:"5px 6px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+
+  const deltaZelle=(v)=>{
+    if(v===null) return <span style={{color:"var(--text4)"}}>–</span>;
+    if(v>0) return <span style={{color:"#10b981",fontWeight:700}}>+{v}</span>;
+    if(v<0) return <span style={{color:"#ef4444",fontWeight:700}}>{v}</span>;
+    return <span style={{color:"var(--text4)",fontWeight:700}}>0</span>;
+  };
+  // Kurzes Anzeige-Label für einen Stichtag (TT.MM.JJ → TT.MM.JJ).
+  const stLabel=st=>st;
+
+  const chip=(active)=>({padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
+    border:active?"1px solid #3b82f6":"1px solid var(--border2)",
+    background:active?"#3b82f6":"transparent",color:active?"#fff":"var(--text2)"});
+  function toggleIn(arr,setArr,val){ setArr(arr.includes(val)?arr.filter(x=>x!==val):[...arr,val]); }
+
+  if(laedt) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Lädt…</div>;
+
+  // Spalte 6 = kommendes Quartal (nächster Stichtag, noch ohne Werte). Wir zeigen
+  // sie nur, wenn ein solcher künftiger Stichtag noch NICHT in den Daten ist.
+  // Anforderung 6: Spalte "11.08.26" ohne Werte, solange nicht verfügbar.
+  const naechsterStichtag=(()=>{
+    if(!stAktuell) return null;
+    const [d,m,y]=stAktuell.split(".").map(Number);
+    // Nächster Q-Stichtag: +3 Monate (11.05→11.08→11.11→11.02…). Zyklus 02/05/08/11.
+    let nm=m+3, ny=2000+y;
+    if(nm>12){ nm-=12; ny+=1; }
+    const pad=n=>String(n).padStart(2,"0");
+    return `${pad(d)}.${pad(nm)}.${String(ny).slice(2)}`;
+  })();
+  const zeigeLeereSpalte = naechsterStichtag && !stichtage.includes(naechsterStichtag);
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:8}}>
+      <div style={{fontSize:17,fontWeight:800}}>📊 Q-TTR-Werte</div>
+      {pdfVorhanden && <button onClick={openTtrPdf} style={{padding:"7px 12px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF öffnen</button>}
+    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
+      Offizielle Q-TTR-Liste des Hessischen TT-Verbands. Spalten anklicken zum Sortieren.
+    </div>
+
+    {(!daten || daten.personen.length===0)
+      ? <div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
+          Noch keine TTR-Liste vorhanden. Ein Admin kann sie in der Verwaltung hochladen.
+        </div>
+      : <>
+        {/* Filter */}
+        <div style={{marginBottom:10}}>
+          <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name filtern…"
+            style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box",marginBottom:8}}/>
+          <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Gruppe</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {["Erwachsene","Nachwuchs"].map(g=><span key={g} onClick={()=>toggleIn(gruppeFilter,setGruppeFilter,g)} style={chip(gruppeFilter.includes(g))}>{g}</span>)}
+          </div>
+          <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Status</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {["aktiv","passiv"].map(s=><span key={s} onClick={()=>toggleIn(statusFilter,setStatusFilter,s)} style={chip(statusFilter.includes(s))}>{s}</span>)}
+          </div>
+        </div>
+
+        <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} von {rows.length} Personen</div>
+
+        {/* Tabelle mit fixiertem Kopf */}
+        <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:720}}>
+            <thead>
+              <tr>
+                <th style={{...th,left:0,zIndex:3}} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
+                <th style={th} onClick={()=>toggleSort("gruppe")}>Erw./NW{arrow("gruppe")}</th>
+                <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+                <th style={th} onClick={()=>toggleSort("dQ")}>Δ Quartal{arrow("dQ")}</th>
+                <th style={th} onClick={()=>toggleSort("dJ")}>Δ Jahr{arrow("dJ")}</th>
+                {zeigeLeereSpalte && <th style={th}>{stLabel(naechsterStichtag)}</th>}
+                {stichtage.map(st=><th key={st} style={th} onClick={()=>toggleSort(st)}>{stLabel(st)}{arrow(st)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r,i)=>(
+                <tr key={i}>
+                  <td style={{...td,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.name}</td>
+                  <td style={td}>{r.gruppe}</td>
+                  <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
+                  <td style={td}>{deltaZelle(r.dQ)}</td>
+                  <td style={td}>{deltaZelle(r.dJ)}</td>
+                  {zeigeLeereSpalte && <td style={{...td,color:"var(--text4)"}}>–</td>}
+                  {stichtage.map(st=><td key={st} style={td}>{r.werte[st]&&r.werte[st]!=="-"?r.werte[st]:<span style={{color:"var(--text4)"}}>–</span>}</td>)}
+                </tr>
+              ))}
+              {sorted.length===0 && <tr><td colSpan={6+stichtage.length} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.5}}>
+          Δ Quartal/Jahr: Veränderung des aktuellsten Werts gegenüber Vorquartal bzw. Vorjahr.
+          <span style={{color:"#10b981"}}> Grün</span> = Verbesserung,
+          <span style={{color:"#ef4444"}}> Rot</span> = Verschlechterung, grau = unverändert.
+          „–“ = kein vergleichbarer Wert. Personen, die nicht in der Verwaltung geführt sind, gelten als „passiv“.
+        </div>
+      </>}
+  </div>;
+}
+
+// ── TTR-Upload (Verwaltung): Q-TTR-PDF hochladen, auslesen, mit Historie mergen ──
+function TtrUpload({ showToast }){
+  const [uploading,setUploading]=useState(false);
+  const [info,setInfo]=useState(null); // {stichtage, anzahl, pdfName, lastUpdated}
+
+  function mesz(ts){
+    if(!ts) return "—";
+    return new Date(ts).toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+  }
+  async function reload(){
+    try{
+      const snap=await getDoc(doc(db,"config","ttrListe"));
+      if(snap.exists()){
+        const d=snap.data();
+        setInfo({ stichtage:d.stichtage||[], anzahl:(d.personen||[]).length, pdfName:d.pdfName||"", lastUpdated:d.lastUpdated||null });
+      } else setInfo(null);
+    }catch(e){ setInfo(null); }
+  }
+  useEffect(()=>{ reload(); },[]);
+
+  async function loadPdfJs(){
+    if(window.pdfjsLib) return window.pdfjsLib;
+    await new Promise((res,rej)=>{
+      const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+      document.head.appendChild(s);
+    });
+    if(window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return window.pdfjsLib;
+  }
+  async function pdfZuZeilen(file){
+    const pdfjs=await loadPdfJs();
+    if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;
+    const zeilen=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const tc=await page.getTextContent();
+      const lines={};
+      for(const it of tc.items){
+        const y=Math.round(it.transform[5]); const x=it.transform[4];
+        (lines[y]=lines[y]||[]).push({x,s:it.str});
+      }
+      const ys=Object.keys(lines).map(Number).sort((a,b)=>b-a);
+      for(const y of ys){ zeilen.push(lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")); }
+    }
+    return zeilen;
+  }
+
+  async function handleUpload(file){
+    if(!file || !file.name.toLowerCase().endsWith(".pdf")){ showToast("Bitte eine PDF-Datei hochladen","❌"); return; }
+    setUploading(true);
+    try{
+      const zeilen=await pdfZuZeilen(file);
+      const neu=parseTtrText(zeilen);
+      if(!neu.stichtage.length || !neu.personen.length){
+        showToast("Keine Q-TTR-Daten erkannt — Format prüfen","❌"); setUploading(false); return;
+      }
+      // Bestehende Daten laden und mergen
+      const snap=await getDoc(doc(db,"config","ttrListe")).catch(()=>null);
+      const bestehend=snap&&snap.exists()?{ stichtage:snap.data().stichtage||[], personen:snap.data().personen||[] }:null;
+      const merged=mergeTtr(bestehend, neu);
+      const neuerStichtag=neu.stichtage[0];
+      const istNeuesQuartal=!bestehend || !(bestehend.stichtage||[]).includes(neuerStichtag);
+
+      const ok=window.confirm(
+        `Erkannt: ${neu.personen.length} Personen, Stichtag ${neuerStichtag}.\n`+
+        (istNeuesQuartal?`Neues Quartal wird vorne hinzugefügt.`:`Vorhandenes Quartal wird aktualisiert.`)+
+        `\n\nJetzt speichern?`
+      );
+      if(!ok){ setUploading(false); return; }
+
+      const ts=Date.now();
+      // PDF als base64 mitspeichern (zur Anzeige im TTR-Reiter)
+      const pdfUrl=await new Promise((res)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=()=>res(null); r.readAsDataURL(file); });
+      await setDoc(doc(db,"config","ttrListe"),{
+        stichtage:merged.stichtage, personen:merged.personen,
+        pdfUrl:pdfUrl||"", pdfName:file.name, lastUpdated:ts
+      });
+      showToast(`TTR-Liste gespeichert: ${merged.personen.length} Personen, ${merged.stichtage.length} Quartale`,"📊");
+      reload();
+    }catch(e){ showToast("Fehler: "+(e.message||e),"❌"); }
+    finally{ setUploading(false); }
+  }
+
+  async function openPdf(){
+    try{
+      const snap=await getDoc(doc(db,"config","ttrListe"));
+      const pdfUrl=snap.exists()?snap.data().pdfUrl:null;
+      if(!pdfUrl){ showToast("Kein PDF gespeichert","❌"); return; }
+      const b64=pdfUrl.split(",")[1];
+      const bin=atob(b64); const bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      const blobUrl=URL.createObjectURL(new Blob([bytes],{type:"application/pdf"}));
+      const a=document.createElement("a"); a.href=blobUrl; a.download="TTR_Liste.pdf";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
+    }catch(e){ showToast("PDF konnte nicht geöffnet werden","❌"); }
+  }
+
+  return <div style={{background:"#8b5cf610",border:"1px solid #8b5cf644",borderRadius:12,padding:14,marginBottom:14}}>
+    <div style={{fontSize:14,fontWeight:800,color:"#7c3aed",marginBottom:8}}>📊 Q-TTR-Liste hochladen</div>
+    <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+      Die offizielle Q-TTR-PDF des HTTV hochladen. Werte werden automatisch ausgelesen. Bei jedem
+      Upload kommt ein neues Quartal hinzu (vorhandene bleiben erhalten). Die Liste erscheint im Reiter „TTR“.
+    </div>
+    <label style={{display:"block",padding:"10px",background:uploading?"var(--bg3)":"linear-gradient(135deg,#8b5cf6,#7c3aed)",
+      borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,textAlign:"center",cursor:uploading?"default":"pointer"}}>
+      {uploading?"Wird verarbeitet…":"📄 Q-TTR-PDF auswählen"}
+      <input type="file" accept="application/pdf,.pdf" disabled={uploading} style={{display:"none"}}
+        onChange={e=>{ const f=e.target.files?.[0]; if(f) handleUpload(f); e.target.value=""; }}/>
+    </label>
+    {info && <div style={{marginTop:12,fontSize:11,color:"var(--text3)",lineHeight:1.7}}>
+      <div><b style={{color:"var(--text2)"}}>{info.anzahl}</b> Personen · <b style={{color:"var(--text2)"}}>{info.stichtage.length}</b> Quartale</div>
+      <div>Stichtage: {info.stichtage.join(" · ")}</div>
+      <div>Datei: {info.pdfName||"—"} · Stand: {mesz(info.lastUpdated)}</div>
+      {info.pdfName && <button onClick={openPdf} style={{marginTop:6,padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 Gespeicherte PDF öffnen</button>}
+    </div>}
   </div>;
 }
 
@@ -5964,6 +6387,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
+    {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
@@ -6291,6 +6715,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
+    {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
@@ -10697,6 +11122,11 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       <AufstellungUpload showToast={showToast}/>
     </div>
 
+    {/* Q-TTR-Liste Upload */}
+    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+      <TtrUpload showToast={showToast}/>
+    </div>
+
     {/* Übungsvideos Upload */}
     <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>🎬 Übungsvideos</div>
@@ -10951,6 +11381,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
+    {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
@@ -11030,6 +11461,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       roles={isMF?{...((forcePlayer&&forcePlayer.roles)||{}),mannschaftsfuehrer:true}:((forcePlayer&&forcePlayer.roles)||{erwachsene:true})}
       viewerCanEditAll={!!isMF}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true}/>}
+    {activeTab==="ttr"&&<TtrView players={players}/>}
   </div>;
 }
 
