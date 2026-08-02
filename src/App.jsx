@@ -1,4 +1,4 @@
-// === TTC-App · Version 275 · erstellt 02.08.2026 ===
+// === TTC-App · Version 276 · erstellt 02.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "275";
+const APP_VERSION = "276";
 const APP_DATUM   = "02.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -802,8 +802,187 @@ function ThemeToggle({isDark,onSetUserTheme}) {
     }}
   >{isDark?"☀️":"🌙"}</button>;
 }
+// ── Eltern-Reiter (nur Admin/Trainer): Übersicht der Eltern-Kontaktdaten je Spieler ──
+// Speist sich aus der Verwaltung. Spalten sortier- und filterbar, Kopfzeile fixiert.
+// Vorgefiltert auf Status "aktiv", sortiert nach Vorname des Spielers.
+function ElternTab({ players }) {
+  const [sortKey,setSortKey]=useState("spieler");
+  const [sortDir,setSortDir]=useState("asc");
+  const [nameFilter,setNameFilter]=useState("");
+  const [statusFilter,setStatusFilter]=useState(["aktiv"]);
+  const [gruppeFilter,setGruppeFilter]=useState([]);
+  const [pushMap,setPushMap]=useState(null);
+
+  // Push-Abos laden (geräteübergreifend), Status je Person ermitteln.
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      try{
+        const snap=await getDocs(collection(db,"pushAbos"));
+        const map={};
+        snap.forEach(d=>{
+          const data=d.data()||{};
+          const geraete=data.geraete||{};
+          const gueltige=Object.values(geraete).filter(g=>g&&g.endpoint&&g.p256dh&&g.auth).length;
+          map[d.id]= (data.aktiv===true && gueltige>0) ? "erteilt" : (data.aktiv===false ? "abgelehnt" : "offen");
+        });
+        if(!ab) setPushMap(map);
+      }catch(e){ if(!ab) setPushMap({}); }
+    })();
+    return ()=>{ ab=true; };
+  },[]);
+  const pushStatus=(id)=> (pushMap && pushMap[id]) ? pushMap[id] : "offen";
+
+  // Mutter-/Vater-Daten anhand der Eltern-Rolle (elternteil1/2) zuordnen — nicht
+  // starr nach Position, da der Nutzer die Rolle je Elternteil festlegen kann.
+  function elternDaten(p){
+    const teile=[
+      { rolle:p.elternteil1||"Mutter", vor:p.elternVorname1||"", nach:p.elternNachname1||"", mail:(p.elternEmail1||"").trim(), handy:p.elternHandy1||"" },
+      { rolle:p.elternteil2||"Vater",  vor:p.elternVorname2||"", nach:p.elternNachname2||"", mail:(p.elternEmail2||"").trim(), handy:p.elternHandy2||"" },
+    ];
+    const mutter=teile.find(t=>t.rolle==="Mutter")||{};
+    const vater =teile.find(t=>t.rolle==="Vater")||{};
+    // Falls beide dieselbe Rolle tragen (unwahrscheinlich): 1=Mutter, 2=Vater.
+    const m = mutter.vor||mutter.nach||mutter.mail||mutter.handy ? mutter : teile[0];
+    const v = vater.vor||vater.nach||vater.mail||vater.handy ? vater : teile[1];
+    const name=(t)=>`${t.vor||""} ${t.nach||""}`.trim();
+    // Falls E-Mail 1 leer ist, stand die Eltern-Adresse früher im Kind-email-Feld (meist Mutter).
+    const istKuenstlich=(e)=>!e||!e.includes("@")||e.toLowerCase().includes("@ttc-intern.de");
+    const mMail = m.mail || (!istKuenstlich(p.email)?p.email:"") || "";
+    return { mutterName:name(m), vaterName:name(v), mutterHandy:m.handy||"", vaterHandy:v.handy||"", mutterMail:mMail, vaterMail:v.mail||"" };
+  }
+
+  const istErw=(p)=> p.group==="Erwachsene" || p.roles?.erwachsene===true;
+
+  const rows=useMemo(()=> players.map(p=>{
+    const e=elternDaten(p);
+    return {
+      id:p.id,
+      status: p.status==="passiv"?"passiv":"aktiv",
+      gruppe: p.group||"—",
+      spieler:`${p.firstName||""} ${p.lastName||""}`.trim(),
+      vorname:p.firstName||"",
+      mutter:e.mutterName, vater:e.vaterName,
+      handyM:e.mutterHandy, handyV:e.vaterHandy,
+      mailM:e.mutterMail, mailV:e.vaterMail,
+      login: p.datenschutzAccepted ? "ja" : "nein",
+      push: pushStatus(p.id),
+    };
+  }),[players, pushMap]);
+
+  const gefiltert=rows.filter(r=>{
+    if(nameFilter){
+      const q=nameFilter.toLowerCase();
+      const hay=`${r.spieler} ${r.mutter} ${r.vater} ${r.mailM} ${r.mailV}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    if(statusFilter.length>0 && !statusFilter.includes(r.status)) return false;
+    if(gruppeFilter.length>0 && !gruppeFilter.includes(r.gruppe)) return false;
+    return true;
+  });
+
+  const sorted=[...gefiltert].sort((a,b)=>{
+    let av=a[sortKey], bv=b[sortKey];
+    if(sortKey==="spieler"){ av=a.vorname.toLowerCase()||a.spieler.toLowerCase(); bv=b.vorname.toLowerCase()||b.spieler.toLowerCase(); }
+    else { av=String(av||"").toLowerCase(); bv=String(bv||"").toLowerCase(); }
+    if(av<bv) return sortDir==="asc"?-1:1;
+    if(av>bv) return sortDir==="asc"?1:-1;
+    return 0;
+  });
+
+  function toggleSort(k){
+    if(sortKey===k) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortKey(k); setSortDir("asc"); }
+  }
+  const arrow=k=> sortKey===k ? (sortDir==="asc"?" ▲":" ▼") : "";
+  function toggleIn(arr,setArr,val){ setArr(arr.includes(val)?arr.filter(x=>x!==val):[...arr,val]); }
+  const chip=(active)=>({padding:"5px 11px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
+    border:active?"1px solid #3b82f6":"1px solid var(--border2)",
+    background:active?"#3b82f6":"transparent",color:active?"#fff":"var(--text2)"});
+
+  const th={padding:"7px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
+  const td={padding:"5px 6px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+
+  const loginZelle=(v)=> v==="ja"
+    ? <span style={{color:"#10b981",fontWeight:700}}>✅</span>
+    : <span style={{color:"#ef4444",fontWeight:700}}>❌</span>;
+  const pushZelle=(v)=> v==="erteilt"
+    ? <span style={{color:"#10b981",fontWeight:700}}>✅</span>
+    : v==="abgelehnt"
+    ? <span style={{color:"#ef4444",fontWeight:700}}>❌</span>
+    : <span style={{color:"#f59e0b",fontWeight:700}}>⏳</span>;
+
+  const gruppen=[...new Set(players.map(p=>p.group).filter(Boolean))];
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>👨‍👩‍👧 Eltern-Übersicht</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
+      Kontaktdaten der Eltern je Spieler. Spalten anklicken zum Sortieren.
+    </div>
+
+    {/* Filter */}
+    <div style={{marginBottom:10}}>
+      <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name / E-Mail filtern…"
+        style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box",marginBottom:8}}/>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Status</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {["aktiv","passiv"].map(s=><span key={s} onClick={()=>toggleIn(statusFilter,setStatusFilter,s)} style={chip(statusFilter.includes(s))}>{s}</span>)}
+      </div>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Gruppe</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {gruppen.map(g=><span key={g} onClick={()=>toggleIn(gruppeFilter,setGruppeFilter,g)} style={chip(gruppeFilter.includes(g))}>{g}</span>)}
+      </div>
+    </div>
+
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} von {rows.length} Personen</div>
+
+    {/* Tabelle mit fixiertem Kopf */}
+    <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
+      <table style={{borderCollapse:"collapse",width:"100%",minWidth:1100}}>
+        <thead>
+          <tr>
+            <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+            <th style={th} onClick={()=>toggleSort("gruppe")}>Gruppe{arrow("gruppe")}</th>
+            <th style={{...th,left:0,zIndex:3}} onClick={()=>toggleSort("spieler")}>Spieler{arrow("spieler")}</th>
+            <th style={th} onClick={()=>toggleSort("mutter")}>Mutter{arrow("mutter")}</th>
+            <th style={th} onClick={()=>toggleSort("vater")}>Vater{arrow("vater")}</th>
+            <th style={th} onClick={()=>toggleSort("handyM")}>Handy Mutter{arrow("handyM")}</th>
+            <th style={th} onClick={()=>toggleSort("handyV")}>Handy Vater{arrow("handyV")}</th>
+            <th style={th} onClick={()=>toggleSort("mailM")}>E-Mail Mutter{arrow("mailM")}</th>
+            <th style={th} onClick={()=>toggleSort("mailV")}>E-Mail Vater{arrow("mailV")}</th>
+            <th style={th} onClick={()=>toggleSort("login")}>Login{arrow("login")}</th>
+            <th style={th} onClick={()=>toggleSort("push")}>Push{arrow("push")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(r=>(
+            <tr key={r.id}>
+              <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
+              <td style={td}>{r.gruppe}</td>
+              <td style={{...td,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.spieler}</td>
+              <td style={td}>{r.mutter||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{r.vater||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{r.handyM||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{r.handyV||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{r.mailM||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{r.mailV||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={{...td,textAlign:"center"}}>{loginZelle(r.login)}</td>
+              <td style={{...td,textAlign:"center"}}>{pushZelle(r.push)}</td>
+            </tr>
+          ))}
+          {sorted.length===0 && <tr><td colSpan={11} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+        </tbody>
+      </table>
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.5}}>
+      Login: ✅ Datenschutz bestätigt · ❌ noch nicht. Push: ✅ aktiviert · ❌ abgelehnt · ⏳ noch offen.
+    </div>
+  </div>;
+}
+
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
+    {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
     {key:"einheiten",    label:"Einheiten",     icon:"📝"},
@@ -1140,6 +1319,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     })()}
 
     {/* ── TRAINING TAB ── */}
+    {activeTab==="eltern"&&<ElternTab players={players}/>}
+
     {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={effectiveGroupFilters} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB (Punkt 7: klickbar) ── */}
