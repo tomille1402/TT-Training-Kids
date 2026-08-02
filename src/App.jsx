@@ -1,4 +1,4 @@
-// === TTC-App · Version 273 · erstellt 30.07.2026 ===
+// === TTC-App · Version 274 · erstellt 02.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "273";
-const APP_DATUM   = "30.07.2026";
+const APP_VERSION = "274";
+const APP_DATUM   = "02.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -5402,6 +5402,13 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       for(const b of sichtbar){
         const pl=players.find(p=>p.id===b.playerId);
         const grp=pl?.group||b.group||"";
+        // Mannschaft(en) aus der Aufstellung ermitteln — gilt für ALLE Spieler,
+        // nicht nur für Mannschaftsführer (deren Feld mannschaftsfuehrerTeam allein
+        // ließ die übrigen Spieler ohne Mannschaft). Mehrere Mannschaften mit Komma.
+        const teams = pl ? teamsOfPlayer(pl, aufSpieler) : [];
+        const mannschaft = teams.length
+          ? teams.join(", ")
+          : (pl?.mannschaftsfuehrerTeam || b.mannschaft || "");
         const it0=b.items||{};
         const art=bestellArtikelForGroup(grp, pl?.gender).filter(a=>anzahlForArtikel(a,it0)>0);
         for(const a of art){
@@ -5412,7 +5419,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             "Vorname": pl?.firstName||"",
             "Person": b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:""),
             "Gruppe": grp,
-            "Mannschaft": pl?.mannschaftsfuehrerTeam||b.mannschaft||"",
+            "Mannschaft": mannschaft,
             "Artikel": a.name,
             "Anzahl": anz,
             "Größe": it.groesse||"",
@@ -5429,6 +5436,37 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       }
       if(rows.length===0){ notify("Keine Bestellungen zum Export","ℹ️"); setExporting(false); return; }
       const ws=XLSX.utils.json_to_sheet(rows);
+
+      // ── Formatierung ──────────────────────────────────────────────────────
+      const header=Object.keys(rows[0]);
+      const range=XLSX.utils.decode_range(ws["!ref"]);
+
+      // Betragsspalten mit 2 Nachkommastellen (0.00) formatieren.
+      const geldSpalten=["Preis Katalog","Preis Spin & Speed","Preis Spin & Speed gesamt","Preis TTC","Preis TTC gesamt"];
+      const geldIdx=geldSpalten.map(n=>header.indexOf(n)).filter(i=>i>=0);
+      for(let r=1;r<=range.e.r;r++){       // ab Zeile 1 (0 = Kopf)
+        for(const c of geldIdx){
+          const addr=XLSX.utils.encode_cell({r,c});
+          const cell=ws[addr];
+          if(cell && cell.t==="n"){ cell.z="0.00"; }
+        }
+      }
+
+      // Oberste Zeile fixieren (Freeze) und Autofilter über die Kopfzeile.
+      ws["!freeze"]={ xSplit:0, ySplit:1, topLeftCell:"A2", activePane:"bottomLeft", state:"frozen" };
+      ws["!autofilter"]={ ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:range.e.r,c:range.e.c}}) };
+
+      // Optimale Spaltenbreite: je Spalte das längste Feld (Kopf oder Wert) messen.
+      ws["!cols"]=header.map(h=>{
+        let max=String(h).length;
+        for(const row of rows){
+          const v=row[h];
+          const len=(v===null||v===undefined)?0:String(v).length;
+          if(len>max) max=len;
+        }
+        return { wch: Math.min(Math.max(max+2, 8), 40) }; // min 8, max 40 Zeichen
+      });
+
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,"Bestellungen");
       const today=new Date(Date.now()+2*3600000).toISOString().slice(0,10);
