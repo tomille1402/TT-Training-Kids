@@ -1,4 +1,4 @@
-// === TTC-App · Version 274 · erstellt 02.08.2026 ===
+// === TTC-App · Version 275 · erstellt 02.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "274";
+const APP_VERSION = "275";
 const APP_DATUM   = "02.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5391,11 +5391,22 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   async function exportExcel(){
     setExporting(true);
     try{
+      // xlsx-js-style: voll kompatibler SheetJS-Fork, der zusätzlich Zell-Styling
+      // (z.B. fette Kopfzeile) in die Datei schreibt — die Standard-Community-Version
+      // ignoriert Styles beim Schreiben. Setzt window.XLSX (API-identisch).
       const XLSX=await new Promise((res,rej)=>{
-        if(window.XLSX){res(window.XLSX);return;}
+        if(window.__xlsxStyleGeladen && window.XLSX){res(window.XLSX);return;}
         const sc=document.createElement("script");
-        sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-        sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+        sc.src="https://cdn.sheetjs.com/xlsx-js-style/xlsx-js-style.min.js";
+        sc.onload=()=>{ window.__xlsxStyleGeladen=true; res(window.XLSX); };
+        sc.onerror=()=>{
+          // Fallback auf Standard-SheetJS (dann ohne Fett, Rest funktioniert)
+          if(window.XLSX){ res(window.XLSX); return; }
+          const sc2=document.createElement("script");
+          sc2.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          sc2.onload=()=>res(window.XLSX); sc2.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+          document.head.appendChild(sc2);
+        };
         document.head.appendChild(sc);
       });
       const rows=[];
@@ -5405,10 +5416,11 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
         // Mannschaft(en) aus der Aufstellung ermitteln — gilt für ALLE Spieler,
         // nicht nur für Mannschaftsführer (deren Feld mannschaftsfuehrerTeam allein
         // ließ die übrigen Spieler ohne Mannschaft). Mehrere Mannschaften mit Komma.
-        const teams = pl ? teamsOfPlayer(pl, aufSpieler) : [];
-        const mannschaft = teams.length
-          ? teams.join(", ")
-          : (pl?.mannschaftsfuehrerTeam || b.mannschaft || "");
+        // Stamm-Mannschaft ermitteln: bei Erwachsenen die tiefste gemeldete, beim
+        // Nachwuchs die Mannschaft OHNE NES-Status (nicht die Ergänzungs-Meldungen).
+        const mannschaft = pl
+          ? (stammMannschaftVorauswahl(pl, aufSpieler) || pl.mannschaftsfuehrerTeam || b.mannschaft || "")
+          : (b.mannschaft || "");
         const it0=b.items||{};
         const art=bestellArtikelForGroup(grp, pl?.gender).filter(a=>anzahlForArtikel(a,it0)>0);
         for(const a of art){
@@ -5455,6 +5467,14 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       // Oberste Zeile fixieren (Freeze) und Autofilter über die Kopfzeile.
       ws["!freeze"]={ xSplit:0, ySplit:1, topLeftCell:"A2", activePane:"bottomLeft", state:"frozen" };
       ws["!autofilter"]={ ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:range.e.r,c:range.e.c}}) };
+
+      // Kopfzeile (Zeile 0) fett. Benötigt xlsx-js-style; bei Standard-SheetJS ohne Wirkung.
+      for(let c=0;c<=range.e.c;c++){
+        const addr=XLSX.utils.encode_cell({r:0,c});
+        if(ws[addr]){
+          ws[addr].s = { font:{ bold:true } };
+        }
+      }
 
       // Optimale Spaltenbreite: je Spalte das längste Feld (Kopf oder Wert) messen.
       ws["!cols"]=header.map(h=>{
@@ -8683,11 +8703,21 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // Nummer = eigene Meldung, da "eigene + höhere" erlaubt sind).
   const eigeneMannschaft = (()=>{
     if(!myPlayer) return null;
+    // Stamm-Mannschaft bevorzugen: bei Erwachsenen die tiefste gemeldete, beim
+    // Nachwuchs die Mannschaft OHNE NES-Status (nicht die Ergänzungs-Meldungen).
+    // Nur Mannschaften berücksichtigen, die auch erlaubt/sichtbar sind.
+    const ohneNES = teamsOfPlayerOhneNES(myPlayer, aufSpieler).filter(t=>allowed.includes(t));
+    const ohneNESErw = ohneNES.filter(istErwachsenenMannschaft);
+    if(ohneNESErw.length>0) return ohneNESErw.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0];
+    const ohneNESNw = ohneNES.filter(istNachwuchsMannschaft);
+    if(ohneNESNw.length>0) return ohneNESNw[0]; // Nachwuchs-Stammmannschaft (ohne NES)
+    if(ohneNES.length>0) return ohneNES[0];
+
+    // Fallback (keine NES-freie Meldung gefunden): wie bisher über alle Meldungen.
     const own = teamsOfPlayer(myPlayer, aufSpieler).filter(t=>allowed.includes(t));
     const ownErw = own.filter(istErwachsenenMannschaft);
     if(ownErw.length>0) return ownErw.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0]; // tiefste gemeldete
     if(own.length>0) return own[0]; // Nachwuchs
-    // Fallback: höchste Erwachsenen-Nummer unter den erlaubten = Stammmannschaft
     const allowedErw = allowed.filter(istErwachsenenMannschaft);
     if(allowedErw.length>0) return allowedErw.sort((a,b)=>ERW_NUM[normAufName(b)]-ERW_NUM[normAufName(a)])[0];
     return allowed[0]||null;
