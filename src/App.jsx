@@ -1,4 +1,4 @@
-// === TTC-App · Version 276 · erstellt 02.08.2026 ===
+// === TTC-App · Version 277 · erstellt 02.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "276";
+const APP_VERSION = "277";
 const APP_DATUM   = "02.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -808,9 +808,8 @@ function ThemeToggle({isDark,onSetUserTheme}) {
 function ElternTab({ players }) {
   const [sortKey,setSortKey]=useState("spieler");
   const [sortDir,setSortDir]=useState("asc");
-  const [nameFilter,setNameFilter]=useState("");
   const [statusFilter,setStatusFilter]=useState(["aktiv"]);
-  const [gruppeFilter,setGruppeFilter]=useState([]);
+  const [gruppeFilter,setGruppeFilter]=useState(["Profis","Fortgeschrittene","Anfänger"]);
   const [pushMap,setPushMap]=useState(null);
 
   // Push-Abos laden (geräteübergreifend), Status je Person ermitteln.
@@ -871,11 +870,6 @@ function ElternTab({ players }) {
   }),[players, pushMap]);
 
   const gefiltert=rows.filter(r=>{
-    if(nameFilter){
-      const q=nameFilter.toLowerCase();
-      const hay=`${r.spieler} ${r.mutter} ${r.vater} ${r.mailM} ${r.mailV}`.toLowerCase();
-      if(!hay.includes(q)) return false;
-    }
     if(statusFilter.length>0 && !statusFilter.includes(r.status)) return false;
     if(gruppeFilter.length>0 && !gruppeFilter.includes(r.gruppe)) return false;
     return true;
@@ -922,8 +916,6 @@ function ElternTab({ players }) {
 
     {/* Filter */}
     <div style={{marginBottom:10}}>
-      <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name / E-Mail filtern…"
-        style={{width:"100%",padding:"8px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box",marginBottom:8}}/>
       <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Status</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
         {["aktiv","passiv"].map(s=><span key={s} onClick={()=>toggleIn(statusFilter,setStatusFilter,s)} style={chip(statusFilter.includes(s))}>{s}</span>)}
