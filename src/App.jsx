@@ -1,4 +1,4 @@
-// === TTC-App · Version 278 · erstellt 03.08.2026 ===
+// === TTC-App · Version 279 · erstellt 03.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "278";
+const APP_VERSION = "279";
 const APP_DATUM   = "03.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -904,6 +904,17 @@ function ElternTab({ players }) {
 
   const th={padding:"7px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
   const td={padding:"5px 6px",fontSize:11,color:"var(--text2)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"};
+  // Spieler-Spalte: ~30% schmaler als zuvor und bei langen Namen zweizeilig statt
+  // in einer Zeile durchlaufend (spart Platz für die übrigen Spalten trotz Fixierung).
+  const tdSpieler={...td, whiteSpace:"normal", width:112, maxWidth:112, minWidth:112, lineHeight:1.25, wordBreak:"break-word"};
+  const thSpieler={...th, whiteSpace:"normal", width:112, maxWidth:112, minWidth:112};
+  // Klickbare Telefonnummer (startet Anruf) bzw. E-Mail (startet Mail-Programm).
+  const telZelle=(nr)=> nr
+    ? <a href={`tel:${String(nr).replace(/[^\d+]/g,"")}`} style={{color:"#3b82f6",textDecoration:"none",fontWeight:600}}>{nr}</a>
+    : <span style={{color:"var(--text4)"}}>—</span>;
+  const mailZelle=(adr)=> adr
+    ? <a href={`mailto:${adr}`} style={{color:"#3b82f6",textDecoration:"none",fontWeight:600,wordBreak:"break-all"}}>{adr}</a>
+    : <span style={{color:"var(--text4)"}}>—</span>;
 
   const loginZelle=(v)=> v==="ja"
     ? <span style={{color:"#10b981",fontWeight:700}}>✅</span>
@@ -941,12 +952,12 @@ function ElternTab({ players }) {
 
     {/* Tabelle mit fixiertem Kopf */}
     <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
-      <table style={{borderCollapse:"collapse",width:"100%",minWidth:1100}}>
+      <table style={{borderCollapse:"collapse",width:"100%",minWidth:920,tableLayout:"auto"}}>
         <thead>
           <tr>
             <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
             <th style={th} onClick={()=>toggleSort("gruppe")}>Gruppe{arrow("gruppe")}</th>
-            <th style={{...th,left:0,zIndex:3}} onClick={()=>toggleSort("spieler")}>Spieler{arrow("spieler")}</th>
+            <th style={{...thSpieler,left:0,zIndex:3}} onClick={()=>toggleSort("spieler")}>Spieler{arrow("spieler")}</th>
             <th style={th} onClick={()=>toggleSort("mutter")}>Mutter{arrow("mutter")}</th>
             <th style={th} onClick={()=>toggleSort("vater")}>Vater{arrow("vater")}</th>
             <th style={th} onClick={()=>toggleSort("handyM")}>Handy Mutter{arrow("handyM")}</th>
@@ -962,13 +973,13 @@ function ElternTab({ players }) {
             <tr key={r.id}>
               <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
               <td style={td}>{r.gruppe}</td>
-              <td style={{...td,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.spieler}</td>
+              <td style={{...tdSpieler,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.spieler}</td>
               <td style={td}>{r.mutter||<span style={{color:"var(--text4)"}}>—</span>}</td>
               <td style={td}>{r.vater||<span style={{color:"var(--text4)"}}>—</span>}</td>
-              <td style={td}>{r.handyM||<span style={{color:"var(--text4)"}}>—</span>}</td>
-              <td style={td}>{r.handyV||<span style={{color:"var(--text4)"}}>—</span>}</td>
-              <td style={td}>{r.mailM||<span style={{color:"var(--text4)"}}>—</span>}</td>
-              <td style={td}>{r.mailV||<span style={{color:"var(--text4)"}}>—</span>}</td>
+              <td style={td}>{telZelle(r.handyM)}</td>
+              <td style={td}>{telZelle(r.handyV)}</td>
+              <td style={td}>{mailZelle(r.mailM)}</td>
+              <td style={td}>{mailZelle(r.mailV)}</td>
               <td style={{...td,textAlign:"center"}}>{loginZelle(r.login)}</td>
               <td style={{...td,textAlign:"center"}}>{pushZelle(r.push)}</td>
             </tr>
@@ -11876,13 +11887,18 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       <>
         {availableViews.map(v=>{
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
+          // Punkt 4: Für Admins die Rollen-Buttons abkürzen, damit auf dem Handy in der
+          // obersten Leiste mehr Platz bleibt. Nur für Admin-Login, sonst volle Labels.
+          const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF"};
+          const label = hasAdminRole ? (KURZ[v]||cfg.label) : cfg.label;
           return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
             padding:"6px 12px",borderRadius:20,border:`2px solid ${isActive?cfg.color:cfg.color+"44"}`,
             background:isActive?cfg.color+"22":"transparent",color:isActive?cfg.color:"var(--text3)",
             fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,
-          }}>{cfg.icon} {cfg.label}</button>;
+          }}>{cfg.icon} {label}</button>;
         })}
         <div style={{flex:1}}/>
+        <span style={{fontSize:10,color:"var(--text4)",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>App: V{APP_VERSION}</span>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
         <button onClick={onSignOut} title="Abmelden" style={{
