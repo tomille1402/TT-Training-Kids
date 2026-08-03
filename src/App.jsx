@@ -1,4 +1,4 @@
-// === TTC-App · Version 279 · erstellt 03.08.2026 ===
+// === TTC-App · Version 280 · erstellt 03.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "279";
+const APP_VERSION = "280";
 const APP_DATUM   = "03.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -11898,13 +11898,16 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           }}>{cfg.icon} {label}</button>;
         })}
         <div style={{flex:1}}/>
-        <span style={{fontSize:10,color:"var(--text4)",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>App: V{APP_VERSION}</span>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
         <button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
         }}>⏻</button>
+        <span style={{
+          flexShrink:0,padding:"5px 10px",borderRadius:8,border:"1px solid var(--border2)",
+          background:"var(--bg3)",color:"var(--text3)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",
+        }}>V{APP_VERSION}</span>
       </>
     } chipsContent={showChips ? (
       <>
