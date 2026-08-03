@@ -1,4 +1,4 @@
-// === TTC-App · Version 277 · erstellt 02.08.2026 ===
+// === TTC-App · Version 278 · erstellt 03.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "277";
-const APP_DATUM   = "02.08.2026";
+const APP_VERSION = "278";
+const APP_DATUM   = "03.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -835,25 +835,33 @@ function ElternTab({ players }) {
   // Mutter-/Vater-Daten anhand der Eltern-Rolle (elternteil1/2) zuordnen — nicht
   // starr nach Position, da der Nutzer die Rolle je Elternteil festlegen kann.
   function elternDaten(p){
-    const teile=[
-      { rolle:p.elternteil1||"Mutter", vor:p.elternVorname1||"", nach:p.elternNachname1||"", mail:(p.elternEmail1||"").trim(), handy:p.elternHandy1||"" },
-      { rolle:p.elternteil2||"Vater",  vor:p.elternVorname2||"", nach:p.elternNachname2||"", mail:(p.elternEmail2||"").trim(), handy:p.elternHandy2||"" },
-    ];
-    const mutter=teile.find(t=>t.rolle==="Mutter")||{};
-    const vater =teile.find(t=>t.rolle==="Vater")||{};
-    // Falls beide dieselbe Rolle tragen (unwahrscheinlich): 1=Mutter, 2=Vater.
-    const m = mutter.vor||mutter.nach||mutter.mail||mutter.handy ? mutter : teile[0];
-    const v = vater.vor||vater.nach||vater.mail||vater.handy ? vater : teile[1];
+    // Beide Elternteile so übernehmen, wie sie in der Verwaltung stehen — ohne
+    // Positions-Annahmen. Nur Elternteile mit tatsächlichem Inhalt zählen. Die Rolle
+    // (Mutter/Vater) stammt ausschließlich aus dem gewählten elternteil-Feld.
+    const roh=[
+      { rolle:p.elternteil1, vor:p.elternVorname1||"", nach:p.elternNachname1||"", mail:(p.elternEmail1||"").trim(), handy:p.elternHandy1||"" },
+      { rolle:p.elternteil2, vor:p.elternVorname2||"", nach:p.elternNachname2||"", mail:(p.elternEmail2||"").trim(), handy:p.elternHandy2||"" },
+    ].filter(t=> t.vor||t.nach||t.mail||t.handy );  // leere Elternteile ignorieren
+
     const name=(t)=>`${t.vor||""} ${t.nach||""}`.trim();
-    // Falls E-Mail 1 leer ist, stand die Eltern-Adresse früher im Kind-email-Feld (meist Mutter).
-    const istKuenstlich=(e)=>!e||!e.includes("@")||e.toLowerCase().includes("@ttc-intern.de");
-    const mMail = m.mail || (!istKuenstlich(p.email)?p.email:"") || "";
-    return { mutterName:name(m), vaterName:name(v), mutterHandy:m.handy||"", vaterHandy:v.handy||"", mutterMail:mMail, vaterMail:v.mail||"" };
+    // Je Rolle sammeln (mehrere Mütter/Väter möglich → mit " / " verbinden).
+    const sammel=(rolle,feld)=> roh.filter(t=>t.rolle===rolle).map(t=> feld==="name"?name(t):(t[feld]||"")).filter(Boolean).join(" / ");
+
+    return {
+      mutterName: sammel("Mutter","name"),
+      vaterName:  sammel("Vater","name"),
+      mutterHandy:sammel("Mutter","handy"),
+      vaterHandy: sammel("Vater","handy"),
+      mutterMail: sammel("Mutter","mail"),
+      vaterMail:  sammel("Vater","mail"),
+    };
   }
 
-  const istErw=(p)=> p.group==="Erwachsene" || p.roles?.erwachsene===true;
+  // Der Eltern-Reiter zeigt ausschließlich die Nachwuchsgruppen; Erwachsene, Gast
+  // und Trainer werden komplett ausgeschlossen (unabhängig von den Filter-Chips).
+  const ERLAUBTE_GRUPPEN=["Profis","Fortgeschrittene","Anfänger"];
 
-  const rows=useMemo(()=> players.map(p=>{
+  const rows=useMemo(()=> players.filter(p=>ERLAUBTE_GRUPPEN.includes(p.group)).map(p=>{
     const e=elternDaten(p);
     return {
       id:p.id,
@@ -906,7 +914,10 @@ function ElternTab({ players }) {
     ? <span style={{color:"#ef4444",fontWeight:700}}>❌</span>
     : <span style={{color:"#f59e0b",fontWeight:700}}>⏳</span>;
 
-  const gruppen=[...new Set(players.map(p=>p.group).filter(Boolean))];
+  // Nur die relevanten Nachwuchsgruppen als Filter-Chips (Erwachsene, Gast und
+  // Trainer werden im Eltern-Reiter nicht benötigt). Reihenfolge fest vorgegeben.
+  const ELTERN_GRUPPEN=["Profis","Fortgeschrittene","Anfänger"];
+  const gruppen=ELTERN_GRUPPEN.filter(g=>players.some(p=>p.group===g));
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>👨‍👩‍👧 Eltern-Übersicht</div>
