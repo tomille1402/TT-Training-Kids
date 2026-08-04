@@ -1,4 +1,4 @@
-// === TTC-App · Version 281 · erstellt 04.08.2026 ===
+// === TTC-App · Version 282 · erstellt 04.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "281";
+const APP_VERSION = "282";
 const APP_DATUM   = "04.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -994,6 +994,569 @@ function ElternTab({ players }) {
   </div>;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TURNIERE — vereinsinterne Turnierverwaltung (Entwurf, Gruppen-Modus)
+// ═══════════════════════════════════════════════════════════════════════════
+// Rechte: Turnier anlegen/ändern/löschen nur Admin. Ergebnisse: Admin/Trainer für
+// alle; Spieler/Erwachsene nur für Spiele, an denen sie selbst beteiligt sind.
+
+const TURNIER_NAMEN = ["Vereinsmeisterschaften","Saisonabschluss-Turnier","Brettchenturnier"];
+const TURNIER_ARTEN = ["Gruppen","einfaches KO-System","doppeltes KO-System","gemischt"];
+const KONKURRENZEN = [
+  "Herren","Herren A","Herren B","Doppel gemischt","Doppel Herren","Doppel Nachwuchs",
+  "Nachwuchs","Mädchen 9","Mädchen 11","Mädchen 13","Mädchen 15",
+  "Jungen 9","Jungen 11","Jungen 13","Jungen 15",
+];
+const VORGABE_ARTEN = ["QTTR","Mannschaft"];
+
+// Welche Personen kommen für eine Konkurrenz in Frage? Grobfilter nach Erwachsene/
+// Nachwuchs und Geschlecht; die genaue Auswahl trifft der Organisator manuell.
+function konkurrenzPasst(konkurrenz, p){
+  const istErw = p.group==="Erwachsene" || p.roles?.erwachsene===true;
+  const g = (p.gender||"").toLowerCase(); // "m"/"w"/"männlich"/"weiblich"
+  const istW = g.startsWith("w");
+  const istM = g.startsWith("m");
+  if(konkurrenz.startsWith("Herren")) return istErw && !istW;
+  if(konkurrenz==="Doppel gemischt") return istErw;
+  if(konkurrenz==="Doppel Herren") return istErw && !istW;
+  if(konkurrenz==="Doppel Nachwuchs" || konkurrenz==="Nachwuchs") return !istErw;
+  if(konkurrenz.startsWith("Mädchen")) return !istErw && istW;
+  if(konkurrenz.startsWith("Jungen"))  return !istErw && istM;
+  return true;
+}
+
+// QTTR-Wert einer Person aus der TTR-Liste (neuester Stichtag). Matching per Name.
+function qttrVonPerson(p, ttrPersonen, ttrStichtag){
+  if(!ttrStichtag) return null;
+  const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
+  const vn=norm(p.firstName), nn=norm(p.lastName);
+  const t=(ttrPersonen||[]).find(x=>norm(x.vorname)===vn && norm(x.nachname)===nn);
+  if(!t) return null;
+  return ttrNum(t.werte?.[ttrStichtag]);
+}
+
+// Vorgabe-Punkte pro Satz aus QTTR-Differenz: je <diff> Punkte Unterschied 1 Punkt
+// Vorgabe, gedeckelt auf <maxV>. Bekommt der Spieler mit dem HÖHEREN QTTR (gibt vor).
+function vorgabePunkte(qttrA, qttrB, diffProPunkt, maxV){
+  if(qttrA==null || qttrB==null || !diffProPunkt) return 0;
+  const d=Math.abs(qttrA-qttrB);
+  let pts=Math.floor(d/diffProPunkt);
+  if(maxV && pts>maxV) pts=maxV;
+  return pts;
+}
+
+// Satz-/Spielverhältnis und Platzierung je Gruppe aus den erfassten Spielen berechnen.
+function berechneGruppenTabelle(teilnehmerIds, spiele){
+  // spiele: [{a,b,saetze:[[pa,pb],...]}] — a,b = personIds
+  const stat={};
+  for(const id of teilnehmerIds) stat[id]={id,spSieg:0,spNied:0,satzGew:0,satzVerl:0,punkte:0};
+  for(const sp of spiele){
+    if(!sp || !sp.a || !sp.b) continue;
+    const saetze=(sp.saetze||[]).filter(s=>Array.isArray(s) && (s[0]!==""||s[1]!=="") && (s[0]!=null&&s[1]!=null));
+    if(saetze.length===0) continue;
+    if(!stat[sp.a] || !stat[sp.b]) continue;
+    let aSatz=0,bSatz=0;
+    for(const [pa,pb] of saetze){
+      const na=Number(pa), nb=Number(pb);
+      if(Number.isNaN(na)||Number.isNaN(nb)) continue;
+      if(na>nb) aSatz++; else if(nb>na) bSatz++;
+    }
+    stat[sp.a].satzGew+=aSatz; stat[sp.a].satzVerl+=bSatz;
+    stat[sp.b].satzGew+=bSatz; stat[sp.b].satzVerl+=aSatz;
+    if(aSatz>bSatz){ stat[sp.a].spSieg++; stat[sp.b].spNied++; stat[sp.a].punkte+=2; }
+    else if(bSatz>aSatz){ stat[sp.b].spSieg++; stat[sp.a].spNied++; stat[sp.b].punkte+=2; }
+    else { stat[sp.a].punkte++; stat[sp.b].punkte++; } // Unentschieden (falls möglich)
+  }
+  const rows=Object.values(stat);
+  // Platzierung: Punkte, dann Satzdifferenz, dann Spieldifferenz
+  rows.sort((x,y)=> y.punkte-x.punkte
+    || (y.satzGew-y.satzVerl)-(x.satzGew-x.satzVerl)
+    || (y.spSieg-y.spNied)-(x.spSieg-x.spNied));
+  rows.forEach((r,i)=>{ r.platz=i+1; });
+  return rows;
+}
+
+// Alle Begegnungen (jeder gegen jeden) innerhalb einer Gruppe erzeugen.
+function paarungenFuerGruppe(ids){
+  const paare=[];
+  for(let i=0;i<ids.length;i++)
+    for(let j=i+1;j<ids.length;j++)
+      paare.push({a:ids[i],b:ids[j]});
+  return paare;
+}
+
+// ─── Haupt-Komponente ───────────────────────────────────────────────────────
+function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }){
+  const [turniere,setTurniere]=useState([]);
+  const [laedt,setLaedt]=useState(true);
+  const [selId,setSelId]=useState(null);       // geöffnetes Turnier
+  const [formOffen,setFormOffen]=useState(false);
+  const [editTurnier,setEditTurnier]=useState(null); // Turnier im Formular (neu/bearbeiten)
+  const [ttr,setTtr]=useState({stichtage:[],personen:[]});
+
+  const darfAnlegen = isAdmin;
+  const darfAlleErgebnisse = isAdmin || isTrainer;
+
+  // Turniere + TTR laden
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      try{
+        const snap=await getDocs(collection(db,"turniere"));
+        const list=[]; snap.forEach(d=>list.push({id:d.id,...(d.data()||{})}));
+        list.sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
+        if(!ab) setTurniere(list);
+      }catch(e){ if(!ab) setTurniere([]); }
+      try{
+        const t=await getDoc(doc(db,"config","ttrListe"));
+        if(!ab && t.exists()){ const d=t.data(); setTtr({stichtage:d.stichtage||[],personen:d.personen||[]}); }
+      }catch(e){}
+      if(!ab) setLaedt(false);
+    })();
+    return ()=>{ ab=true; };
+  },[]);
+
+  const ttrStichtag = ttr.stichtage[0]||null;
+  const qttrVon = (p)=> qttrVonPerson(p, ttr.personen, ttrStichtag);
+
+  async function speichern(t){
+    const id=t.id||`turnier_${Date.now()}`;
+    const daten={...t, id, aktualisiert:Date.now()};
+    if(!daten.erstellt) daten.erstellt=Date.now();
+    try{
+      await setDoc(doc(db,"turniere",id), daten);
+      setTurniere(prev=>{ const rest=prev.filter(x=>x.id!==id); return [daten,...rest].sort((a,b)=>(b.datum||"").localeCompare(a.datum||"")); });
+      setFormOffen(false); setEditTurnier(null); setSelId(id);
+    }catch(e){ alert("Speichern fehlgeschlagen: "+(e.message||e)); }
+  }
+  async function loeschen(id){
+    if(!window.confirm("Dieses Turnier wirklich löschen?")) return;
+    try{ await deleteDoc(doc(db,"turniere",id)); setTurniere(prev=>prev.filter(x=>x.id!==id)); if(selId===id) setSelId(null); }
+    catch(e){ alert("Löschen fehlgeschlagen: "+(e.message||e)); }
+  }
+  function duplizieren(t){
+    const kopie={...JSON.parse(JSON.stringify(t)), id:null, name:t.name+" (Kopie)", erstellt:null, aktualisiert:null};
+    setEditTurnier(kopie); setFormOffen(true);
+  }
+
+  if(laedt) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Lädt…</div>;
+
+  const selTurnier = turniere.find(t=>t.id===selId)||null;
+
+  // Detailansicht eines Turniers
+  if(selTurnier){
+    return <TurnierDetail
+      turnier={selTurnier} players={players} qttrVon={qttrVon} ttrStichtag={ttrStichtag}
+      isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer}
+      onBack={()=>setSelId(null)}
+      onEdit={darfAnlegen?()=>{setEditTurnier(selTurnier);setFormOffen(true);}:null}
+      onSpeichern={speichern}
+    />;
+  }
+
+  // Formular (Anlegen/Bearbeiten)
+  if(formOffen){
+    return <TurnierForm
+      start={editTurnier} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
+      onSpeichern={speichern}
+    />;
+  }
+
+  // Übersicht
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{fontSize:17,fontWeight:800}}>🏆 Turniere</div>
+      {darfAnlegen && <button onClick={()=>{setEditTurnier(null);setFormOffen(true);}}
+        style={{padding:"8px 13px",background:"linear-gradient(135deg,#8b5cf6,#7c3aed)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+        + Neues Turnier
+      </button>}
+    </div>
+    {!darfAnlegen && <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
+      Turniere werden von der Vereinsleitung angelegt. Du kannst Ergebnisse deiner eigenen Spiele eintragen.
+    </div>}
+    {turniere.length===0
+      ? <div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
+          Noch keine Turniere angelegt.{darfAnlegen?" Lege mit „+ Neues Turnier“ das erste an.":""}
+        </div>
+      : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {turniere.map(t=>(
+            <div key={t.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer",flex:1}}>
+                  <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{t.name}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
+                    {t.datum?deDatumT(t.datum):"ohne Datum"} · {t.art} · {(t.konkurrenzen||[]).length} Konkurrenz(en)
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>setSelId(t.id)} style={miniBtn("#3b82f6")}>öffnen</button>
+                  {darfAnlegen && <button onClick={()=>duplizieren(t)} style={miniBtn("#8b5cf6")}>duplizieren</button>}
+                  {darfAnlegen && <button onClick={()=>loeschen(t.id)} style={miniBtn("#ef4444")}>löschen</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>}
+  </div>;
+}
+
+function deDatumT(iso){ return iso?String(iso).split("-").reverse().join("."):""; }
+function miniBtn(color){ return {padding:"5px 9px",background:color+"18",border:`1px solid ${color}55`,borderRadius:7,color,fontSize:11,fontWeight:700,cursor:"pointer"}; }
+
+// ─── Turnier-Formular (Anlegen/Bearbeiten) ──────────────────────────────────
+function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
+  const leer={
+    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0],
+    konkurrenzen:[], // [{key, name, anzahlGruppen, vorgabe, vorgabeArt, diffQTTR, maxVorgabe, teilnehmer:[], gruppen:[], spiele:[]}]
+  };
+  const [t,setT]=useState(start? {...leer, ...start, konkurrenzen:start.konkurrenzen||[]} : leer);
+  const set=(k,v)=>setT(prev=>({...prev,[k]:v}));
+
+  // Konkurrenz-Editor: die Konkurrenzen dieses Turniers verwalten
+  const [neueKonk,setNeueKonk]=useState(KONKURRENZEN[0]);
+  function addKonkurrenz(){
+    const key=`k_${Date.now()}`;
+    setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
+      key, name:neueKonk, anzahlGruppen:2, vorgabe:"nein", vorgabeArt:"QTTR",
+      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
+    }]}));
+  }
+  function updKonk(key,patch){ setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===key?{...k,...patch}:k)})); }
+  function delKonk(key){ setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.filter(k=>k.key!==key)})); }
+
+  function kannSpeichern(){ return t.name && t.datum && t.konkurrenzen.length>0; }
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{fontSize:17,fontWeight:800}}>{start&&start.id?"Turnier bearbeiten":"Neues Turnier"}</div>
+      <button onClick={onAbbrechenAll} style={miniBtn("#64748b")}>✕ abbrechen</button>
+    </div>
+
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <Feld label="Name Turnier">
+        <select value={t.name} onChange={e=>set("name",e.target.value)} style={selT2}>
+          {TURNIER_NAMEN.map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+      </Feld>
+      <Feld label="Datum Turnier">
+        <input type="date" value={t.datum} onChange={e=>set("datum",e.target.value)} style={selT2}/>
+      </Feld>
+      <Feld label="Art Turnier">
+        <select value={t.art} onChange={e=>set("art",e.target.value)} style={selT2}>
+          {TURNIER_ARTEN.map(a=><option key={a} value={a}>{a}</option>)}
+        </select>
+      </Feld>
+
+      {/* Konkurrenzen */}
+      <div style={{borderTop:"1px solid var(--border)",paddingTop:12}}>
+        <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>Konkurrenzen</div>
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          <select value={neueKonk} onChange={e=>setNeueKonk(e.target.value)} style={{...selT2,flex:1}}>
+            {KONKURRENZEN.map(k=><option key={k} value={k}>{k}</option>)}
+          </select>
+          <button onClick={addKonkurrenz} style={{padding:"8px 12px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>+ hinzufügen</button>
+        </div>
+
+        {t.konkurrenzen.length===0
+          ? <div style={{fontSize:11,color:"var(--text4)",padding:"8px 0"}}>Noch keine Konkurrenz hinzugefügt.</div>
+          : <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {t.konkurrenzen.map(k=>(
+                <div key={k.key} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{k.name}</div>
+                    <button onClick={()=>delKonk(k.key)} style={miniBtn("#ef4444")}>entfernen</button>
+                  </div>
+
+                  {/* Gruppen-Anzahl nur bei Art "Gruppen" oder "gemischt" */}
+                  {(t.art==="Gruppen"||t.art==="gemischt") &&
+                    <Feld label="Anzahl Gruppen" klein>
+                      <input type="number" min={1} max={16} value={k.anzahlGruppen}
+                        onChange={e=>updKonk(k.key,{anzahlGruppen:Math.max(1,Number(e.target.value)||1)})} style={{...selT2,width:90}}/>
+                    </Feld>}
+
+                  <Feld label="Vorgabe" klein>
+                    <select value={k.vorgabe} onChange={e=>updKonk(k.key,{vorgabe:e.target.value})} style={{...selT2,width:120}}>
+                      <option value="nein">nein</option><option value="ja">ja</option>
+                    </select>
+                  </Feld>
+
+                  {k.vorgabe==="ja" && <>
+                    <Feld label="Art Vorgabe" klein>
+                      <select value={k.vorgabeArt} onChange={e=>updKonk(k.key,{vorgabeArt:e.target.value})} style={{...selT2,width:140}}>
+                        {VORGABE_ARTEN.map(a=><option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </Feld>
+                    {k.vorgabeArt==="QTTR" && <>
+                      <Feld label="Differenz QTTR (je Punkt Vorgabe)" klein>
+                        <input type="number" min={1} value={k.diffQTTR} onChange={e=>updKonk(k.key,{diffQTTR:Number(e.target.value)||0})} style={{...selT2,width:90}}/>
+                      </Feld>
+                      <Feld label="Max. Vorgabe pro Satz" klein>
+                        <input type="number" min={0} value={k.maxVorgabe} onChange={e=>updKonk(k.key,{maxVorgabe:Number(e.target.value)||0})} style={{...selT2,width:90}}/>
+                      </Feld>
+                    </>}
+                  </>}
+                </div>
+              ))}
+            </div>}
+      </div>
+
+      <button disabled={!kannSpeichern()} onClick={()=>onSpeichern(t)}
+        style={{padding:"11px",background:kannSpeichern()?"linear-gradient(135deg,#10b981,#059669)":"var(--bg3)",
+          border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:kannSpeichern()?"pointer":"default",marginTop:6}}>
+        💾 Turnier speichern
+      </button>
+      {!kannSpeichern() && <div style={{fontSize:10,color:"var(--text4)",textAlign:"center"}}>Name, Datum und mindestens eine Konkurrenz nötig.</div>}
+    </div>
+  </div>;
+}
+
+function Feld({label,children,klein}){
+  return <div style={{marginBottom:klein?8:0}}>
+    <div style={{fontSize:klein?10:11,fontWeight:700,color:"var(--text3)",marginBottom:4}}>{label}</div>
+    {children}
+  </div>;
+}
+const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"};
+
+// ─── Turnier-Detail: Teilnehmer, Gruppen (Drag&Drop), Tabelle, Spiele ───────
+function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrainer, myPlayer, onBack, onEdit, onSpeichern }){
+  const [t,setT]=useState(turnier);
+  const [aktiveKonk,setAktiveKonk]=useState((turnier.konkurrenzen||[])[0]?.key||null);
+  const [dirty,setDirty]=useState(false);
+  const darfAlle = isAdmin || isTrainer;
+
+  const konk=(t.konkurrenzen||[]).find(k=>k.key===aktiveKonk)||null;
+
+  function updKonk(patch){
+    setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===aktiveKonk?{...k,...patch}:k)}));
+    setDirty(true);
+  }
+  async function speichern(){ await onSpeichern(t); setDirty(false); }
+
+  // Kandidaten (aktive Spieler/Erwachsene, passend zur Konkurrenz)
+  const kandidaten = konk ? players.filter(p=>{
+    if(p.status==="passiv") return false;
+    return konkurrenzPasst(konk.name, p);
+  }) : [];
+  const nameVon = (id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id; };
+  const spielerVon = (id)=> players.find(x=>x.id===id);
+
+  function toggleTeilnehmer(id){
+    if(!isAdmin) return; // Teilnehmer festlegen nur Admin
+    const drin=(konk.teilnehmer||[]).includes(id);
+    const teilnehmer = drin ? konk.teilnehmer.filter(x=>x!==id) : [...(konk.teilnehmer||[]), id];
+    // aus Gruppen entfernen, falls ausgeschlossen
+    let gruppen=konk.gruppen||[];
+    if(drin) gruppen=gruppen.map(g=>g.filter(x=>x!==id));
+    updKonk({teilnehmer, gruppen});
+  }
+
+  // Gruppen initialisieren (leere Gruppen gemäß anzahlGruppen)
+  function initGruppen(){
+    const n=Math.max(1, Number(konk.anzahlGruppen)||1);
+    const gruppen=Array.from({length:n},()=>[]);
+    updKonk({gruppen});
+  }
+  // Drag & Drop
+  const [dragId,setDragId]=useState(null);
+  function dropAufGruppe(gi){
+    if(!isAdmin || dragId==null) return;
+    let gruppen=(konk.gruppen||[]).map(g=>g.filter(x=>x!==dragId));
+    gruppen[gi]=[...gruppen[gi], dragId];
+    // passende Paarungen (Spiele) für alle Gruppen neu ableiten, bestehende Ergebnisse behalten
+    const spiele=erzeugeSpiele(gruppen, konk.spiele||[]);
+    updKonk({gruppen, spiele});
+    setDragId(null);
+  }
+  function ausGruppen(id){
+    if(!isAdmin) return;
+    const gruppen=(konk.gruppen||[]).map(g=>g.filter(x=>x!==id));
+    updKonk({gruppen, spiele:erzeugeSpiele(gruppen, konk.spiele||[])});
+  }
+
+  // Spiele je Gruppe erzeugen; bestehende Ergebnisse (per a|b-Schlüssel) übernehmen
+  function erzeugeSpiele(gruppen, alteSpiele){
+    const alt={}; for(const s of alteSpiele){ alt[[s.a,s.b].sort().join("|")]=s.saetze; }
+    const neu=[];
+    gruppen.forEach((ids,gi)=>{
+      for(const paar of paarungenFuerGruppe(ids)){
+        const key=[paar.a,paar.b].sort().join("|");
+        neu.push({gi, a:paar.a, b:paar.b, saetze:alt[key]||[["",""],["",""],["",""]]});
+      }
+    });
+    return neu;
+  }
+
+  // Nicht zugeteilte Teilnehmer (im Pool)
+  const zugeteilt=new Set((konk?.gruppen||[]).flat());
+  const pool=(konk?.teilnehmer||[]).filter(id=>!zugeteilt.has(id));
+
+  // Ergebnis-Eingabe erlaubt?
+  function darfSpielEingeben(sp){
+    if(darfAlle) return true;
+    if(!myPlayer) return false;
+    return sp.a===myPlayer.id || sp.b===myPlayer.id;
+  }
+  function setSatz(spIndex, satzIndex, seite, wert){
+    const spiele=konk.spiele.map((s,i)=>{
+      if(i!==spIndex) return s;
+      const saetze=s.saetze.map(x=>[...x]);
+      saetze[satzIndex][seite]=wert.replace(/[^\d]/g,"");
+      return {...s, saetze};
+    });
+    updKonk({spiele});
+  }
+
+  const hatVorgabe = konk && konk.vorgabe==="ja" && konk.vorgabeArt==="QTTR";
+  function vorgabeFuer(sp){
+    if(!hatVorgabe) return null;
+    const pa=spielerVon(sp.a), pb=spielerVon(sp.b);
+    const qa=qttrVon(pa), qb=qttrVon(pb);
+    const pts=vorgabePunkte(qa,qb,konk.diffQTTR,konk.maxVorgabe);
+    if(pts<=0 || qa==null || qb==null) return null;
+    const gibtVor = qa>qb ? sp.a : sp.b; // höherer QTTR gibt vor
+    return {pts, gibtVor};
+  }
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
+      <button onClick={onBack} style={miniBtn("#64748b")}>← zurück</button>
+      <div style={{display:"flex",gap:6}}>
+        {dirty && <button onClick={speichern} style={{padding:"6px 12px",background:"#10b981",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 speichern</button>}
+        {onEdit && <button onClick={onEdit} style={miniBtn("#8b5cf6")}>⚙️ Parameter</button>}
+      </div>
+    </div>
+    <div style={{fontSize:17,fontWeight:800}}>{t.name}</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>{deDatumT(t.datum)} · {t.art}</div>
+
+    {/* Konkurrenz-Auswahl */}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {(t.konkurrenzen||[]).map(k=>(
+        <span key={k.key} onClick={()=>setAktiveKonk(k.key)} style={{
+          padding:"6px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",
+          border:k.key===aktiveKonk?"1px solid #8b5cf6":"1px solid var(--border2)",
+          background:k.key===aktiveKonk?"#8b5cf6":"transparent",color:k.key===aktiveKonk?"#fff":"var(--text2)",
+        }}>{k.name}</span>
+      ))}
+    </div>
+
+    {!konk ? <div style={{color:"var(--text3)",fontSize:13}}>Keine Konkurrenz vorhanden.</div> : <>
+      {/* Teilnehmerauswahl (nur Admin) */}
+      {isAdmin && <details style={{marginBottom:14}}>
+        <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#8b5cf6"}}>
+          Teilnehmer auswählen ({(konk.teilnehmer||[]).length})
+        </summary>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+          {kandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden aktiven Personen gefunden.</div>}
+          {kandidaten.map(p=>{
+            const drin=(konk.teilnehmer||[]).includes(p.id);
+            const q=qttrVon(p);
+            return <span key={p.id} onClick={()=>toggleTeilnehmer(p.id)} style={{
+              padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+              border:drin?"1px solid #10b981":"1px solid var(--border2)",
+              background:drin?"#10b98122":"var(--bg2)",color:drin?"#10b981":"var(--text2)",
+            }}>{p.firstName} {p.lastName}{q!=null?` (${q})`:""}</span>;
+          })}
+        </div>
+      </details>}
+
+      {/* Gruppen-Modus */}
+      {(t.art==="Gruppen"||t.art==="gemischt") ? <>
+        {(!konk.gruppen || konk.gruppen.length===0)
+          ? <button onClick={initGruppen} disabled={!isAdmin} style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default",marginBottom:12}}>
+              {konk.anzahlGruppen} Gruppen anlegen
+            </button>
+          : <>
+            {/* Pool nicht zugeteilter Teilnehmer */}
+            {isAdmin && pool.length>0 && <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Noch nicht zugeteilt (ziehen →):</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {pool.map(id=>{
+                  const p=spielerVon(id), q=qttrVon(p);
+                  return <span key={id} draggable onDragStart={()=>setDragId(id)} style={{
+                    padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"grab",
+                    background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",
+                  }}>{nameVon(id)}{q!=null?` · ${q}`:""}</span>;
+                })}
+              </div>
+            </div>}
+
+            {/* Gruppen mit Tabelle + Spielen */}
+            {konk.gruppen.map((ids,gi)=>{
+              const tab=berechneGruppenTabelle(ids, (konk.spiele||[]).filter(s=>s.gi===gi));
+              const platzVon={}; tab.forEach(r=>platzVon[r.id]=r);
+              const gruppenSpiele=(konk.spiele||[]).map((s,idx)=>({...s,_idx:idx})).filter(s=>s.gi===gi);
+              return <div key={gi} onDragOver={e=>{if(isAdmin)e.preventDefault();}} onDrop={()=>dropAufGruppe(gi)}
+                style={{background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:12,padding:12,marginBottom:14}}>
+                <div style={{fontSize:14,fontWeight:800,marginBottom:8}}>Gruppe {gi+1}</div>
+
+                {/* Tabelle */}
+                <div style={{overflowX:"auto",marginBottom:10}}>
+                  <table style={{borderCollapse:"collapse",width:"100%",minWidth:420,fontSize:11}}>
+                    <thead><tr>
+                      {["Name","QTTR","Sätze","Spiele","Platz"].map(h=>
+                        <th key={h} style={{textAlign:h==="Name"?"left":"center",padding:"5px 6px",borderBottom:"2px solid var(--border2)",color:"var(--text)",fontWeight:800,whiteSpace:"nowrap"}}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {ids.length===0 && <tr><td colSpan={5} style={{padding:10,textAlign:"center",color:"var(--text4)"}}>leer — Person hierher ziehen</td></tr>}
+                      {ids.map(id=>{
+                        const p=spielerVon(id), q=qttrVon(p), r=platzVon[id]||{};
+                        return <tr key={id}>
+                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",color:"var(--text)",fontWeight:600,whiteSpace:"nowrap"}}>
+                            {isAdmin && <span onClick={()=>ausGruppen(id)} title="entfernen" style={{cursor:"pointer",color:"#ef4444",marginRight:5}}>✕</span>}
+                            {nameVon(id)}
+                          </td>
+                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{q!=null?q:"–"}</td>
+                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.satzGew||0}:{r.satzVerl||0}</td>
+                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.spSieg||0}:{r.spNied||0}</td>
+                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",fontWeight:800,color:"var(--text)"}}>{r.platz||"–"}</td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Spiele */}
+                {gruppenSpiele.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>Spiele</div>
+                  {gruppenSpiele.map(sp=>{
+                    const vg=vorgabeFuer(sp);
+                    const darf=darfSpielEingeben(sp);
+                    return <div key={sp._idx} style={{background:"var(--bg)",borderRadius:9,padding:"8px 10px",border:"1px solid var(--border)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
+                        <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
+                          {nameVon(sp.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(sp.b)}
+                        </div>
+                      </div>
+                      {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
+                        Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
+                      </div>}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {sp.saetze.map((satz,si)=>(
+                          <div key={si} style={{display:"flex",alignItems:"center",gap:2,background:"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
+                            <input value={satz[0]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,0,e.target.value)}
+                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
+                            <span style={{color:"var(--text4)",fontSize:11}}>:</span>
+                            <input value={satz[1]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,1,e.target.value)}
+                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
+                          </div>
+                        ))}
+                      </div>
+                      {!darf && <div style={{fontSize:9,color:"var(--text4)",marginTop:4}}>Nur Beteiligte oder Admin/Trainer können hier eintragen.</div>}
+                    </div>;
+                  })}
+                </div>}
+              </div>;
+            })}
+          </>}
+      </> : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
+        Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus ist bereits nutzbar.
+      </div>}
+    </>}
+  </div>;
+}
+
+
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
     {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
@@ -1004,6 +1567,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
+    {key:"turniere",     label:"Turniere",      icon:"🏆"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"ttr",          label:"TTR",           icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
@@ -1411,6 +1975,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} selectedPlayer={curPlayer} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
+    {activeTab==="turniere"&&<TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport/>}
@@ -6639,6 +7204,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
@@ -6967,6 +7533,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
@@ -11668,6 +12235,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
+    {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
@@ -11714,6 +12282,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:44}}/>
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
     {activeTab==="beobachtungen"&&myPlayer&&
       <BeobachtungenAdminTab players={[myPlayer]} selectedPlayer={myPlayer} user={user} showToast={showToast}/>}
