@@ -1,4 +1,4 @@
-// === TTC-App · Version 282 · erstellt 04.08.2026 ===
+// === TTC-App · Version 283 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "282";
-const APP_DATUM   = "04.08.2026";
+const APP_VERSION = "283";
+const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1357,16 +1357,22 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const gruppen=Array.from({length:n},()=>[]);
     updKonk({gruppen});
   }
-  // Drag & Drop
-  const [dragId,setDragId]=useState(null);
-  function dropAufGruppe(gi){
-    if(!isAdmin || dragId==null) return;
-    let gruppen=(konk.gruppen||[]).map(g=>g.filter(x=>x!==dragId));
-    gruppen[gi]=[...gruppen[gi], dragId];
-    // passende Paarungen (Spiele) für alle Gruppen neu ableiten, bestehende Ergebnisse behalten
+  // Zuteilung: primär „antippen & Ziel wählen“ (funktioniert auf Touch/Handy),
+  // zusätzlich klassisches Drag&Drop für die Maus am Desktop.
+  const [dragId,setDragId]=useState(null);      // aktive Person (getippt oder gezogen)
+  function inGruppe(gi, id){
+    if(!isAdmin || id==null) return;
+    let gruppen=(konk.gruppen||[]).map(g=>g.filter(x=>x!==id));
+    gruppen[gi]=[...gruppen[gi], id];
     const spiele=erzeugeSpiele(gruppen, konk.spiele||[]);
     updKonk({gruppen, spiele});
     setDragId(null);
+  }
+  function dropAufGruppe(gi){ inGruppe(gi, dragId); }
+  // Tipp auf eine Person im Pool: aus-/abwählen
+  function tippePerson(id){
+    if(!isAdmin) return;
+    setDragId(prev=> prev===id ? null : id);
   }
   function ausGruppen(id){
     if(!isAdmin) return;
@@ -1469,13 +1475,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           : <>
             {/* Pool nicht zugeteilter Teilnehmer */}
             {isAdmin && pool.length>0 && <div style={{marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Noch nicht zugeteilt (ziehen →):</div>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>
+                {dragId!=null ? "Jetzt eine Gruppe unten antippen →" : "Person antippen, dann Gruppe wählen (oder mit der Maus ziehen):"}
+              </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {pool.map(id=>{
                   const p=spielerVon(id), q=qttrVon(p);
-                  return <span key={id} draggable onDragStart={()=>setDragId(id)} style={{
-                    padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"grab",
-                    background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",
+                  const aktiv=dragId===id;
+                  return <span key={id} draggable onDragStart={()=>setDragId(id)} onClick={()=>tippePerson(id)} style={{
+                    padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+                    background:aktiv?"#8b5cf6":"var(--bg3)",border:aktiv?"1px solid #8b5cf6":"1px solid var(--border2)",
+                    color:aktiv?"#fff":"var(--text2)",boxShadow:aktiv?"0 0 0 2px #8b5cf655":"none",
                   }}>{nameVon(id)}{q!=null?` · ${q}`:""}</span>;
                 })}
               </div>
@@ -1486,9 +1496,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               const tab=berechneGruppenTabelle(ids, (konk.spiele||[]).filter(s=>s.gi===gi));
               const platzVon={}; tab.forEach(r=>platzVon[r.id]=r);
               const gruppenSpiele=(konk.spiele||[]).map((s,idx)=>({...s,_idx:idx})).filter(s=>s.gi===gi);
-              return <div key={gi} onDragOver={e=>{if(isAdmin)e.preventDefault();}} onDrop={()=>dropAufGruppe(gi)}
-                style={{background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:12,padding:12,marginBottom:14}}>
-                <div style={{fontSize:14,fontWeight:800,marginBottom:8}}>Gruppe {gi+1}</div>
+              return <div key={gi}
+                onDragOver={e=>{if(isAdmin)e.preventDefault();}} onDrop={()=>dropAufGruppe(gi)}
+                onClick={()=>{ if(isAdmin && dragId!=null) inGruppe(gi, dragId); }}
+                style={{background:"var(--bg2)",
+                  border: (isAdmin&&dragId!=null)?"2px solid #8b5cf6":"1px dashed var(--border2)",
+                  borderRadius:12,padding:12,marginBottom:14,
+                  cursor:(isAdmin&&dragId!=null)?"pointer":"default"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:14,fontWeight:800}}>Gruppe {gi+1}</div>
+                  {isAdmin && dragId!=null && <span style={{fontSize:10,color:"#8b5cf6",fontWeight:700}}>hier einfügen ▾</span>}
+                </div>
 
                 {/* Tabelle */}
                 <div style={{overflowX:"auto",marginBottom:10}}>
@@ -1498,12 +1516,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                         <th key={h} style={{textAlign:h==="Name"?"left":"center",padding:"5px 6px",borderBottom:"2px solid var(--border2)",color:"var(--text)",fontWeight:800,whiteSpace:"nowrap"}}>{h}</th>)}
                     </tr></thead>
                     <tbody>
-                      {ids.length===0 && <tr><td colSpan={5} style={{padding:10,textAlign:"center",color:"var(--text4)"}}>leer — Person hierher ziehen</td></tr>}
+                      {ids.length===0 && <tr><td colSpan={5} style={{padding:10,textAlign:"center",color:"var(--text4)"}}>leer — Person antippen, dann hierher</td></tr>}
                       {ids.map(id=>{
                         const p=spielerVon(id), q=qttrVon(p), r=platzVon[id]||{};
                         return <tr key={id}>
                           <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",color:"var(--text)",fontWeight:600,whiteSpace:"nowrap"}}>
-                            {isAdmin && <span onClick={()=>ausGruppen(id)} title="entfernen" style={{cursor:"pointer",color:"#ef4444",marginRight:5}}>✕</span>}
+                            {isAdmin && <span onClick={(e)=>{e.stopPropagation();ausGruppen(id);}} title="entfernen" style={{cursor:"pointer",color:"#ef4444",marginRight:5}}>✕</span>}
                             {nameVon(id)}
                           </td>
                           <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{q!=null?q:"–"}</td>
@@ -1517,7 +1535,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                 </div>
 
                 {/* Spiele */}
-                {gruppenSpiele.length>0 && <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {gruppenSpiele.length>0 && <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>Spiele</div>
                   {gruppenSpiele.map(sp=>{
                     const vg=vorgabeFuer(sp);
