@@ -1,4 +1,4 @@
-// === TTC-App · Version 280 · erstellt 03.08.2026 ===
+// === TTC-App · Version 281 · erstellt 04.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "280";
-const APP_DATUM   = "03.08.2026";
+const APP_VERSION = "281";
+const APP_DATUM   = "04.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -10150,11 +10150,11 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     return `${origin}${KALENDER_FEED_BASE}?${params.toString()}`;
   })();
   const webcalUrl=aboUrl.replace(/^https?:/,"webcal:");
-  // Android/Samsung kennt "webcal:" nicht — dort führt der zuverlässige Weg über
-  // Google Kalender, der einen Kalender per Web-Adresse abonnieren kann.
-  // WICHTIG: Für das Abonnieren eines EXTERNEN ICS-Feeds ist "addbyurl" der offizielle
-  // Weg. Das früher genutzte "/r?cid=" ist für öffentliche Google-Kalender gedacht und
-  // funktioniert mit beliebigen ICS-Feeds oft NICHT (Kalender bleibt leer).
+  // Android: Die Google-Kalender-APP kann externe ICS-Feeds NICHT per URL abonnieren
+  // (sie bietet nur E-Mail-Freigaben). Der webcal-Link wird daher von der App ICSx⁵
+  // geöffnet, die genau dafür gemacht ist. Der Google-Browser-Weg (addbyurl) bleibt als
+  // zweite Möglichkeit — er funktioniert aber nur in der Desktop-Weboberfläche, nicht in
+  // der Handy-App. Deshalb werden dem Nutzer bewusst beide Wege angeboten.
   const googleAboUrl = `https://calendar.google.com/calendar/u/0/r/settings/addbyurl?url=${encodeURIComponent(aboUrl)}`;
   const istAndroid = typeof navigator!=="undefined" && /Android/i.test(navigator.userAgent||"");
 
@@ -10287,18 +10287,43 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
       </div>
       {istAndroid
         ? <>
-            {/* Android/Samsung: über Google Kalender abonnieren */}
-            <a href={googleAboUrl} target="_blank" rel="noopener noreferrer"
-              style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
-                color:"#fff",borderRadius:9,fontSize:13,fontWeight:700,textDecoration:"none",marginBottom:8}}>
-              + Mit Google Kalender abonnieren
-            </a>
-            <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginBottom:8}}>
-              Der Link öffnet Google Kalender und trägt die Abo-Adresse direkt ein — dort nur
-              noch bestätigen. Danach erscheinen die Termine automatisch auch in der Kalender-App
-              des Handys. Wichtig: dabei in deinem Google-Konto angemeldet sein. Google aktualisiert
-              abonnierte Kalender allerdings nur alle paar Stunden — die Termine können also erst
-              mit etwas Verzögerung (teils erst am nächsten Tag) erscheinen.
+            {/* Android: Die Google-Kalender-APP kann per URL KEINE Kalender abonnieren
+                (nur E-Mail-Freigaben). Zuverlässig sind zwei Wege: die App ICSx⁵, die
+                webcal-Links direkt abonniert, oder der Browser auf calendar.google.com. */}
+            <div style={{background:"#3b82f610",border:"1px solid #3b82f633",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+              <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:6}}>Weg 1: mit der App „ICSx⁵“ (empfohlen)</div>
+              <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,marginBottom:8}}>
+                Die Google-Kalender-App selbst kann Web-Kalender leider nicht per Link abonnieren
+                (sie fragt nur nach einer E-Mail-Adresse). Die kostenlose App „ICSx⁵“ übernimmt das
+                zuverlässig und zeigt die Termine anschließend in deinem gewohnten Kalender an.
+              </div>
+              <a href="https://play.google.com/store/apps/details?id=at.bitfire.icsdroid" target="_blank" rel="noopener noreferrer"
+                style={{display:"block",textAlign:"center",padding:"9px",background:"var(--bg3)",border:"1px solid var(--border2)",
+                  color:"var(--text2)",borderRadius:8,fontSize:12,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+                1. ICSx⁵ im Play Store öffnen
+              </a>
+              <a href={webcalUrl}
+                style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
+                  color:"#fff",borderRadius:8,fontSize:13,fontWeight:700,textDecoration:"none"}}>
+                2. Kalender in ICSx⁵ abonnieren
+              </a>
+              <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginTop:6}}>
+                Zuerst ICSx⁵ installieren, dann auf „2.“ tippen — der Kalender wird direkt übernommen.
+                In ICSx⁵ lässt sich sogar einstellen, wie oft aktualisiert wird.
+              </div>
+            </div>
+
+            <div style={{background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+              <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:6}}>Weg 2: über den Browser (ohne Zusatz-App)</div>
+              <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,marginBottom:8}}>
+                Nur am Rechner (oder im Browser mit „Desktop-Ansicht“): auf calendar.google.com anmelden,
+                links neben „Weitere Kalender“ auf „+“ → „Per URL“, dann den kopierten Link einfügen.
+              </div>
+              <a href={googleAboUrl} target="_blank" rel="noopener noreferrer"
+                style={{display:"block",textAlign:"center",padding:"9px",background:"var(--bg2)",border:"1px solid var(--border2)",
+                  color:"var(--text2)",borderRadius:8,fontSize:12,fontWeight:700,textDecoration:"none"}}>
+                Google Kalender (Browser) öffnen
+              </a>
             </div>
           </>
         : <a href={webcalUrl} style={{display:"block",textAlign:"center",padding:"10px",background:"linear-gradient(135deg,#3b82f6,#2563eb)",
@@ -10311,7 +10336,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
       </button>
       <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.6,marginTop:8}}>
         {istAndroid
-          ? "Klappt der Knopf nicht, kopiere den Link und füge ihn in Google Kalender unter „Weitere Kalender → Per URL“ ein (am Rechner unter calendar.google.com)."
+          ? "Der kopierte Link (beginnt mit https) lässt sich in ICSx⁵ oder am Rechner unter calendar.google.com → „Weitere Kalender → Per URL“ einfügen. Google aktualisiert Abos nur alle paar Stunden — ICSx⁵ kann häufiger aktualisieren."
           : "Alternativ den Link kopieren und im Kalenderprogramm unter „Kalender abonnieren“ einfügen."}
       </div>
     </div>
