@@ -1,4 +1,4 @@
-// === TTC-App · Version 285 · erstellt 05.08.2026 ===
+// === TTC-App · Version 287 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "285";
+const APP_VERSION = "287";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1125,7 +1125,7 @@ function turnierFuerFirestore(t){
     ...k,
     gruppen:(k.gruppen||[]).map(ids=>({ids:Array.isArray(ids)?ids:[]})),          // [[..]] → [{ids:[..]}]
     spiele:(k.spiele||[]).map(s=>({
-      gi:s.gi, a:s.a, b:s.b,
+      gi:s.gi, runde:s.runde||0, a:s.a, b:s.b, fixiert:!!s.fixiert,
       saetze:(s.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})), // [[a,b]] → [{a,b}]
     })),
   }));
@@ -1136,7 +1136,7 @@ function turnierVonFirestore(t){
     ...k,
     gruppen:(k.gruppen||[]).map(g=> Array.isArray(g)?g:(g&&g.ids)||[]),            // [{ids:[..]}] → [[..]]
     spiele:(k.spiele||[]).map(s=>({
-      gi:s.gi, a:s.a, b:s.b,
+      gi:s.gi, runde:s.runde||0, a:s.a, b:s.b, fixiert:!!s.fixiert,
       saetze:(s.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),      // [{a,b}] → [[a,b]]
     })),
   }));
@@ -1349,10 +1349,16 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                     </Feld>
                     {k.vorgabeArt==="QTTR" && <>
                       <Feld label="Differenz QTTR (je Punkt Vorgabe)" klein>
-                        <input type="number" min={1} value={k.diffQTTR} onChange={e=>updKonk(k.key,{diffQTTR:Number(e.target.value)||0})} style={{...selT2,width:90}}/>
+                        <input type="number" min={1} value={k.diffQTTR}
+                          onChange={e=>updKonk(k.key,{diffQTTR: e.target.value===""?"":Number(e.target.value)})}
+                          onBlur={e=>{ const n=Number(e.target.value); updKonk(k.key,{diffQTTR: n>=1?n:1}); }}
+                          style={{...selT2,width:90}}/>
                       </Feld>
                       <Feld label="Max. Vorgabe pro Satz" klein>
-                        <input type="number" min={0} value={k.maxVorgabe} onChange={e=>updKonk(k.key,{maxVorgabe:Number(e.target.value)||0})} style={{...selT2,width:90}}/>
+                        <input type="number" min={0} value={k.maxVorgabe}
+                          onChange={e=>updKonk(k.key,{maxVorgabe: e.target.value===""?"":Number(e.target.value)})}
+                          onBlur={e=>{ const n=Number(e.target.value); updKonk(k.key,{maxVorgabe: n>=0?n:0}); }}
+                          style={{...selT2,width:90}}/>
                       </Feld>
                     </>}
                   </>}
@@ -1474,6 +1480,25 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       saetze[satzIndex][seite]=wert.replace(/[^\d]/g,"");
       return {...s, saetze};
     });
+    updKonk({spiele});
+  }
+  // Fixierung auf SPIEL-Ebene: ein abgeschlossenes Spiel kann fixiert werden, damit
+  // die Ergebnisse nicht versehentlich geändert werden. Marker: Feld `fixiert` am Spiel.
+  function satzKomplett(satz){ return satz && satz[0]!=="" && satz[1]!=="" && satz[0]!=null && satz[1]!=null; }
+  // Ein Spiel ist "abgeschlossen", sobald ein Spieler 3 Sätze gewonnen hat (Best of 5).
+  function spielAbgeschlossen(sp){
+    let a=0,b=0;
+    for(const s of (sp.saetze||[])){
+      if(!satzKomplett(s)) continue;
+      const na=Number(s[0]), nb=Number(s[1]);
+      if(Number.isNaN(na)||Number.isNaN(nb)) continue;
+      if(na>nb) a++; else if(nb>na) b++;
+    }
+    return a>=3 || b>=3;
+  }
+  function spielFixiert(sp){ return !!(sp && sp.fixiert); }
+  function toggleFixSpiel(spIndex, fix){
+    const spiele=konk.spiele.map((s,i)=> i===spIndex ? {...s, fixiert: fix?true:false} : s);
     updKonk({spiele});
   }
 
@@ -1632,9 +1657,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                     // Runden-Überschrift vor dem ersten Spiel einer neuen Runde
                     const vorherige=gruppenSpiele[spListIdx-1];
                     const neueRunde = sp.runde && (!vorherige || vorherige.runde!==sp.runde);
+                    const fixiert=spielFixiert(sp);
+                    const abgeschlossen=spielAbgeschlossen(sp);
                     return <React.Fragment key={sp._idx}>
                       {neueRunde && <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:spListIdx>0?4:0}}>Runde {sp.runde}</div>}
-                      <div style={{background:"var(--bg)",borderRadius:9,padding:"8px 10px",border:"1px solid var(--border)"}}>
+                      <div style={{background:fixiert?"#10b98112":"var(--bg)",borderRadius:9,padding:"8px 10px",
+                        border:fixiert?"1px solid #10b98155":"1px solid var(--border)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
                           {nameVon(sp.a)} <span style={{color:"var(--text4)",fontWeight:400}}>({qa!=null?qa:"–"})</span>
@@ -1642,21 +1670,30 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                           {nameVon(sp.b)} <span style={{color:"var(--text4)",fontWeight:400}}>({qb!=null?qb:"–"})</span>
                           {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
+                        {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
                       </div>
                       {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
                         Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
                       </div>}
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                         {Array.from({length:anzahlSichtbareSaetze(sp.saetze)}).map((_,si)=>{
                           const satz=sp.saetze[si]||["",""];
-                          return <div key={si} style={{display:"flex",alignItems:"center",gap:2,background:"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
-                            <input value={satz[0]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,0,e.target.value)}
-                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
+                          return <div key={si} style={{display:"flex",alignItems:"center",gap:3,
+                            background:fixiert?"#10b98118":"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
+                            <input value={satz[0]} disabled={!darf||fixiert} onChange={e=>setSatz(sp._idx,si,0,e.target.value)}
+                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                             <span style={{color:"var(--text4)",fontSize:11}}>:</span>
-                            <input value={satz[1]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,1,e.target.value)}
-                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
+                            <input value={satz[1]} disabled={!darf||fixiert} onChange={e=>setSatz(sp._idx,si,1,e.target.value)}
+                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                           </div>;
                         })}
+                        {/* Speichern-/Ändern-Button pro SPIEL */}
+                        {darf && !fixiert && abgeschlossen &&
+                          <button onClick={()=>toggleFixSpiel(sp._idx,true)}
+                            style={{border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>✓ Ergebnis speichern</button>}
+                        {darf && fixiert &&
+                          <button onClick={()=>toggleFixSpiel(sp._idx,false)}
+                            style={{border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>✎ ändern</button>}
                       </div>
                       {!darf && <div style={{fontSize:9,color:"var(--text4)",marginTop:4}}>Nur Beteiligte oder Admin/Trainer können hier eintragen.</div>}
                       </div>
