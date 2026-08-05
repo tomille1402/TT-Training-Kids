@@ -1,4 +1,4 @@
-// === TTC-App · Version 293 · erstellt 05.08.2026 ===
+// === TTC-App · Version 294 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "293";
+const APP_VERSION = "294";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1221,21 +1221,25 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
 
   const selTurnier = turniere.find(t=>t.id===selId)||null;
 
-  // Detailansicht eines Turniers
-  if(selTurnier){
-    return <TurnierDetail
-      turnier={selTurnier} players={players} qttrVon={qttrVon} ttrStichtag={ttrStichtag}
-      isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer}
-      onBack={()=>setSelId(null)}
-      onEdit={darfAnlegen?()=>{setEditTurnier(selTurnier);setFormOffen(true);}:null}
+  // Formular (Anlegen/Bearbeiten) hat Vorrang: Klick auf „Parameter“ öffnet es sofort,
+  // auch wenn gerade die Detailansicht eines Turniers offen ist.
+  if(formOffen){
+    return <TurnierForm
+      start={editTurnier} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
       onSpeichern={speichern}
     />;
   }
 
-  // Formular (Anlegen/Bearbeiten)
-  if(formOffen){
-    return <TurnierForm
-      start={editTurnier} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
+  // Detailansicht eines Turniers. Der key enthält den Aktualisierungs-Zeitstempel,
+  // damit die Ansicht nach einer Parameter-Änderung (z.B. Gruppenzahl) mit den neuen
+  // Werten frisch aufgebaut wird statt den alten internen Stand weiterzuzeigen.
+  if(selTurnier){
+    return <TurnierDetail
+      key={selTurnier.id+"_"+(selTurnier.aktualisiert||0)}
+      turnier={selTurnier} players={players} qttrVon={qttrVon} ttrStichtag={ttrStichtag}
+      isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer}
+      onBack={()=>setSelId(null)}
+      onEdit={darfAnlegen?()=>{setEditTurnier(selTurnier);setFormOffen(true);}:null}
       onSpeichern={speichern}
     />;
   }
@@ -1478,6 +1482,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const gruppen=Array.from({length:n},()=>[]);
     updKonk({gruppen});
   }
+  // Anzahl der Gruppen nachträglich an den Parameter anpassen, ohne bereits zugeteilte
+  // Spieler zu verlieren: bei mehr Gruppen kommen leere hinzu, bei weniger werden die
+  // überzähligen entfernt (ihre Spieler landen wieder im Pool der Nicht-Zugeteilten).
+  function gruppenAnzahlAnpassen(){
+    const soll=Math.max(1, Number(konk.anzahlGruppen)||1);
+    let gruppen=(konk.gruppen||[]).map(g=>[...g]);
+    if(soll>gruppen.length){
+      while(gruppen.length<soll) gruppen.push([]);
+    } else if(soll<gruppen.length){
+      gruppen=gruppen.slice(0,soll); // überzählige Gruppen weg; deren Spieler → Pool
+    }
+    updKonk({ gruppen, spiele:erzeugeSpiele(gruppen, konk.spiele||[]) });
+  }
   // Zuteilung: primär „antippen & Ziel wählen“ (funktioniert auf Touch/Handy),
   // zusätzlich klassisches Drag&Drop für die Maus am Desktop.
   const [dragId,setDragId]=useState(null);      // aktive Person (getippt oder gezogen)
@@ -1615,6 +1632,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               {konk.anzahlGruppen} Gruppen anlegen
             </button>
           : <>
+            {/* Hinweis, wenn die eingestellte Gruppenzahl von der tatsächlichen abweicht */}
+            {isAdmin && Number(konk.anzahlGruppen)!==konk.gruppen.length && <div style={{marginBottom:12,padding:"8px 10px",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
+              Eingestellt sind {konk.anzahlGruppen} Gruppen, aktuell gibt es {konk.gruppen.length}.
+              <button onClick={gruppenAnzahlAnpassen} style={{marginLeft:8,padding:"4px 10px",background:"#f59e0b",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                auf {konk.anzahlGruppen} anpassen
+              </button>
+            </div>}
             {/* Pool nicht zugeteilter Teilnehmer */}
             {isAdmin && pool.length>0 && <div style={{marginBottom:12}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>
@@ -1822,50 +1846,71 @@ function ko_sieger(saetze){
 }
 
 // Baut alle Runden aus Erstrunden-Slots und den gespeicherten Spielen auf.
-// spieleMap: key "r-i" -> {saetze, fixiert}. Gibt Runden-Array zurück, jede Runde
-// ist Array von {a,b, key, saetze, fixiert, aWinnerAuto, bWinnerAuto}.
+// spieleMap: key "r-i" -> {saetze, fixiert}. Gibt Runden-Array zurück.
+// Freilos-Regel: Ein fehlender Gegner rückt einen Spieler nur dann automatisch weiter,
+// wenn im gegnerischen Teilbaum ÜBERHAUPT KEIN Spieler steht (echtes Freilos). Steht
+// dort noch ein unentschiedenes Spiel, bleibt das Feld leer („Gegner steht noch nicht
+// fest"). So zieht sich ein Erstrunden-Freilos nicht fälschlich bis ins Finale.
 function ko_baueRunden(slots, spieleMap){
   const runden=[];
   const rundenAnzahl=Math.log2(slots.length);
-  // Runde 0 direkt aus Slots
-  let vorPaare=[];
-  for(let i=0;i<slots.length;i+=2){
-    vorPaare.push({a:slots[i], b:slots[i+1]});
+
+  // belegt[r][i] = enthält der Teilbaum, der zu Position i in Runde r gehört,
+  // mindestens einen echten Spieler? Runde 0 = Slots direkt; höhere Runden per OR.
+  const belegt=[];
+  belegt.push(slots.map(s=>!!s));
+  while(belegt[belegt.length-1].length>1){
+    const prev=belegt[belegt.length-1], next=[];
+    for(let i=0;i<prev.length;i+=2) next.push(prev[i]||prev[i+1]);
+    belegt.push(next);
   }
+
+  let vorPaare=[];
+  for(let i=0;i<slots.length;i+=2) vorPaare.push({a:slots[i], b:slots[i+1]});
+
   for(let r=0;r<rundenAnzahl;r++){
     const spiele=[];
     for(let i=0;i<vorPaare.length;i++){
       const key=`${r}-${i}`;
       const gesp=spieleMap[key]||{};
       const saetze=gesp.saetze||[["",""],["",""],["",""]];
-      const fixiert=!!gesp.fixiert;
-      spiele.push({...vorPaare[i], key, saetze, fixiert});
+      spiele.push({...vorPaare[i], key, saetze, fixiert:!!gesp.fixiert});
     }
     runden.push(spiele);
-    // nächste Runde: Gewinner ermitteln (Freilos automatisch)
+    if(spiele.length===1) break; // Finale erreicht — keine weitere Runde
+
+    // Gewinner jeder Position bestimmen (mit Freilos-Prüfung über Teilbaum-Belegung)
+    for(let i=0;i<spiele.length;i++){
+      const sp=spiele[i];
+      const seiteA = belegt[r] ? belegt[r][2*i]   : !!sp.a;
+      const seiteB = belegt[r] ? belegt[r][2*i+1] : !!sp.b;
+      sp._gewinner = ko_gewinnerVon(sp, seiteA, seiteB);
+    }
+    // je zwei benachbarte Spiele speisen ein Spiel der nächsten Runde
     const next=[];
     for(let i=0;i<spiele.length;i+=2){
-      const w1=ko_gewinnerVon(spiele[i]);
-      const w2=ko_gewinnerVon(spiele[i+1]);
-      next.push({a:w1, b:w2});
+      next.push({a:spiele[i]._gewinner, b:spiele[i+1]?._gewinner ?? null});
     }
     vorPaare=next;
-    if(spiele.length===1) break; // Finale erreicht
   }
   return runden;
 }
 
-// Gewinner eines Spiels: Freilos (Gegner null) rückt automatisch auf; sonst nach Sätzen.
-function ko_gewinnerVon(spiel){
+// Gewinner eines Spiels. seiteABelegt/seiteBBelegt sagen, ob der jeweilige Teilbaum
+// überhaupt einen Spieler enthält. Fehlt ein Spieler und ist sein Teilbaum LEER, ist
+// es ein echtes Freilos → der andere rückt auf. Ist der Teilbaum dagegen belegt (der
+// Gegner steht nur noch nicht fest), rückt niemand automatisch auf.
+function ko_gewinnerVon(spiel, seiteABelegt=true, seiteBBelegt=true){
   if(!spiel) return null;
   const {a,b,saetze}=spiel;
-  if(a && !b) return a;   // Freilos
-  if(b && !a) return b;
+  if(a && b){
+    const s=ko_sieger(saetze);
+    return s==="a"?a : s==="b"?b : null;
+  }
   if(!a && !b) return null;
-  const s=ko_sieger(saetze);
-  if(s==="a") return a;
-  if(s==="b") return b;
-  return null; // noch nicht entschieden
+  if(a && !b) return seiteBBelegt ? null : a;  // b fehlt: nur Freilos, wenn B-Baum leer
+  if(b && !a) return seiteABelegt ? null : b;  // a fehlt: nur Freilos, wenn A-Baum leer
+  return null;
 }
 
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
@@ -1886,9 +1931,31 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   const slots = konk.koSlots && konk.koSlots.length ? konk.koSlots : null;
   const spieleMap = konk.koSpiele || {};
 
+  // Teilnehmer, die noch nicht im Tableau stehen (z.B. nachträglich hinzugefügt).
+  const imTableau = new Set((slots||[]).filter(Boolean));
+  const fehlende = teilnehmerSortiert.filter(id=>!imTableau.has(id));
+  const freieSlots = slots ? slots.filter(s=>!s).length : 0;
+
   function tableauAnlegen(){
     const neueSlots=ko_erstRunde(teilnehmerSortiert);
     updKonk({ koSlots:neueSlots, koSpiele:{} });
+  }
+  // Neue Teilnehmer auf freie Plätze setzen, ohne bestehende Ergebnisse zu verlieren.
+  // Reicht der Platz nicht, muss das Tableau neu (größer) gesetzt werden.
+  function fehlendeEinfuegen(){
+    if(fehlende.length===0) return;
+    if(fehlende.length>freieSlots){
+      if(!window.confirm(`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
+      updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
+      return;
+    }
+    // freie Plätze der Reihe nach mit den neuen Teilnehmern füllen
+    const neu=[...slots];
+    let fi=0;
+    for(let i=0;i<neu.length && fi<fehlende.length;i++){
+      if(!neu[i]){ neu[i]=fehlende[fi]; fi++; }
+    }
+    updKonk({ koSlots:neu });
   }
   function tableauNeuSetzen(){
     if(!window.confirm("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren.")) return;
@@ -1952,6 +2019,9 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   return <div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {isAdmin && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
+      {isAdmin && fehlende.length>0 && <button onClick={fehlendeEinfuegen} style={{padding:"6px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+        + {fehlende.length} neue{fehlende.length===1?"n":""} Teilnehmer einfügen
+      </button>}
       {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
