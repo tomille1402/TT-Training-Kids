@@ -1,4 +1,4 @@
-// === TTC-App · Version 294 · erstellt 05.08.2026 ===
+// === TTC-App · Version 295 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "294";
+const APP_VERSION = "295";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1974,7 +1974,14 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     updKonk({ koSlots:neu });
     setTippSlot(null);
   }
-
+  // Einen Spieler aus dem Tableau entfernen: sein Erstrunden-Platz wird frei (Freilos).
+  function slotLeeren(i){
+    if(!isAdmin) return;
+    const neu=[...slots];
+    neu[i]=null;
+    setTippSlot(null);
+    updKonk({ koSlots:neu });
+  }
   // Satz setzen (in koSpiele unter dem Spiel-Key)
   function setSatz(key, satzIndex, seite, wert){
     const map={...spieleMap};
@@ -2052,7 +2059,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                   <KoSpielBox sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin}
-                    slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen}
+                    slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
                     setSatz={setSatz} toggleFix={toggleFix}/>
                 </div>;
               })}
@@ -2084,7 +2091,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, slots, tippSlot, slotAntippen, setSatz, toggleFix }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung)
   const slotA = istErstrunde ? si*2 : null;
   const slotB = istErstrunde ? si*2+1 : null;
@@ -2103,10 +2110,15 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
         background: markiert?"#8b5cf6": istSieger?"#10b98118":"var(--bg2)",
         borderRadius:5,cursor:(istErstrunde&&isAdmin)?"pointer":"default",
         border: markiert?"1px solid #8b5cf6":"1px solid transparent"}}>
-      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110}}>
-        {id?nameVon(id):(freilos?"Freilos":"—")}
+      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:100}}>
+        {id ? nameVon(id) : (istErstrunde && freilos ? "Freilos" : "—")}
       </span>
-      {id && q!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)",flexShrink:0}}>{q}</span>}
+      <span style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+        {id && q!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)"}}>{q}</span>}
+        {istErstrunde && isAdmin && id && slotLeeren &&
+          <span onClick={(e)=>{e.stopPropagation(); slotLeeren(slotIdx);}} title="Spieler entfernen"
+            style={{cursor:"pointer",color:markiert?"#fff":"#ef4444",fontSize:11,fontWeight:700,lineHeight:1}}>✕</span>}
+      </span>
     </div>;
   };
 
