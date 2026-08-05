@@ -1,4 +1,4 @@
-// === TTC-App · Version 284 · erstellt 05.08.2026 ===
+// === TTC-App · Version 285 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "284";
+const APP_VERSION = "285";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1077,11 +1077,26 @@ function berechneGruppenTabelle(teilnehmerIds, spiele){
 }
 
 // Alle Begegnungen (jeder gegen jeden) innerhalb einer Gruppe erzeugen.
+// Spielreihenfolge nach der Kreismethode (Round-Robin): jeder Spieler spielt pro
+// Runde höchstens einmal, sodass niemand mehrere Spiele hintereinander hat. Bei
+// ungerader Spielerzahl bekommt reihum genau ein Spieler pro Runde ein Freilos.
+// Rückgabe: flache Liste von Paarungen in Rundenreihenfolge, jede mit Rundennummer.
 function paarungenFuerGruppe(ids){
+  const spieler=[...ids];
+  if(spieler.length<2) return [];
+  const ungerade = spieler.length%2!==0;
+  if(ungerade) spieler.push(null);          // Phantom = Freilos
+  const n=spieler.length, haelfte=n/2;
+  let arr=[...spieler];
   const paare=[];
-  for(let i=0;i<ids.length;i++)
-    for(let j=i+1;j<ids.length;j++)
-      paare.push({a:ids[i],b:ids[j]});
+  for(let r=0;r<n-1;r++){
+    for(let i=0;i<haelfte;i++){
+      const a=arr[i], b=arr[n-1-i];
+      if(a===null||b===null) continue;       // Freilos-Begegnung wird nicht als Spiel geführt
+      paare.push({a, b, runde:r+1});
+    }
+    arr=[arr[0], arr[n-1], ...arr.slice(1,n-1)]; // erste Position fix, Rest rotiert
+  }
   return paare;
 }
 
@@ -1435,7 +1450,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     gruppen.forEach((ids,gi)=>{
       for(const paar of paarungenFuerGruppe(ids)){
         const key=[paar.a,paar.b].sort().join("|");
-        neu.push({gi, a:paar.a, b:paar.b, saetze:alt[key]||[["",""],["",""],["",""]]});
+        neu.push({gi, runde:paar.runde||0, a:paar.a, b:paar.b, saetze:alt[key]||[["",""],["",""],["",""]]});
       }
     });
     return neu;
@@ -1609,12 +1624,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                     <span style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Spiele ({gruppenSpiele.length})</span>
                     <span style={{fontSize:11,color:"var(--text3)"}}>{spieleOffen[gi]?"▲ zuklappen":"▼ aufklappen"}</span>
                   </div>
-                  {spieleOffen[gi] && gruppenSpiele.map(sp=>{
+                  {spieleOffen[gi] && gruppenSpiele.map((sp,spListIdx)=>{
                     const vg=vorgabeFuer(sp);
                     const darf=darfSpielEingeben(sp);
                     const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
                     const diff=(qa!=null&&qb!=null)?Math.abs(qa-qb):null;
-                    return <div key={sp._idx} style={{background:"var(--bg)",borderRadius:9,padding:"8px 10px",border:"1px solid var(--border)"}}>
+                    // Runden-Überschrift vor dem ersten Spiel einer neuen Runde
+                    const vorherige=gruppenSpiele[spListIdx-1];
+                    const neueRunde = sp.runde && (!vorherige || vorherige.runde!==sp.runde);
+                    return <React.Fragment key={sp._idx}>
+                      {neueRunde && <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:spListIdx>0?4:0}}>Runde {sp.runde}</div>}
+                      <div style={{background:"var(--bg)",borderRadius:9,padding:"8px 10px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
                           {nameVon(sp.a)} <span style={{color:"var(--text4)",fontWeight:400}}>({qa!=null?qa:"–"})</span>
@@ -1639,7 +1659,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                         })}
                       </div>
                       {!darf && <div style={{fontSize:9,color:"var(--text4)",marginTop:4}}>Nur Beteiligte oder Admin/Trainer können hier eintragen.</div>}
-                    </div>;
+                      </div>
+                    </React.Fragment>;
                   })}
                 </div>}
               </div>;
