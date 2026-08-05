@@ -1,4 +1,4 @@
-// === TTC-App · Version 292 · erstellt 05.08.2026 ===
+// === TTC-App · Version 293 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "292";
+const APP_VERSION = "293";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1409,17 +1409,49 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [t,setT]=useState(turnier);
   const [aktiveKonk,setAktiveKonk]=useState((turnier.konkurrenzen||[])[0]?.key||null);
   const [dirty,setDirty]=useState(false);
+  const [autoStatus,setAutoStatus]=useState("");   // "" | "speichert" | "gespeichert"
   const [sortSpalte,setSortSpalte]=useState("platz");   // "nr" | "name" | "qttr" | "platz"
   const [spieleOffen,setSpieleOffen]=useState({});       // je Gruppe: gi -> bool (Standard: zu)
   const darfAlle = isAdmin || isTrainer;
+  const speichernTimer=useRef(null);
+  const letzterStand=useRef(turnier);
 
   const konk=(t.konkurrenzen||[]).find(k=>k.key===aktiveKonk)||null;
 
+  // Änderungen an einer Konkurrenz übernehmen UND automatisch speichern. Damit
+  // schnelles Tippen nicht jeden Tastendruck einzeln schreibt, wird das Speichern
+  // kurz gebündelt (debounce ~800 ms nach der letzten Eingabe).
   function updKonk(patch){
-    setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===aktiveKonk?{...k,...patch}:k)}));
+    setT(prev=>{
+      const neu={...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===aktiveKonk?{...k,...patch}:k)};
+      letzterStand.current=neu;              // aktuellen Stand für den Auto-Save merken
+      planeAutoSave();
+      return neu;
+    });
     setDirty(true);
   }
-  async function speichern(){ await onSpeichern(t); setDirty(false); }
+  function planeAutoSave(){
+    if(speichernTimer.current) clearTimeout(speichernTimer.current);
+    setAutoStatus("speichert");
+    speichernTimer.current=setTimeout(async()=>{
+      try{
+        await onSpeichern(letzterStand.current);
+        setDirty(false);
+        setAutoStatus("gespeichert");
+        setTimeout(()=>setAutoStatus(""), 1500);
+      }catch(e){
+        setAutoStatus("");
+      }
+    }, 800);
+  }
+  async function speichern(){
+    if(speichernTimer.current) clearTimeout(speichernTimer.current);
+    await onSpeichern(letzterStand.current); setDirty(false);
+  }
+  // Beim Verlassen der Ansicht ausstehende Änderungen sofort sichern.
+  useEffect(()=>()=>{
+    if(speichernTimer.current){ clearTimeout(speichernTimer.current); onSpeichern(letzterStand.current); }
+  },[]);
 
   // Kandidaten (aktive Spieler/Erwachsene, passend zur Konkurrenz)
   const kandidaten = konk ? players.filter(p=>{
@@ -1536,8 +1568,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
       <button onClick={onBack} style={miniBtn("#64748b")}>← zurück</button>
-      <div style={{display:"flex",gap:6}}>
-        {dirty && <button onClick={speichern} style={{padding:"6px 12px",background:"#10b981",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 speichern</button>}
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {autoStatus==="speichert" && <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>speichert…</span>}
+        {autoStatus==="gespeichert" && <span style={{fontSize:11,color:"#10b981",fontWeight:700}}>✓ gespeichert</span>}
         {onEdit && <button onClick={onEdit} style={miniBtn("#8b5cf6")}>⚙️ Parameter</button>}
       </div>
     </div>
