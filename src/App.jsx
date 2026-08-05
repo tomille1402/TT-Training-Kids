@@ -1,4 +1,4 @@
-// === TTC-App · Version 283 · erstellt 05.08.2026 ===
+// === TTC-App · Version 284 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "283";
+const APP_VERSION = "284";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1085,6 +1085,49 @@ function paarungenFuerGruppe(ids){
   return paare;
 }
 
+// Wieviele Satz-Eingabefelder sollen sichtbar sein? Best of 5 (3 Gewinnsätze):
+// Start mit 3 Feldern; erst wenn nach den bisher eingetragenen Sätzen noch keine
+// Entscheidung (3 Satzsiege) gefallen ist, kommen der 4. und 5. Satz hinzu.
+function anzahlSichtbareSaetze(saetze){
+  let a=0,b=0;
+  for(const s of (saetze||[])){
+    const pa=Number(s[0]), pb=Number(s[1]);
+    if(s[0]===""||s[1]===""||Number.isNaN(pa)||Number.isNaN(pb)) continue;
+    if(pa>pb) a++; else if(pb>pa) b++;
+  }
+  const gespielt=a+b;
+  // Entscheidung gefallen (jemand hat 3) → nur die tatsächlich gespielten Sätze zeigen.
+  if(a>=3||b>=3) return Math.max(3, gespielt);
+  // sonst: mindestens 3, plus die schon begonnenen weiteren, bis max. 5
+  return Math.min(5, Math.max(3, gespielt+1>3?gespielt+1:3));
+}
+
+// ─── Firestore-Kompatibilität ───────────────────────────────────────────────// Firestore erlaubt KEINE direkt verschachtelten Arrays. Intern arbeiten wir mit
+// gruppen=[[id,…],…] und saetze=[[a,b],…]; beim Speichern wandeln wir diese in
+// eine erlaubte Form (Objekte statt innerer Arrays) und beim Laden zurück.
+function turnierFuerFirestore(t){
+  const konkurrenzen=(t.konkurrenzen||[]).map(k=>({
+    ...k,
+    gruppen:(k.gruppen||[]).map(ids=>({ids:Array.isArray(ids)?ids:[]})),          // [[..]] → [{ids:[..]}]
+    spiele:(k.spiele||[]).map(s=>({
+      gi:s.gi, a:s.a, b:s.b,
+      saetze:(s.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})), // [[a,b]] → [{a,b}]
+    })),
+  }));
+  return {...t, konkurrenzen};
+}
+function turnierVonFirestore(t){
+  const konkurrenzen=(t.konkurrenzen||[]).map(k=>({
+    ...k,
+    gruppen:(k.gruppen||[]).map(g=> Array.isArray(g)?g:(g&&g.ids)||[]),            // [{ids:[..]}] → [[..]]
+    spiele:(k.spiele||[]).map(s=>({
+      gi:s.gi, a:s.a, b:s.b,
+      saetze:(s.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),      // [{a,b}] → [[a,b]]
+    })),
+  }));
+  return {...t, konkurrenzen};
+}
+
 // ─── Haupt-Komponente ───────────────────────────────────────────────────────
 function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }){
   const [turniere,setTurniere]=useState([]);
@@ -1103,7 +1146,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
     (async()=>{
       try{
         const snap=await getDocs(collection(db,"turniere"));
-        const list=[]; snap.forEach(d=>list.push({id:d.id,...(d.data()||{})}));
+        const list=[]; snap.forEach(d=>list.push(turnierVonFirestore({id:d.id,...(d.data()||{})})));
         list.sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
         if(!ab) setTurniere(list);
       }catch(e){ if(!ab) setTurniere([]); }
@@ -1124,7 +1167,8 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
     const daten={...t, id, aktualisiert:Date.now()};
     if(!daten.erstellt) daten.erstellt=Date.now();
     try{
-      await setDoc(doc(db,"turniere",id), daten);
+      // Verschachtelte Arrays vor dem Speichern in Firestore-taugliche Form bringen.
+      await setDoc(doc(db,"turniere",id), turnierFuerFirestore(daten));
       setTurniere(prev=>{ const rest=prev.filter(x=>x.id!==id); return [daten,...rest].sort((a,b)=>(b.datum||"").localeCompare(a.datum||"")); });
       setFormOffen(false); setEditTurnier(null); setSelId(id);
     }catch(e){ alert("Speichern fehlgeschlagen: "+(e.message||e)); }
@@ -1271,7 +1315,9 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                   {(t.art==="Gruppen"||t.art==="gemischt") &&
                     <Feld label="Anzahl Gruppen" klein>
                       <input type="number" min={1} max={16} value={k.anzahlGruppen}
-                        onChange={e=>updKonk(k.key,{anzahlGruppen:Math.max(1,Number(e.target.value)||1)})} style={{...selT2,width:90}}/>
+                        onChange={e=>updKonk(k.key,{anzahlGruppen: e.target.value===""?"":Number(e.target.value)})}
+                        onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{anzahlGruppen:Math.min(16,Math.max(1,n))}); }}
+                        style={{...selT2,width:90}}/>
                     </Feld>}
 
                   <Feld label="Vorgabe" klein>
@@ -1323,6 +1369,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [t,setT]=useState(turnier);
   const [aktiveKonk,setAktiveKonk]=useState((turnier.konkurrenzen||[])[0]?.key||null);
   const [dirty,setDirty]=useState(false);
+  const [sortSpalte,setSortSpalte]=useState("platz");   // "nr" | "name" | "qttr" | "platz"
+  const [spieleOffen,setSpieleOffen]=useState({});       // je Gruppe: gi -> bool (Standard: zu)
   const darfAlle = isAdmin || isTrainer;
 
   const konk=(t.konkurrenzen||[]).find(k=>k.key===aktiveKonk)||null;
@@ -1406,7 +1454,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   function setSatz(spIndex, satzIndex, seite, wert){
     const spiele=konk.spiele.map((s,i)=>{
       if(i!==spIndex) return s;
-      const saetze=s.saetze.map(x=>[...x]);
+      const saetze=(s.saetze||[]).map(x=>[...x]);
+      while(saetze.length<=satzIndex) saetze.push(["",""]); // fehlende Sätze (4./5.) ergänzen
       saetze[satzIndex][seite]=wert.replace(/[^\d]/g,"");
       return {...s, saetze};
     });
@@ -1510,55 +1559,84 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
                 {/* Tabelle */}
                 <div style={{overflowX:"auto",marginBottom:10}}>
-                  <table style={{borderCollapse:"collapse",width:"100%",minWidth:420,fontSize:11}}>
+                  <table style={{borderCollapse:"collapse",width:"100%",minWidth:460,fontSize:11}}>
                     <thead><tr>
-                      {["Name","QTTR","Sätze","Spiele","Platz"].map(h=>
-                        <th key={h} style={{textAlign:h==="Name"?"left":"center",padding:"5px 6px",borderBottom:"2px solid var(--border2)",color:"var(--text)",fontWeight:800,whiteSpace:"nowrap"}}>{h}</th>)}
+                      {[["nr","#"],["name","Name"],["qttr","QTTR"],["saetze","Sätze"],["spiele","Spiele"],["platz","Platz"]].map(([key,label])=>{
+                        const sortierbar=["nr","name","qttr","platz"].includes(key);
+                        return <th key={key} onClick={sortierbar?()=>setSortSpalte(key):undefined}
+                          style={{textAlign:key==="name"?"left":"center",padding:"5px 6px",borderBottom:"2px solid var(--border2)",
+                            color:sortSpalte===key?"#8b5cf6":"var(--text)",fontWeight:800,whiteSpace:"nowrap",
+                            cursor:sortierbar?"pointer":"default"}}>
+                          {label}{sortierbar&&sortSpalte===key?" ▾":""}
+                        </th>;
+                      })}
                     </tr></thead>
                     <tbody>
-                      {ids.length===0 && <tr><td colSpan={5} style={{padding:10,textAlign:"center",color:"var(--text4)"}}>leer — Person antippen, dann hierher</td></tr>}
-                      {ids.map(id=>{
-                        const p=spielerVon(id), q=qttrVon(p), r=platzVon[id]||{};
-                        return <tr key={id}>
-                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",color:"var(--text)",fontWeight:600,whiteSpace:"nowrap"}}>
-                            {isAdmin && <span onClick={(e)=>{e.stopPropagation();ausGruppen(id);}} title="entfernen" style={{cursor:"pointer",color:"#ef4444",marginRight:5}}>✕</span>}
-                            {nameVon(id)}
-                          </td>
-                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{q!=null?q:"–"}</td>
-                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.satzGew||0}:{r.satzVerl||0}</td>
-                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.spSieg||0}:{r.spNied||0}</td>
-                          <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",fontWeight:800,color:"var(--text)"}}>{r.platz||"–"}</td>
-                        </tr>;
-                      })}
+                      {ids.length===0 && <tr><td colSpan={6} style={{padding:10,textAlign:"center",color:"var(--text4)"}}>leer — Person antippen, dann hierher</td></tr>}
+                      {(()=>{
+                        // Zeilen entsprechend gewählter Spalte sortieren (Anzeige-Reihenfolge).
+                        const zeilen=ids.map((id,idx)=>({id, origNr:idx+1, r:platzVon[id]||{}, q:qttrVon(spielerVon(id)), name:nameVon(id)}));
+                        zeilen.sort((x,y)=>{
+                          if(sortSpalte==="name") return x.name.localeCompare(y.name);
+                          if(sortSpalte==="qttr") return (y.q??-1)-(x.q??-1);
+                          if(sortSpalte==="platz") return (x.r.platz||999)-(y.r.platz||999);
+                          return x.origNr-y.origNr; // "nr" = Eingabereihenfolge
+                        });
+                        return zeilen.map((z,i)=>{
+                          const {id,q,r}=z;
+                          return <tr key={id}>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text3)",fontWeight:700}}>{i+1}</td>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",color:"var(--text)",fontWeight:600,whiteSpace:"nowrap"}}>
+                              {isAdmin && <span onClick={(e)=>{e.stopPropagation();ausGruppen(id);}} title="entfernen" style={{cursor:"pointer",color:"#ef4444",marginRight:5}}>✕</span>}
+                              {z.name}
+                            </td>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{q!=null?q:"–"}</td>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.satzGew||0}:{r.satzVerl||0}</td>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{r.spSieg||0}:{r.spNied||0}</td>
+                            <td style={{padding:"5px 6px",borderBottom:"1px solid var(--border)",textAlign:"center",fontWeight:800,color:"var(--text)"}}>{r.platz||"–"}</td>
+                          </tr>;
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>
 
-                {/* Spiele */}
+                {/* Spiele — auf-/zuklappbar, standardmäßig zugeklappt */}
                 {gruppenSpiele.length>0 && <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>Spiele</div>
-                  {gruppenSpiele.map(sp=>{
+                  <div onClick={()=>setSpieleOffen(prev=>({...prev,[gi]:!prev[gi]}))}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
+                      background:"var(--bg3)",borderRadius:8,padding:"7px 10px"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Spiele ({gruppenSpiele.length})</span>
+                    <span style={{fontSize:11,color:"var(--text3)"}}>{spieleOffen[gi]?"▲ zuklappen":"▼ aufklappen"}</span>
+                  </div>
+                  {spieleOffen[gi] && gruppenSpiele.map(sp=>{
                     const vg=vorgabeFuer(sp);
                     const darf=darfSpielEingeben(sp);
+                    const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
+                    const diff=(qa!=null&&qb!=null)?Math.abs(qa-qb):null;
                     return <div key={sp._idx} style={{background:"var(--bg)",borderRadius:9,padding:"8px 10px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
-                          {nameVon(sp.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(sp.b)}
+                          {nameVon(sp.a)} <span style={{color:"var(--text4)",fontWeight:400}}>({qa!=null?qa:"–"})</span>
+                          {" "}<span style={{color:"var(--text4)"}}>vs</span>{" "}
+                          {nameVon(sp.b)} <span style={{color:"var(--text4)",fontWeight:400}}>({qb!=null?qb:"–"})</span>
+                          {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
                       </div>
                       {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
                         Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
                       </div>}
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {sp.saetze.map((satz,si)=>(
-                          <div key={si} style={{display:"flex",alignItems:"center",gap:2,background:"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
+                        {Array.from({length:anzahlSichtbareSaetze(sp.saetze)}).map((_,si)=>{
+                          const satz=sp.saetze[si]||["",""];
+                          return <div key={si} style={{display:"flex",alignItems:"center",gap:2,background:"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
                             <input value={satz[0]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,0,e.target.value)}
                               style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
                             <span style={{color:"var(--text4)",fontSize:11}}>:</span>
                             <input value={satz[1]} disabled={!darf} onChange={e=>setSatz(sp._idx,si,1,e.target.value)}
                               style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12}} placeholder="–"/>
-                          </div>
-                        ))}
+                          </div>;
+                        })}
                       </div>
                       {!darf && <div style={{fontSize:9,color:"var(--text4)",marginTop:4}}>Nur Beteiligte oder Admin/Trainer können hier eintragen.</div>}
                     </div>;
