@@ -1,4 +1,4 @@
-// === TTC-App · Version 287 · erstellt 05.08.2026 ===
+// === TTC-App · Version 288 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "287";
+const APP_VERSION = "288";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1128,6 +1128,13 @@ function turnierFuerFirestore(t){
       gi:s.gi, runde:s.runde||0, a:s.a, b:s.b, fixiert:!!s.fixiert,
       saetze:(s.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})), // [[a,b]] → [{a,b}]
     })),
+    // KO-Felder: koSlots ist flach (null=Freilos, in Firestore als "" gespeichert).
+    // koSpiele: {key:{saetze:[[a,b]],fixiert}} → Sätze zu {a,b} wandeln.
+    koSlots:(k.koSlots||[]).map(id=> id==null?"":id),
+    koSpiele: k.koSpiele ? Object.fromEntries(Object.entries(k.koSpiele).map(([key,v])=>[key,{
+      fixiert:!!v.fixiert,
+      saetze:(v.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})),
+    }])) : {},
   }));
   return {...t, konkurrenzen};
 }
@@ -1139,6 +1146,11 @@ function turnierVonFirestore(t){
       gi:s.gi, runde:s.runde||0, a:s.a, b:s.b, fixiert:!!s.fixiert,
       saetze:(s.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),      // [{a,b}] → [[a,b]]
     })),
+    koSlots:(k.koSlots||[]).map(id=> id===""?null:id),
+    koSpiele: k.koSpiele ? Object.fromEntries(Object.entries(k.koSpiele).map(([key,v])=>[key,{
+      fixiert:!!v.fixiert,
+      saetze:(v.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),
+    }])) : {},
   }));
   return {...t, konkurrenzen};
 }
@@ -1703,10 +1715,280 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               </div>;
             })}
           </>}
-      </> : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
-        Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus ist bereits nutzbar.
+      </> : t.art==="einfaches KO-System" ? (
+        <KoTableau konk={konk} players={players} qttrVon={qttrVon}
+          isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+      ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
+        Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
       </div>}
     </>}
+  </div>;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KO-TABLEAU (Single Elimination) — grafisches Bracket, Setzung nach QTTR
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Standard-Setzreihenfolge für eine Tableaugröße (Zweierpotenz). Erzeugt die
+// Positionen so, dass die besten Gesetzten maximal auseinander liegen (Seed 1 und 2
+// in verschiedenen Hälften, Seeds 1–4 in verschiedenen Vierteln).
+function ko_seedOrder(size){
+  let arr=[1];
+  while(arr.length<size){
+    const len=arr.length, sum=len*2+1;
+    const next=[];
+    for(let i=0;i<len;i++){ next.push(arr[i]); next.push(sum-arr[i]); }
+    arr=next;
+  }
+  return arr;
+}
+function ko_naechstePotenz(n){ let p=1; while(p<n) p*=2; return p; }
+
+// Erstrunden-Slots aus nach QTTR sortierten Teilnehmer-IDs. null = Freilos.
+function ko_erstRunde(idsSortiert){
+  const n=idsSortiert.length;
+  if(n<2) return [];
+  const size=ko_naechstePotenz(n);
+  const order=ko_seedOrder(size);
+  const slots=new Array(size).fill(null);
+  for(let i=0;i<size;i++){
+    const seed=order[i];
+    slots[i]= seed<=n ? idsSortiert[seed-1] : null;
+  }
+  return slots;
+}
+
+// Ein KO-Baum besteht aus Runden. Runde 0 = Erstrunde (Slots). Jede weitere Runde
+// hat halb so viele Spiele. Datenstruktur je Spiel: {a,b,saetze,fixiert}.
+// Wir speichern die Erstrunden-Belegung (slots) + je Spiel die Sätze. Die Gewinner
+// werden aus den Ergebnissen (oder Freilosen) automatisch nach oben durchgereicht.
+
+// Sieger eines Spiels anhand der Sätze (Best of 5, 3 Gewinnsätze). Rückgabe: "a"|"b"|null
+function ko_sieger(saetze){
+  let a=0,b=0;
+  for(const s of (saetze||[])){
+    if(!s||s[0]===""||s[1]===""||s[0]==null||s[1]==null) continue;
+    const na=Number(s[0]), nb=Number(s[1]);
+    if(Number.isNaN(na)||Number.isNaN(nb)) continue;
+    if(na>nb) a++; else if(nb>na) b++;
+  }
+  if(a>=3) return "a";
+  if(b>=3) return "b";
+  return null;
+}
+
+// Baut alle Runden aus Erstrunden-Slots und den gespeicherten Spielen auf.
+// spieleMap: key "r-i" -> {saetze, fixiert}. Gibt Runden-Array zurück, jede Runde
+// ist Array von {a,b, key, saetze, fixiert, aWinnerAuto, bWinnerAuto}.
+function ko_baueRunden(slots, spieleMap){
+  const runden=[];
+  const rundenAnzahl=Math.log2(slots.length);
+  // Runde 0 direkt aus Slots
+  let vorPaare=[];
+  for(let i=0;i<slots.length;i+=2){
+    vorPaare.push({a:slots[i], b:slots[i+1]});
+  }
+  for(let r=0;r<rundenAnzahl;r++){
+    const spiele=[];
+    for(let i=0;i<vorPaare.length;i++){
+      const key=`${r}-${i}`;
+      const gesp=spieleMap[key]||{};
+      const saetze=gesp.saetze||[["",""],["",""],["",""]];
+      const fixiert=!!gesp.fixiert;
+      spiele.push({...vorPaare[i], key, saetze, fixiert});
+    }
+    runden.push(spiele);
+    // nächste Runde: Gewinner ermitteln (Freilos automatisch)
+    const next=[];
+    for(let i=0;i<spiele.length;i+=2){
+      const w1=ko_gewinnerVon(spiele[i]);
+      const w2=ko_gewinnerVon(spiele[i+1]);
+      next.push({a:w1, b:w2});
+    }
+    vorPaare=next;
+    if(spiele.length===1) break; // Finale erreicht
+  }
+  return runden;
+}
+
+// Gewinner eines Spiels: Freilos (Gegner null) rückt automatisch auf; sonst nach Sätzen.
+function ko_gewinnerVon(spiel){
+  if(!spiel) return null;
+  const {a,b,saetze}=spiel;
+  if(a && !b) return a;   // Freilos
+  if(b && !a) return b;
+  if(!a && !b) return null;
+  const s=ko_sieger(saetze);
+  if(s==="a") return a;
+  if(s==="b") return b;
+  return null; // noch nicht entschieden
+}
+
+// ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
+function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk }){
+  const darfAlle = isAdmin || isTrainer;
+  const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
+  const spielerVon=(id)=> players.find(x=>x.id===id);
+
+  // Teilnehmer nach QTTR absteigend sortiert (beste zuerst = Seed 1..n)
+  const teilnehmerSortiert=[...(konk.teilnehmer||[])].sort((x,y)=>{
+    const qx=qttrVon(spielerVon(x)), qy=qttrVon(spielerVon(y));
+    return (qy??-1)-(qx??-1);
+  });
+
+  const slots = konk.koSlots && konk.koSlots.length ? konk.koSlots : null;
+  const spieleMap = konk.koSpiele || {};
+
+  function tableauAnlegen(){
+    const neueSlots=ko_erstRunde(teilnehmerSortiert);
+    updKonk({ koSlots:neueSlots, koSpiele:{} });
+  }
+  function tableauNeuSetzen(){
+    if(!window.confirm("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren.")) return;
+    updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
+  }
+
+  // Tipp-Verschiebung der Erstrunden-Positionen (wie bei den Gruppen, touch-tauglich)
+  const [tippSlot,setTippSlot]=useState(null);
+  function slotAntippen(i){
+    if(!isAdmin) return;
+    if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
+    if(tippSlot===i){ setTippSlot(null); return; }
+    // zwei Slots tauschen
+    const neu=[...slots];
+    const tmp=neu[i]; neu[i]=neu[tippSlot]; neu[tippSlot]=tmp;
+    updKonk({ koSlots:neu });
+    setTippSlot(null);
+  }
+
+  // Satz setzen (in koSpiele unter dem Spiel-Key)
+  function setSatz(key, satzIndex, seite, wert){
+    const map={...spieleMap};
+    const eintrag={...(map[key]||{})};
+    const saetze=(eintrag.saetze||[["",""],["",""],["",""]]).map(x=>[...x]);
+    while(saetze.length<=satzIndex) saetze.push(["",""]);
+    saetze[satzIndex][seite]=wert.replace(/[^\d]/g,"");
+    eintrag.saetze=saetze;
+    map[key]=eintrag;
+    updKonk({ koSpiele:map });
+  }
+  function toggleFix(key, fix){
+    const map={...spieleMap};
+    map[key]={...(map[key]||{}), fixiert:!!fix};
+    updKonk({ koSpiele:map });
+  }
+
+  if(!konk.teilnehmer || konk.teilnehmer.length<2)
+    return <div style={{padding:16,textAlign:"center",color:"var(--text3)",fontSize:13}}>Zuerst Teilnehmer auswählen (mind. 2).</div>;
+
+  if(!slots)
+    return <div style={{padding:16,textAlign:"center"}}>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+        {teilnehmerSortiert.length} Teilnehmer · Tableau-Größe {ko_naechstePotenz(teilnehmerSortiert.length)}
+      </div>
+      <button onClick={tableauAnlegen} disabled={!isAdmin}
+        style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default"}}>
+        KO-Tableau nach QTTR erstellen
+      </button>
+    </div>;
+
+  const runden=ko_baueRunden(slots, spieleMap);
+  const rundenTitel=(ri)=>{
+    const spieleInRunde=runden[ri].length;
+    if(spieleInRunde===1) return "Finale";
+    if(spieleInRunde===2) return "Halbfinale";
+    if(spieleInRunde===4) return "Viertelfinale";
+    if(spieleInRunde===8) return "Achtelfinale";
+    return `Runde ${ri+1}`;
+  };
+
+  return <div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      {isAdmin && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
+      {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
+    </div>
+    {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
+      Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden Spieler tauschen den Platz.
+    </div>}
+
+    {/* Tableau: Runden nebeneinander, horizontal scrollbar */}
+    <div style={{overflowX:"auto",paddingBottom:8}}>
+      <div style={{display:"flex",gap:14,minWidth:"min-content"}}>
+        {runden.map((spiele,ri)=>(
+          <div key={ri} style={{display:"flex",flexDirection:"column",justifyContent:"space-around",minWidth:170,gap:10}}>
+            <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em"}}>{rundenTitel(ri)}</div>
+            {spiele.map((sp,si)=>{
+              const fixiert=!!sp.fixiert;
+              const sieger=ko_gewinnerVon(sp);
+              const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
+              const istErstrunde = ri===0;
+              return <KoSpielBox key={sp.key} sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
+                nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
+                fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin}
+                slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen}
+                setSatz={setSatz} toggleFix={toggleFix}/>;
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+
+// Eine Spiel-Box im Tableau
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, slots, tippSlot, slotAntippen, setSatz, toggleFix }){
+  // Erstrunden-Slot-Indizes (für Tipp-Verschiebung)
+  const slotA = istErstrunde ? si*2 : null;
+  const slotB = istErstrunde ? si*2+1 : null;
+
+  const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
+  const freilos = (sp.a && !sp.b) || (sp.b && !sp.a);
+  const beide = sp.a && sp.b;
+  const abgeschlossen = ko_sieger(sp.saetze)!=null;
+
+  const zeile=(id,slotIdx,istSieger)=>{
+    const q=qttrVon(spielerVon(id));
+    const markiert = istErstrunde && tippSlot===slotIdx;
+    return <div
+      onClick={istErstrunde&&isAdmin?()=>slotAntippen(slotIdx):undefined}
+      style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,padding:"4px 7px",
+        background: markiert?"#8b5cf6": istSieger?"#10b98118":"var(--bg2)",
+        borderRadius:5,cursor:(istErstrunde&&isAdmin)?"pointer":"default",
+        border: markiert?"1px solid #8b5cf6":"1px solid transparent"}}>
+      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:110}}>
+        {id?nameVon(id):(freilos?"Freilos":"—")}
+      </span>
+      {id && q!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)",flexShrink:0}}>{q}</span>}
+    </div>;
+  };
+
+  return <div style={{background:"var(--bg)",border:fixiert?"1px solid #10b98155":"1px solid var(--border)",borderRadius:8,padding:6}}>
+    {zeile(sp.a, slotA, sieger && sieger===sp.a)}
+    <div style={{height:3}}/>
+    {zeile(sp.b, slotB, sieger && sieger===sp.b)}
+
+    {/* Sätze nur eingebbar, wenn beide Spieler feststehen und kein Freilos */}
+    {beide && <div style={{marginTop:6}}>
+      <div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>
+        {Array.from({length: anzahlSichtbareSaetze(sp.saetze)}).map((_,idx)=>{
+          const satz=sp.saetze[idx]||["",""];
+          return <div key={idx} style={{display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px"}}>
+            <input value={satz[0]} disabled={!darf||fixiert} onChange={e=>setSatz(sp.key,idx,0,e.target.value)}
+              style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
+            <span style={{color:"var(--text4)",fontSize:10}}>:</span>
+            <input value={satz[1]} disabled={!darf||fixiert} onChange={e=>setSatz(sp.key,idx,1,e.target.value)}
+              style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
+          </div>;
+        })}
+        {darf && !fixiert && abgeschlossen &&
+          <button onClick={()=>toggleFix(sp.key,true)} title="Ergebnis fixieren"
+            style={{border:"none",background:"#10b981",color:"#fff",borderRadius:4,fontSize:10,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>✓</button>}
+        {darf && fixiert &&
+          <button onClick={()=>toggleFix(sp.key,false)} title="ändern"
+            style={{border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:4,fontSize:10,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>✎</button>}
+      </div>
+    </div>}
   </div>;
 }
 
