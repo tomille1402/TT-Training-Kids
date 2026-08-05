@@ -1,4 +1,4 @@
-// === TTC-App · Version 288 · erstellt 05.08.2026 ===
+// === TTC-App · Version 290 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "288";
+const APP_VERSION = "290";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1026,13 +1026,20 @@ function konkurrenzPasst(konkurrenz, p){
 }
 
 // QTTR-Wert einer Person aus der TTR-Liste (neuester Stichtag). Matching per Name.
+// Standard-QTTR-Wert für Spieler, die (noch) keinen echten TTR-Wert haben. So
+// können auch sie regulär gesetzt, gruppiert und mit Vorgabe berechnet werden.
+const QTTR_STANDARD = 500;
+
+// QTTR-Wert einer Person aus der TTR-Liste. Ist kein echter Wert hinterlegt, wird
+// der Standardwert (500) zurückgegeben, damit überall ein Wert vorhanden ist.
 function qttrVonPerson(p, ttrPersonen, ttrStichtag){
-  if(!ttrStichtag) return null;
+  if(!p) return QTTR_STANDARD;
+  if(!ttrStichtag) return QTTR_STANDARD;
   const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
   const vn=norm(p.firstName), nn=norm(p.lastName);
   const t=(ttrPersonen||[]).find(x=>norm(x.vorname)===vn && norm(x.nachname)===nn);
-  if(!t) return null;
-  return ttrNum(t.werte?.[ttrStichtag]);
+  const wert = t ? ttrNum(t.werte?.[ttrStichtag]) : null;
+  return (wert==null) ? QTTR_STANDARD : wert;
 }
 
 // Vorgabe-Punkte pro Satz aus QTTR-Differenz: je <diff> Punkte Unterschied 1 Punkt
@@ -1716,8 +1723,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             })}
           </>}
       </> : t.art==="einfaches KO-System" ? (
-        <KoTableau konk={konk} players={players} qttrVon={qttrVon}
-          isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+        <ErrorBoundary resetKey={aktiveKonk}>
+          <KoTableau konk={konk} players={players} qttrVon={qttrVon}
+            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+        </ErrorBoundary>
       ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
         Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
       </div>}
@@ -1831,9 +1840,12 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
   const spielerVon=(id)=> players.find(x=>x.id===id);
 
-  // Teilnehmer nach QTTR absteigend sortiert (beste zuerst = Seed 1..n)
+  // Teilnehmer nach QTTR absteigend sortiert (beste zuerst = Seed 1..n).
+  // Defensiv: qttrVon kann null liefern; Fehler beim Lesen werden abgefangen.
   const teilnehmerSortiert=[...(konk.teilnehmer||[])].sort((x,y)=>{
-    const qx=qttrVon(spielerVon(x)), qy=qttrVon(spielerVon(y));
+    let qx=null, qy=null;
+    try{ qx=qttrVon(spielerVon(x)); }catch(e){ qx=null; }
+    try{ qy=qttrVon(spielerVon(y)); }catch(e){ qy=null; }
     return (qy??-1)-(qx??-1);
   });
 
