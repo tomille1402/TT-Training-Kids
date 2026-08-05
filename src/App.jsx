@@ -1,4 +1,4 @@
-// === TTC-App · Version 290 · erstellt 05.08.2026 ===
+// === TTC-App · Version 292 · erstellt 05.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "290";
+const APP_VERSION = "292";
 const APP_DATUM   = "05.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1424,8 +1424,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Kandidaten (aktive Spieler/Erwachsene, passend zur Konkurrenz)
   const kandidaten = konk ? players.filter(p=>{
     if(p.status==="passiv") return false;
+    if(p.group==="Gast") return false;               // Gäste nehmen nicht an Turnieren teil
     return konkurrenzPasst(konk.name, p);
-  }) : [];
+  }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")) : [];  // nach Vorname
   const nameVon = (id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id; };
   const spielerVon = (id)=> players.find(x=>x.id===id);
 
@@ -1924,25 +1925,56 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
       Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden Spieler tauschen den Platz.
     </div>}
 
-    {/* Tableau: Runden nebeneinander, horizontal scrollbar */}
+    {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
+        vertikal so ausgerichtet, dass ein Spiel mittig zwischen seinen beiden
+        Quellspielen sitzt; Verbindungslinien zeigen den Weg der Sieger. */}
     <div style={{overflowX:"auto",paddingBottom:8}}>
-      <div style={{display:"flex",gap:14,minWidth:"min-content"}}>
-        {runden.map((spiele,ri)=>(
-          <div key={ri} style={{display:"flex",flexDirection:"column",justifyContent:"space-around",minWidth:170,gap:10}}>
-            <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em"}}>{rundenTitel(ri)}</div>
-            {spiele.map((sp,si)=>{
-              const fixiert=!!sp.fixiert;
-              const sieger=ko_gewinnerVon(sp);
-              const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
-              const istErstrunde = ri===0;
-              return <KoSpielBox key={sp.key} sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
-                nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
-                fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin}
-                slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen}
-                setSatz={setSatz} toggleFix={toggleFix}/>;
-            })}
-          </div>
-        ))}
+      <div style={{display:"flex",minWidth:"min-content"}}>
+        {runden.map((spiele,ri)=>{
+          // Höhe einer Box-Einheit (inkl. Abstand). Jede Runde verdoppelt den
+          // vertikalen Abstand, damit die Paarungen mittig ausgerichtet sind.
+          const BOX=96;                    // ungefähre Höhe einer Spiel-Box
+          const einheit=BOX*Math.pow(2,ri);
+          const offset=(einheit-BOX)/2;    // oberer Einzug für Zentrierung
+          return <div key={ri} style={{display:"flex"}}>
+            {/* Spalte mit Spielen */}
+            <div style={{display:"flex",flexDirection:"column",minWidth:150}}>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:8,height:16}}>{rundenTitel(ri)}</div>
+              {spiele.map((sp,si)=>{
+                const fixiert=!!sp.fixiert;
+                const sieger=ko_gewinnerVon(sp);
+                const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
+                const istErstrunde = ri===0;
+                return <div key={sp.key} style={{height:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+                  <KoSpielBox sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
+                    nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
+                    fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin}
+                    slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen}
+                    setSatz={setSatz} toggleFix={toggleFix}/>
+                </div>;
+              })}
+            </div>
+            {/* Verbindungslinien zur nächsten Runde (nicht nach dem Finale) */}
+            {ri<runden.length-1 && <div style={{position:"relative",width:18,marginTop:24}}>
+              {Array.from({length:Math.floor(spiele.length/2)}).map((_,pi)=>{
+                // zwei Quellspiele pi*2 und pi*2+1 werden zusammengeführt
+                const oben=(pi*2)*einheit + einheit/2;
+                const unten=(pi*2+1)*einheit + einheit/2;
+                const mitte=(oben+unten)/2;
+                return <React.Fragment key={pi}>
+                  {/* waagrechte Linie vom oberen Spiel */}
+                  <div style={{position:"absolute",left:0,top:oben,width:9,height:2,background:"var(--border2)"}}/>
+                  {/* waagrechte Linie vom unteren Spiel */}
+                  <div style={{position:"absolute",left:0,top:unten,width:9,height:2,background:"var(--border2)"}}/>
+                  {/* senkrechte Verbindung zwischen beiden */}
+                  <div style={{position:"absolute",left:9,top:oben,width:2,height:unten-oben,background:"var(--border2)"}}/>
+                  {/* waagrechte Linie zur nächsten Runde (aus der Mitte) */}
+                  <div style={{position:"absolute",left:9,top:mitte,width:9,height:2,background:"var(--border2)"}}/>
+                </React.Fragment>;
+              })}
+            </div>}
+          </div>;
+        })}
       </div>
     </div>
   </div>;
