@@ -1,4 +1,4 @@
-// === TTC-App · Version 301 · erstellt 06.08.2026 ===
+// === TTC-App · Version 302 · erstellt 06.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "301";
+const APP_VERSION = "302";
 const APP_DATUM   = "06.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1576,10 +1576,22 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
   // ─── Gemischt: Übergang Gruppenphase → KO-Phase ───────────────────────────────
   // Sind alle Gruppenspiele entschieden? (Grundlage, um die KO-Phase zu starten.)
+  // Sind ALLE Gruppenspiele gespielt UND gespeichert (fixiert)? Nur dann darf die
+  // KO-Phase starten. Ein Spiel zählt nur, wenn beide Spieler feststehen, ein gültiges
+  // Ergebnis (3 Gewinnsätze) vorliegt und es per „✓ Ergebnis speichern“ fixiert wurde.
   function alleGruppenspieleFertig(){
     const sp=konk?.spiele||[];
     if(sp.length===0) return false;
-    return sp.every(s=> !s.a || !s.b || istFertig(s.saetze, s.fixiert));
+    return sp.every(s=>{
+      if(!s.a || !s.b) return false;          // unvollständige Begegnung → nicht fertig
+      if(!s.fixiert) return false;             // noch nicht gespeichert
+      return ko_sieger(s.saetze)!=null;        // gültiges Endergebnis vorhanden
+    });
+  }
+  // Anzahl der noch offenen (nicht gespeicherten) Gruppenspiele – für die Anzeige.
+  function offeneGruppenspiele(){
+    const sp=konk?.spiele||[];
+    return sp.filter(s=> !s.a || !s.b || !s.fixiert || ko_sieger(s.saetze)==null).length;
   }
   // Aufsteiger je Gruppe nach Platzierung ermitteln (Anzahl aus konk.aufsteiger).
   function ermittleAufsteiger(){
@@ -1596,7 +1608,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // die Erstplatzierten oben verteilt, dann die Zweitplatzierten „über Kreuz“.
   function koPhaseStarten(){
     if(!alleGruppenspieleFertig()){
-      if(!window.confirm("Es sind noch nicht alle Gruppenspiele eingetragen. KO-Phase trotzdem mit dem aktuellen Stand starten?")) return;
+      alert("Die KO-Phase kann erst gestartet werden, wenn alle Gruppenspiele gespielt und gespeichert sind.");
+      return;
     }
     const proGruppe=ermittleAufsteiger();
     // Seed-Reihe nach Stärke: erst alle Gruppensieger (Seed 1,2,3…), dann alle
@@ -2173,29 +2186,38 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
         {/* Gemischt: Übergang zur KO-Phase bzw. das KO-Tableau selbst */}
         {t.art==="gemischt" && (konk.gruppen&&konk.gruppen.length>0) && <div style={{marginTop:18,paddingTop:14,borderTop:"2px solid var(--border)"}}>
-          {!konk.koGestartet ? <div>
-            <div style={{fontSize:14,fontWeight:800,marginBottom:6}}>KO-Phase</div>
-            <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
-              Es steigen die besten {Math.max(1,Number(konk.aufsteiger)||2)} je Gruppe ins KO-Tableau auf.
-              {alleGruppenspieleFertig()
-                ? " Alle Gruppenspiele sind eingetragen."
-                : " Es sind noch nicht alle Gruppenspiele eingetragen."}
-            </div>
-            {/* Vorschau der Aufsteiger */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
-              {ermittleAufsteiger().map((ids,gi)=>(
-                <div key={gi} style={{background:"var(--bg2)",borderRadius:9,padding:"7px 10px",fontSize:11}}>
-                  <div style={{fontWeight:700,color:"var(--text3)",marginBottom:3}}>Gruppe {gi+1}</div>
-                  {ids.map((id,pl)=><div key={id} style={{color:"var(--text2)"}}>{pl+1}. {nameVon(id)}</div>)}
-                  {ids.length===0 && <div style={{color:"var(--text4)"}}>—</div>}
-                </div>
-              ))}
-            </div>
-            {isAdmin && <button onClick={koPhaseStarten}
-              style={{padding:"9px 16px",background:"#8b5cf6",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              🏆 KO-Phase starten
-            </button>}
-          </div> : <div>
+          {!konk.koGestartet ? (()=>{
+            const fertig=alleGruppenspieleFertig();
+            const offen=offeneGruppenspiele();
+            return <div>
+              <div style={{fontSize:14,fontWeight:800,marginBottom:6}}>KO-Phase</div>
+              <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+                Es steigen die besten {Math.max(1,Number(konk.aufsteiger)||2)} je Gruppe ins KO-Tableau auf.
+              </div>
+              {!fertig
+                ? <div style={{padding:"10px 12px",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,fontSize:12,color:"var(--text2)"}}>
+                    ⏳ Die KO-Phase kann erst gestartet werden, wenn <b>alle Gruppenspiele gespielt und gespeichert</b> sind.
+                    {offen>0 && <span> Es {offen===1?"fehlt":"fehlen"} noch <b>{offen}</b> {offen===1?"Spiel":"Spiele"} (per „✓ Ergebnis speichern“ bestätigen).</span>}
+                  </div>
+                : <>
+                    {/* Vorschau der Aufsteiger – erst wenn alle Spiele gespeichert sind */}
+                    <div style={{fontSize:11,color:"#10b981",fontWeight:700,marginBottom:8}}>✓ Alle Gruppenspiele sind gespielt und gespeichert.</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+                      {ermittleAufsteiger().map((ids,gi)=>(
+                        <div key={gi} style={{background:"var(--bg2)",borderRadius:9,padding:"7px 10px",fontSize:11}}>
+                          <div style={{fontWeight:700,color:"var(--text3)",marginBottom:3}}>Gruppe {gi+1}</div>
+                          {ids.map((id,pl)=><div key={id} style={{color:"var(--text2)"}}>{pl+1}. {nameVon(id)}</div>)}
+                          {ids.length===0 && <div style={{color:"var(--text4)"}}>—</div>}
+                        </div>
+                      ))}
+                    </div>
+                    {isAdmin && <button onClick={koPhaseStarten}
+                      style={{padding:"9px 16px",background:"#8b5cf6",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      🏆 KO-Phase starten
+                    </button>}
+                  </>}
+            </div>;
+          })() : <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{fontSize:14,fontWeight:800}}>KO-Phase</div>
               {isAdmin && <button onClick={koPhaseZuruecksetzen}
