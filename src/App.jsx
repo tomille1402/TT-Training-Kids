@@ -1,4 +1,4 @@
-// === TTC-App · Version 295 · erstellt 05.08.2026 ===
+// === TTC-App · Version 296 · erstellt 06.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "295";
-const APP_DATUM   = "05.08.2026";
+const APP_VERSION = "296";
+const APP_DATUM   = "06.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1124,7 +1124,53 @@ function anzahlSichtbareSaetze(saetze){
   return Math.min(5, Math.max(3, gespielt+1>3?gespielt+1:3));
 }
 
-// ─── Firestore-Kompatibilität ───────────────────────────────────────────────// Firestore erlaubt KEINE direkt verschachtelten Arrays. Intern arbeiten wir mit
+// Prüft ein fertiges Satzergebnis (beide Zahlen gesetzt) auf Gültigkeit:
+// Ein Satz ist gewonnen mit mind. 11 Punkten UND mind. 2 Punkten Vorsprung.
+// Bei Gleichstand oder ungültiger Kombination Rückgabe einer Fehlermeldung, sonst "".
+function satzFehler(pa, pb){
+  const a=Number(pa), b=Number(pb);
+  if(pa===""||pb===""||Number.isNaN(a)||Number.isNaN(b)) return "";       // unvollständig → keine Prüfung
+  if(a===b) return "Ein Satz kann nicht unentschieden enden.";
+  const hoch=Math.max(a,b), diff=Math.abs(a-b);
+  if(hoch<11) return "Zum Satzgewinn sind mindestens 11 Punkte nötig.";
+  if(hoch===11 && diff<2) return "Bei 11 Punkten sind mindestens 2 Punkte Vorsprung nötig (z. B. 11:9).";
+  if(hoch>11 && diff!==2) return "Über 11 Punkten muss der Vorsprung genau 2 betragen (z. B. 13:11).";
+  return "";
+}
+// Fokus in das nächste Satz-Eingabefeld setzen (per data-satzfeld-Reihenfolge).
+function fokusNaechstesSatzfeld(aktuellesInput){
+  try{
+    const alle=Array.from(document.querySelectorAll('input[data-satzfeld="1"]'));
+    const idx=alle.indexOf(aktuellesInput);
+    if(idx>=0 && idx+1<alle.length){ const n=alle[idx+1]; n.focus(); if(n.select) n.select(); }
+    else if(aktuellesInput.blur) aktuellesInput.blur();
+  }catch(e){}
+}
+// Gemeinsame Eingabe-Props für ein Satz-Eingabefeld: markiert beim Fokus den Inhalt
+// (Punkt 7) und springt bei gültiger Zahl (0–20) automatisch ins nächste Feld (Punkt 6).
+function satzInputProps(setzeWert){
+  return {
+    "data-satzfeld":"1",
+    onFocus:(e)=>{ if(e.target.select) e.target.select(); },
+    onChange:(e)=>{
+      const roh=e.target.value.replace(/[^\d]/g,"");
+      setzeWert(roh);
+      // Auto-Advance sobald eine gültige Zahl 0..20 eingegeben ist
+      const n=Number(roh);
+      if(roh!=="" && !Number.isNaN(n) && n>=0 && n<=20){
+        // zweistellige Zahlen (10..20) springen sofort; einstellige, sobald sie eindeutig sind
+        if(roh.length>=2 || n>2){
+          const inp=e.target;
+          setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);
+        }
+      }
+    },
+  };
+}
+
+
+// ─── Firestore-Kompatibilität ───────────────────────────────────────────────
+// Firestore erlaubt KEINE direkt verschachtelten Arrays. Intern arbeiten wir mit
 // gruppen=[[id,…],…] und saetze=[[a,b],…]; beim Speichern wandeln wir diese in
 // eine erlaubte Form (Objekte statt innerer Arrays) und beim Laden zurück.
 function turnierFuerFirestore(t){
@@ -1170,6 +1216,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   const [formOffen,setFormOffen]=useState(false);
   const [editTurnier,setEditTurnier]=useState(null); // Turnier im Formular (neu/bearbeiten)
   const [ttr,setTtr]=useState({stichtage:[],personen:[]});
+  const [paramVersion,setParamVersion]=useState(0);  // steigt nur bei Formular-Speicherung
 
   const darfAnlegen = isAdmin;
   const darfAlleErgebnisse = isAdmin || isTrainer;
@@ -1196,7 +1243,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   const ttrStichtag = ttr.stichtage[0]||null;
   const qttrVon = (p)=> qttrVonPerson(p, ttr.personen, ttrStichtag);
 
-  async function speichern(t){
+  async function speichern(t, ausFormular=false){
     const id=t.id||`turnier_${Date.now()}`;
     const daten={...t, id, aktualisiert:Date.now()};
     if(!daten.erstellt) daten.erstellt=Date.now();
@@ -1204,7 +1251,11 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
       // Verschachtelte Arrays vor dem Speichern in Firestore-taugliche Form bringen.
       await setDoc(doc(db,"turniere",id), turnierFuerFirestore(daten));
       setTurniere(prev=>{ const rest=prev.filter(x=>x.id!==id); return [daten,...rest].sort((a,b)=>(b.datum||"").localeCompare(a.datum||"")); });
-      setFormOffen(false); setEditTurnier(null); setSelId(id);
+      if(ausFormular){
+        // Nur bei Parameter-Speicherung: Formular schließen, Ansicht öffnen und die
+        // Detailansicht gezielt neu aufbauen (damit geänderte Parameter greifen).
+        setFormOffen(false); setEditTurnier(null); setSelId(id); setParamVersion(v=>v+1);
+      }
     }catch(e){ alert("Speichern fehlgeschlagen: "+(e.message||e)); }
   }
   async function loeschen(id){
@@ -1226,7 +1277,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   if(formOffen){
     return <TurnierForm
       start={editTurnier} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
-      onSpeichern={speichern}
+      onSpeichern={(t)=>speichern(t,true)}
     />;
   }
 
@@ -1235,7 +1286,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   // Werten frisch aufgebaut wird statt den alten internen Stand weiterzuzeigen.
   if(selTurnier){
     return <TurnierDetail
-      key={selTurnier.id+"_"+(selTurnier.aktualisiert||0)}
+      key={selTurnier.id+"_"+paramVersion}
       turnier={selTurnier} players={players} qttrVon={qttrVon} ttrStichtag={ttrStichtag}
       isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer}
       onBack={()=>setSelId(null)}
@@ -1299,7 +1350,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
-      key, name:neueKonk, anzahlGruppen:2, vorgabe:"nein", vorgabeArt:"QTTR",
+      key, name:neueKonk, anzahlGruppen:2, anzahlTische:4, vorgabe:"nein", vorgabeArt:"QTTR",
       diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
@@ -1357,6 +1408,14 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                         onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{anzahlGruppen:Math.min(16,Math.max(1,n))}); }}
                         style={{...selT2,width:90}}/>
                     </Feld>}
+
+                  {/* Anzahl der verfügbaren Tische (für automatische Tischvergabe) */}
+                  <Feld label="Anzahl Tische" klein>
+                    <input type="number" min={1} max={50} value={k.anzahlTische??""}
+                      onChange={e=>updKonk(k.key,{anzahlTische: e.target.value===""?"":Number(e.target.value)})}
+                      onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{anzahlTische:Math.min(50,Math.max(1,n))}); }}
+                      style={{...selT2,width:90}}/>
+                  </Feld>
 
                   <Feld label="Vorgabe" klein>
                     <select value={k.vorgabe} onChange={e=>updKonk(k.key,{vorgabe:e.target.value})} style={{...selT2,width:120}}>
@@ -1755,13 +1814,18 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                         {Array.from({length:anzahlSichtbareSaetze(sp.saetze)}).map((_,si)=>{
                           const satz=sp.saetze[si]||["",""];
-                          return <div key={si} style={{display:"flex",alignItems:"center",gap:3,
-                            background:fixiert?"#10b98118":"var(--bg2)",borderRadius:6,padding:"2px 4px"}}>
-                            <input value={satz[0]} disabled={!darf||fixiert} onChange={e=>setSatz(sp._idx,si,0,e.target.value)}
-                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
-                            <span style={{color:"var(--text4)",fontSize:11}}>:</span>
-                            <input value={satz[1]} disabled={!darf||fixiert} onChange={e=>setSatz(sp._idx,si,1,e.target.value)}
-                              style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
+                          const fehler=satzFehler(satz[0],satz[1]);
+                          return <div key={si} style={{display:"flex",flexDirection:"column",gap:2}}>
+                            <div style={{display:"flex",alignItems:"center",gap:3,
+                              background:fixiert?"#10b98118":"var(--bg2)",borderRadius:6,padding:"2px 4px",
+                              border:fehler?"1px solid #ef4444":"1px solid transparent"}}>
+                              <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,0,v))}
+                                style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
+                              <span style={{color:"var(--text4)",fontSize:11}}>:</span>
+                              <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,1,v))}
+                                style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
+                            </div>
+                            {fehler && <span style={{fontSize:8,color:"#ef4444",maxWidth:80,lineHeight:1.2}}>⚠</span>}
                           </div>;
                         })}
                         {/* Speichern-/Ändern-Button pro SPIEL */}
@@ -2132,11 +2196,12 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
       <div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>
         {Array.from({length: anzahlSichtbareSaetze(sp.saetze)}).map((_,idx)=>{
           const satz=sp.saetze[idx]||["",""];
-          return <div key={idx} style={{display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px"}}>
-            <input value={satz[0]} disabled={!darf||fixiert} onChange={e=>setSatz(sp.key,idx,0,e.target.value)}
+          const fehler=satzFehler(satz[0],satz[1]);
+          return <div key={idx} style={{display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
+            <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v))}
               style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
             <span style={{color:"var(--text4)",fontSize:10}}>:</span>
-            <input value={satz[1]} disabled={!darf||fixiert} onChange={e=>setSatz(sp.key,idx,1,e.target.value)}
+            <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v))}
               style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
           </div>;
         })}
