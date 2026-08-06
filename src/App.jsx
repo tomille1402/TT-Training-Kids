@@ -1,4 +1,4 @@
-// === TTC-App · Version 296 · erstellt 06.08.2026 ===
+// === TTC-App · Version 298 · erstellt 06.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "296";
+const APP_VERSION = "298";
 const APP_DATUM   = "06.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1493,6 +1493,16 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     });
     setDirty(true);
   }
+  // Ein Feld des Turniers selbst (nicht einer Konkurrenz) ändern, z.B. pushAktiv.
+  function updTurnier(patch){
+    setT(prev=>{
+      const neu={...prev, ...patch};
+      letzterStand.current=neu;
+      planeAutoSave();
+      return neu;
+    });
+    setDirty(true);
+  }
   function planeAutoSave(){
     if(speichernTimer.current) clearTimeout(speichernTimer.current);
     setAutoStatus("speichert");
@@ -1590,6 +1600,115 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     return neu;
   }
 
+  // ─── Tischverwaltung (automatische Zuordnung „nächster freier Tisch“) ──────────
+  // Eine einheitliche Liste aller aktuell spielbaren Begegnungen (Gruppen + KO):
+  // beide Spieler stehen fest, das Spiel ist noch nicht entschieden/fixiert.
+  const anzahlTische = Math.max(0, Number(konk?.anzahlTische)||0);
+  const tischMap = konk?.tische || {};   // begegnungKey -> Tischnummer
+
+  function istFertig(saetze, fixiert){
+    if(fixiert) return true;
+    // 3 Gewinnsätze = entschieden
+    let a=0,b=0;
+    for(const s of (saetze||[])){
+      const pa=Number(s[0]), pb=Number(s[1]);
+      if(s[0]===""||s[1]===""||Number.isNaN(pa)||Number.isNaN(pb)) continue;
+      if(pa>pb) a++; else if(pb>pa) b++;
+    }
+    return a>=3 || b>=3;
+  }
+  function begegnungen(){
+    const liste=[];
+    // Gruppen-Begegnungen
+    (konk?.spiele||[]).forEach((s,idx)=>{
+      if(!s.a || !s.b) return;
+      liste.push({
+        key:`g_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
+        fertig:istFertig(s.saetze, s.fixiert)
+      });
+    });
+    // KO-Begegnungen: aus dem aufgebauten Tableau die Spiele mit zwei Spielern
+    if(konk?.koSlots && konk.koSlots.length){
+      const runden=ko_baueRunden(konk.koSlots, konk.koSpiele||{});
+      runden.forEach(spiele=>spiele.forEach(sp=>{
+        if(!sp.a || !sp.b) return;
+        liste.push({
+          key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
+          fertig:istFertig(sp.saetze, sp.fixiert)
+        });
+      }));
+    }
+    return liste;
+  }
+  // Tischzuordnung neu berechnen: fertige Begegnungen geben ihren Tisch frei, danach
+  // bekommen wartende Begegnungen der Reihe nach den jeweils niedrigsten freien Tisch.
+  function tischeNeu(aktuelleTische){
+    if(anzahlTische<=0) return {};
+    const bg=begegnungen();
+    const offen=bg.filter(x=>!x.fertig);
+    const neu={};
+    const belegteTische=new Set();
+    // 1) bestehende Zuordnungen für noch offene Begegnungen behalten
+    for(const x of offen){
+      const t=aktuelleTische[x.key];
+      if(t && t>=1 && t<=anzahlTische && !belegteTische.has(t)){
+        neu[x.key]=t; belegteTische.add(t);
+      }
+    }
+    // 2) wartende (noch ohne Tisch) auf freie Tische setzen
+    const freie=[];
+    for(let t=1;t<=anzahlTische;t++) if(!belegteTische.has(t)) freie.push(t);
+    for(const x of offen){
+      if(neu[x.key]) continue;
+      if(freie.length===0) break;
+      neu[x.key]=freie.shift();
+    }
+    return neu;
+  }
+  // Nach jeder Ergebnis-Änderung die Tische aktualisieren und (bei Änderung) speichern.
+  // Bekommt eine Begegnung NEU einen Tisch, werden die beiden Spieler per Push gerufen.
+  const benachrichtigt=useRef({});   // begegnungKey -> Tischnummer (bereits gepusht)
+  useEffect(()=>{
+    if(anzahlTische<=0) return;
+    const neu=tischeNeu(tischMap);
+    if(JSON.stringify(neu)!==JSON.stringify(tischMap)){
+      updKonk({ tische:neu });
+    }
+    // Push für neu zugeordnete Tische (nur einmal je Begegnung+Tisch).
+    // Nur wenn der Admin die Push-Benachrichtigung für dieses Turnier aktiviert hat.
+    const bg=begegnungen();
+    for(const x of bg){
+      if(x.fertig) continue;
+      const tisch=neu[x.key];
+      if(!tisch) continue;
+      if(benachrichtigt.current[x.key]===tisch) continue; // schon gerufen
+      benachrichtigt.current[x.key]=tisch;
+      if(t.pushAktiv) pushSpielerAnTisch(x.a, x.b, tisch);
+    }
+    // Aufräumen: fertige/entfernte Begegnungen aus dem Merker nehmen
+    for(const k of Object.keys(benachrichtigt.current)){
+      if(!neu[k]) delete benachrichtigt.current[k];
+    }
+    // eslint-disable-next-line
+  },[JSON.stringify(konk?.spiele), JSON.stringify(konk?.koSpiele), JSON.stringify(konk?.koSlots), anzahlTische]);
+
+  // Ruft die Netlify-Funktion, die beide Spieler per Push an den Tisch bittet.
+  async function pushSpielerAnTisch(idA, idB, tisch){
+    try{
+      const pa=spielerVon(idA), pb=spielerVon(idB);
+      await fetch("/.netlify/functions/turnieralarm", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          turnier:t.name||"", konkurrenz:konk?.name||"", tisch,
+          spielerA:{ id:idA, name: pa?`${pa.firstName} ${pa.lastName}`:"" },
+          spielerB:{ id:idB, name: pb?`${pb.firstName} ${pb.lastName}`:"" },
+        })
+      });
+    }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
+  }
+
+
+
   // Nicht zugeteilte Teilnehmer (im Pool)
   const zugeteilt=new Set((konk?.gruppen||[]).flat());
   const pool=(konk?.teilnehmer||[]).filter(id=>!zugeteilt.has(id));
@@ -1653,6 +1772,30 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     <div style={{fontSize:17,fontWeight:800}}>{t.name}</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>{deDatumT(t.datum)} · {t.art}</div>
 
+    {/* Push-Schalter (nur Admin): steuert, ob Spieler bei Tischzuweisung eine
+        Push-Nachricht bekommen. Standardmäßig AUS, damit man in Ruhe testen kann. */}
+    {isAdmin && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+      marginBottom:12,padding:"9px 12px",borderRadius:10,
+      background:t.pushAktiv?"#10b98115":"var(--bg2)",
+      border:t.pushAktiv?"1px solid #10b98155":"1px solid var(--border)"}}>
+      <div style={{fontSize:12}}>
+        <div style={{fontWeight:700,color:t.pushAktiv?"#10b981":"var(--text2)"}}>
+          {t.pushAktiv?"🔔 Push-Nachrichten aktiv":"🔕 Push-Nachrichten aus"}
+        </div>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>
+          {t.pushAktiv
+            ? "Spieler werden bei Tischzuweisung benachrichtigt."
+            : "Zum Testen: es werden keine Nachrichten versendet."}
+        </div>
+      </div>
+      <button onClick={()=>updTurnier({pushAktiv:!t.pushAktiv})}
+        style={{flexShrink:0,width:52,height:28,borderRadius:14,border:"none",cursor:"pointer",position:"relative",
+          background:t.pushAktiv?"#10b981":"var(--bg3)",transition:"background .15s"}}>
+        <span style={{position:"absolute",top:3,left:t.pushAktiv?27:3,width:22,height:22,borderRadius:"50%",
+          background:"#fff",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
+      </button>
+    </div>}
+
     {/* Konkurrenz-Auswahl */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
       {(t.konkurrenzen||[]).map(k=>(
@@ -1683,6 +1826,31 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           })}
         </div>
       </details>}
+
+      {/* Laufende Spiele (mit Tisch) – oberhalb der Gruppen bzw. des Tableaus */}
+      {anzahlTische>0 && (()=>{
+        const bg=begegnungen().filter(x=>!x.fertig);
+        const mitTisch=bg.filter(x=>tischMap[x.key]).sort((p,q)=>tischMap[p.key]-tischMap[q.key]);
+        const wartend=bg.filter(x=>!tischMap[x.key]);
+        if(mitTisch.length===0 && wartend.length===0) return null;
+        const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
+        return <div style={{marginBottom:14,background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
+          <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>▶ Laufende Spiele ({mitTisch.length}/{anzahlTische} Tische belegt)</div>
+          {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {mitTisch.map(x=>(
+              <div key={x.key} style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
+                <span style={{flexShrink:0,width:34,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{tischMap[x.key]}</span>
+                <span style={{flex:1,fontSize:12,fontWeight:600}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
+                <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
+              </div>
+            ))}
+          </div>
+          {wartend.length>0 && <div style={{marginTop:8,fontSize:11,color:"var(--text3)"}}>
+            Warten auf Tisch: {wartend.map(x=>`${nameVon(x.a)}/${nameVon(x.b)}`).join(", ")}
+          </div>}
+        </div>;
+      })()}
 
       {/* Gruppen-Modus */}
       {(t.art==="Gruppen"||t.art==="gemischt") ? <>
@@ -1807,6 +1975,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                           {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
                         {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
+                        {!fixiert && anzahlTische>0 && tischMap[`g_${sp._idx}`] && <span style={{fontSize:10,color:"#fff",fontWeight:800,flexShrink:0,background:"#10b981",borderRadius:6,padding:"2px 7px"}}>Tisch {tischMap[`g_${sp._idx}`]}</span>}
                       </div>
                       {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
                         Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
