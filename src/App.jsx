@@ -1,4 +1,4 @@
-// === TTC-App · Version 298 · erstellt 06.08.2026 ===
+// === TTC-App · Version 301 · erstellt 06.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "298";
+const APP_VERSION = "301";
 const APP_DATUM   = "06.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1350,7 +1350,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
-      key, name:neueKonk, anzahlGruppen:2, anzahlTische:4, vorgabe:"nein", vorgabeArt:"QTTR",
+      key, name:neueKonk, anzahlGruppen:2, anzahlTische:4, aufsteiger:2, vorgabe:"nein", vorgabeArt:"QTTR",
       diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
@@ -1406,6 +1406,15 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                       <input type="number" min={1} max={16} value={k.anzahlGruppen}
                         onChange={e=>updKonk(k.key,{anzahlGruppen: e.target.value===""?"":Number(e.target.value)})}
                         onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{anzahlGruppen:Math.min(16,Math.max(1,n))}); }}
+                        style={{...selT2,width:90}}/>
+                    </Feld>}
+
+                  {/* Aufsteiger je Gruppe – nur bei "gemischt" (Gruppen → KO) */}
+                  {t.art==="gemischt" &&
+                    <Feld label="Aufsteiger/Gruppe" klein>
+                      <input type="number" min={1} max={8} value={k.aufsteiger??2}
+                        onChange={e=>updKonk(k.key,{aufsteiger: e.target.value===""?"":Number(e.target.value)})}
+                        onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{aufsteiger:Math.min(8,Math.max(1,n))}); }}
                         style={{...selT2,width:90}}/>
                     </Feld>}
 
@@ -1564,6 +1573,52 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     updKonk({ gruppen, spiele:erzeugeSpiele(gruppen, konk.spiele||[]) });
   }
+
+  // ─── Gemischt: Übergang Gruppenphase → KO-Phase ───────────────────────────────
+  // Sind alle Gruppenspiele entschieden? (Grundlage, um die KO-Phase zu starten.)
+  function alleGruppenspieleFertig(){
+    const sp=konk?.spiele||[];
+    if(sp.length===0) return false;
+    return sp.every(s=> !s.a || !s.b || istFertig(s.saetze, s.fixiert));
+  }
+  // Aufsteiger je Gruppe nach Platzierung ermitteln (Anzahl aus konk.aufsteiger).
+  function ermittleAufsteiger(){
+    const n=Math.max(1, Number(konk?.aufsteiger)||2);
+    const proGruppe=[];
+    (konk?.gruppen||[]).forEach((ids,gi)=>{
+      const tab=berechneGruppenTabelle(ids, (konk.spiele||[]).filter(s=>s.gi===gi));
+      proGruppe.push(tab.slice(0,n).map(r=>r.id));
+    });
+    return proGruppe; // Array je Gruppe: [bester, zweiter, …]
+  }
+  // KO-Tableau aus den Gruppen-Aufsteigern aufbauen. Setzung so, dass Gruppensieger
+  // getrennt stehen und sich Spieler derselben Gruppe möglichst spät begegnen:
+  // die Erstplatzierten oben verteilt, dann die Zweitplatzierten „über Kreuz“.
+  function koPhaseStarten(){
+    if(!alleGruppenspieleFertig()){
+      if(!window.confirm("Es sind noch nicht alle Gruppenspiele eingetragen. KO-Phase trotzdem mit dem aktuellen Stand starten?")) return;
+    }
+    const proGruppe=ermittleAufsteiger();
+    // Seed-Reihe nach Stärke: erst alle Gruppensieger (Seed 1,2,3…), dann alle
+    // Zweitplatzierten, dann Dritte … So verteilt der Setz-Algorithmus die Gruppensieger
+    // auf verschiedene Tableau-Hälften, und Spieler derselben Gruppe (z.B. Sieger und
+    // Zweiter) landen automatisch in getrennten Ästen und treffen sich möglichst spät.
+    const nPlatz=Math.max(...proGruppe.map(g=>g.length), 0);
+    const seedReihe=[];
+    for(let pl=0; pl<nPlatz; pl++){
+      for(let gi=0; gi<proGruppe.length; gi++){
+        if(proGruppe[gi][pl]) seedReihe.push(proGruppe[gi][pl]);
+      }
+    }
+    if(seedReihe.length<2){ alert("Zu wenige Aufsteiger für ein KO-Tableau."); return; }
+    const koSlots=ko_erstRunde(seedReihe);   // Freilose an die Bestgesetzten
+    updKonk({ koSlots, koSpiele:{}, koGestartet:true });
+  }
+  // KO-Phase zurücksetzen (zurück zur Gruppenansicht/-korrektur).
+  function koPhaseZuruecksetzen(){
+    if(!window.confirm("KO-Phase verwerfen und zur Gruppenphase zurück? Die im KO eingetragenen Ergebnisse gehen verloren.")) return;
+    updKonk({ koSlots:[], koSpiele:{}, koGestartet:false });
+  }
   // Zuteilung: primär „antippen & Ziel wählen“ (funktioniert auf Touch/Handy),
   // zusätzlich klassisches Drag&Drop für die Maus am Desktop.
   const [dragId,setDragId]=useState(null);      // aktive Person (getippt oder gezogen)
@@ -1604,7 +1659,33 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Eine einheitliche Liste aller aktuell spielbaren Begegnungen (Gruppen + KO):
   // beide Spieler stehen fest, das Spiel ist noch nicht entschieden/fixiert.
   const anzahlTische = Math.max(0, Number(konk?.anzahlTische)||0);
-  const tischMap = konk?.tische || {};   // begegnungKey -> Tischnummer
+  const tischMap = konk?.tische || {};   // begegnungKey -> Tischnummer (automatisch)
+  const pausiert = konk?.pausiert || [];  // Liste von begegnungKeys, die ausgesetzt sind
+  const istPausiert = (key)=> pausiert.includes(key);
+
+  // Eine Begegnung aussetzen/fortsetzen. Ausgesetzte Begegnungen bekommen keinen Tisch
+  // und werden bei der automatischen Vergabe übersprungen (z.B. Spieler kurz verhindert).
+  function togglePause(key){
+    const neu = istPausiert(key) ? pausiert.filter(k=>k!==key) : [...pausiert, key];
+    // Beim Aussetzen den ggf. belegten Tisch sofort freigeben.
+    const tische={...tischMap};
+    if(!istPausiert(key)) delete tische[key];
+    updKonk({ pausiert:neu, tische });
+  }
+  // Einen Tisch für eine Begegnung manuell setzen. Steht der Tisch schon bei einer
+  // anderen Begegnung, tauschen die beiden ihren Tisch (oder die andere wird frei).
+  function tischSetzen(key, tischNr){
+    const t=Number(tischNr);
+    const tische={...tischMap};
+    if(!t || t<1 || t>anzahlTische){ delete tische[key]; updKonk({ tische }); return; }
+    // Falls der Zieltisch belegt ist: die andere Begegnung bekommt den bisherigen Tisch
+    // dieser Begegnung (Tausch), sonst wird sie tischlos.
+    const bisher=tische[key];
+    const andererKey=Object.keys(tische).find(k=>k!==key && tische[k]===t);
+    if(andererKey){ if(bisher) tische[andererKey]=bisher; else delete tische[andererKey]; }
+    tische[key]=t;
+    updKonk({ tische });
+  }
 
   function istFertig(saetze, fixiert){
     if(fixiert) return true;
@@ -1619,49 +1700,86 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }
   function begegnungen(){
     const liste=[];
-    // Gruppen-Begegnungen
+    // Gruppen-Begegnungen (mit Gruppenindex gi und Runde für faire Verteilung)
     (konk?.spiele||[]).forEach((s,idx)=>{
       if(!s.a || !s.b) return;
       liste.push({
         key:`g_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
+        gi:(s.gi??0), runde:(s.runde??0),
         fertig:istFertig(s.saetze, s.fixiert)
       });
     });
-    // KO-Begegnungen: aus dem aufgebauten Tableau die Spiele mit zwei Spielern
+    // KO-Begegnungen: aus dem aufgebauten Tableau die Spiele mit zwei Spielern.
+    // gi=0 (eine „Gruppe"), Runde aus dem Key r-i ableiten.
     if(konk?.koSlots && konk.koSlots.length){
       const runden=ko_baueRunden(konk.koSlots, konk.koSpiele||{});
-      runden.forEach(spiele=>spiele.forEach(sp=>{
+      runden.forEach((spiele,ri)=>spiele.forEach(sp=>{
         if(!sp.a || !sp.b) return;
         liste.push({
           key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
+          gi:0, runde:ri,
           fertig:istFertig(sp.saetze, sp.fixiert)
         });
       }));
     }
     return liste;
   }
+  // Faire Reihenfolge der wartenden Begegnungen: erst nach Runde, dann rotierend über
+  // die Gruppen (Gruppe 0, 1, 2, …, dann wieder 0 …). So spielen alle Gruppen parallel
+  // und werden möglichst gleichzeitig fertig, statt dass eine Gruppe komplett durchläuft.
+  function faireReihenfolge(offen){
+    // nach Gruppe bündeln, innerhalb jeder Gruppe nach Runde sortieren
+    const proGruppe={};
+    for(const x of offen){
+      (proGruppe[x.gi] = proGruppe[x.gi] || []).push(x);
+    }
+    const gruppenKeys=Object.keys(proGruppe).map(Number).sort((a,b)=>a-b);
+    for(const g of gruppenKeys){
+      proGruppe[g].sort((a,b)=> (a.runde-b.runde) || a.key.localeCompare(b.key));
+    }
+    // rundenweise im Reißverschluss über die Gruppen einsammeln
+    const ergebnis=[];
+    let rest=true;
+    while(rest){
+      rest=false;
+      for(const g of gruppenKeys){
+        const arr=proGruppe[g];
+        if(arr.length){ ergebnis.push(arr.shift()); rest=true; }
+      }
+    }
+    return ergebnis;
+  }
   // Tischzuordnung neu berechnen: fertige Begegnungen geben ihren Tisch frei, danach
-  // bekommen wartende Begegnungen der Reihe nach den jeweils niedrigsten freien Tisch.
+  // bekommen wartende Begegnungen in fairer (gruppenübergreifender) Reihenfolge den
+  // jeweils niedrigsten freien Tisch.
   function tischeNeu(aktuelleTische){
     if(anzahlTische<=0) return {};
     const bg=begegnungen();
-    const offen=bg.filter(x=>!x.fertig);
+    // Pausierte (ausgesetzte) Begegnungen bekommen keinen Tisch.
+    const offen=bg.filter(x=>!x.fertig && !istPausiert(x.key));
     const neu={};
     const belegteTische=new Set();
-    // 1) bestehende Zuordnungen für noch offene Begegnungen behalten
+    // 1) bestehende Zuordnungen für noch offene Begegnungen behalten (kein Umsetzen
+    //    laufender Spiele auf andere Tische)
     for(const x of offen){
       const t=aktuelleTische[x.key];
       if(t && t>=1 && t<=anzahlTische && !belegteTische.has(t)){
         neu[x.key]=t; belegteTische.add(t);
       }
     }
-    // 2) wartende (noch ohne Tisch) auf freie Tische setzen
+    // 2) wartende (noch ohne Tisch) in fairer Reihenfolge auf freie Tische setzen.
+    //    Dabei sicherstellen, dass kein Spieler gleichzeitig an zwei Tischen steht.
     const freie=[];
     for(let t=1;t<=anzahlTische;t++) if(!belegteTische.has(t)) freie.push(t);
-    for(const x of offen){
-      if(neu[x.key]) continue;
+    // Spieler, die bereits an einem (behaltenen) Tisch spielen, sind blockiert.
+    const aktiveSpieler=new Set();
+    for(const x of offen){ if(neu[x.key]){ aktiveSpieler.add(x.a); aktiveSpieler.add(x.b); } }
+    const wartend=faireReihenfolge(offen.filter(x=>!neu[x.key]));
+    for(const x of wartend){
       if(freie.length===0) break;
+      if(aktiveSpieler.has(x.a) || aktiveSpieler.has(x.b)) continue; // Spieler gerade beschäftigt
       neu[x.key]=freie.shift();
+      aktiveSpieler.add(x.a); aktiveSpieler.add(x.b);
     }
     return neu;
   }
@@ -1690,7 +1808,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neu[k]) delete benachrichtigt.current[k];
     }
     // eslint-disable-next-line
-  },[JSON.stringify(konk?.spiele), JSON.stringify(konk?.koSpiele), JSON.stringify(konk?.koSlots), anzahlTische]);
+  },[JSON.stringify(konk?.spiele), JSON.stringify(konk?.koSpiele), JSON.stringify(konk?.koSlots), JSON.stringify(pausiert), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Spieler per Push an den Tisch bittet.
   async function pushSpielerAnTisch(idA, idB, tisch){
@@ -1831,23 +1949,62 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       {anzahlTische>0 && (()=>{
         const bg=begegnungen().filter(x=>!x.fertig);
         const mitTisch=bg.filter(x=>tischMap[x.key]).sort((p,q)=>tischMap[p.key]-tischMap[q.key]);
-        const wartend=bg.filter(x=>!tischMap[x.key]);
-        if(mitTisch.length===0 && wartend.length===0) return null;
+        const wartendAlle=faireReihenfolge(bg.filter(x=>!tischMap[x.key] && !istPausiert(x.key)));
+        const wartend=wartendAlle.slice(0,6);           // nur die nächsten 6 möglichen Spiele
+        const wartendRest=wartendAlle.length-wartend.length;
+        const ausgesetzt=bg.filter(x=>istPausiert(x.key));
+        if(mitTisch.length===0 && wartendAlle.length===0 && ausgesetzt.length===0) return null;
         const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
+        // freie Tischnummern (für das Umsetzen-Dropdown)
+        const belegt=new Set(Object.values(tischMap));
         return <div style={{marginBottom:14,background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
           <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>▶ Laufende Spiele ({mitTisch.length}/{anzahlTische} Tische belegt)</div>
           {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {mitTisch.map(x=>(
-              <div key={x.key} style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
-                <span style={{flexShrink:0,width:34,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{tischMap[x.key]}</span>
+              <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
+                {isAdmin
+                  ? <select value={tischMap[x.key]} onChange={e=>tischSetzen(x.key, e.target.value)}
+                      style={{flexShrink:0,width:44,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,border:"none",textAlign:"center",cursor:"pointer"}}>
+                      {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
+                        <option key={n} value={n} style={{background:"var(--bg)",color:"var(--text)"}}>{n}{belegt.has(n)&&n!==tischMap[x.key]?" •":""}</option>)}
+                    </select>
+                  : <span style={{flexShrink:0,width:34,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{tischMap[x.key]}</span>}
                 <span style={{flex:1,fontSize:12,fontWeight:600}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
                 <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
+                {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
+                  style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸ aussetzen</button>}
               </div>
             ))}
           </div>
-          {wartend.length>0 && <div style={{marginTop:8,fontSize:11,color:"var(--text3)"}}>
-            Warten auf Tisch: {wartend.map(x=>`${nameVon(x.a)}/${nameVon(x.b)}`).join(", ")}
+
+          {/* Nächste (max. 6) wartende Spiele */}
+          {wartend.length>0 && <div style={{marginTop:10}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5}}>Als Nächstes ({wartend.length}{wartendRest>0?` von ${wartendAlle.length}`:""}):</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {wartend.map(x=>(
+                <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                  <span style={{flex:1}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
+                  {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
+                    style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"pointer"}}>⏸</button>}
+                </div>
+              ))}
+            </div>
+            {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
+          </div>}
+
+          {/* Ausgesetzte Begegnungen */}
+          {ausgesetzt.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:5}}>⏸ Ausgesetzt ({ausgesetzt.length}):</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {ausgesetzt.map(x=>(
+                <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                  <span style={{flex:1}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
+                  {isAdmin && <button onClick={()=>togglePause(x.key)} title="wieder aufnehmen"
+                    style={{flexShrink:0,border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>▶ fortsetzen</button>}
+                </div>
+              ))}
+            </div>
           </div>}
         </div>;
       })()}
@@ -2013,6 +2170,45 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               </div>;
             })}
           </>}
+
+        {/* Gemischt: Übergang zur KO-Phase bzw. das KO-Tableau selbst */}
+        {t.art==="gemischt" && (konk.gruppen&&konk.gruppen.length>0) && <div style={{marginTop:18,paddingTop:14,borderTop:"2px solid var(--border)"}}>
+          {!konk.koGestartet ? <div>
+            <div style={{fontSize:14,fontWeight:800,marginBottom:6}}>KO-Phase</div>
+            <div style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>
+              Es steigen die besten {Math.max(1,Number(konk.aufsteiger)||2)} je Gruppe ins KO-Tableau auf.
+              {alleGruppenspieleFertig()
+                ? " Alle Gruppenspiele sind eingetragen."
+                : " Es sind noch nicht alle Gruppenspiele eingetragen."}
+            </div>
+            {/* Vorschau der Aufsteiger */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+              {ermittleAufsteiger().map((ids,gi)=>(
+                <div key={gi} style={{background:"var(--bg2)",borderRadius:9,padding:"7px 10px",fontSize:11}}>
+                  <div style={{fontWeight:700,color:"var(--text3)",marginBottom:3}}>Gruppe {gi+1}</div>
+                  {ids.map((id,pl)=><div key={id} style={{color:"var(--text2)"}}>{pl+1}. {nameVon(id)}</div>)}
+                  {ids.length===0 && <div style={{color:"var(--text4)"}}>—</div>}
+                </div>
+              ))}
+            </div>
+            {isAdmin && <button onClick={koPhaseStarten}
+              style={{padding:"9px 16px",background:"#8b5cf6",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              🏆 KO-Phase starten
+            </button>}
+          </div> : <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:14,fontWeight:800}}>KO-Phase</div>
+              {isAdmin && <button onClick={koPhaseZuruecksetzen}
+                style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                ↩ zurück zur Gruppenphase
+              </button>}
+            </div>
+            <ErrorBoundary resetKey={aktiveKonk}>
+              <KoTableau konk={konk} players={players} qttrVon={qttrVon}
+                isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+            </ErrorBoundary>
+          </div>}
+        </div>}
       </> : t.art==="einfaches KO-System" ? (
         <ErrorBoundary resetKey={aktiveKonk}>
           <KoTableau konk={konk} players={players} qttrVon={qttrVon}
