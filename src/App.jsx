@@ -1,4 +1,4 @@
-// === TTC-App · Version 302 · erstellt 06.08.2026 ===
+// === TTC-App · Version 304 · erstellt 06.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "302";
+const APP_VERSION = "304";
 const APP_DATUM   = "06.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1075,11 +1075,67 @@ function berechneGruppenTabelle(teilnehmerIds, spiele){
     else { stat[sp.a].punkte++; stat[sp.b].punkte++; } // Unentschieden (falls möglich)
   }
   const rows=Object.values(stat);
-  // Platzierung: Punkte, dann Satzdifferenz, dann Spieldifferenz
-  rows.sort((x,y)=> y.punkte-x.punkte
-    || (y.satzGew-y.satzVerl)-(x.satzGew-x.satzVerl)
-    || (y.spSieg-y.spNied)-(x.spSieg-x.spNied));
-  rows.forEach((r,i)=>{ r.platz=i+1; });
+  // Platzierung: Punkte, dann Satzdifferenz, dann Spieldifferenz. Danach der direkte
+  // Vergleich – ABER nur, wenn er eindeutig ist (bei einem Ringschluss A>B>C>A wäre er
+  // widersprüchlich und würde die Reihenfolge geräteabhängig machen). Als allerletztes,
+  // IMMER eindeutiges Kriterium entscheidet die Spieler-ID. Dadurch ist die Platzierung
+  // vollständig deterministisch – alle Geräte sehen dieselbe Tabelle.
+  const satzDiff=r=>r.satzGew-r.satzVerl;
+  const spielDiff=r=>r.spSieg-r.spNied;
+  // Ergebnis des direkten Duells x↔y: +1 x gewann, -1 y gewann, 0 sonst.
+  function direkt(xId,yId){
+    for(const sp of spiele){
+      if(!sp||!sp.a||!sp.b) continue;
+      if(!((sp.a===xId&&sp.b===yId)||(sp.a===yId&&sp.b===xId))) continue;
+      let a=0,b=0;
+      for(const s of (sp.saetze||[])){
+        const na=Number(s[0]),nb=Number(s[1]);
+        if(s[0]===""||s[1]===""||Number.isNaN(na)||Number.isNaN(nb)) continue;
+        if(na>nb) a++; else if(nb>na) b++;
+      }
+      if(a===b) return 0;
+      const sieger=a>b?sp.a:sp.b;
+      return sieger===xId?1:-1;
+    }
+    return 0;
+  }
+  // Gruppe von Spielern mit exakt gleichen Kennzahlen (Punkte/Satzdiff/Spieldiff) bilden;
+  // innerhalb einer solchen Gruppe entscheidet – wenn zirkelfrei – der direkte Vergleich,
+  // sonst die ID. Wir sortieren zunächst grob, dann feinauflösend über eine Kennzahl.
+  function kennzahl(r){ return `${r.punkte}|${satzDiff(r)}|${spielDiff(r)}`; }
+  rows.sort((x,y)=>
+       (y.punkte-x.punkte)
+    || (satzDiff(y)-satzDiff(x))
+    || (spielDiff(y)-spielDiff(x))
+    || String(x.id).localeCompare(String(y.id))   // stabiler Anker VOR direktem Vergleich
+  );
+  // Feinauflösung je Gleichstands-Block über den direkten Vergleich, aber nur wenn er
+  // innerhalb des Blocks eine widerspruchsfreie Rangfolge ergibt (kein Ringschluss).
+  let i=0;
+  while(i<rows.length){
+    let j=i;
+    while(j+1<rows.length && kennzahl(rows[j+1])===kennzahl(rows[i])) j++;
+    if(j>i){
+      const block=rows.slice(i,j+1);
+      // Siege im direkten Vergleich innerhalb des Blocks zählen
+      const siege={}; block.forEach(r=>siege[r.id]=0);
+      let zirkel=false;
+      for(let a=0;a<block.length;a++) for(let b=a+1;b<block.length;b++){
+        const d=direkt(block[a].id, block[b].id);
+        if(d>0) siege[block[a].id]++; else if(d<0) siege[block[b].id]++;
+      }
+      // Wenn alle Siegzahlen unterschiedlich sind → eindeutige Rangfolge; sonst ID-Anker.
+      const werte=block.map(r=>siege[r.id]);
+      const eindeutig=new Set(werte).size===werte.length;
+      if(eindeutig){
+        block.sort((p,q)=> (siege[q.id]-siege[p.id]) || String(p.id).localeCompare(String(q.id)));
+        for(let k=0;k<block.length;k++) rows[i+k]=block[k];
+      }
+      // sonst: bestehende (ID-basierte) Reihenfolge beibehalten → deterministisch
+    }
+    i=j+1;
+  }
+  rows.forEach((r,idx)=>{ r.platz=idx+1; });
   return rows;
 }
 
@@ -1609,6 +1665,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   function koPhaseStarten(){
     if(!alleGruppenspieleFertig()){
       alert("Die KO-Phase kann erst gestartet werden, wenn alle Gruppenspiele gespielt und gespeichert sind.");
+      return;
+    }
+    // Schutz gegen doppeltes Starten (z.B. zwei Admins gleichzeitig): existiert bereits
+    // ein Tableau, wird es NICHT neu gesetzt, sondern der vorhandene Stand behalten.
+    if(konk?.koGestartet && Array.isArray(konk?.koSlots) && konk.koSlots.some(Boolean)){
+      alert("Die KO-Phase wurde bereits gestartet. Das bestehende Tableau bleibt erhalten.");
       return;
     }
     const proGruppe=ermittleAufsteiger();
@@ -10787,7 +10849,10 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
                   {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
                 </div>
-                <div style={{fontSize:12,color:"var(--text2)"}}>{spiel.ort} vs. {spiel.gegner}</div>
+                <div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
+                  {spiel.art==="Pokal" && <span title="Pokalspiel" style={{flexShrink:0}}>🏆</span>}
+                  <span>{spiel.ort} vs. {spiel.gegner}</span>
+                </div>
               </div>
             </div>
             {/* Voll-Sicht: Zählung. Self-View: die 4 Buttons direkt im Kopf. */}
