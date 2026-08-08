@@ -25,10 +25,13 @@ exports.handler = async (event) => {
   const spielerA   = body.spielerA || {};
   const spielerB   = body.spielerB || {};
 
-  // Beide Spieler müssen eine ID haben, sonst gibt es niemanden zu benachrichtigen.
+  // Beide Seiten müssen mindestens eine Empfänger-ID haben. Im Doppel liefert die App
+  // je Seite eine „empfaenger"-Liste (beide Team-Mitglieder); sonst ist es die eine id.
+  const empfA = Array.isArray(spielerA.empfaenger) && spielerA.empfaenger.length ? spielerA.empfaenger : (spielerA.id ? [spielerA.id] : []);
+  const empfB = Array.isArray(spielerB.empfaenger) && spielerB.empfaenger.length ? spielerB.empfaenger : (spielerB.id ? [spielerB.id] : []);
   const paare = [
-    { id: spielerA.id, name: spielerA.name || "", gegner: spielerB.name || "dein Gegner" },
-    { id: spielerB.id, name: spielerB.name || "", gegner: spielerA.name || "dein Gegner" },
+    ...empfA.map(id=>({ id, name: spielerA.name || "", gegner: spielerB.name || "dein Gegner" })),
+    ...empfB.map(id=>({ id, name: spielerB.name || "", gegner: spielerA.name || "dein Gegner" })),
   ].filter(p=>p.id);
 
   if(paare.length === 0){
