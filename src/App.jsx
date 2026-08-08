@@ -1,4 +1,4 @@
-// === TTC-App · Version 307 · erstellt 08.08.2026 ===
+// === TTC-App · Version 309 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "307";
+const APP_VERSION = "309";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2099,9 +2099,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                 <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
                   {isAdmin
                     ? <select value={x.tisch} onChange={e=>tischSetzen(x.gkey, e.target.value)}
-                        style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,border:"none",textAlign:"center",textAlignLast:"center",cursor:"pointer",paddingLeft:6}}>
+                        title="Tisch wechseln"
+                        style={{flexShrink:0,width:58,maxWidth:58,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,border:"none",textAlign:"center",textAlignLast:"center",cursor:"pointer",padding:"0 2px",appearance:"none",WebkitAppearance:"none",MozAppearance:"none"}}>
                         {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
-                          <option key={n} value={n} style={{background:"#ffffff",color:"#111111"}}>Tisch {n}{belegt.has(n)&&n!==x.tisch?" (belegt)":""}</option>)}
+                          <option key={n} value={n} style={{background:"#ffffff",color:"#111111"}}>T{n}{belegt.has(n)&&n!==x.tisch?" •":""}</option>)}
                       </select>
                     : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{x.tisch}</span>}
                   {nameZeile(x)}
@@ -2681,7 +2682,9 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
         {runden.map((spiele,ri)=>{
           // Höhe einer Box-Einheit (inkl. Abstand). Jede Runde verdoppelt den
           // vertikalen Abstand, damit die Paarungen mittig ausgerichtet sind.
-          const BOX=96;                    // ungefähre Höhe einer Spiel-Box
+          // Groß genug, dass eine Erstrunden-Box mit 5 Sätzen + „Ergebnis speichern"
+          // vollständig hineinpasst (sonst wurde der Button unten abgeschnitten).
+          const BOX=124;                   // ungefähre Höhe einer Spiel-Box
           const einheit=BOX*Math.pow(2,ri);
           const offset=(einheit-BOX)/2;    // oberer Einzug für Zentrierung
           return <div key={ri} style={{display:"flex"}}>
@@ -2694,7 +2697,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                 const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
                 const istErstrunde = ri===0;
                 const tischNr = tischMap[`k_${sp.key}`] || null;
-                return <div key={sp.key} style={{height:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+                return <div key={sp.key} style={{minHeight:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
                   <KoSpielBox sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
@@ -2769,25 +2772,26 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
 
     {/* Sätze nur eingebbar, wenn beide Spieler feststehen und kein Freilos */}
     {beide && <div style={{marginTop:6}}>
-      <div style={{display:"flex",gap:3,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{display:"flex",gap:3,flexWrap:"nowrap",alignItems:"center",overflowX:"auto"}}>
         {Array.from({length: anzahlSichtbareSaetze(sp.saetze)}).map((_,idx)=>{
           const satz=sp.saetze[idx]||["",""];
           const fehler=satzFehler(satz[0],satz[1]);
-          return <div key={idx} style={{display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
+          return <div key={idx} style={{flexShrink:0,display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
             <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v))}
-              style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
+              style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
             <span style={{color:"var(--text4)",fontSize:10}}>:</span>
             <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v))}
-              style={{width:20,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
+              style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
           </div>;
         })}
-        {darf && !fixiert && abgeschlossen &&
-          <button onClick={()=>toggleFix(sp.key,true)} title="Ergebnis fixieren"
-            style={{border:"none",background:"#10b981",color:"#fff",borderRadius:4,fontSize:10,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>✓</button>}
-        {darf && fixiert &&
-          <button onClick={()=>toggleFix(sp.key,false)} title="ändern"
-            style={{border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:4,fontSize:10,fontWeight:700,padding:"2px 6px",cursor:"pointer"}}>✎</button>}
       </div>
+      {/* Fix-/Ändern-Button in eigener Zeile, damit er nie verdeckt oder abgeschnitten wird */}
+      {darf && !fixiert && abgeschlossen &&
+        <button onClick={()=>toggleFix(sp.key,true)} title="Ergebnis fixieren"
+          style={{marginTop:4,border:"none",background:"#10b981",color:"#fff",borderRadius:4,fontSize:10,fontWeight:700,padding:"3px 10px",cursor:"pointer"}}>✓ Ergebnis speichern</button>}
+      {darf && fixiert &&
+        <button onClick={()=>toggleFix(sp.key,false)} title="ändern"
+          style={{marginTop:4,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:4,fontSize:10,fontWeight:700,padding:"3px 10px",cursor:"pointer"}}>✎ ändern</button>}
     </div>}
   </div>;
 }
