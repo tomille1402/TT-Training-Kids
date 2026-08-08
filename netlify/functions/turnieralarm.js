@@ -1,10 +1,12 @@
-// === TTC-App · Version 297 · netlify/functions/turnieralarm.js · erstellt 06.08.2026 ===
-// Benachrichtigt die beiden Spieler einer anstehenden Turnier-Begegnung per Web-Push:
+// === TTC-App · Version 316 · netlify/functions/turnieralarm.js · erstellt 06.08.2026 ===
+// Benachrichtigt die beiden Seiten einer anstehenden Turnier-Begegnung per Web-Push:
 // „Bitte an Tisch X zum Spiel gegen Y einfinden.“ Zusätzlich wird eine In-App-Nachricht
 // (appNachrichten) abgelegt, damit die Meldung auch hinter der Glocke erscheint.
 //
 // Aufruf aus der App per POST mit JSON-Body:
-//   { turnier, konkurrenz, tisch, spielerA:{id,name}, spielerB:{id,name} }
+//   { turnier, konkurrenz, tisch, spielerA:{id,name,empfaenger?}, spielerB:{id,name,empfaenger?} }
+// Im Doppel enthält jede Seite ein optionales „empfaenger“-Array mit den Spieler-IDs
+// beider Team-Mitglieder; sonst wird die eine „id“ als Empfänger verwendet.
 //
 // Benötigte Umgebungsvariablen wie bei pushversand.js (Service-Account + VAPID).
 
