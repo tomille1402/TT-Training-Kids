@@ -1,4 +1,4 @@
-// === TTC-App · Version 311 · erstellt 08.08.2026 ===
+// === TTC-App · Version 313 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "311";
+const APP_VERSION = "313";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1393,8 +1393,8 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
       : <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {sichtbareTurniere.map(t=>(
             <div key={t.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer",flex:1}}>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer"}}>
                   <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{t.name}</div>
                   <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
                     {t.datum?deDatumT(t.datum):"ohne Datum"} · {(()=>{
@@ -1408,7 +1408,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
                       : "👁 sichtbar für: "+(t.sichtbarFuer||[]).map(rk=>{const f=TURNIER_SICHTBAR_ROLLEN.find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
                   </div>}
                 </div>
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={()=>setSelId(t.id)} style={miniBtn("#3b82f6")}>öffnen</button>
                   {darfAnlegen && <button onClick={()=>duplizieren(t)} style={miniBtn("#8b5cf6")}>duplizieren</button>}
                   {darfAnlegen && <button onClick={()=>loeschen(t.id)} style={miniBtn("#ef4444")}>löschen</button>}
