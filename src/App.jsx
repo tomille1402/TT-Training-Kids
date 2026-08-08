@@ -1,4 +1,4 @@
-// === TTC-App · Version 305 · erstellt 08.08.2026 ===
+// === TTC-App · Version 306 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "305";
+const APP_VERSION = "306";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1395,7 +1395,7 @@ function miniBtn(color){ return {padding:"5px 9px",background:color+"18",border:
 // ─── Turnier-Formular (Anlegen/Bearbeiten) ──────────────────────────────────
 function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   const leer={
-    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0],
+    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0], anzahlTische:6,
     konkurrenzen:[], // [{key, name, anzahlGruppen, vorgabe, vorgabeArt, diffQTTR, maxVorgabe, teilnehmer:[], gruppen:[], spiele:[]}]
   };
   const [t,setT]=useState(start? {...leer, ...start, konkurrenzen:start.konkurrenzen||[]} : leer);
@@ -1406,7 +1406,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
-      key, name:neueKonk, anzahlGruppen:2, anzahlTische:4, aufsteiger:2, vorgabe:"nein", vorgabeArt:"QTTR",
+      key, name:neueKonk, anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
       diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
@@ -1423,9 +1423,17 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
 
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <Feld label="Name Turnier">
-        <select value={t.name} onChange={e=>set("name",e.target.value)} style={selT2}>
-          {TURNIER_NAMEN.map(n=><option key={n} value={n}>{n}</option>)}
-        </select>
+        <input list="turniernamen-liste" value={t.name} onChange={e=>set("name",e.target.value)}
+          placeholder="Name wählen oder eingeben" style={selT2}/>
+        <datalist id="turniernamen-liste">
+          {TURNIER_NAMEN.map(n=><option key={n} value={n}/>)}
+        </datalist>
+      </Feld>
+      <Feld label="Anzahl Tische (gesamt)">
+        <input type="number" min={1} max={50} value={t.anzahlTische??6}
+          onChange={e=>set("anzahlTische", e.target.value===""?"":Number(e.target.value))}
+          onBlur={e=>{ const n=Number(e.target.value)||1; set("anzahlTische",Math.min(50,Math.max(1,n))); }}
+          style={{...selT2,width:120}}/>
       </Feld>
       <Feld label="Datum Turnier">
         <input type="date" value={t.datum} onChange={e=>set("datum",e.target.value)} style={selT2}/>
@@ -1473,14 +1481,6 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                         onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{aufsteiger:Math.min(8,Math.max(1,n))}); }}
                         style={{...selT2,width:90}}/>
                     </Feld>}
-
-                  {/* Anzahl der verfügbaren Tische (für automatische Tischvergabe) */}
-                  <Feld label="Anzahl Tische" klein>
-                    <input type="number" min={1} max={50} value={k.anzahlTische??""}
-                      onChange={e=>updKonk(k.key,{anzahlTische: e.target.value===""?"":Number(e.target.value)})}
-                      onBlur={e=>{ const n=Number(e.target.value)||1; updKonk(k.key,{anzahlTische:Math.min(50,Math.max(1,n))}); }}
-                      style={{...selT2,width:90}}/>
-                  </Feld>
 
                   <Feld label="Vorgabe" klein>
                     <select value={k.vorgabe} onChange={e=>updKonk(k.key,{vorgabe:e.target.value})} style={{...selT2,width:120}}>
@@ -1602,6 +1602,16 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")) : [];  // nach Vorname
   const nameVon = (id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id; };
   const spielerVon = (id)=> players.find(x=>x.id===id);
+  // Aktuelles Alter aus dem Geburtsdatum (String) – oder null, wenn nicht hinterlegt.
+  function alterVon(p){
+    if(!p || !p.birthdate || typeof p.birthdate!=="string" || !p.birthdate.trim()) return null;
+    const bd=new Date(p.birthdate);
+    if(Number.isNaN(bd.getTime())) return null;
+    const now=new Date();
+    let age=now.getFullYear()-bd.getFullYear();
+    if(now.getMonth()<bd.getMonth()||(now.getMonth()===bd.getMonth()&&now.getDate()<bd.getDate())) age--;
+    return age>=0 && age<120 ? age : null;
+  }
 
   function toggleTeilnehmer(id){
     if(!isAdmin) return; // Teilnehmer festlegen nur Admin
@@ -1733,41 +1743,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     return neu;
   }
 
-  // ─── Tischverwaltung (automatische Zuordnung „nächster freier Tisch“) ──────────
-  // Eine einheitliche Liste aller aktuell spielbaren Begegnungen (Gruppen + KO):
-  // beide Spieler stehen fest, das Spiel ist noch nicht entschieden/fixiert.
-  const anzahlTische = Math.max(0, Number(konk?.anzahlTische)||0);
-  const tischMap = konk?.tische || {};   // begegnungKey -> Tischnummer (automatisch)
-  const pausiert = konk?.pausiert || [];  // Liste von begegnungKeys, die ausgesetzt sind
-  const istPausiert = (key)=> pausiert.includes(key);
+  // ─── Tischverwaltung (turnierweit, über alle Konkurrenzen) ────────────────────
+  // Die Tische gehören dem ganzen Turnier: alle gestarteten Konkurrenzen teilen sich
+  // denselben Tisch-Pool. Zuordnungen und Pausen werden auf Turnier-Ebene mit einem
+  // zusammengesetzten Schlüssel "{konkKey}::{begegnungKey}" verwaltet.
+  const anzahlTische = Math.max(0, Number(t?.anzahlTische)||0);
+  const tischMapG = t?.tische || {};        // "{konkKey}::{key}" -> Tischnummer
+  const pausiertG = t?.pausiert || [];      // Liste zusammengesetzter Keys
+  const gk=(konkKey,key)=>`${konkKey}::${key}`;
+  const istPausiert = (konkKey,key)=> pausiertG.includes(gk(konkKey,key));
 
-  // Eine Begegnung aussetzen/fortsetzen. Ausgesetzte Begegnungen bekommen keinen Tisch
-  // und werden bei der automatischen Vergabe übersprungen (z.B. Spieler kurz verhindert).
-  function togglePause(key){
-    const neu = istPausiert(key) ? pausiert.filter(k=>k!==key) : [...pausiert, key];
-    // Beim Aussetzen den ggf. belegten Tisch sofort freigeben.
-    const tische={...tischMap};
-    if(!istPausiert(key)) delete tische[key];
-    updKonk({ pausiert:neu, tische });
-  }
-  // Einen Tisch für eine Begegnung manuell setzen. Steht der Tisch schon bei einer
-  // anderen Begegnung, tauschen die beiden ihren Tisch (oder die andere wird frei).
-  function tischSetzen(key, tischNr){
-    const t=Number(tischNr);
-    const tische={...tischMap};
-    if(!t || t<1 || t>anzahlTische){ delete tische[key]; updKonk({ tische }); return; }
-    // Falls der Zieltisch belegt ist: die andere Begegnung bekommt den bisherigen Tisch
-    // dieser Begegnung (Tausch), sonst wird sie tischlos.
-    const bisher=tische[key];
-    const andererKey=Object.keys(tische).find(k=>k!==key && tische[k]===t);
-    if(andererKey){ if(bisher) tische[andererKey]=bisher; else delete tische[andererKey]; }
-    tische[key]=t;
-    updKonk({ tische });
-  }
-
+  // Ist eine Begegnung entschieden? (3 Gewinnsätze oder fixiert)
   function istFertig(saetze, fixiert){
     if(fixiert) return true;
-    // 3 Gewinnsätze = entschieden
     let a=0,b=0;
     for(const s of (saetze||[])){
       const pa=Number(s[0]), pb=Number(s[1]);
@@ -1776,126 +1764,150 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     return a>=3 || b>=3;
   }
-  function begegnungen(){
+
+  // Alle Begegnungen EINER Konkurrenz (Gruppen + KO) mit lokalem Key, Gruppe, Runde.
+  function begegnungenDerKonk(k){
     const liste=[];
-    // Gruppen-Begegnungen (mit Gruppenindex gi und Runde für faire Verteilung)
-    (konk?.spiele||[]).forEach((s,idx)=>{
+    (k?.spiele||[]).forEach((s,idx)=>{
       if(!s.a || !s.b) return;
-      liste.push({
-        key:`g_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
-        gi:(s.gi??0), runde:(s.runde??0),
-        fertig:istFertig(s.saetze, s.fixiert)
-      });
+      liste.push({ key:`g_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
+        gi:(s.gi??0), runde:(s.runde??0), fertig:istFertig(s.saetze, s.fixiert) });
     });
-    // KO-Begegnungen: aus dem aufgebauten Tableau die Spiele mit zwei Spielern.
-    // gi=0 (eine „Gruppe"), Runde aus dem Key r-i ableiten.
-    if(konk?.koSlots && konk.koSlots.length){
-      const runden=ko_baueRunden(konk.koSlots, konk.koSpiele||{});
+    if(k?.koSlots && k.koSlots.length){
+      const runden=ko_baueRunden(k.koSlots, k.koSpiele||{});
       runden.forEach((spiele,ri)=>spiele.forEach(sp=>{
         if(!sp.a || !sp.b) return;
-        liste.push({
-          key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
-          gi:0, runde:ri,
-          fertig:istFertig(sp.saetze, sp.fixiert)
-        });
+        liste.push({ key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
+          gi:0, runde:ri, fertig:istFertig(sp.saetze, sp.fixiert) });
       }));
     }
     return liste;
   }
-  // Faire Reihenfolge der wartenden Begegnungen: erst nach Runde, dann rotierend über
-  // die Gruppen (Gruppe 0, 1, 2, …, dann wieder 0 …). So spielen alle Gruppen parallel
-  // und werden möglichst gleichzeitig fertig, statt dass eine Gruppe komplett durchläuft.
-  function faireReihenfolge(offen){
-    // nach Gruppe bündeln, innerhalb jeder Gruppe nach Runde sortieren
-    const proGruppe={};
-    for(const x of offen){
-      (proGruppe[x.gi] = proGruppe[x.gi] || []).push(x);
-    }
-    const gruppenKeys=Object.keys(proGruppe).map(Number).sort((a,b)=>a-b);
-    for(const g of gruppenKeys){
-      proGruppe[g].sort((a,b)=> (a.runde-b.runde) || a.key.localeCompare(b.key));
-    }
-    // rundenweise im Reißverschluss über die Gruppen einsammeln
-    const ergebnis=[];
-    let rest=true;
-    while(rest){
-      rest=false;
-      for(const g of gruppenKeys){
-        const arr=proGruppe[g];
-        if(arr.length){ ergebnis.push(arr.shift()); rest=true; }
+
+  // Alle Begegnungen ALLER gestarteten Konkurrenzen, jeweils mit globalem Key,
+  // Konkurrenz-Info und durchgehender Spielnummer (übers ganze Turnier, stabil).
+  function alleBegegnungen(){
+    const liste=[];
+    let nr=0;
+    const mehrKonk=(t.konkurrenzen||[]).length>1;
+    for(const k of (t.konkurrenzen||[])){
+      const mehrGr=(k?.gruppen?.length||0)>1;
+      for(const x of begegnungenDerKonk(k)){
+        nr+=1;
+        liste.push({
+          ...x,
+          gkey: gk(k.key, x.key),
+          konkKey: k.key,
+          konkName: k.name,
+          mehrKonk, mehrGr,
+          nr,
+          pausiert: pausiertG.includes(gk(k.key, x.key)),
+          tisch: tischMapG[gk(k.key, x.key)]||null,
+          nurGestartet: !!k.gestartet,
+        });
       }
+    }
+    return liste;
+  }
+
+  // Faire Reihenfolge der wartenden Begegnungen: rundenweise im Reißverschluss – erst
+  // über die Konkurrenzen, dann über die Gruppen, damit alles gleichmäßig vorankommt.
+  function faireReihenfolge(offen){
+    const bucket={};
+    for(const x of offen){
+      const bk=`${x.konkKey}#${x.gi}`;
+      (bucket[bk]=bucket[bk]||[]).push(x);
+    }
+    const keys=Object.keys(bucket).sort();
+    for(const bk of keys) bucket[bk].sort((a,b)=> (a.runde-b.runde) || a.nr-b.nr);
+    const ergebnis=[]; let rest=true;
+    while(rest){ rest=false;
+      for(const bk of keys){ const arr=bucket[bk]; if(arr.length){ ergebnis.push(arr.shift()); rest=true; } }
     }
     return ergebnis;
   }
-  // Tischzuordnung neu berechnen: fertige Begegnungen geben ihren Tisch frei, danach
-  // bekommen wartende Begegnungen in fairer (gruppenübergreifender) Reihenfolge den
-  // jeweils niedrigsten freien Tisch.
+
+  // Zentrale Tischzuordnung über alle gestarteten Konkurrenzen. Kein Spieler darf zur
+  // gleichen Zeit an zwei Tischen stehen – auch nicht konkurrenzübergreifend.
   function tischeNeu(aktuelleTische){
     if(anzahlTische<=0) return {};
-    const bg=begegnungen();
-    // Pausierte (ausgesetzte) Begegnungen bekommen keinen Tisch.
-    const offen=bg.filter(x=>!x.fertig && !istPausiert(x.key));
+    const bg=alleBegegnungen().filter(x=>x.nurGestartet && !x.fertig && !x.pausiert);
     const neu={};
     const belegteTische=new Set();
-    // 1) bestehende Zuordnungen für noch offene Begegnungen behalten (kein Umsetzen
-    //    laufender Spiele auf andere Tische)
-    for(const x of offen){
-      const t=aktuelleTische[x.key];
-      if(t && t>=1 && t<=anzahlTische && !belegteTische.has(t)){
-        neu[x.key]=t; belegteTische.add(t);
+    const aktiveSpieler=new Set();
+    // 1) bestehende Zuordnungen behalten (laufende Spiele nicht umsetzen)
+    for(const x of bg){
+      const tt=aktuelleTische[x.gkey];
+      if(tt && tt>=1 && tt<=anzahlTische && !belegteTische.has(tt)
+         && !aktiveSpieler.has(x.a) && !aktiveSpieler.has(x.b)){
+        neu[x.gkey]=tt; belegteTische.add(tt);
+        aktiveSpieler.add(x.a); aktiveSpieler.add(x.b);
       }
     }
-    // 2) wartende (noch ohne Tisch) in fairer Reihenfolge auf freie Tische setzen.
-    //    Dabei sicherstellen, dass kein Spieler gleichzeitig an zwei Tischen steht.
+    // 2) freie Tische an wartende Begegnungen (fair), mit Spieler-Kollisionsschutz
     const freie=[];
-    for(let t=1;t<=anzahlTische;t++) if(!belegteTische.has(t)) freie.push(t);
-    // Spieler, die bereits an einem (behaltenen) Tisch spielen, sind blockiert.
-    const aktiveSpieler=new Set();
-    for(const x of offen){ if(neu[x.key]){ aktiveSpieler.add(x.a); aktiveSpieler.add(x.b); } }
-    const wartend=faireReihenfolge(offen.filter(x=>!neu[x.key]));
+    for(let tt=1;tt<=anzahlTische;tt++) if(!belegteTische.has(tt)) freie.push(tt);
+    const wartend=faireReihenfolge(bg.filter(x=>!neu[x.gkey]));
     for(const x of wartend){
       if(freie.length===0) break;
-      if(aktiveSpieler.has(x.a) || aktiveSpieler.has(x.b)) continue; // Spieler gerade beschäftigt
-      neu[x.key]=freie.shift();
+      if(aktiveSpieler.has(x.a) || aktiveSpieler.has(x.b)) continue;
+      neu[x.gkey]=freie.shift();
       aktiveSpieler.add(x.a); aktiveSpieler.add(x.b);
     }
     return neu;
   }
-  // Nach jeder Ergebnis-Änderung die Tische aktualisieren und (bei Änderung) speichern.
-  // Bekommt eine Begegnung NEU einen Tisch, werden die beiden Spieler per Push gerufen.
-  const benachrichtigt=useRef({});   // begegnungKey -> Tischnummer (bereits gepusht)
+
+  // Eine Begegnung aussetzen/fortsetzen (globaler Key).
+  function togglePause(gkeyStr){
+    const drin=pausiertG.includes(gkeyStr);
+    const neu = drin ? pausiertG.filter(k=>k!==gkeyStr) : [...pausiertG, gkeyStr];
+    const tische={...tischMapG};
+    if(!drin) delete tische[gkeyStr];   // beim Aussetzen Tisch freigeben
+    updTurnier({ pausiert:neu, tische });
+  }
+  // Tisch für eine Begegnung manuell setzen (globaler Key); bei belegtem Zieltisch Tausch.
+  function tischSetzen(gkeyStr, tischNr){
+    const tt=Number(tischNr);
+    const tische={...tischMapG};
+    if(!tt || tt<1 || tt>anzahlTische){ delete tische[gkeyStr]; updTurnier({ tische }); return; }
+    const bisher=tische[gkeyStr];
+    const andererKey=Object.keys(tische).find(k=>k!==gkeyStr && tische[k]===tt);
+    if(andererKey){ if(bisher) tische[andererKey]=bisher; else delete tische[andererKey]; }
+    tische[gkeyStr]=tt;
+    updTurnier({ tische });
+  }
+
+  // Automatische Neuvergabe bei jeder relevanten Änderung + Push für neue Zuweisungen.
+  const benachrichtigt=useRef({});
   useEffect(()=>{
     if(anzahlTische<=0) return;
-    const neu=tischeNeu(tischMap);
-    if(JSON.stringify(neu)!==JSON.stringify(tischMap)){
-      updKonk({ tische:neu });
+    const neu=tischeNeu(tischMapG);
+    if(JSON.stringify(neu)!==JSON.stringify(tischMapG)){
+      updTurnier({ tische:neu });
     }
-    // Push für neu zugeordnete Tische (nur einmal je Begegnung+Tisch).
-    // Nur wenn der Admin die Push-Benachrichtigung für dieses Turnier aktiviert hat.
-    const bg=begegnungen();
+    const bg=alleBegegnungen();
     for(const x of bg){
-      if(x.fertig) continue;
-      const tisch=neu[x.key];
+      if(x.fertig || !x.nurGestartet) continue;
+      const tisch=neu[x.gkey];
       if(!tisch) continue;
-      if(benachrichtigt.current[x.key]===tisch) continue; // schon gerufen
-      benachrichtigt.current[x.key]=tisch;
-      if(t.pushAktiv) pushSpielerAnTisch(x.a, x.b, tisch);
+      if(benachrichtigt.current[x.gkey]===tisch) continue;
+      benachrichtigt.current[x.gkey]=tisch;
+      if(t.pushAktiv) pushSpielerAnTisch(x.a, x.b, tisch, x.konkName);
     }
-    // Aufräumen: fertige/entfernte Begegnungen aus dem Merker nehmen
-    for(const k of Object.keys(benachrichtigt.current)){
-      if(!neu[k]) delete benachrichtigt.current[k];
+    for(const kk of Object.keys(benachrichtigt.current)){
+      if(!neu[kk]) delete benachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify(konk?.spiele), JSON.stringify(konk?.koSpiele), JSON.stringify(konk?.koSlots), JSON.stringify(pausiert), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(pausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Spieler per Push an den Tisch bittet.
-  async function pushSpielerAnTisch(idA, idB, tisch){
+  async function pushSpielerAnTisch(idA, idB, tisch, konkName){
     try{
       const pa=spielerVon(idA), pb=spielerVon(idB);
       await fetch("/.netlify/functions/turnieralarm", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
-          turnier:t.name||"", konkurrenz:konk?.name||"", tisch,
+          turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
           spielerA:{ id:idA, name: pa?`${pa.firstName} ${pa.lastName}`:"" },
           spielerB:{ id:idB, name: pb?`${pb.firstName} ${pb.lastName}`:"" },
         })
@@ -1908,6 +1920,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Nicht zugeteilte Teilnehmer (im Pool)
   const zugeteilt=new Set((konk?.gruppen||[]).flat());
   const pool=(konk?.teilnehmer||[]).filter(id=>!zugeteilt.has(id));
+  // Tische der AKTIVEN Konkurrenz auf lokale KO-Keys abgebildet (für das KO-Tableau).
+  const koTischMap={};
+  if(konk){ for(const [g,tt] of Object.entries(tischMapG)){ const pref=`${konk.key}::`; if(g.startsWith(pref)) koTischMap[g.slice(pref.length)]=tt; } }
 
   // Ergebnis-Eingabe erlaubt?
   function darfSpielEingeben(sp){
@@ -1992,6 +2007,87 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       </button>
     </div>}
 
+    {/* Laufende Spiele & Als Nächstes – TURNIERWEIT über alle gestarteten Konkurrenzen,
+        oberhalb der Konkurrenz-Auswahl. Alle Spiele teilen sich denselben Tisch-Pool. */}
+    {anzahlTische>0 && (()=>{
+      const bgAlle=alleBegegnungen().filter(x=>x.nurGestartet && !x.fertig);
+      const mitTisch=bgAlle.filter(x=>x.tisch).sort((p,q)=>p.tisch-q.tisch);
+      const wartendAlle=faireReihenfolge(bgAlle.filter(x=>!x.tisch && !x.pausiert));
+      const wartend=wartendAlle.slice(0,6);
+      const wartendRest=wartendAlle.length-wartend.length;
+      const ausgesetzt=bgAlle.filter(x=>x.pausiert);
+      if(mitTisch.length===0 && wartendAlle.length===0 && ausgesetzt.length===0) return null;
+      const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
+      const belegt=new Set(Object.values(tischMapG));
+      // Badges: Spielnummer, Konkurrenz (bei mehreren), Gruppe (bei mehreren)
+      const badge=(txt,farbe)=><span style={{fontSize:10,fontWeight:700,color:farbe||"var(--text4)",background:"var(--bg3)",borderRadius:5,padding:"1px 6px"}}>{txt}</span>;
+      const nameZeile=(x)=><span style={{flex:1,fontSize:12,fontWeight:600,display:"flex",flexWrap:"wrap",alignItems:"center",gap:5}}>
+        {badge(`#${x.nr}`,"var(--text3)")}
+        {x.mehrKonk && badge(x.konkName,"#8b5cf6")}
+        <span>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
+        {x.mehrGr && x.key.startsWith("g_") && badge(`Gr. ${(x.gi??0)+1}`)}
+      </span>;
+      const kopf=(offen,setOffen,titel,farbe)=>(
+        <div onClick={()=>setOffen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}}>
+          <span style={{fontSize:11,color:"var(--text3)",transform:offen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+          <span style={{fontSize:12,fontWeight:800,color:farbe||"var(--text2)"}}>{titel}</span>
+        </div>
+      );
+      return <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
+          {kopf(laufendOffen,setLaufendOffen,`Laufende Spiele (${mitTisch.length}/${anzahlTische} Tische belegt)`)}
+          {laufendOffen && <div style={{marginTop:8}}>
+            {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {mitTisch.map(x=>(
+                <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
+                  {isAdmin
+                    ? <select value={x.tisch} onChange={e=>tischSetzen(x.gkey, e.target.value)}
+                        style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,border:"none",textAlign:"center",textAlignLast:"center",cursor:"pointer",paddingLeft:6}}>
+                        {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
+                          <option key={n} value={n} style={{background:"#ffffff",color:"#111111"}}>Tisch {n}{belegt.has(n)&&n!==x.tisch?" (belegt)":""}</option>)}
+                      </select>
+                    : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{x.tisch}</span>}
+                  {nameZeile(x)}
+                  <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
+                  {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="Begegnung aussetzen"
+                    style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
+                </div>
+              ))}
+            </div>
+            {ausgesetzt.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:5}}>⏸ Ausgesetzt ({ausgesetzt.length}):</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {ausgesetzt.map(x=>(
+                  <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                    {nameZeile(x)}
+                    {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="wieder aufnehmen"
+                      style={{flexShrink:0,border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>▶ fortsetzen</button>}
+                  </div>
+                ))}
+              </div>
+            </div>}
+          </div>}
+        </div>
+
+        {wartendAlle.length>0 && <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
+          {kopf(naechstesOffen,setNaechstesOffen,`Als Nächstes (${wartendAlle.length})`)}
+          {naechstesOffen && <div style={{marginTop:8}}>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {wartend.map(x=>(
+                <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                  {nameZeile(x)}
+                  {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="Begegnung aussetzen"
+                    style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"pointer"}}>⏸</button>}
+                </div>
+              ))}
+            </div>
+            {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
+          </div>}
+        </div>}
+      </div>;
+    })()}
+
     {/* Konkurrenz-Auswahl */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
       {(t.konkurrenzen||[]).map(k=>(
@@ -1999,9 +2095,32 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           padding:"6px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",
           border:k.key===aktiveKonk?"1px solid #8b5cf6":"1px solid var(--border2)",
           background:k.key===aktiveKonk?"#8b5cf6":"transparent",color:k.key===aktiveKonk?"#fff":"var(--text2)",
-        }}>{k.name}</span>
+        }}>{k.gestartet?"▶ ":""}{k.name}</span>
       ))}
     </div>
+
+    {/* Start-Button je Konkurrenz: erst nach dem Start gehen die Spiele in die
+        (turnierweite) Tischvergabe ein. So können Konkurrenzen nacheinander beginnen. */}
+    {konk && isAdmin && (()=>{
+      const bg=begegnungenDerKonk(konk);
+      const spielbar=bg.length>0;
+      if(konk.gestartet){
+        return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,background:"#10b98112",border:"1px solid #10b98144"}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#10b981",flex:1}}>▶ „{konk.name}“ läuft – Spiele sind in der Tischvergabe.</span>
+          <button onClick={()=>updKonk({gestartet:false})}
+            style={{flexShrink:0,padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>anhalten</button>
+        </div>;
+      }
+      return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,background:"var(--bg2)",border:"1px solid var(--border)"}}>
+        <span style={{fontSize:12,color:"var(--text3)",flex:1}}>
+          {spielbar ? `„${konk.name}“ ist noch nicht gestartet.` : `„${konk.name}“ hat noch keine Spiele – erst Gruppen/Tableau anlegen.`}
+        </span>
+        <button onClick={()=>updKonk({gestartet:true})} disabled={!spielbar}
+          style={{flexShrink:0,padding:"7px 14px",background:spielbar?"#10b981":"var(--bg3)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:spielbar?"pointer":"default"}}>
+          ▶ Konkurrenz starten
+        </button>
+      </div>;
+    })()}
 
     {!konk ? <div style={{color:"var(--text3)",fontSize:13}}>Keine Konkurrenz vorhanden.</div> : <>
       {/* Teilnehmerauswahl (nur Admin) */}
@@ -2014,97 +2133,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           {kandidaten.map(p=>{
             const drin=(konk.teilnehmer||[]).includes(p.id);
             const q=qttrVon(p);
+            const alter = p.roles?.player ? alterVon(p) : null;   // Alter nur bei Funktion „Spieler"
             return <span key={p.id} onClick={()=>toggleTeilnehmer(p.id)} style={{
               padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
               border:drin?"1px solid #10b981":"1px solid var(--border2)",
               background:drin?"#10b98122":"var(--bg2)",color:drin?"#10b981":"var(--text2)",
-            }}>{p.firstName} {p.lastName}{q!=null?` (${q})`:""}</span>;
+            }}>{p.firstName} {p.lastName}{q!=null?` (${q})`:""}{alter!=null?` (${alter} Jahre)`:""}</span>;
           })}
         </div>
       </details>}
-
-      {/* Laufende Spiele & Als Nächstes – oberhalb der Gruppen bzw. des Tableaus */}
-      {anzahlTische>0 && (()=>{
-        const bg=begegnungen().filter(x=>!x.fertig);
-        const mitTisch=bg.filter(x=>tischMap[x.key]).sort((p,q)=>tischMap[p.key]-tischMap[q.key]);
-        const wartendAlle=faireReihenfolge(bg.filter(x=>!tischMap[x.key] && !istPausiert(x.key)));
-        const wartend=wartendAlle.slice(0,6);           // nur die nächsten 6 möglichen Spiele
-        const wartendRest=wartendAlle.length-wartend.length;
-        const ausgesetzt=bg.filter(x=>istPausiert(x.key));
-        if(mitTisch.length===0 && wartendAlle.length===0 && ausgesetzt.length===0) return null;
-        const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
-        const belegt=new Set(Object.values(tischMap));
-        // Gruppen-Label (nur bei mehreren Gruppen sinnvoll)
-        const mehrereGruppen=(konk?.gruppen?.length||0)>1;
-        const grpLabel=(x)=> mehrereGruppen && x.key.startsWith("g_") ? `Gr. ${(x.gi??0)+1}` : "";
-        const nameZeile=(x)=><span style={{flex:1,fontSize:12,fontWeight:600}}>
-          {nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}
-          {grpLabel(x) && <span style={{marginLeft:6,fontSize:10,fontWeight:700,color:"var(--text4)",background:"var(--bg3)",borderRadius:5,padding:"1px 6px"}}>{grpLabel(x)}</span>}
-        </span>;
-        // einheitlicher, klickbarer Abschnitts-Header
-        const kopf=(offen,setOffen,titel,farbe)=>(
-          <div onClick={()=>setOffen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}}>
-            <span style={{fontSize:11,color:"var(--text3)",transform:offen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
-            <span style={{fontSize:12,fontWeight:800,color:farbe||"var(--text2)"}}>{titel}</span>
-          </div>
-        );
-        return <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-          {/* Abschnitt: Laufende Spiele */}
-          <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
-            {kopf(laufendOffen,setLaufendOffen,`Laufende Spiele (${mitTisch.length}/${anzahlTische} Tische belegt)`)}
-            {laufendOffen && <div style={{marginTop:8}}>
-              {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {mitTisch.map(x=>(
-                  <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
-                    {isAdmin
-                      ? <select value={tischMap[x.key]} onChange={e=>tischSetzen(x.key, e.target.value)}
-                          style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,border:"none",textAlign:"center",textAlignLast:"center",cursor:"pointer",paddingLeft:6}}>
-                          {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
-                            <option key={n} value={n} style={{background:"#ffffff",color:"#111111"}}>Tisch {n}{belegt.has(n)&&n!==tischMap[x.key]?" (belegt)":""}</option>)}
-                        </select>
-                      : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{tischMap[x.key]}</span>}
-                    {nameZeile(x)}
-                    <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
-                    {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
-                      style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
-                  </div>
-                ))}
-              </div>
-              {/* Ausgesetzte Begegnungen (innerhalb Laufende-Box) */}
-              {ausgesetzt.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:5}}>⏸ Ausgesetzt ({ausgesetzt.length}):</div>
-                <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {ausgesetzt.map(x=>(
-                    <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
-                      {nameZeile(x)}
-                      {isAdmin && <button onClick={()=>togglePause(x.key)} title="wieder aufnehmen"
-                        style={{flexShrink:0,border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>▶ fortsetzen</button>}
-                    </div>
-                  ))}
-                </div>
-              </div>}
-            </div>}
-          </div>
-
-          {/* Abschnitt: Als Nächstes (standardmäßig zu) */}
-          {wartendAlle.length>0 && <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
-            {kopf(naechstesOffen,setNaechstesOffen,`Als Nächstes (${wartendAlle.length})`)}
-            {naechstesOffen && <div style={{marginTop:8}}>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                {wartend.map(x=>(
-                  <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
-                    {nameZeile(x)}
-                    {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
-                      style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"pointer"}}>⏸</button>}
-                  </div>
-                ))}
-              </div>
-              {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
-            </div>}
-          </div>}
-        </div>;
-      })()}
 
       {/* Gruppen-Modus */}
       {(t.art==="Gruppen"||t.art==="gemischt") ? <>
@@ -2238,7 +2275,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                           {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
                         {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
-                        {!fixiert && anzahlTische>0 && tischMap[`g_${sp._idx}`] && <span style={{fontSize:10,color:"#fff",fontWeight:800,flexShrink:0,background:"#10b981",borderRadius:6,padding:"2px 7px"}}>Tisch {tischMap[`g_${sp._idx}`]}</span>}
+                        {!fixiert && anzahlTische>0 && tischMapG[gk(konk.key,`g_${sp._idx}`)] && <span style={{fontSize:10,color:"#fff",fontWeight:800,flexShrink:0,background:"#10b981",borderRadius:6,padding:"2px 7px"}}>Tisch {tischMapG[gk(konk.key,`g_${sp._idx}`)]}</span>}
                       </div>
                       {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
                         Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
@@ -2321,14 +2358,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             </div>
             <ErrorBoundary resetKey={aktiveKonk}>
               <KoTableau konk={konk} players={players} qttrVon={qttrVon}
-                isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={tischMap}/>
+                isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={koTischMap}/>
             </ErrorBoundary>
           </div>}
         </div>}
       </> : t.art==="einfaches KO-System" ? (
         <ErrorBoundary resetKey={aktiveKonk}>
           <KoTableau konk={konk} players={players} qttrVon={qttrVon}
-            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={tischMap}/>
+            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={koTischMap}/>
         </ErrorBoundary>
       ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
         Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
