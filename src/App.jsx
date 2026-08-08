@@ -1,4 +1,4 @@
-// === TTC-App · Version 304 · erstellt 06.08.2026 ===
+// === TTC-App · Version 305 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "304";
-const APP_DATUM   = "06.08.2026";
+const APP_VERSION = "305";
+const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1540,6 +1540,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [autoStatus,setAutoStatus]=useState("");   // "" | "speichert" | "gespeichert"
   const [sortSpalte,setSortSpalte]=useState("platz");   // "nr" | "name" | "qttr" | "platz"
   const [spieleOffen,setSpieleOffen]=useState({});       // je Gruppe: gi -> bool (Standard: zu)
+  const [laufendOffen,setLaufendOffen]=useState(true);   // Box „Laufende Spiele" (Standard: auf)
+  const [naechstesOffen,setNaechstesOffen]=useState(false); // Box „Als Nächstes" (Standard: zu)
+  const [gruppenphaseOffen,setGruppenphaseOffen]=useState(true); // Gruppenphase bei gemischt
   const darfAlle = isAdmin || isTrainer;
   const speichernTimer=useRef(null);
   const letzterStand=useRef(turnier);
@@ -2020,7 +2023,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         </div>
       </details>}
 
-      {/* Laufende Spiele (mit Tisch) – oberhalb der Gruppen bzw. des Tableaus */}
+      {/* Laufende Spiele & Als Nächstes – oberhalb der Gruppen bzw. des Tableaus */}
       {anzahlTische>0 && (()=>{
         const bg=begegnungen().filter(x=>!x.fertig);
         const mitTisch=bg.filter(x=>tischMap[x.key]).sort((p,q)=>tischMap[p.key]-tischMap[q.key]);
@@ -2030,56 +2033,75 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         const ausgesetzt=bg.filter(x=>istPausiert(x.key));
         if(mitTisch.length===0 && wartendAlle.length===0 && ausgesetzt.length===0) return null;
         const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
-        // freie Tischnummern (für das Umsetzen-Dropdown)
         const belegt=new Set(Object.values(tischMap));
-        return <div style={{marginBottom:14,background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
-          <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:8}}>▶ Laufende Spiele ({mitTisch.length}/{anzahlTische} Tische belegt)</div>
-          {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {mitTisch.map(x=>(
-              <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
-                {isAdmin
-                  ? <select value={tischMap[x.key]} onChange={e=>tischSetzen(x.key, e.target.value)}
-                      style={{flexShrink:0,width:44,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,border:"none",textAlign:"center",cursor:"pointer"}}>
-                      {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
-                        <option key={n} value={n} style={{background:"var(--bg)",color:"var(--text)"}}>{n}{belegt.has(n)&&n!==tischMap[x.key]?" •":""}</option>)}
-                    </select>
-                  : <span style={{flexShrink:0,width:34,height:34,borderRadius:8,background:"#10b981",color:"#fff",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>{tischMap[x.key]}</span>}
-                <span style={{flex:1,fontSize:12,fontWeight:600}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
-                <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
-                {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
-                  style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸ aussetzen</button>}
+        // Gruppen-Label (nur bei mehreren Gruppen sinnvoll)
+        const mehrereGruppen=(konk?.gruppen?.length||0)>1;
+        const grpLabel=(x)=> mehrereGruppen && x.key.startsWith("g_") ? `Gr. ${(x.gi??0)+1}` : "";
+        const nameZeile=(x)=><span style={{flex:1,fontSize:12,fontWeight:600}}>
+          {nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}
+          {grpLabel(x) && <span style={{marginLeft:6,fontSize:10,fontWeight:700,color:"var(--text4)",background:"var(--bg3)",borderRadius:5,padding:"1px 6px"}}>{grpLabel(x)}</span>}
+        </span>;
+        // einheitlicher, klickbarer Abschnitts-Header
+        const kopf=(offen,setOffen,titel,farbe)=>(
+          <div onClick={()=>setOffen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}}>
+            <span style={{fontSize:11,color:"var(--text3)",transform:offen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+            <span style={{fontSize:12,fontWeight:800,color:farbe||"var(--text2)"}}>{titel}</span>
+          </div>
+        );
+        return <div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+          {/* Abschnitt: Laufende Spiele */}
+          <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
+            {kopf(laufendOffen,setLaufendOffen,`Laufende Spiele (${mitTisch.length}/${anzahlTische} Tische belegt)`)}
+            {laufendOffen && <div style={{marginTop:8}}>
+              {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {mitTisch.map(x=>(
+                  <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
+                    {isAdmin
+                      ? <select value={tischMap[x.key]} onChange={e=>tischSetzen(x.key, e.target.value)}
+                          style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,border:"none",textAlign:"center",textAlignLast:"center",cursor:"pointer",paddingLeft:6}}>
+                          {Array.from({length:anzahlTische},(_,i)=>i+1).map(n=>
+                            <option key={n} value={n} style={{background:"#ffffff",color:"#111111"}}>Tisch {n}{belegt.has(n)&&n!==tischMap[x.key]?" (belegt)":""}</option>)}
+                        </select>
+                      : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{tischMap[x.key]}</span>}
+                    {nameZeile(x)}
+                    <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
+                    {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
+                      style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
+                  </div>
+                ))}
               </div>
-            ))}
+              {/* Ausgesetzte Begegnungen (innerhalb Laufende-Box) */}
+              {ausgesetzt.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:5}}>⏸ Ausgesetzt ({ausgesetzt.length}):</div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {ausgesetzt.map(x=>(
+                    <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                      {nameZeile(x)}
+                      {isAdmin && <button onClick={()=>togglePause(x.key)} title="wieder aufnehmen"
+                        style={{flexShrink:0,border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>▶ fortsetzen</button>}
+                    </div>
+                  ))}
+                </div>
+              </div>}
+            </div>}
           </div>
 
-          {/* Nächste (max. 6) wartende Spiele */}
-          {wartend.length>0 && <div style={{marginTop:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5}}>Als Nächstes ({wartend.length}{wartendRest>0?` von ${wartendAlle.length}`:""}):</div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {wartend.map(x=>(
-                <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
-                  <span style={{flex:1}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
-                  {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
-                    style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"pointer"}}>⏸</button>}
-                </div>
-              ))}
-            </div>
-            {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
-          </div>}
-
-          {/* Ausgesetzte Begegnungen */}
-          {ausgesetzt.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:5}}>⏸ Ausgesetzt ({ausgesetzt.length}):</div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {ausgesetzt.map(x=>(
-                <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
-                  <span style={{flex:1}}>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
-                  {isAdmin && <button onClick={()=>togglePause(x.key)} title="wieder aufnehmen"
-                    style={{flexShrink:0,border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>▶ fortsetzen</button>}
-                </div>
-              ))}
-            </div>
+          {/* Abschnitt: Als Nächstes (standardmäßig zu) */}
+          {wartendAlle.length>0 && <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
+            {kopf(naechstesOffen,setNaechstesOffen,`Als Nächstes (${wartendAlle.length})`)}
+            {naechstesOffen && <div style={{marginTop:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {wartend.map(x=>(
+                  <div key={x.key} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text2)",background:"var(--bg)",borderRadius:7,padding:"5px 9px"}}>
+                    {nameZeile(x)}
+                    {isAdmin && <button onClick={()=>togglePause(x.key)} title="Begegnung aussetzen"
+                      style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"pointer"}}>⏸</button>}
+                  </div>
+                ))}
+              </div>
+              {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
+            </div>}
           </div>}
         </div>;
       })()}
@@ -2091,6 +2113,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               {konk.anzahlGruppen} Gruppen anlegen
             </button>
           : <>
+            {/* Gruppenphase bei gemischt einklappbar, damit die KO-Phase näher rückt */}
+            {t.art==="gemischt" && <div onClick={()=>setGruppenphaseOffen(o=>!o)}
+              style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none",marginBottom:10,
+                background:"var(--bg2)",borderRadius:10,padding:"9px 12px",border:"1px solid var(--border)"}}>
+              <span style={{fontSize:12,color:"var(--text3)",transform:gruppenphaseOffen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+              <span style={{fontSize:13,fontWeight:800,color:"var(--text2)"}}>Gruppenphase</span>
+              <span style={{fontSize:11,color:"var(--text4)",marginLeft:"auto"}}>{gruppenphaseOffen?"einklappen":"ausklappen"}</span>
+            </div>}
+            {(t.art!=="gemischt" || gruppenphaseOffen) && <>
             {/* Hinweis, wenn die eingestellte Gruppenzahl von der tatsächlichen abweicht */}
             {isAdmin && Number(konk.anzahlGruppen)!==konk.gruppen.length && <div style={{marginBottom:12,padding:"8px 10px",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
               Eingestellt sind {konk.anzahlGruppen} Gruppen, aktuell gibt es {konk.gruppen.length}.
@@ -2244,6 +2275,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                 </div>}
               </div>;
             })}
+            </>}
           </>}
 
         {/* Gemischt: Übergang zur KO-Phase bzw. das KO-Tableau selbst */}
@@ -2289,14 +2321,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             </div>
             <ErrorBoundary resetKey={aktiveKonk}>
               <KoTableau konk={konk} players={players} qttrVon={qttrVon}
-                isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+                isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={tischMap}/>
             </ErrorBoundary>
           </div>}
         </div>}
       </> : t.art==="einfaches KO-System" ? (
         <ErrorBoundary resetKey={aktiveKonk}>
           <KoTableau konk={konk} players={players} qttrVon={qttrVon}
-            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk}/>
+            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={tischMap}/>
         </ErrorBoundary>
       ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
         Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
@@ -2427,7 +2459,7 @@ function ko_gewinnerVon(spiel, seiteABelegt=true, seiteBBelegt=true){
 }
 
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
-function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk }){
+function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
   const darfAlle = isAdmin || isTrainer;
   const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
   const spielerVon=(id)=> players.find(x=>x.id===id);
@@ -2568,10 +2600,11 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                 const sieger=ko_gewinnerVon(sp);
                 const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
                 const istErstrunde = ri===0;
+                const tischNr = tischMap[`k_${sp.key}`] || null;
                 return <div key={sp.key} style={{height:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
                   <KoSpielBox sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
-                    fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin}
+                    fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
                     setSatz={setSatz} toggleFix={toggleFix}/>
                 </div>;
@@ -2604,7 +2637,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung)
   const slotA = istErstrunde ? si*2 : null;
   const slotB = istErstrunde ? si*2+1 : null;
@@ -2636,6 +2669,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   };
 
   return <div style={{background:"var(--bg)",border:fixiert?"1px solid #10b98155":"1px solid var(--border)",borderRadius:8,padding:6}}>
+    {tischNr && !fixiert && <div style={{display:"inline-block",background:"#10b981",color:"#fff",fontSize:9,fontWeight:800,borderRadius:5,padding:"1px 6px",marginBottom:4}}>Tisch {tischNr}</div>}
     {zeile(sp.a, slotA, sieger && sieger===sp.a)}
     <div style={{height:3}}/>
     {zeile(sp.b, slotB, sieger && sieger===sp.b)}
