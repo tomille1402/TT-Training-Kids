@@ -1,4 +1,4 @@
-// === TTC-App · Version 316 · erstellt 08.08.2026 ===
+// === TTC-App · Version 318 · erstellt 09.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "316";
-const APP_DATUM   = "08.08.2026";
+const APP_VERSION = "318";
+const APP_DATUM   = "09.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -2930,8 +2930,9 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 
   // Doppel: Team-Bildungs-UI. Wird oberhalb des Tableaus angezeigt.
   const doppelVerwaltung = istDoppel && (
-    <div style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
-      <div style={{fontSize:13,fontWeight:800,color:"#8b5cf6",marginBottom:8}}>Doppel-Paarungen ({doppelTeams.length})</div>
+    <details style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
+      <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+      <div style={{marginTop:10}}>
       {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln.</div>}
       {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
         {doppelTeams.map((t,i)=>(
@@ -2956,7 +2957,8 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
       </div>}
       {isAdmin && teamKandidaten.length===1 && <div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Ein Teilnehmer ist noch ohne Partner ({spielerName(teamKandidaten[0])}).</div>}
       {isAdmin && teamKandidaten.length===0 && doppelTeams.length>0 && <div style={{fontSize:11,color:"var(--text4)",marginTop:4}}>Alle Teilnehmer sind einem Team zugeordnet.</div>}
-    </div>
+      </div>
+    </details>
   );
 
   // Genug Einheiten fürs Tableau? (Einzel: ≥2 Teilnehmer, Doppel: ≥2 Teams)
@@ -3340,19 +3342,27 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
-      Winner-Bracket läuft nach rechts bis zum Grand Final; das Loser-Bracket läuft nach links. Wer zweimal verliert, scheidet aus.
+      Das Loser-Bracket (links, orange) läuft nach rechts ins Winner-Bracket (grün) und mündet rechts im Grand Final. Wer zweimal verliert, scheidet aus.
     </div>}
 
-    {/* WINNER-BRACKET → nach rechts */}
-    <div style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:6}}>Winner-Bracket ▸</div>
-    <div style={{overflowX:"auto",paddingBottom:14,marginBottom:20,borderBottom:"1px solid var(--border)"}}>
-      <div style={{display:"flex",minWidth:"min-content"}}>{wbSpalten}</div>
+    <div style={{display:"flex",gap:16,marginBottom:8}}>
+      <span style={{fontSize:12,fontWeight:800,color:"#f59e0b"}}>◂ Loser-Bracket</span>
+      <span style={{fontSize:12,fontWeight:800,color:"#10b981"}}>Winner-Bracket ▸</span>
     </div>
 
-    {/* LOSER-BRACKET ◂ nach links (Spalten gespiegelt: LB-Finale rechts, Start links) */}
-    <div style={{fontSize:12,fontWeight:800,color:"#f59e0b",marginBottom:6}}>◂ Loser-Bracket</div>
-    <div style={{overflowX:"auto",paddingBottom:8}}>
-      <div style={{display:"flex",minWidth:"min-content"}}>{lbSpaltenReihen}</div>
+    {/* EIN gemeinsamer, horizontal scrollbarer Streifen:
+        links das Loser-Bracket (Start links → LB-Finale), dann das Winner-Bracket
+        (Erstrunde → Finale) und rechts das Grand Final. So steht das Loser-Bracket
+        LINKS NEBEN dem Winner-Bracket statt darunter. */}
+    <div style={{overflowX:"auto",paddingBottom:10}}>
+      <div style={{display:"flex",minWidth:"min-content",alignItems:"stretch"}}>
+        {/* Loser-Bracket links, farblich abgesetzt */}
+        <div style={{display:"flex",background:"#f59e0b0d",borderRadius:10,padding:"6px 8px"}}>{lbSpaltenReihen}</div>
+        {/* kleine Trennung zwischen den Brackets */}
+        <div style={{width:18}}/>
+        {/* Winner-Bracket + Grand Final rechts */}
+        <div style={{display:"flex",background:"#10b9810d",borderRadius:10,padding:"6px 8px"}}>{wbSpalten}</div>
+      </div>
     </div>
   </div>;
 }
@@ -4201,14 +4211,16 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   }
   // Mannschaftsführer für einen (internen) Mannschaftsnamen ermitteln.
   // Quelle: Spieler-Feld mannschaftsfuehrerTeam (aus AKTUELLE_MANNSCHAFTEN, z.B. "Erwachsene I").
+  // Sind einer Mannschaft mehrere Mannschaftsführer zugeordnet, werden alle genannt.
   function mfName(mannName) {
     const ziel = normMann(normAufName(mannName));
-    const mf = players.find(p=>normMann(normAufName(p.mannschaftsfuehrerTeam))===ziel);
-    if(!mf) return "noch offen";
-    const vn = mf.firstName || "";
-    const nn = mf.lastName || "";
-    const full = `${vn} ${nn}`.trim();
-    return full || (mf.name||"noch offen");
+    const mfs = players.filter(p=>normMann(normAufName(p.mannschaftsfuehrerTeam))===ziel);
+    if(mfs.length===0) return "noch offen";
+    const namen = mfs
+      .map(mf=>`${mf.firstName||""} ${mf.lastName||""}`.trim() || mf.name || "")
+      .filter(Boolean)
+      .sort((a,b)=>a.localeCompare(b,"de"));
+    return namen.length ? namen.join(", ") : "noch offen";
   }
   // Sortierung: Herren aufsteigend, dann Nachwuchs absteigend (älteste zuerst = höhere Jahrg.)
   const MANN_ORDER=["Erwachsene","Erwachsene II","Erwachsene III","Erwachsene IV","Erwachsene V","Erwachsene VI",
@@ -4269,7 +4281,9 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
     </div>:mannschaften.map(mann=>{
       const ms=enriched.filter(s=>s.mannschaft===mann);
       return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
-        <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} (MF: {mfName(mann)})</div>
+        {(()=>{ const mfs=mfName(mann); const mehr=mfs.includes(","); return (
+          <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} ({mehr?"MF":"MF"}: {mfs})</div>
+        ); })()}
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <thead><tr style={{background:"var(--bg2)"}}>
