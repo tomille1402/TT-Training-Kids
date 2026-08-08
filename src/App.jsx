@@ -1,4 +1,4 @@
-// === TTC-App · Version 309 · erstellt 08.08.2026 ===
+// === TTC-App · Version 311 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "309";
+const APP_VERSION = "311";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1256,6 +1256,9 @@ function turnierFuerFirestore(t){
 function turnierVonFirestore(t){
   const konkurrenzen=(t.konkurrenzen||[]).map(k=>({
     ...k,
+    // Migration: früher lag die Turnierart auf Turnier-Ebene. Konkurrenzen ohne eigene
+    // Art erben die alte Turnierart, damit bestehende Turniere unverändert funktionieren.
+    art: k.art || t.art || TURNIER_ARTEN[0],
     gruppen:(k.gruppen||[]).map(g=> Array.isArray(g)?g:(g&&g.ids)||[]),            // [{ids:[..]}] → [[..]]
     spiele:(k.spiele||[]).map(s=>({
       gi:s.gi, runde:s.runde||0, a:s.a, b:s.b, fixiert:!!s.fixiert,
@@ -1394,7 +1397,10 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
                 <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer",flex:1}}>
                   <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{t.name}</div>
                   <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
-                    {t.datum?deDatumT(t.datum):"ohne Datum"} · {t.art} · {(t.konkurrenzen||[]).length} Konkurrenz(en)
+                    {t.datum?deDatumT(t.datum):"ohne Datum"} · {(()=>{
+                      const arten=[...new Set((t.konkurrenzen||[]).map(k=>k.art||t.art).filter(Boolean))];
+                      return arten.length===0 ? (t.art||"—") : arten.length===1 ? arten[0] : "versch. Arten";
+                    })()} · {(t.konkurrenzen||[]).length} Konkurrenz(en)
                   </div>
                   {darfAnlegen && <div style={{fontSize:10,marginTop:4,fontWeight:600,color:(t.sichtbarFuer||[]).length===0?"#f59e0b":"#10b981"}}>
                     {(t.sichtbarFuer||[]).length===0
@@ -1434,7 +1440,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
-      key, name:neueKonk, anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
+      key, name:neueKonk, art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
       diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
@@ -1471,11 +1477,6 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
       </Feld>
       <Feld label="Datum Turnier">
         <input type="date" value={t.datum} onChange={e=>set("datum",e.target.value)} style={selT2}/>
-      </Feld>
-      <Feld label="Art Turnier">
-        <select value={t.art} onChange={e=>set("art",e.target.value)} style={selT2}>
-          {TURNIER_ARTEN.map(a=><option key={a} value={a}>{a}</option>)}
-        </select>
       </Feld>
 
       <Feld label="Sichtbar für (Funktionen)">
@@ -1520,8 +1521,15 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                     <button onClick={()=>delKonk(k.key)} style={miniBtn("#ef4444")}>entfernen</button>
                   </div>
 
+                  {/* Turnierart je Konkurrenz (kann pro Konkurrenz unterschiedlich sein) */}
+                  <Feld label="Art" klein>
+                    <select value={k.art||TURNIER_ARTEN[0]} onChange={e=>updKonk(k.key,{art:e.target.value})} style={{...selT2,width:"100%"}}>
+                      {TURNIER_ARTEN.map(a=><option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </Feld>
+
                   {/* Gruppen-Anzahl nur bei Art "Gruppen" oder "gemischt" */}
-                  {(t.art==="Gruppen"||t.art==="gemischt") &&
+                  {(k.art==="Gruppen"||k.art==="gemischt") &&
                     <Feld label="Anzahl Gruppen" klein>
                       <input type="number" min={1} max={16} value={k.anzahlGruppen}
                         onChange={e=>updKonk(k.key,{anzahlGruppen: e.target.value===""?"":Number(e.target.value)})}
@@ -1530,7 +1538,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                     </Feld>}
 
                   {/* Aufsteiger je Gruppe – nur bei "gemischt" (Gruppen → KO) */}
-                  {t.art==="gemischt" &&
+                  {k.art==="gemischt" &&
                     <Feld label="Aufsteiger/Gruppe" klein>
                       <input type="number" min={1} max={8} value={k.aufsteiger??2}
                         onChange={e=>updKonk(k.key,{aufsteiger: e.target.value===""?"":Number(e.target.value)})}
@@ -1810,15 +1818,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const istPausiert = (konkKey,key)=> pausiertG.includes(gk(konkKey,key));
 
   // Ist eine Begegnung entschieden? (3 Gewinnsätze oder fixiert)
+  // Für die Tischvergabe gilt eine Begegnung erst dann als abgeschlossen (und der Tisch
+  // wird frei), wenn das Ergebnis GESPEICHERT (fixiert) wurde – nicht schon beim Eintippen
+  // der Sätze. So bleibt der Tisch belegt, bis der Admin das Ergebnis bestätigt.
   function istFertig(saetze, fixiert){
-    if(fixiert) return true;
-    let a=0,b=0;
-    for(const s of (saetze||[])){
-      const pa=Number(s[0]), pb=Number(s[1]);
-      if(s[0]===""||s[1]===""||Number.isNaN(pa)||Number.isNaN(pb)) continue;
-      if(pa>pb) a++; else if(pb>pa) b++;
-    }
-    return a>=3 || b>=3;
+    return !!fixiert;
   }
 
   // Alle Begegnungen EINER Konkurrenz (Gruppen + KO) mit lokalem Key, Gruppe, Runde.
@@ -2012,6 +2016,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }
   function spielFixiert(sp){ return !!(sp && sp.fixiert); }
   function toggleFixSpiel(spIndex, fix){
+    if(!isAdmin) return;   // nur der Admin darf Ergebnisse speichern/ändern
     const spiele=konk.spiele.map((s,i)=> i===spIndex ? {...s, fixiert: fix?true:false} : s);
     updKonk({spiele});
   }
@@ -2037,7 +2042,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       </div>
     </div>
     <div style={{fontSize:17,fontWeight:800}}>{t.name}</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>{deDatumT(t.datum)} · {t.art}</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>{deDatumT(t.datum)}</div>
 
     {/* Push-Schalter (nur Admin): steuert, ob Spieler bei Tischzuweisung eine
         Push-Nachricht bekommen. Standardmäßig AUS, damit man in Ruhe testen kann. */}
@@ -2180,6 +2185,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     })()}
 
     {!konk ? <div style={{color:"var(--text3)",fontSize:13}}>Keine Konkurrenz vorhanden.</div> : <>
+      {/* Art der aktiven Konkurrenz (kann je Konkurrenz unterschiedlich sein) */}
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>Art: <b style={{color:"var(--text2)"}}>{konk.art||"—"}</b></div>
       {/* Teilnehmerauswahl (nur Admin) */}
       {isAdmin && <details style={{marginBottom:14}}>
         <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#8b5cf6"}}>
@@ -2201,21 +2208,21 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       </details>}
 
       {/* Gruppen-Modus */}
-      {(t.art==="Gruppen"||t.art==="gemischt") ? <>
+      {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
         {(!konk.gruppen || konk.gruppen.length===0)
           ? <button onClick={initGruppen} disabled={!isAdmin} style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default",marginBottom:12}}>
               {konk.anzahlGruppen} Gruppen anlegen
             </button>
           : <>
             {/* Gruppenphase bei gemischt einklappbar, damit die KO-Phase näher rückt */}
-            {t.art==="gemischt" && <div onClick={()=>setGruppenphaseOffen(o=>!o)}
+            {konk.art==="gemischt" && <div onClick={()=>setGruppenphaseOffen(o=>!o)}
               style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none",marginBottom:10,
                 background:"var(--bg2)",borderRadius:10,padding:"9px 12px",border:"1px solid var(--border)"}}>
               <span style={{fontSize:12,color:"var(--text3)",transform:gruppenphaseOffen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
               <span style={{fontSize:13,fontWeight:800,color:"var(--text2)"}}>Gruppenphase</span>
               <span style={{fontSize:11,color:"var(--text4)",marginLeft:"auto"}}>{gruppenphaseOffen?"einklappen":"ausklappen"}</span>
             </div>}
-            {(t.art!=="gemischt" || gruppenphaseOffen) && <>
+            {(konk.art!=="gemischt" || gruppenphaseOffen) && <>
             {/* Hinweis, wenn die eingestellte Gruppenzahl von der tatsächlichen abweicht */}
             {isAdmin && Number(konk.anzahlGruppen)!==konk.gruppen.length && <div style={{marginBottom:12,padding:"8px 10px",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
               Eingestellt sind {konk.anzahlGruppen} Gruppen, aktuell gibt es {konk.gruppen.length}.
@@ -2354,11 +2361,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                             {fehler && <span style={{fontSize:8,color:"#ef4444",maxWidth:80,lineHeight:1.2}}>⚠</span>}
                           </div>;
                         })}
-                        {/* Speichern-/Ändern-Button pro SPIEL */}
-                        {darf && !fixiert && abgeschlossen &&
+                        {/* Speichern/Ändern nur durch den Admin – nicht durch Spieler */}
+                        {isAdmin && !fixiert && abgeschlossen &&
                           <button onClick={()=>toggleFixSpiel(sp._idx,true)}
                             style={{border:"none",background:"#10b981",color:"#fff",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>✓ Ergebnis speichern</button>}
-                        {darf && fixiert &&
+                        {!isAdmin && !fixiert && abgeschlossen &&
+                          <span style={{fontSize:9,color:"var(--text4)",fontStyle:"italic"}}>wartet auf Bestätigung durch Admin</span>}
+                        {isAdmin && fixiert &&
                           <button onClick={()=>toggleFixSpiel(sp._idx,false)}
                             style={{border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>✎ ändern</button>}
                       </div>
@@ -2373,7 +2382,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           </>}
 
         {/* Gemischt: Übergang zur KO-Phase bzw. das KO-Tableau selbst */}
-        {t.art==="gemischt" && (konk.gruppen&&konk.gruppen.length>0) && <div style={{marginTop:18,paddingTop:14,borderTop:"2px solid var(--border)"}}>
+        {konk.art==="gemischt" && (konk.gruppen&&konk.gruppen.length>0) && <div style={{marginTop:18,paddingTop:14,borderTop:"2px solid var(--border)"}}>
           {!konk.koGestartet ? (()=>{
             const fertig=alleGruppenspieleFertig();
             const offen=offeneGruppenspiele();
@@ -2419,13 +2428,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             </ErrorBoundary>
           </div>}
         </div>}
-      </> : t.art==="einfaches KO-System" ? (
+      </> : konk.art==="einfaches KO-System" ? (
         <ErrorBoundary resetKey={aktiveKonk}>
           <KoTableau konk={konk} players={players} qttrVon={qttrVon}
             isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={koTischMap}/>
         </ErrorBoundary>
       ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
-        Diese Turnierart („{t.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
+        Diese Turnierart („{konk.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
       </div>}
     </>}
   </div>;
@@ -2633,6 +2642,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     updKonk({ koSpiele:map });
   }
   function toggleFix(key, fix){
+    if(!isAdmin) return;   // nur der Admin darf Ergebnisse speichern/ändern
     const map={...spieleMap};
     map[key]={...(map[key]||{}), fixiert:!!fix};
     updKonk({ koSpiele:map });
@@ -2785,11 +2795,13 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
           </div>;
         })}
       </div>
-      {/* Fix-/Ändern-Button in eigener Zeile, damit er nie verdeckt oder abgeschnitten wird */}
-      {darf && !fixiert && abgeschlossen &&
-        <button onClick={()=>toggleFix(sp.key,true)} title="Ergebnis fixieren"
+      {/* Speichern/Ändern nur durch den Admin – nicht durch Spieler für ihr eigenes Spiel */}
+      {isAdmin && !fixiert && abgeschlossen &&
+        <button onClick={()=>toggleFix(sp.key,true)} title="Ergebnis speichern"
           style={{marginTop:4,border:"none",background:"#10b981",color:"#fff",borderRadius:4,fontSize:10,fontWeight:700,padding:"3px 10px",cursor:"pointer"}}>✓ Ergebnis speichern</button>}
-      {darf && fixiert &&
+      {!isAdmin && !fixiert && abgeschlossen &&
+        <div style={{marginTop:4,fontSize:9,color:"var(--text4)",fontStyle:"italic"}}>wartet auf Bestätigung durch Admin</div>}
+      {isAdmin && fixiert &&
         <button onClick={()=>toggleFix(sp.key,false)} title="ändern"
           style={{marginTop:4,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:4,fontSize:10,fontWeight:700,padding:"3px 10px",cursor:"pointer"}}>✎ ändern</button>}
     </div>}
