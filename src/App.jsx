@@ -1,4 +1,4 @@
-// === TTC-App · Version 306 · erstellt 08.08.2026 ===
+// === TTC-App · Version 307 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "306";
+const APP_VERSION = "307";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1002,6 +1002,12 @@ function ElternTab({ players }) {
 
 const TURNIER_NAMEN = ["Vereinsmeisterschaften","Saisonabschluss-Turnier","Brettchenturnier"];
 const TURNIER_ARTEN = ["Gruppen","einfaches KO-System","doppeltes KO-System","gemischt"];
+// Funktionen (Rollen), für die ein Turnier sichtbar geschaltet werden kann.
+// Standard ist leer = für niemanden sichtbar (außer Admin/Trainer, die immer Zugriff haben).
+const TURNIER_SICHTBAR_ROLLEN = [
+  ["player","Spieler"],["erwachsene","Erwachsene"],
+  ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],
+];
 const KONKURRENZEN = [
   "Herren","Herren A","Herren B","Doppel gemischt","Doppel Herren","Doppel Nachwuchs",
   "Nachwuchs","Mädchen 9","Mädchen 11","Mädchen 13","Mädchen 15",
@@ -1277,6 +1283,18 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   const darfAnlegen = isAdmin;
   const darfAlleErgebnisse = isAdmin || isTrainer;
 
+  // Sichtbarkeit: Admin und Trainer sehen alle Turniere. Alle anderen sehen nur Turniere,
+  // die für mindestens eine ihrer Funktionen (Rollen) freigeschaltet wurden. Standard leer
+  // = für niemanden sichtbar. So bleiben Turniere in der Entstehungs-/Testphase privat.
+  const meineRollen = myPlayer?.roles || {};
+  function turnierSichtbar(t){
+    if(darfAlleErgebnisse) return true;              // Admin/Trainer immer
+    const fuer = t.sichtbarFuer || [];
+    if(fuer.length===0) return false;                // für niemanden freigegeben
+    return fuer.some(rk => meineRollen[rk]===true);  // eine passende Funktion?
+  }
+  const sichtbareTurniere = turniere.filter(turnierSichtbar);
+
   // Turniere + TTR laden
   useEffect(()=>{
     let ab=false;
@@ -1363,12 +1381,14 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
     {!darfAnlegen && <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
       Turniere werden von der Vereinsleitung angelegt. Du kannst Ergebnisse deiner eigenen Spiele eintragen.
     </div>}
-    {turniere.length===0
+    {sichtbareTurniere.length===0
       ? <div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
-          Noch keine Turniere angelegt.{darfAnlegen?" Lege mit „+ Neues Turnier“ das erste an.":""}
+          {turniere.length>0 && !darfAlleErgebnisse
+            ? "Aktuell sind keine Turniere für dich freigegeben."
+            : <>Noch keine Turniere angelegt.{darfAnlegen?" Lege mit „+ Neues Turnier“ das erste an.":""}</>}
         </div>
       : <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {turniere.map(t=>(
+          {sichtbareTurniere.map(t=>(
             <div key={t.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                 <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer",flex:1}}>
@@ -1376,6 +1396,11 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
                   <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
                     {t.datum?deDatumT(t.datum):"ohne Datum"} · {t.art} · {(t.konkurrenzen||[]).length} Konkurrenz(en)
                   </div>
+                  {darfAnlegen && <div style={{fontSize:10,marginTop:4,fontWeight:600,color:(t.sichtbarFuer||[]).length===0?"#f59e0b":"#10b981"}}>
+                    {(t.sichtbarFuer||[]).length===0
+                      ? "🔒 für niemanden sichtbar"
+                      : "👁 sichtbar für: "+(t.sichtbarFuer||[]).map(rk=>{const f=TURNIER_SICHTBAR_ROLLEN.find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
+                  </div>}
                 </div>
                 <div style={{display:"flex",gap:6,flexShrink:0}}>
                   <button onClick={()=>setSelId(t.id)} style={miniBtn("#3b82f6")}>öffnen</button>
@@ -1395,11 +1420,14 @@ function miniBtn(color){ return {padding:"5px 9px",background:color+"18",border:
 // ─── Turnier-Formular (Anlegen/Bearbeiten) ──────────────────────────────────
 function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   const leer={
-    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0], anzahlTische:6,
+    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0], anzahlTische:6, sichtbarFuer:[],
     konkurrenzen:[], // [{key, name, anzahlGruppen, vorgabe, vorgabeArt, diffQTTR, maxVorgabe, teilnehmer:[], gruppen:[], spiele:[]}]
   };
   const [t,setT]=useState(start? {...leer, ...start, konkurrenzen:start.konkurrenzen||[]} : leer);
   const set=(k,v)=>setT(prev=>({...prev,[k]:v}));
+  // Turniername: aus Vorschlägen wählen oder „eigener Name". Der Freitext-Modus ist aktiv,
+  // wenn der aktuelle Name nicht in der Vorschlagsliste steht.
+  const [eigenerName,setEigenerName]=useState(!!(start && start.name && !TURNIER_NAMEN.includes(start.name)));
 
   // Konkurrenz-Editor: die Konkurrenzen dieses Turniers verwalten
   const [neueKonk,setNeueKonk]=useState(KONKURRENZEN[0]);
@@ -1423,17 +1451,23 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
 
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <Feld label="Name Turnier">
-        <input list="turniernamen-liste" value={t.name} onChange={e=>set("name",e.target.value)}
-          placeholder="Name wählen oder eingeben" style={selT2}/>
-        <datalist id="turniernamen-liste">
-          {TURNIER_NAMEN.map(n=><option key={n} value={n}/>)}
-        </datalist>
+        <select value={eigenerName?"__eigen__":t.name}
+          onChange={e=>{
+            if(e.target.value==="__eigen__"){ setEigenerName(true); set("name",""); }
+            else { setEigenerName(false); set("name",e.target.value); }
+          }} style={selT2}>
+          {TURNIER_NAMEN.map(n=><option key={n} value={n}>{n}</option>)}
+          <option value="__eigen__">✏️ Eigener Name…</option>
+        </select>
+        {eigenerName && <input value={t.name} onChange={e=>set("name",e.target.value)}
+          placeholder="Turniername eingeben" autoFocus
+          style={{...selT2,marginTop:6,display:"block",width:"100%"}}/>}
       </Feld>
       <Feld label="Anzahl Tische (gesamt)">
         <input type="number" min={1} max={50} value={t.anzahlTische??6}
           onChange={e=>set("anzahlTische", e.target.value===""?"":Number(e.target.value))}
           onBlur={e=>{ const n=Number(e.target.value)||1; set("anzahlTische",Math.min(50,Math.max(1,n))); }}
-          style={{...selT2,width:120}}/>
+          style={{...selT2,width:90,maxWidth:90,display:"block"}}/>
       </Feld>
       <Feld label="Datum Turnier">
         <input type="date" value={t.datum} onChange={e=>set("datum",e.target.value)} style={selT2}/>
@@ -1442,6 +1476,28 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
         <select value={t.art} onChange={e=>set("art",e.target.value)} style={selT2}>
           {TURNIER_ARTEN.map(a=><option key={a} value={a}>{a}</option>)}
         </select>
+      </Feld>
+
+      <Feld label="Sichtbar für (Funktionen)">
+        <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>
+          Standard: für niemanden sichtbar. Admins und Trainer haben immer Zugriff. Mehrfachauswahl möglich.
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {TURNIER_SICHTBAR_ROLLEN.map(([rk,label])=>{
+            const aktiv=(t.sichtbarFuer||[]).includes(rk);
+            return <span key={rk} onClick={()=>{
+              const cur=t.sichtbarFuer||[];
+              set("sichtbarFuer", aktiv ? cur.filter(x=>x!==rk) : [...cur, rk]);
+            }} style={{
+              padding:"6px 11px",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",
+              border:aktiv?"1px solid #10b981":"1px solid var(--border2)",
+              background:aktiv?"#10b98122":"var(--bg2)",color:aktiv?"#10b981":"var(--text2)",
+            }}>{aktiv?"✓ ":""}{label}</span>;
+          })}
+        </div>
+        {(t.sichtbarFuer||[]).length===0 && <div style={{fontSize:10,color:"#f59e0b",marginTop:6,fontWeight:600}}>
+          🔒 Aktuell für niemanden sichtbar (nur Admin/Trainer).
+        </div>}
       </Feld>
 
       {/* Konkurrenzen */}
@@ -2705,8 +2761,8 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
     </div>;
   };
 
-  return <div style={{background:"var(--bg)",border:fixiert?"1px solid #10b98155":"1px solid var(--border)",borderRadius:8,padding:6}}>
-    {tischNr && !fixiert && <div style={{display:"inline-block",background:"#10b981",color:"#fff",fontSize:9,fontWeight:800,borderRadius:5,padding:"1px 6px",marginBottom:4}}>Tisch {tischNr}</div>}
+  return <div style={{position:"relative",background:"var(--bg)",border:fixiert?"1px solid #10b98155":"1px solid var(--border)",borderRadius:8,padding:6}}>
+    {tischNr && !fixiert && <div style={{position:"absolute",top:-7,right:6,background:"#10b981",color:"#fff",fontSize:9,fontWeight:800,borderRadius:5,padding:"1px 6px",lineHeight:1.4,zIndex:1}}>Tisch {tischNr}</div>}
     {zeile(sp.a, slotA, sieger && sieger===sp.a)}
     <div style={{height:3}}/>
     {zeile(sp.b, slotB, sieger && sieger===sp.b)}
