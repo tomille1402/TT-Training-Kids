@@ -1,4 +1,4 @@
-// === TTC-App · Version 315 · erstellt 08.08.2026 ===
+// === TTC-App · Version 316 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "315";
+const APP_VERSION = "316";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1682,7 +1682,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     // alphabetisch aufsteigend nach Vorname
     return (a.firstName||"").localeCompare(b.firstName||"");
   }) : [];
-  const nameVon = (id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id; };
+  // Namen einer Tableau-Einheit. Im Doppel kann eine ID eine Team-ID sein; darum
+  // werden turnierweit alle Doppel-Teams gesammelt und Team-IDs als „A / B" aufgelöst.
+  const alleDoppelTeams = (t.konkurrenzen||[]).flatMap(k=>k.doppelTeams||[]);
+  const teamVonId=(id)=> alleDoppelTeams.find(tm=>tm.id===id);
+  const nameVon = (id)=>{
+    if(!id) return "";
+    const tm=teamVonId(id);
+    if(tm){
+      const p1=players.find(x=>x.id===tm.s1), p2=players.find(x=>x.id===tm.s2);
+      return `${p1?p1.firstName:"?"} / ${p2?p2.firstName:"?"}`;
+    }
+    const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id;
+  };
   const spielerVon = (id)=> players.find(x=>x.id===id);
   // Aktuelles Alter aus dem Geburtsdatum (String) – oder null, wenn nicht hinterlegt.
   function alterVon(p){
@@ -1922,19 +1934,27 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
   // Zentrale Tischzuordnung über alle gestarteten Konkurrenzen. Kein Spieler darf zur
   // gleichen Zeit an zwei Tischen stehen – auch nicht konkurrenzübergreifend.
+  // Löst eine Tableau-Einheit in ihre echten Spieler-IDs auf. Einzel = die ID selbst;
+  // Doppel = beide Team-Mitglieder. So verhindert der Kollisionsschutz, dass ein
+  // Spieler, der in zwei Doppeln (verschiedenen Konkurrenzen) antritt, doppelt spielt.
+  function echteSpieler(id){
+    const tm=teamVonId(id);
+    return tm ? [tm.s1, tm.s2].filter(Boolean) : (id ? [id] : []);
+  }
   function tischeNeu(aktuelleTische){
     if(anzahlTische<=0) return {};
     const bg=alleBegegnungen().filter(x=>x.nurGestartet && !x.fertig && !x.pausiert);
     const neu={};
     const belegteTische=new Set();
     const aktiveSpieler=new Set();
+    const spielerFrei=(x)=> !echteSpieler(x.a).some(s=>aktiveSpieler.has(s)) && !echteSpieler(x.b).some(s=>aktiveSpieler.has(s));
+    const spielerBelegen=(x)=>{ echteSpieler(x.a).forEach(s=>aktiveSpieler.add(s)); echteSpieler(x.b).forEach(s=>aktiveSpieler.add(s)); };
     // 1) bestehende Zuordnungen behalten (laufende Spiele nicht umsetzen)
     for(const x of bg){
       const tt=aktuelleTische[x.gkey];
-      if(tt && tt>=1 && tt<=anzahlTische && !belegteTische.has(tt)
-         && !aktiveSpieler.has(x.a) && !aktiveSpieler.has(x.b)){
+      if(tt && tt>=1 && tt<=anzahlTische && !belegteTische.has(tt) && spielerFrei(x)){
         neu[x.gkey]=tt; belegteTische.add(tt);
-        aktiveSpieler.add(x.a); aktiveSpieler.add(x.b);
+        spielerBelegen(x);
       }
     }
     // 2) freie Tische an wartende Begegnungen (fair), mit Spieler-Kollisionsschutz
@@ -1943,9 +1963,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const wartend=faireReihenfolge(bg.filter(x=>!neu[x.gkey]));
     for(const x of wartend){
       if(freie.length===0) break;
-      if(aktiveSpieler.has(x.a) || aktiveSpieler.has(x.b)) continue;
+      if(!spielerFrei(x)) continue;
       neu[x.gkey]=freie.shift();
-      aktiveSpieler.add(x.a); aktiveSpieler.add(x.b);
+      spielerBelegen(x);
     }
     return neu;
   }
@@ -1993,16 +2013,27 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     // eslint-disable-next-line
   },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(pausiertG), anzahlTische]);
 
-  // Ruft die Netlify-Funktion, die beide Spieler per Push an den Tisch bittet.
+  // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
+  // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
+  // und beide Team-Mitglieder werden per Push-Empfänger-Liste adressiert.
   async function pushSpielerAnTisch(idA, idB, tisch, konkName){
     try{
-      const pa=spielerVon(idA), pb=spielerVon(idB);
+      const seite=(id)=>{
+        const tm=teamVonId(id);
+        if(tm){
+          const p1=spielerVon(tm.s1), p2=spielerVon(tm.s2);
+          const nm=`${p1?p1.firstName:"?"} / ${p2?p2.firstName:"?"}`;
+          return { id, name:nm, empfaenger:[tm.s1, tm.s2].filter(Boolean) };
+        }
+        const p=spielerVon(id);
+        return { id, name: p?`${p.firstName} ${p.lastName}`:"", empfaenger:[id].filter(Boolean) };
+      };
+      const A=seite(idA), B=seite(idB);
       await fetch("/.netlify/functions/turnieralarm", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
-          spielerA:{ id:idA, name: pa?`${pa.firstName} ${pa.lastName}`:"" },
-          spielerB:{ id:idB, name: pb?`${pb.firstName} ${pb.lastName}`:"" },
+          spielerA:A, spielerB:B,
         })
       });
     }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
@@ -2763,22 +2794,44 @@ function de_loese(struktur, slots, spieleMap){
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
 function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
   const darfAlle = isAdmin || isTrainer;
-  const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
+
+  // Doppel-Modus: Bei Doppel-Konkurrenzen treten Zweier-Teams als Einheit an.
+  // Die Teams werden manuell aus den Teilnehmern gekoppelt und in konk.doppelTeams
+  // gespeichert: [{id, s1, s2}]. Im Tableau sind die „Teilnehmer" dann die Team-IDs.
+  const istDoppel = (konk.name||"").startsWith("Doppel");
+  const doppelTeams = konk.doppelTeams || [];
+  const teamVon=(tid)=> doppelTeams.find(t=>t.id===tid);
+
+  const spielerName=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
+  const spielerVorname=(id)=>{ const p=players.find(x=>x.id===id); return p?p.firstName:(id||""); };
+  // nameVon versteht sowohl einzelne Spieler-IDs als auch Doppel-Team-IDs.
+  const nameVon=(id)=>{
+    if(!id) return "";
+    const tm=teamVon(id);
+    if(tm) return `${spielerVorname(tm.s1)} / ${spielerVorname(tm.s2)}`;
+    return spielerName(id);
+  };
   const spielerVon=(id)=> players.find(x=>x.id===id);
 
-  // Teilnehmer nach QTTR absteigend sortiert (beste zuerst = Seed 1..n).
-  // Defensiv: qttrVon kann null liefern; Fehler beim Lesen werden abgefangen.
-  const teilnehmerSortiert=[...(konk.teilnehmer||[])].sort((x,y)=>{
-    let qx=null, qy=null;
-    try{ qx=qttrVon(spielerVon(x)); }catch(e){ qx=null; }
-    try{ qy=qttrVon(spielerVon(y)); }catch(e){ qy=null; }
-    return (qy??-1)-(qx??-1);
-  });
+  // Einheiten des Tableaus: im Doppel die Team-IDs, sonst die Einzel-Teilnehmer.
+  // Seeding im Doppel bewusst NICHT nach QTTR (Reihenfolge = Team-Anlage; manuell
+  // per Antippen änderbar). Einzel weiterhin nach QTTR absteigend.
+  const einheiten = istDoppel
+    ? doppelTeams.map(t=>t.id)
+    : [...(konk.teilnehmer||[])];
+  const teilnehmerSortiert = istDoppel
+    ? einheiten
+    : einheiten.sort((x,y)=>{
+        let qx=null, qy=null;
+        try{ qx=qttrVon(spielerVon(x)); }catch(e){ qx=null; }
+        try{ qy=qttrVon(spielerVon(y)); }catch(e){ qy=null; }
+        return (qy??-1)-(qx??-1);
+      });
 
   const slots = konk.koSlots && konk.koSlots.length ? konk.koSlots : null;
   const spieleMap = konk.koSpiele || {};
 
-  // Teilnehmer, die noch nicht im Tableau stehen (z.B. nachträglich hinzugefügt).
+  // Teilnehmer/Teams, die noch nicht im Tableau stehen (z.B. nachträglich gebildet).
   const imTableau = new Set((slots||[]).filter(Boolean));
   const fehlende = teilnehmerSortiert.filter(id=>!imTableau.has(id));
   const freieSlots = slots ? slots.filter(s=>!s).length : 0;
@@ -2847,18 +2900,85 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     updKonk({ koSpiele:map });
   }
 
+  // ── Doppel-Team-Verwaltung ──
+  const [teamS1,setTeamS1]=useState("");
+  const [teamS2,setTeamS2]=useState("");
+  // Bereits in einem Team verplante Spieler (können nicht doppelt gekoppelt werden).
+  const verplant = new Set();
+  doppelTeams.forEach(t=>{ verplant.add(t.s1); verplant.add(t.s2); });
+  // Kandidaten = Teilnehmer der Konkurrenz, die noch keinem Team angehören.
+  const teamKandidaten = (konk.teilnehmer||[]).filter(id=>!verplant.has(id));
+  function teamAnlegen(){
+    if(!isAdmin || !teamS1 || !teamS2 || teamS1===teamS2) return;
+    const neu=[...doppelTeams, { id:`d_${Date.now()}_${Math.floor(Math.random()*1000)}`, s1:teamS1, s2:teamS2 }];
+    setTeamS1(""); setTeamS2("");
+    updKonk({ doppelTeams:neu });
+  }
+  function teamLoeschen(tid){
+    if(!isAdmin) return;
+    const neu=doppelTeams.filter(t=>t.id!==tid);
+    // Aus einem bestehenden Tableau ebenfalls entfernen (Platz wird frei).
+    let patch={ doppelTeams:neu };
+    if(slots && slots.includes(tid)){
+      patch.koSlots = slots.map(s=> s===tid ? null : s);
+    }
+    updKonk(patch);
+  }
+
   if(!konk.teilnehmer || konk.teilnehmer.length<2)
     return <div style={{padding:16,textAlign:"center",color:"var(--text3)",fontSize:13}}>Zuerst Teilnehmer auswählen (mind. 2).</div>;
 
+  // Doppel: Team-Bildungs-UI. Wird oberhalb des Tableaus angezeigt.
+  const doppelVerwaltung = istDoppel && (
+    <div style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
+      <div style={{fontSize:13,fontWeight:800,color:"#8b5cf6",marginBottom:8}}>Doppel-Paarungen ({doppelTeams.length})</div>
+      {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln.</div>}
+      {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {doppelTeams.map((t,i)=>(
+          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"6px 10px",border:"1px solid var(--border2)"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"var(--text4)",minWidth:20}}>{i+1}.</span>
+            <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>{spielerName(t.s1)} / {spielerName(t.s2)}</span>
+            {isAdmin && <button onClick={()=>teamLoeschen(t.id)} style={{border:"1px solid #ef444455",background:"#ef444418",color:"#ef4444",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 8px",cursor:"pointer"}}>entfernen</button>}
+          </div>
+        ))}
+      </div>}
+      {isAdmin && teamKandidaten.length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={teamS1} onChange={e=>setTeamS1(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
+          <option value="">Spieler 1…</option>
+          {teamKandidaten.filter(id=>id!==teamS2).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+        </select>
+        <span style={{fontSize:12,color:"var(--text4)",fontWeight:700}}>+</span>
+        <select value={teamS2} onChange={e=>setTeamS2(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
+          <option value="">Spieler 2…</option>
+          {teamKandidaten.filter(id=>id!==teamS1).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+        </select>
+        <button onClick={teamAnlegen} disabled={!teamS1||!teamS2} style={{padding:"7px 12px",background:(teamS1&&teamS2)?"#10b981":"var(--bg3)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:(teamS1&&teamS2)?"pointer":"default"}}>koppeln</button>
+      </div>}
+      {isAdmin && teamKandidaten.length===1 && <div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Ein Teilnehmer ist noch ohne Partner ({spielerName(teamKandidaten[0])}).</div>}
+      {isAdmin && teamKandidaten.length===0 && doppelTeams.length>0 && <div style={{fontSize:11,color:"var(--text4)",marginTop:4}}>Alle Teilnehmer sind einem Team zugeordnet.</div>}
+    </div>
+  );
+
+  // Genug Einheiten fürs Tableau? (Einzel: ≥2 Teilnehmer, Doppel: ≥2 Teams)
+  const genugEinheiten = teilnehmerSortiert.length>=2;
+  const einheitLabel = istDoppel ? "Teams" : "Teilnehmer";
+
   if(!slots)
-    return <div style={{padding:16,textAlign:"center"}}>
-      <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
-        {teilnehmerSortiert.length} Teilnehmer · Tableau-Größe {ko_naechstePotenz(teilnehmerSortiert.length)}
+    return <div>
+      {doppelVerwaltung}
+      <div style={{padding:16,textAlign:"center"}}>
+        {genugEinheiten ? <>
+          <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+            {teilnehmerSortiert.length} {einheitLabel} · Tableau-Größe {ko_naechstePotenz(teilnehmerSortiert.length)}
+          </div>
+          <button onClick={tableauAnlegen} disabled={!isAdmin}
+            style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default"}}>
+            {istDoppel ? "KO-Tableau erstellen" : "KO-Tableau nach QTTR erstellen"}
+          </button>
+        </> : <div style={{fontSize:12,color:"var(--text3)"}}>
+          {istDoppel ? "Mindestens zwei Doppel-Teams bilden, um das Tableau zu erstellen." : "Mindestens zwei Teilnehmer nötig."}
+        </div>}
       </div>
-      <button onClick={tableauAnlegen} disabled={!isAdmin}
-        style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default"}}>
-        KO-Tableau nach QTTR erstellen
-      </button>
     </div>;
 
   const runden=ko_baueRunden(slots, spieleMap);
@@ -2872,15 +2992,17 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   };
 
   return <div>
+    {doppelVerwaltung}
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      {isAdmin && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
+      {isAdmin && !istDoppel && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
+      {isAdmin && istDoppel && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ Tableau neu aufbauen</button>}
       {isAdmin && fehlende.length>0 && <button onClick={fehlendeEinfuegen} style={{padding:"6px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-        + {fehlende.length} neue{fehlende.length===1?"n":""} Teilnehmer einfügen
+        + {fehlende.length} {istDoppel?"neue Teams":`neue${fehlende.length===1?"n":""} Teilnehmer`} einfügen
       </button>}
       {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
-      Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden Spieler tauschen den Platz.
+      Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden {istDoppel?"Teams":"Spieler"} tauschen den Platz.
     </div>}
 
     {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
