@@ -1,4 +1,4 @@
-// === TTC-App · Version 314 · erstellt 08.08.2026 ===
+// === TTC-App · Version 315 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "314";
+const APP_VERSION = "315";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -805,7 +805,7 @@ function ThemeToggle({isDark,onSetUserTheme}) {
 // ── Eltern-Reiter (nur Admin/Trainer): Übersicht der Eltern-Kontaktdaten je Spieler ──
 // Speist sich aus der Verwaltung. Spalten sortier- und filterbar, Kopfzeile fixiert.
 // Vorgefiltert auf Status "aktiv", sortiert nach Vorname des Spielers.
-function ElternTab({ players }) {
+function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
   const [sortKey,setSortKey]=useState("spieler");
   const [sortDir,setSortDir]=useState("asc");
   const [statusFilter,setStatusFilter]=useState(["aktiv"]);
@@ -973,7 +973,12 @@ function ElternTab({ players }) {
             <tr key={r.id}>
               <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
               <td style={td}>{r.gruppe}</td>
-              <td style={{...tdSpieler,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.spieler}</td>
+              <td style={{...tdSpieler,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>
+                {onSpielerKlick
+                  ? <span onClick={()=>onSpielerKlick(r.id)} title="Zur Verwaltung dieses Spielers springen"
+                      style={{color:"#3b82f6",cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>{r.spieler}</span>
+                  : r.spieler}
+              </td>
               <td style={td}>{r.mutter||<span style={{color:"var(--text4)"}}>—</span>}</td>
               <td style={td}>{r.vater||<span style={{color:"var(--text4)"}}>—</span>}</td>
               <td style={td}>{telZelle(r.handyM)}</td>
@@ -1607,6 +1612,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [laufendOffen,setLaufendOffen]=useState(true);   // Box „Laufende Spiele" (Standard: auf)
   const [naechstesOffen,setNaechstesOffen]=useState(false); // Box „Als Nächstes" (Standard: zu)
   const [gruppenphaseOffen,setGruppenphaseOffen]=useState(true); // Gruppenphase bei gemischt
+  const [teilnSort,setTeilnSort]=useState("name");   // Teilnehmerauswahl-Sortierung: "name" | "qttr"
   const darfAlle = isAdmin || isTrainer;
   const speichernTimer=useRef(null);
   const letzterStand=useRef(turnier);
@@ -1663,7 +1669,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     if(p.status==="passiv") return false;
     if(p.group==="Gast") return false;               // Gäste nehmen nicht an Turnieren teil
     return konkurrenzPasst(konk.name, p);
-  }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")) : [];  // nach Vorname
+  }).sort((a,b)=>{
+    if(teilnSort==="qttr"){
+      // TTR-Wert absteigend (höchster zuerst); gleiche Werte alphabetisch
+      let qa=null, qb=null;
+      try{ qa=qttrVon(a); }catch(e){ qa=null; }
+      try{ qb=qttrVon(b); }catch(e){ qb=null; }
+      const d=(qb??-1)-(qa??-1);
+      if(d!==0) return d;
+      return (a.firstName||"").localeCompare(b.firstName||"");
+    }
+    // alphabetisch aufsteigend nach Vorname
+    return (a.firstName||"").localeCompare(b.firstName||"");
+  }) : [];
   const nameVon = (id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id; };
   const spielerVon = (id)=> players.find(x=>x.id===id);
   // Aktuelles Alter aus dem Geburtsdatum (String) – oder null, wenn nicht hinterlegt.
@@ -2207,6 +2225,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#8b5cf6"}}>
           Teilnehmer auswählen ({(konk.teilnehmer||[]).length})
         </summary>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>Sortierung:</span>
+          <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"1px solid var(--border2)"}}>
+            <button onClick={()=>setTeilnSort("name")} style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",
+              background:teilnSort==="name"?"#8b5cf6":"var(--bg2)",color:teilnSort==="name"?"#fff":"var(--text3)"}}>A–Z</button>
+            <button onClick={()=>setTeilnSort("qttr")} style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",
+              background:teilnSort==="qttr"?"#8b5cf6":"var(--bg2)",color:teilnSort==="qttr"?"#fff":"var(--text3)"}}>TTR ▼</button>
+          </div>
+        </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
           {kandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden aktiven Personen gefunden.</div>}
           {kandidaten.map(p=>{
@@ -2665,19 +2692,47 @@ function de_baueStruktur(size){
 // spieleMap: key -> {saetze, fixiert}. Sieger wird über ko_sieger(saetze) bestimmt.
 // Das Reset-Spiel GF2 existiert nur, wenn im GF der LB-Spieler (Seite b) gewonnen hat.
 // Freilose (leerer Gegner-Slot) werden nur in WB-Runde 0 automatisch weitergereicht.
+// Löst den Baum mit konkreten Slots + Ergebnissen auf. Ergebnis: key -> {a,b,sieger,verlierer}.
+// Grundprinzip (wie beim einfachen KO): Ein Spieler rückt NUR vor, wenn sein Spiel
+// wirklich entschieden ist — also entweder ein echtes Ergebnis vorliegt ODER es ein
+// echtes Freilos ist. Ein „echtes Freilos" liegt nur vor, wenn der Herkunfts-Teilbaum
+// des Gegners GAR KEINEN Spieler enthalten kann (dauerhaft leerer Erstrunden-Slot).
+// Steht der Gegner nur noch nicht fest (Quellspiel läuft), bleibt die Seite leer und
+// es rückt niemand automatisch vor. So wird niemand fälschlich durchgeschrieben.
 function de_loese(struktur, slots, spieleMap){
   const val={};
-  const holeSlot=(i)=> slots[i]??null;
+
+  // kannBelegen(src): Kann aus dieser Quelle jemals ein Spieler kommen? Rekursiv über
+  // die Herkunft. Für Slots: ist der Slot belegt? Für win/los: enthält das Quellspiel
+  // überhaupt Spieler (mind. eine belegbare Seite)? Nur wenn NEIN, ist es ein echtes
+  // Freilos. Ergebnisunabhängig — es geht nur um „kann dort je jemand stehen".
+  const belegCache={};
+  function kannBelegen(src){
+    if(!src) return false;
+    if(src.slot!=null) return !!slots[src.slot];
+    const key=src.win||src.los;
+    if(key==null) return false;
+    if(belegCache[key]!=null) return belegCache[key];
+    belegCache[key]=false; // Zyklenschutz (bei GF2 self-ref)
+    const qm=struktur.byKey[key];
+    const r = qm ? (kannBelegen(qm.aSrc) || kannBelegen(qm.bSrc)) : false;
+    belegCache[key]=r;
+    return r;
+  }
+
+  // resolveSrc: liefert die konkrete Spieler-ID, sonst null (=steht nicht fest/leer).
   const resolveSrc=(src)=>{
     if(!src) return null;
-    if(src.slot!=null) return holeSlot(src.slot);
-    if(src.win){ const m=val[src.win]; return m?m.sieger:undefined; }
-    if(src.los){ const m=val[src.los]; return m?m.verlierer:undefined; }
+    if(src.slot!=null) return slots[src.slot]??null;
+    if(src.win){ const m=val[src.win]; return m ? (m.sieger??null) : null; }
+    if(src.los){ const m=val[src.los]; return m ? (m.verlierer??null) : null; }
     return null;
   };
+
   for(let iter=0; iter<60; iter++){
     let geaendert=false;
     for(const m of struktur.matches){
+      // Reset-Spiel GF2 existiert nur, wenn im GF der LB-Spieler (Seite b) gewann.
       if(m.key==="GF2"){
         const gf=val["GF"];
         const lbGewann = gf && gf.sieger && gf.b && gf.sieger===gf.b;
@@ -2688,10 +2743,15 @@ function de_loese(struktur, slots, spieleMap){
       const erg=ko_sieger(gesp.saetze);   // "a" | "b" | null
       let sieger=null, verlierer=null;
       if(a && b){
+        // beide stehen fest: Sieger nur mit echtem Ergebnis (kein Auto-Advance)
         if(erg==="a"){ sieger=a; verlierer=b; }
         else if(erg==="b"){ sieger=b; verlierer=a; }
-      } else if(a && b===null){ sieger=a; }   // Freilos
-      else if(b && a===null){ sieger=b; }
+      } else if(a && !b){
+        // b fehlt: echtes Freilos nur, wenn der b-Teilbaum NIE jemanden liefern kann
+        if(!kannBelegen(m.bSrc)) sieger=a;   // sonst: Gegner steht nur noch nicht fest
+      } else if(b && !a){
+        if(!kannBelegen(m.aSrc)) sieger=b;
+      }
       const neu={a:a??null, b:b??null, sieger:sieger??null, verlierer:verlierer??null, fixiert:!!gesp.fixiert};
       if(!val[m.key] || JSON.stringify(val[m.key])!==JSON.stringify(neu)){ val[m.key]=neu; geaendert=true; }
     }
@@ -3058,24 +3118,96 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       slotIdxA={slotIdxA} slotIdxB={slotIdxB}/>;
   }
 
-  const BOX=124;
+  const BOX=124;                       // Höhe einer Spiel-Box (wie einfaches KO)
   const wbTitel=(r)=>{
     const spiele=struktur.wbRounds[r].length;
-    if(spiele===1) return "WB-Finale";
-    if(spiele===2) return "WB-Halbfinale";
-    if(spiele===4) return "WB-Viertelfinale";
-    if(spiele===8) return "WB-Achtelfinale";
-    return `WB-Runde ${r+1}`;
+    if(spiele===1) return "Finale";
+    if(spiele===2) return "Halbfinale";
+    if(spiele===4) return "Viertelfinale";
+    if(spiele===8) return "Achtelfinale";
+    return `Runde ${r+1}`;
   };
-  const lbTitel=(s)=> `LB-Stufe ${s+1}`;
 
-  // Spaltenweise Darstellung: eine Spalte je Runde/Stufe, Boxen vertikal gestapelt.
-  const spalte=(titel, keys, istErstrunde=false, spaltenKey=null)=>(
-    <div key={spaltenKey} style={{display:"flex",flexDirection:"column",minWidth:150,gap:10}}>
-      <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",height:16}}>{titel}</div>
-      {keys.map(k=> <div key={k}>{renderMatch(k, istErstrunde)}</div>)}
-    </div>
-  );
+  // Verbindungslinien-Spalte zwischen zwei Runden (identisch zum einfachen KO).
+  // richtung "rechts": Linien laufen nach rechts (Winner-Bracket).
+  // richtung "links":  gespiegelt, Linien laufen nach links (Loser-Bracket).
+  function linien(anzahlPaare, einheit, richtung){
+    const W=18;
+    return <div style={{position:"relative",width:W,marginTop:24}}>
+      {Array.from({length:anzahlPaare}).map((_,pi)=>{
+        const oben=(pi*2)*einheit + einheit/2;
+        const unten=(pi*2+1)*einheit + einheit/2;
+        const mitte=(oben+unten)/2;
+        const L=(x)=> richtung==="links" ? (W-9-x) : x;   // horizontal spiegeln
+        return <React.Fragment key={pi}>
+          <div style={{position:"absolute",left:L(0),top:oben,width:9,height:2,background:"var(--border2)"}}/>
+          <div style={{position:"absolute",left:L(0),top:unten,width:9,height:2,background:"var(--border2)"}}/>
+          <div style={{position:"absolute",left:richtung==="links"?W-9-2:9,top:oben,width:2,height:unten-oben,background:"var(--border2)"}}/>
+          <div style={{position:"absolute",left:L(9),top:mitte,width:9,height:2,background:"var(--border2)"}}/>
+        </React.Fragment>;
+      })}
+    </div>;
+  }
+
+  // Eine Runden-Spalte (Titel + vertikal zentrierte Boxen), Ausrichtung wie einfaches KO.
+  function rundenSpalte(titel, keys, ri, istErstrunde){
+    const einheit=BOX*Math.pow(2,ri);
+    return <div style={{display:"flex",flexDirection:"column",minWidth:150}}>
+      <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:8,height:16}}>{titel}</div>
+      {keys.map((k,si)=>(
+        <div key={k} style={{minHeight:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+          {renderMatch(k, istErstrunde)}
+        </div>
+      ))}
+    </div>;
+  }
+
+  // ── Winner-Bracket: Runden + Linien nach RECHTS, dann Grand Final ──
+  const wbSpalten=[];
+  struktur.wbRounds.forEach((keys,r)=>{
+    wbSpalten.push(<div key={"wb"+r} style={{display:"flex"}}>
+      {rundenSpalte(wbTitel(r), keys, r, r===0)}
+      {r<struktur.wbRounds.length-1 && linien(Math.floor(keys.length/2), BOX*Math.pow(2,r), "rechts")}
+    </div>);
+  });
+  // Grand Final schließt rechts an (mit kurzer Verbindungslinie vom WB-Finale)
+  const gfKeys = val["GF2"] ? ["GF","GF2"] : ["GF"];
+  wbSpalten.push(<div key="gf" style={{display:"flex"}}>
+    {linien(1, BOX*Math.pow(2,struktur.wbRounds.length-1), "rechts")}
+    {rundenSpalte("Grand Final", gfKeys, struktur.wbRounds.length-1, false)}
+  </div>);
+
+  // ── Loser-Bracket: Stufen + Linien nach LINKS (gespiegelt) ──
+  // Damit "nach links" läuft, kehren wir die Spaltenreihenfolge um: die letzte Stufe
+  // (LB-Finale) steht rechts (nahe dem Grand Final), die erste Stufe ganz links.
+  // Die vertikale Einheit richtet sich nach der Stufen-"Tiefe": Minor/Major verdoppeln
+  // sich nicht gleichmäßig, darum orientieren wir die Einheit an der Spielanzahl.
+  const lbEinheit=(anzahlSpiele)=> BOX*(size/2)/Math.max(1,anzahlSpiele);
+  const lbSpaltenReihen=[];
+  const stagesReversed=[...struktur.lbStages].map((keys,idx)=>({keys,idx})).reverse();
+  stagesReversed.forEach(({keys,idx},pos)=>{
+    const istLetzteGezeigt = pos===stagesReversed.length-1; // = erste Stufe (ganz links)
+    lbSpaltenReihen.push(<div key={"lb"+idx} style={{display:"flex"}}>
+      {/* Linie links vor der Spalte (außer ganz links) – zeigt Fluss nach links */}
+      {rundenSpalteLB(lbTitelKurz(idx, struktur.lbStages.length), keys, lbEinheit(keys.length))}
+    </div>);
+  });
+
+  function lbTitelKurz(stageIdx, gesamt){
+    if(stageIdx===gesamt-1) return "LB-Finale";
+    if(stageIdx===0) return "LB-Runde 1";
+    return `LB-Runde ${stageIdx+1}`;
+  }
+  function rundenSpalteLB(titel, keys, einheit){
+    return <div style={{display:"flex",flexDirection:"column",minWidth:150}}>
+      <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:8,height:16}}>{titel}</div>
+      {keys.map((k)=>(
+        <div key={k} style={{minHeight:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+          {renderMatch(k, false)}
+        </div>
+      ))}
+    </div>;
+  }
 
   return <div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -3086,27 +3218,19 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
-      Winner-Bracket (oben) läuft nach rechts, Loser-Bracket (unten) nach links. Verlierer wandern ins Loser-Bracket; wer zweimal verliert, scheidet aus.
+      Winner-Bracket läuft nach rechts bis zum Grand Final; das Loser-Bracket läuft nach links. Wer zweimal verliert, scheidet aus.
     </div>}
 
-    {/* WINNERS-BRACKET — nach rechts */}
-    <div style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:6}}>▸ Winner-Bracket</div>
-    <div style={{overflowX:"auto",paddingBottom:8,marginBottom:18}}>
-      <div style={{display:"flex",gap:18,minWidth:"min-content"}}>
-        {struktur.wbRounds.map((keys,r)=> spalte(wbTitel(r), keys, r===0, "wb"+r))}
-        {/* Grand Final rechts an das WB-Finale anschließen */}
-        {spalte("Grand Final", val["GF2"] ? ["GF","GF2"] : ["GF"], false, "gf")}
-      </div>
+    {/* WINNER-BRACKET → nach rechts */}
+    <div style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:6}}>Winner-Bracket ▸</div>
+    <div style={{overflowX:"auto",paddingBottom:14,marginBottom:20,borderBottom:"1px solid var(--border)"}}>
+      <div style={{display:"flex",minWidth:"min-content"}}>{wbSpalten}</div>
     </div>
 
-    {/* LOSERS-BRACKET — gespiegelt nach links (Stufen in umgekehrter Spaltenfolge) */}
+    {/* LOSER-BRACKET ◂ nach links (Spalten gespiegelt: LB-Finale rechts, Start links) */}
     <div style={{fontSize:12,fontWeight:800,color:"#f59e0b",marginBottom:6}}>◂ Loser-Bracket</div>
-    <div style={{overflowX:"auto",paddingBottom:8,direction:"rtl"}}>
-      <div style={{display:"flex",gap:18,minWidth:"min-content"}}>
-        {struktur.lbStages.map((keys,s)=>(
-          <div key={s} style={{direction:"ltr"}}>{spalte(lbTitel(s), keys)}</div>
-        ))}
-      </div>
+    <div style={{overflowX:"auto",paddingBottom:8}}>
+      <div style={{display:"flex",minWidth:"min-content"}}>{lbSpaltenReihen}</div>
     </div>
   </div>;
 }
@@ -3143,6 +3267,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return true;
   });
   const [activeTab,setActiveTab]=useState("training");
+  // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
+  // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
+  const [verwaltungJumpId,setVerwaltungJumpId]=useState(null);
   // Punkt 1: Höhe der fixierten Tab-Leiste messen, damit der Spacer exakt passt und
   // keine Überschriften abgeschnitten werden (v.a. Admin-Ansicht mit vielen Chips).
   const tabBarRef=useRef(null);
@@ -3452,7 +3579,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     })()}
 
     {/* ── TRAINING TAB ── */}
-    {activeTab==="eltern"&&<ElternTab players={players}/>}
+    {activeTab==="eltern"&&<ElternTab players={players} isSuperAdmin={isSuperAdmin}
+      onSpielerKlick={isSuperAdmin ? (id)=>{ setVerwaltungJumpId(id); setActiveTab("verwaltung"); } : null}/>}
 
     {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={effectiveGroupFilters} attendance={attendance} showToast={showToast}/>}
 
@@ -3541,7 +3669,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} onJumpHandled={()=>setVerwaltungJumpId(null)}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -5243,8 +5371,20 @@ function TtrUpload({ showToast }){
   </div>;
 }
 
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
+
+  // Sprung aus dem Eltern-Reiter: kommt eine jumpToId herein, den passenden Spieler
+  // direkt zum Bearbeiten öffnen (gleiche Objektform wie der „Bearbeiten"-Button).
+  useEffect(()=>{
+    if(!jumpToId) return;
+    const p=players.find(x=>x.id===jumpToId);
+    if(p){
+      setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
+      if(typeof window!=="undefined") window.scrollTo({top:0,behavior:"smooth"});
+    }
+    onJumpHandled && onJumpHandled();
+  },[jumpToId]);
 
   // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
   useEffect(()=>{
@@ -5540,9 +5680,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         elternteil1:      editPlayer.elternteil1||"Mutter",
         elternVorname1:   editPlayer.elternVorname1||"",
         elternNachname1:  editPlayer.elternNachname1||"",
-        // E-Mail 1 (meist Mutter): fällt auf die echte Kind-Anmelde-E-Mail zurück,
-        // da bei Kindern ohne eigenes Konto dort die Adresse eines Elternteils steht.
-        elternEmail1:     ((editPlayer.elternEmail1 || (!istKuenstlicheEmail(editPlayer.email)?editPlayer.email:"") || "").trim().toLowerCase()),
+        // E-Mail 1 (meist Mutter): genau der eingegebene Wert, keine automatische
+        // Vorbelegung mehr mit der Kind-Anmelde-E-Mail (sonst ließe sich keine eigene
+        // Adresse für die Mutter hinterlegen, wenn das Kind eine eigene E-Mail hat).
+        elternEmail1:     ((editPlayer.elternEmail1||"").trim().toLowerCase()),
         elternHandy1:     editPlayer.elternHandy1||"",
         elternteil2:      editPlayer.elternteil2||"Vater",
         elternVorname2:   editPlayer.elternVorname2||"",
@@ -6532,7 +6673,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📧 E-Mail 1 (Login)</label>
-                    <input type="text" value={editPlayer.elternEmail1 || (!istKuenstlicheEmail(editPlayer.email)?editPlayer.email:"") || ""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail1:e.target.value}))}
+                    <input type="text" value={editPlayer.elternEmail1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternEmail1:e.target.value}))}
                       placeholder="mutter@email.de"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
