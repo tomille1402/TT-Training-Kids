@@ -1,4 +1,4 @@
-// === TTC-App · Version 313 · erstellt 08.08.2026 ===
+// === TTC-App · Version 314 · erstellt 08.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "313";
+const APP_VERSION = "314";
 const APP_DATUM   = "08.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1834,12 +1834,27 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         gi:(s.gi??0), runde:(s.runde??0), fertig:istFertig(s.saetze, s.fixiert) });
     });
     if(k?.koSlots && k.koSlots.length){
-      const runden=ko_baueRunden(k.koSlots, k.koSpiele||{});
-      runden.forEach((spiele,ri)=>spiele.forEach(sp=>{
-        if(!sp.a || !sp.b) return;
-        liste.push({ key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
-          gi:0, runde:ri, fertig:istFertig(sp.saetze, sp.fixiert) });
-      }));
+      if(k?.art==="doppeltes KO-System"){
+        // Doppel-KO: Begegnungen aus der aufgelösten DE-Struktur ziehen. Runde für die
+        // faire Reihenfolge = Stage-Index (W-Runde bzw. LB-Stufe, GF am Ende).
+        const struktur=de_baueStruktur(k.koSlots.length);
+        const val=de_loese(struktur, k.koSlots, k.koSpiele||{});
+        struktur.matches.forEach(m=>{
+          if(m.key==="GF2" && !val["GF2"]) return;      // Reset nur wenn aktiv
+          const v=val[m.key]; if(!v || !v.a || !v.b) return;
+          const gesp=(k.koSpiele||{})[m.key]||{};
+          const rundeNr = m.bracket==="GF" ? 99 : m.stage;
+          liste.push({ key:`k_${m.key}`, a:v.a, b:v.b, saetze:gesp.saetze||[["",""],["",""],["",""]],
+            gi:0, runde:rundeNr, fertig:istFertig(gesp.saetze, gesp.fixiert) });
+        });
+      } else {
+        const runden=ko_baueRunden(k.koSlots, k.koSpiele||{});
+        runden.forEach((spiele,ri)=>spiele.forEach(sp=>{
+          if(!sp.a || !sp.b) return;
+          liste.push({ key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
+            gi:0, runde:ri, fertig:istFertig(sp.saetze, sp.fixiert) });
+        }));
+      }
     }
     return liste;
   }
@@ -2433,6 +2448,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           <KoTableau konk={konk} players={players} qttrVon={qttrVon}
             isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={koTischMap}/>
         </ErrorBoundary>
+      ) : konk.art==="doppeltes KO-System" ? (
+        <ErrorBoundary resetKey={aktiveKonk}>
+          <DoppelKoTableau konk={konk} players={players} qttrVon={qttrVon}
+            isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer} updKonk={updKonk} tischMap={koTischMap}/>
+        </ErrorBoundary>
       ) : <div style={{padding:20,textAlign:"center",color:"var(--text3)",fontSize:13,background:"var(--bg2)",borderRadius:12}}>
         Diese Turnierart („{konk.art}“) folgt in einem späteren Ausbauschritt. Der Gruppen-Modus und das einfache KO-System sind bereits nutzbar.
       </div>}
@@ -2559,6 +2579,125 @@ function ko_gewinnerVon(spiel, seiteABelegt=true, seiteBBelegt=true){
   if(a && !b) return seiteBBelegt ? null : a;  // b fehlt: nur Freilos, wenn B-Baum leer
   if(b && !a) return seiteABelegt ? null : b;  // a fehlt: nur Freilos, wenn A-Baum leer
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DOPPELTES KO-SYSTEM (Double Elimination)
+// ══════════════════════════════════════════════════════════════════════════
+// Aufbau (Standard):
+//  - Winners-Bracket (WB) = einfaches KO. Verlierer droppen ins Losers-Bracket (LB).
+//  - LB je "Runde" zweistufig: MINOR (LB-Überlebende untereinander) + MAJOR
+//    (Minor-Sieger gegen die frischen WB-Verlierer der passenden WB-Runde).
+//  - Grand Final: WB-Sieger vs LB-Sieger, plus optionales Reset-Spiel ("if game"),
+//    das nur zählt, wenn der LB-Sieger das erste Finale gewinnt (dann hat jeder eine
+//    Niederlage → Entscheidung im zweiten Spiel).
+// Der Baum wird deklarativ als Liste von Matches beschrieben. Quellen (aSrc/bSrc):
+//   {slot:i}   Erstrunden-Slot i (nur WB-Runde 0)
+//   {win:KEY}  Gewinner von Match KEY
+//   {los:KEY}  Verlierer von Match KEY
+// Key-Schema: W{r}-{i} (WB), L{stage}-{i} (LB), GF, GF2.
+function de_baueStruktur(size){
+  const k=Math.round(Math.log2(size));   // Anzahl WB-Runden
+  const matches=[]; const byKey={};
+  const add=(m)=>{ matches.push(m); byKey[m.key]=m; return m.key; };
+
+  // ── Winners-Bracket ──
+  const wbRounds=[];
+  for(let r=0;r<k;r++){
+    const spiele=size/Math.pow(2,r+1);
+    const keys=[];
+    for(let i=0;i<spiele;i++){
+      const key=`W${r}-${i}`;
+      if(r===0) add({key,bracket:"W",stage:r,aSrc:{slot:2*i},bSrc:{slot:2*i+1}});
+      else      add({key,bracket:"W",stage:r,aSrc:{win:wbRounds[r-1][2*i]},bSrc:{win:wbRounds[r-1][2*i+1]}});
+      keys.push(key);
+    }
+    wbRounds.push(keys);
+  }
+
+  // ── Losers-Bracket ──
+  const lbStages=[]; let stageIdx=0;
+  // Stufe 0 (Minor): Verlierer der WB-Runde 0 paaren sich
+  {
+    const wr0=wbRounds[0]; const keys=[];
+    for(let i=0;i<wr0.length/2;i++){
+      const key=`L${stageIdx}-${i}`;
+      add({key,bracket:"L",stage:stageIdx,aSrc:{los:wr0[2*i]},bSrc:{los:wr0[2*i+1]}});
+      keys.push(key);
+    }
+    lbStages.push(keys); stageIdx++;
+  }
+  // Für jede weitere WB-Runde: MAJOR (LB-Gewinner vs WB-Verlierer) + ggf. MINOR
+  for(let r=1;r<k;r++){
+    const wr=wbRounds[r];
+    const prev=lbStages[lbStages.length-1];
+    const majorKeys=[];
+    for(let i=0;i<prev.length;i++){
+      const key=`L${stageIdx}-${i}`;
+      // WB-Verlierer gespiegelt einsetzen (Standard-Anti-Rematch), damit sich zwei
+      // Spieler im LB möglichst spät erneut begegnen.
+      const wbLoserKey=wr[wr.length-1-i];
+      add({key,bracket:"L",stage:stageIdx,aSrc:{los:wbLoserKey},bSrc:{win:prev[i]}});
+      majorKeys.push(key);
+    }
+    lbStages.push(majorKeys); stageIdx++;
+    if(majorKeys.length>1){
+      const minorKeys=[];
+      for(let i=0;i<majorKeys.length/2;i++){
+        const key=`L${stageIdx}-${i}`;
+        add({key,bracket:"L",stage:stageIdx,aSrc:{win:majorKeys[2*i]},bSrc:{win:majorKeys[2*i+1]}});
+        minorKeys.push(key);
+      }
+      lbStages.push(minorKeys); stageIdx++;
+    }
+  }
+  const wbFinalKey=wbRounds[k-1][0];
+  const lbFinalKey=lbStages[lbStages.length-1][0];
+
+  // ── Grand Final (+ Reset) ──
+  add({key:"GF", bracket:"GF",stage:0,aSrc:{win:wbFinalKey},bSrc:{win:lbFinalKey}});
+  add({key:"GF2",bracket:"GF",stage:1,aSrc:{win:"GF"},bSrc:{los:"GF"},resetGame:true});
+
+  return { size, k, matches, byKey, wbRounds, lbStages, wbFinalKey, lbFinalKey };
+}
+
+// Löst den Baum mit konkreten Slots + Ergebnissen auf. Ergebnis: key -> {a,b,sieger,verlierer}.
+// spieleMap: key -> {saetze, fixiert}. Sieger wird über ko_sieger(saetze) bestimmt.
+// Das Reset-Spiel GF2 existiert nur, wenn im GF der LB-Spieler (Seite b) gewonnen hat.
+// Freilose (leerer Gegner-Slot) werden nur in WB-Runde 0 automatisch weitergereicht.
+function de_loese(struktur, slots, spieleMap){
+  const val={};
+  const holeSlot=(i)=> slots[i]??null;
+  const resolveSrc=(src)=>{
+    if(!src) return null;
+    if(src.slot!=null) return holeSlot(src.slot);
+    if(src.win){ const m=val[src.win]; return m?m.sieger:undefined; }
+    if(src.los){ const m=val[src.los]; return m?m.verlierer:undefined; }
+    return null;
+  };
+  for(let iter=0; iter<60; iter++){
+    let geaendert=false;
+    for(const m of struktur.matches){
+      if(m.key==="GF2"){
+        const gf=val["GF"];
+        const lbGewann = gf && gf.sieger && gf.b && gf.sieger===gf.b;
+        if(!lbGewann){ if(val["GF2"]){ delete val["GF2"]; geaendert=true; } continue; }
+      }
+      const a=resolveSrc(m.aSrc), b=resolveSrc(m.bSrc);
+      const gesp=spieleMap[m.key]||{};
+      const erg=ko_sieger(gesp.saetze);   // "a" | "b" | null
+      let sieger=null, verlierer=null;
+      if(a && b){
+        if(erg==="a"){ sieger=a; verlierer=b; }
+        else if(erg==="b"){ sieger=b; verlierer=a; }
+      } else if(a && b===null){ sieger=a; }   // Freilos
+      else if(b && a===null){ sieger=b; }
+      const neu={a:a??null, b:b??null, sieger:sieger??null, verlierer:verlierer??null, fixiert:!!gesp.fixiert};
+      if(!val[m.key] || JSON.stringify(val[m.key])!==JSON.stringify(neu)){ val[m.key]=neu; geaendert=true; }
+    }
+    if(!geaendert) break;
+  }
+  return val;
 }
 
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
@@ -2743,10 +2882,12 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix }){
-  // Erstrunden-Slot-Indizes (für Tipp-Verschiebung)
-  const slotA = istErstrunde ? si*2 : null;
-  const slotB = istErstrunde ? si*2+1 : null;
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB }){
+  // Erstrunden-Slot-Indizes (für Tipp-Verschiebung). Beim einfachen KO ergeben sie
+  // sich aus der Spielposition (si*2 / si*2+1); beim doppelten KO werden sie explizit
+  // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
+  const slotA = (slotIdxA!=null && slotIdxA>=0) ? slotIdxA : (istErstrunde ? si*2   : null);
+  const slotB = (slotIdxB!=null && slotIdxB>=0) ? slotIdxB : (istErstrunde ? si*2+1 : null);
 
   const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
   const freilos = (sp.a && !sp.b) || (sp.b && !sp.a);
@@ -2805,6 +2946,168 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
         <button onClick={()=>toggleFix(sp.key,false)} title="ändern"
           style={{marginTop:4,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",borderRadius:4,fontSize:10,fontWeight:700,padding:"3px 10px",cursor:"pointer"}}>✎ ändern</button>}
     </div>}
+  </div>;
+}
+
+// ─── Grafisches Tableau für das doppelte KO-System ──────────────────────────
+// Winners-Bracket läuft nach RECHTS (wie einfaches KO), Losers-Bracket gespiegelt
+// nach LINKS. In der Mitte das Grand Final (+ Reset). Ergebnis-Eingabe/Speichern
+// verhält sich exakt wie beim einfachen KO (KoSpielBox wird wiederverwendet).
+function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
+  const darfAlle = isAdmin || isTrainer;
+  const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
+  const spielerVon=(id)=> players.find(x=>x.id===id);
+
+  const teilnehmerSortiert=[...(konk.teilnehmer||[])].sort((x,y)=>{
+    let qx=null, qy=null;
+    try{ qx=qttrVon(spielerVon(x)); }catch(e){ qx=null; }
+    try{ qy=qttrVon(spielerVon(y)); }catch(e){ qy=null; }
+    return (qy??-1)-(qx??-1);
+  });
+
+  const slots = konk.koSlots && konk.koSlots.length ? konk.koSlots : null;
+  const spieleMap = konk.koSpiele || {};
+  const imTableau = new Set((slots||[]).filter(Boolean));
+  const fehlende = teilnehmerSortiert.filter(id=>!imTableau.has(id));
+  const freieSlots = slots ? slots.filter(s=>!s).length : 0;
+
+  function tableauAnlegen(){ updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} }); }
+  function tableauNeuSetzen(){
+    if(!window.confirm("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren.")) return;
+    updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
+  }
+  function fehlendeEinfuegen(){
+    if(fehlende.length===0) return;
+    if(fehlende.length>freieSlots){
+      if(!window.confirm(`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
+      updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
+      return;
+    }
+    const neu=[...slots]; let fi=0;
+    for(let i=0;i<neu.length && fi<fehlende.length;i++){ if(!neu[i]){ neu[i]=fehlende[fi]; fi++; } }
+    updKonk({ koSlots:neu });
+  }
+
+  const [tippSlot,setTippSlot]=useState(null);
+  function slotAntippen(i){
+    if(!isAdmin) return;
+    if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
+    if(tippSlot===i){ setTippSlot(null); return; }
+    const neu=[...slots]; const tmp=neu[i]; neu[i]=neu[tippSlot]; neu[tippSlot]=tmp;
+    updKonk({ koSlots:neu }); setTippSlot(null);
+  }
+  function slotLeeren(i){
+    if(!isAdmin) return;
+    const neu=[...slots]; neu[i]=null; setTippSlot(null); updKonk({ koSlots:neu });
+  }
+  function setSatz(key, satzIndex, seite, wert){
+    const map={...spieleMap};
+    const eintrag={...(map[key]||{})};
+    const saetze=(eintrag.saetze||[["",""],["",""],["",""]]).map(x=>[...x]);
+    while(saetze.length<=satzIndex) saetze.push(["",""]);
+    saetze[satzIndex][seite]=wert.replace(/[^\d]/g,"");
+    eintrag.saetze=saetze; map[key]=eintrag;
+    updKonk({ koSpiele:map });
+  }
+  function toggleFix(key, fix){
+    if(!isAdmin) return;
+    const map={...spieleMap};
+    map[key]={...(map[key]||{}), fixiert:!!fix};
+    updKonk({ koSpiele:map });
+  }
+
+  if(!konk.teilnehmer || konk.teilnehmer.length<2)
+    return <div style={{padding:16,textAlign:"center",color:"var(--text3)",fontSize:13}}>Zuerst Teilnehmer auswählen (mind. 2).</div>;
+
+  if(!slots)
+    return <div style={{padding:16,textAlign:"center"}}>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+        {teilnehmerSortiert.length} Teilnehmer · Tableau-Größe {ko_naechstePotenz(teilnehmerSortiert.length)} · doppeltes KO
+      </div>
+      <button onClick={tableauAnlegen} disabled={!isAdmin}
+        style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default"}}>
+        Doppel-KO-Tableau nach QTTR erstellen
+      </button>
+    </div>;
+
+  const size = slots.length;
+  const struktur = de_baueStruktur(size);
+  const val = de_loese(struktur, slots, spieleMap);
+
+  // Eine einzelne Match-Box rendern (nutzt KoSpielBox wie beim einfachen KO).
+  function renderMatch(mkey, istErstrunde){
+    const m = struktur.byKey[mkey];
+    if(!m) return null;
+    const v = val[mkey] || {a:null,b:null,sieger:null,verlierer:null,fixiert:false};
+    // Reset-Spiel nur zeigen, wenn es aktiv ist (LB-Sieger hat GF gewonnen).
+    if(mkey==="GF2" && !val["GF2"]) return null;
+    const gesp = spieleMap[mkey] || {};
+    const sp = { key:mkey, a:v.a, b:v.b, saetze: gesp.saetze || [["",""],["",""],["",""]], fixiert:!!gesp.fixiert };
+    const fixiert = !!gesp.fixiert;
+    const sieger = v.sieger;
+    const darf = darfAlle || (myPlayer && (v.a===myPlayer.id || v.b===myPlayer.id));
+    // Erstrunden-Slot-Indizes nur für WB-Runde 0 (dort ist Tausch/Entfernen erlaubt).
+    const slotIdxA = (istErstrunde && m.aSrc.slot!=null) ? m.aSrc.slot : -1;
+    const slotIdxB = (istErstrunde && m.bSrc.slot!=null) ? m.bSrc.slot : -1;
+    const tischNr = tischMap[`k_${mkey}`] || null;
+    return <KoSpielBox key={mkey} sp={sp} ri={istErstrunde?0:1} si={0} istErstrunde={istErstrunde}
+      nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
+      fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
+      slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
+      setSatz={setSatz} toggleFix={toggleFix}
+      slotIdxA={slotIdxA} slotIdxB={slotIdxB}/>;
+  }
+
+  const BOX=124;
+  const wbTitel=(r)=>{
+    const spiele=struktur.wbRounds[r].length;
+    if(spiele===1) return "WB-Finale";
+    if(spiele===2) return "WB-Halbfinale";
+    if(spiele===4) return "WB-Viertelfinale";
+    if(spiele===8) return "WB-Achtelfinale";
+    return `WB-Runde ${r+1}`;
+  };
+  const lbTitel=(s)=> `LB-Stufe ${s+1}`;
+
+  // Spaltenweise Darstellung: eine Spalte je Runde/Stufe, Boxen vertikal gestapelt.
+  const spalte=(titel, keys, istErstrunde=false, spaltenKey=null)=>(
+    <div key={spaltenKey} style={{display:"flex",flexDirection:"column",minWidth:150,gap:10}}>
+      <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",height:16}}>{titel}</div>
+      {keys.map(k=> <div key={k}>{renderMatch(k, istErstrunde)}</div>)}
+    </div>
+  );
+
+  return <div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      {isAdmin && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
+      {isAdmin && fehlende.length>0 && <button onClick={fehlendeEinfuegen} style={{padding:"6px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+        + {fehlende.length} neue{fehlende.length===1?"n":""} Teilnehmer einfügen
+      </button>}
+      {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
+    </div>
+    {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
+      Winner-Bracket (oben) läuft nach rechts, Loser-Bracket (unten) nach links. Verlierer wandern ins Loser-Bracket; wer zweimal verliert, scheidet aus.
+    </div>}
+
+    {/* WINNERS-BRACKET — nach rechts */}
+    <div style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:6}}>▸ Winner-Bracket</div>
+    <div style={{overflowX:"auto",paddingBottom:8,marginBottom:18}}>
+      <div style={{display:"flex",gap:18,minWidth:"min-content"}}>
+        {struktur.wbRounds.map((keys,r)=> spalte(wbTitel(r), keys, r===0, "wb"+r))}
+        {/* Grand Final rechts an das WB-Finale anschließen */}
+        {spalte("Grand Final", val["GF2"] ? ["GF","GF2"] : ["GF"], false, "gf")}
+      </div>
+    </div>
+
+    {/* LOSERS-BRACKET — gespiegelt nach links (Stufen in umgekehrter Spaltenfolge) */}
+    <div style={{fontSize:12,fontWeight:800,color:"#f59e0b",marginBottom:6}}>◂ Loser-Bracket</div>
+    <div style={{overflowX:"auto",paddingBottom:8,direction:"rtl"}}>
+      <div style={{display:"flex",gap:18,minWidth:"min-content"}}>
+        {struktur.lbStages.map((keys,s)=>(
+          <div key={s} style={{direction:"ltr"}}>{spalte(lbTitel(s), keys)}</div>
+        ))}
+      </div>
+    </div>
   </div>;
 }
 
