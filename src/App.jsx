@@ -1,4 +1,4 @@
-// === TTC-App · Version 320 · erstellt 09.08.2026 ===
+// === TTC-App · Version 321 · erstellt 09.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "320";
+const APP_VERSION = "321";
 const APP_DATUM   = "09.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2795,7 +2795,7 @@ function de_loese(struktur, slots, spieleMap){
 // Umschließt einen (horizontal scrollbaren) Tableau-Inhalt und skaliert ihn per
 // CSS-transform. Bedienung: −/+/Reset-Buttons sowie Pinch mit zwei Fingern.
 // Der Zoom betrifft nur die Darstellung; Scrollen bleibt möglich.
-function ZoomBox({ children, min=0.5, max=1.6, step=0.1 }){
+function ZoomBox({ children, min=0.2, max=1.6, step=0.1 }){
   const [zoom,setZoom]=useState(1);
   const pinch=useRef({aktiv:false, startDist:0, startZoom:1});
   const clamp=(z)=> Math.min(max, Math.max(min, Math.round(z*100)/100));
@@ -2810,8 +2810,9 @@ function ZoomBox({ children, min=0.5, max=1.6, step=0.1 }){
     }
   }
   function onTouchMove(e){
+    // Nur die ZWEI-Finger-Pinch-Geste abfangen; ein Finger scrollt ganz normal weiter.
     if(pinch.current.aktiv && e.touches.length===2){
-      e.preventDefault();   // verhindert Seiten-Zoom des Browsers während der Geste
+      e.preventDefault();
       const d=dist(e.touches);
       if(pinch.current.startDist>0){
         setZoom(clamp(pinch.current.startZoom * (d/pinch.current.startDist)));
@@ -2831,9 +2832,13 @@ function ZoomBox({ children, min=0.5, max=1.6, step=0.1 }){
       <span style={{fontSize:11,color:"var(--text4)",fontWeight:700,minWidth:42}}>{Math.round(zoom*100)} %</span>
       <span style={{fontSize:10,color:"var(--text4)"}}>· zwei Finger zum Zoomen</span>
     </div>
+    {/* Scrollbereich: waagrecht UND senkrecht scrollbar. touchAction bleibt „pan-x pan-y",
+        damit Wischen mit einem Finger immer funktioniert — auch bei aktivem Zoom. Die
+        Pinch-Geste wird separat über die zwei-Finger-Handler abgefangen. */}
     <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-      style={{overflowX:"auto",overflowY:"hidden",touchAction:zoom!==1?"none":"pan-x pan-y",WebkitOverflowScrolling:"touch"}}>
-      <div style={{transform:`scale(${zoom})`, transformOrigin:"top left", width: zoom!==1 ? `${100/zoom}%` : "100%", minWidth:"min-content"}}>
+      style={{overflow:"auto", maxHeight:"75vh", touchAction:"pan-x pan-y", WebkitOverflowScrolling:"touch"}}>
+      <div style={{transform:`scale(${zoom})`, transformOrigin:"top left",
+        width: `${100/zoom}%`, height: zoom<1 ? `${100/zoom}%` : undefined, minWidth:"min-content"}}>
         {children}
       </div>
     </div>
