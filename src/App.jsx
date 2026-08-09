@@ -1,4 +1,4 @@
-// === TTC-App · Version 321 · erstellt 09.08.2026 ===
+// === TTC-App · Version 322 · erstellt 09.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "321";
+const APP_VERSION = "322";
 const APP_DATUM   = "09.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -11211,15 +11211,28 @@ function erlaubteMannschaften({player, roles, isAdmin, aufstellungSpieler, allTe
   const result=new Set();
   // Trainer: alle Nachwuchsmannschaften
   if(roles?.trainer){ allTeams.filter(istNachwuchsMannschaft).forEach(t=>result.add(t)); }
-  // Mannschaftsführer: seine Mannschaft(en) — aus mannschaftsfuehrerTeam + mfClickTT
+  // Mannschaftsführer: seine Mannschaft(en) — aus mannschaftsfuehrerTeam + mfClickTT.
+  // Der hinterlegte Wert kann in verschiedenen Schreibweisen vorliegen (z.B. „Herren 6"
+  // aus dem Spielplan, „Erwachsene VI" aus der Aufstellung, oder der Alt-Wert
+  // „Erwachsene" für die 1.). Wir normalisieren jeden Wert auf den Aufstellungs-Namen
+  // und gleichen ihn dann mit allTeams ab, damit die Zuordnung zuverlässig greift.
   if(roles?.mannschaftsfuehrer && player){
     const mfTeams=[player.mannschaftsfuehrerTeam, ...(player.mfClickTT||[])].filter(Boolean);
     for(const mt of mfTeams){
-      const mapped = mt==="Erwachsene I"?"Erwachsene"
-        : mt.startsWith("Erwachsene ")? mt
-        : mt;
-      if(allTeams.includes(mapped)) result.add(mapped);
-      else if(allTeams.includes(mt)) result.add(mt);
+      const roh=(mt||"").trim();
+      // Kandidaten-Schreibweisen bilden und die erste in allTeams passende übernehmen.
+      const kand = [
+        SPIELPLAN_TO_AUFSTELLUNG[roh],  // „Herren 6" → „Erwachsene VI"
+        normAufName(roh),               // „Erwachsene" → „Erwachsene I", sonst unverändert
+        roh,                            // getrimmter Rohwert
+      ].filter(Boolean);
+      // 1) exakter Treffer, 2) Treffer ohne Rücksicht auf Groß/Klein & Leerzeichen
+      let treffer = kand.find(k=>allTeams.includes(k));
+      if(!treffer){
+        const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
+        treffer = allTeams.find(a=> kand.some(k=>norm(k)===norm(a)));
+      }
+      if(treffer) result.add(treffer);
     }
   }
   // Spieler selbst: eigene gemeldete Mannschaften + (bei Erwachsenen) alle höheren
