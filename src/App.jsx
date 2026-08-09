@@ -1,4 +1,4 @@
-// === TTC-App · Version 318 · erstellt 09.08.2026 ===
+// === TTC-App · Version 319 · erstellt 09.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "318";
+const APP_VERSION = "319";
 const APP_DATUM   = "09.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3294,12 +3294,39 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       {r<struktur.wbRounds.length-1 && linien(Math.floor(keys.length/2), BOX*Math.pow(2,r), "rechts")}
     </div>);
   });
-  // Grand Final schließt rechts an (mit kurzer Verbindungslinie vom WB-Finale)
-  const gfKeys = val["GF2"] ? ["GF","GF2"] : ["GF"];
-  wbSpalten.push(<div key="gf" style={{display:"flex"}}>
-    {linien(1, BOX*Math.pow(2,struktur.wbRounds.length-1), "rechts")}
-    {rundenSpalte("Grand Final", gfKeys, struktur.wbRounds.length-1, false)}
-  </div>);
+  // Grand Final schließt rechts an (mit kurzer Verbindungslinie vom WB-Finale).
+  // Champion steht fest, wenn: der WB-Sieger das erste GF gewinnt (kein Reset nötig),
+  // ODER das Reset-Spiel GF2 entschieden ist.
+  const gfV = val["GF"] || {};
+  const gf2Aktiv = !!val["GF2"];
+  const champion = gf2Aktiv
+    ? (val["GF2"].sieger || null)                       // Reset entscheidet
+    : (gfV.sieger && gfV.a && gfV.sieger===gfV.a ? gfV.sieger : null); // WB-Sieger gewinnt GF
+  const gfSpalte = (
+    <div key="gf" style={{display:"flex"}}>
+      {linien(1, BOX*Math.pow(2,struktur.wbRounds.length-1), "rechts")}
+      <div style={{display:"flex",flexDirection:"column",minWidth:170}}>
+        <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:8,height:16}}>Grand Final</div>
+        <div style={{minHeight:BOX*Math.pow(2,struktur.wbRounds.length-1),display:"flex",flexDirection:"column",justifyContent:"center",gap:10}}>
+          <div>
+            <div style={{fontSize:10,fontWeight:700,color:"#10b981",marginBottom:2}}>Finale</div>
+            {renderMatch("GF", false)}
+          </div>
+          {gf2Aktiv ? <div>
+            <div style={{fontSize:10,fontWeight:700,color:"#f59e0b",marginBottom:2}}>Entscheidungsspiel</div>
+            {renderMatch("GF2", false)}
+          </div> : (gfV.a && gfV.b && !gfV.sieger) ? <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.4,maxWidth:150}}>
+            Gewinnt der Spieler aus dem Loser-Bracket dieses Finale, folgt ein Entscheidungsspiel (dann hat jeder eine Niederlage).
+          </div> : null}
+          {champion && <div style={{marginTop:4,background:"#10b98118",border:"1px solid #10b98155",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+            <div style={{fontSize:10,color:"var(--text3)",fontWeight:700,marginBottom:2}}>🏆 Turniersieger</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#10b981"}}>{nameVon(champion)}</div>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+  wbSpalten.push(gfSpalte);
 
   // ── Loser-Bracket: Stufen + Linien nach LINKS (gespiegelt) ──
   // Damit "nach links" läuft, kehren wir die Spaltenreihenfolge um: die letzte Stufe
@@ -5510,18 +5537,6 @@ function TtrUpload({ showToast }){
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
-  // Sprung aus dem Eltern-Reiter: kommt eine jumpToId herein, den passenden Spieler
-  // direkt zum Bearbeiten öffnen (gleiche Objektform wie der „Bearbeiten"-Button).
-  useEffect(()=>{
-    if(!jumpToId) return;
-    const p=players.find(x=>x.id===jumpToId);
-    if(p){
-      setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
-      if(typeof window!=="undefined") window.scrollTo({top:0,behavior:"smooth"});
-    }
-    onJumpHandled && onJumpHandled();
-  },[jumpToId]);
-
   // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
   useEffect(()=>{
     if(!editPlayer?.id) return;
@@ -5540,6 +5555,29 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showAppDesign,setShowAppDesign]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
+
+  // Sprung aus dem Eltern-Reiter: kommt eine jumpToId herein, öffnen wir den passenden
+  // Spieler zum Bearbeiten. Wichtig: Das Bearbeiten-Formular wird NUR in der (nach
+  // Gruppen gegliederten) Liste gerendert, und Gruppen sind standardmäßig zugeklappt.
+  // Darum klappen wir die Gruppe des Spielers auf und scrollen anschließend zu ihm.
+  useEffect(()=>{
+    if(!jumpToId) return;
+    const p=players.find(x=>x.id===jumpToId);
+    if(p){
+      setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
+      const grp = p.group || "Anfänger";
+      setShowGrp(prev=>({...prev, [grp]:true}));   // Gruppe des Spielers aufklappen
+      // Nach dem Rendern zum Spieler-Element scrollen (kurzer Timeout, bis es sichtbar ist).
+      if(typeof window!=="undefined"){
+        setTimeout(()=>{
+          const el=document.getElementById("verwaltung-player-"+p.id);
+          if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:"center"});
+          else window.scrollTo({top:0, behavior:"smooth"});
+        }, 120);
+      }
+    }
+    onJumpHandled && onJumpHandled();
+  },[jumpToId]);
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
@@ -6689,7 +6727,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>
         {grpOpen&&groupPlayers.map(p=>(
           editPlayer?.id===p.id ? (
-            <div key={p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
+            <div key={p.id} id={"verwaltung-player-"+p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                 <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setAvatarPickerFor("edit")}>
                   <Avatar avatar={editPlayer.avatar} color={p.color} size={44}/>
@@ -7235,7 +7273,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               </div>
             </div>
           ) : (
-            <div key={p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
+            <div key={p.id} id={"verwaltung-player-"+p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
               <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
               <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
