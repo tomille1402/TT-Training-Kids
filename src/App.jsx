@@ -1,4 +1,4 @@
-// === TTC-App · Version 319 · erstellt 09.08.2026 ===
+// === TTC-App · Version 320 · erstellt 09.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "319";
+const APP_VERSION = "320";
 const APP_DATUM   = "09.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2791,6 +2791,55 @@ function de_loese(struktur, slots, spieleMap){
   return val;
 }
 
+// ─── Zoom-Hülle für Tableaus (Buttons + Pinch-Geste) ────────────────────────
+// Umschließt einen (horizontal scrollbaren) Tableau-Inhalt und skaliert ihn per
+// CSS-transform. Bedienung: −/+/Reset-Buttons sowie Pinch mit zwei Fingern.
+// Der Zoom betrifft nur die Darstellung; Scrollen bleibt möglich.
+function ZoomBox({ children, min=0.5, max=1.6, step=0.1 }){
+  const [zoom,setZoom]=useState(1);
+  const pinch=useRef({aktiv:false, startDist:0, startZoom:1});
+  const clamp=(z)=> Math.min(max, Math.max(min, Math.round(z*100)/100));
+
+  function dist(t){
+    const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY;
+    return Math.hypot(dx,dy);
+  }
+  function onTouchStart(e){
+    if(e.touches.length===2){
+      pinch.current={ aktiv:true, startDist:dist(e.touches), startZoom:zoom };
+    }
+  }
+  function onTouchMove(e){
+    if(pinch.current.aktiv && e.touches.length===2){
+      e.preventDefault();   // verhindert Seiten-Zoom des Browsers während der Geste
+      const d=dist(e.touches);
+      if(pinch.current.startDist>0){
+        setZoom(clamp(pinch.current.startZoom * (d/pinch.current.startDist)));
+      }
+    }
+  }
+  function onTouchEnd(e){
+    if(e.touches.length<2) pinch.current.aktiv=false;
+  }
+
+  const btn={width:30,height:30,borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text2)",fontSize:16,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:0};
+  return <div>
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+      <button onClick={()=>setZoom(z=>clamp(z-step))} title="verkleinern" style={btn}>−</button>
+      <button onClick={()=>setZoom(z=>clamp(z+step))} title="vergrößern" style={btn}>+</button>
+      <button onClick={()=>setZoom(1)} title="zurücksetzen" style={{...btn,width:"auto",padding:"0 10px",fontSize:11,fontWeight:700}}>100 %</button>
+      <span style={{fontSize:11,color:"var(--text4)",fontWeight:700,minWidth:42}}>{Math.round(zoom*100)} %</span>
+      <span style={{fontSize:10,color:"var(--text4)"}}>· zwei Finger zum Zoomen</span>
+    </div>
+    <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      style={{overflowX:"auto",overflowY:"hidden",touchAction:zoom!==1?"none":"pan-x pan-y",WebkitOverflowScrolling:"touch"}}>
+      <div style={{transform:`scale(${zoom})`, transformOrigin:"top left", width: zoom!==1 ? `${100/zoom}%` : "100%", minWidth:"min-content"}}>
+        {children}
+      </div>
+    </div>
+  </div>;
+}
+
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
 function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
   const darfAlle = isAdmin || isTrainer;
@@ -3010,7 +3059,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
         vertikal so ausgerichtet, dass ein Spiel mittig zwischen seinen beiden
         Quellspielen sitzt; Verbindungslinien zeigen den Weg der Sieger. */}
-    <div style={{overflowX:"auto",paddingBottom:8}}>
+    <ZoomBox>
       <div style={{display:"flex",minWidth:"min-content"}}>
         {runden.map((spiele,ri)=>{
           // Höhe einer Box-Einheit (inkl. Abstand). Jede Runde verdoppelt den
@@ -3061,7 +3110,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
           </div>;
         })}
       </div>
-    </div>
+    </ZoomBox>
   </div>;
 }
 
@@ -3381,7 +3430,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
         links das Loser-Bracket (Start links → LB-Finale), dann das Winner-Bracket
         (Erstrunde → Finale) und rechts das Grand Final. So steht das Loser-Bracket
         LINKS NEBEN dem Winner-Bracket statt darunter. */}
-    <div style={{overflowX:"auto",paddingBottom:10}}>
+    <ZoomBox>
       <div style={{display:"flex",minWidth:"min-content",alignItems:"stretch"}}>
         {/* Loser-Bracket links, farblich abgesetzt */}
         <div style={{display:"flex",background:"#f59e0b0d",borderRadius:10,padding:"6px 8px"}}>{lbSpaltenReihen}</div>
@@ -3390,7 +3439,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
         {/* Winner-Bracket + Grand Final rechts */}
         <div style={{display:"flex",background:"#10b9810d",borderRadius:10,padding:"6px 8px"}}>{wbSpalten}</div>
       </div>
-    </div>
+    </ZoomBox>
   </div>;
 }
 
