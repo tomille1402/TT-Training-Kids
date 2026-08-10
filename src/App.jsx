@@ -1,4 +1,4 @@
-// === TTC-App · Version 324 · erstellt 10.08.2026 ===
+// === TTC-App · Version 325 · erstellt 10.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "324";
+const APP_VERSION = "325";
 const APP_DATUM   = "10.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1880,6 +1880,16 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     return [...set];
   })();
   const schiriPausiert=(id)=> schirisPausiertG.includes(id);
+  // Prüft, ob eine Person turnierweit noch ein offenes (gestartetes, nicht fertiges)
+  // eigenes Spiel hat. Solche Personen werden nicht als Schiedsrichter eingeteilt.
+  function schiriHatOffeneSpiele(id){
+    if(!id) return false;
+    for(const x of alleBegegnungen()){
+      if(!x.nurGestartet || x.fertig) continue;
+      if(echteSpieler(x.a).includes(id) || echteSpieler(x.b).includes(id)) return true;
+    }
+    return false;
+  }
 
   // Ist eine Begegnung entschieden? (3 Gewinnsätze oder fixiert)
   // Für die Tischvergabe gilt eine Begegnung erst dann als abgeschlossen (und der Tisch
@@ -2009,18 +2019,26 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Automatische Schiedsrichter-Zuordnung — analog zur Tischvergabe.
   // Nur Begegnungen, die (a) an einem Tisch laufen, (b) in einer Konkurrenz mit
   // aktivem Schiedsrichter-Einsatz liegen, bekommen einen Schiri. Ein Schiedsrichter
-  // wird pro Zeitpunkt nur EINEM Spiel zugeteilt; pausierte Schiris sowie Schiris, die
-  // gerade selbst spielen, werden übersprungen.
+  // wird pro Zeitpunkt nur EINEM Spiel zugeteilt; pausierte Schiris werden übersprungen.
+  // Außerdem darf ein Schiedsrichter NICHT eingeteilt werden, solange er im Turnier
+  // selbst noch offene (nicht fertige) eigene Spiele hat – nicht nur, wenn er gerade
+  // an einem Tisch steht. So pfeift niemand, der noch spielen muss.
   function schirisNeu(aktuelleTische, aktuelleSchiris){
-    const bg=alleBegegnungen().filter(x=>x.nurGestartet && !x.fertig && !x.pausiert && x.schiriAktiv);
+    const alle=alleBegegnungen();
+    const bg=alle.filter(x=>x.nurGestartet && !x.fertig && !x.pausiert && x.schiriAktiv);
     // Zieltische: nur Spiele, die tatsächlich einen Tisch haben (laufen gerade).
     const laufend=bg.filter(x=>aktuelleTische[x.gkey]);
     const neu={};
     const belegteSchiris=new Set();
-    // Spieler, die gerade an einem Tisch aktiv sind (dürfen nicht gleichzeitig pfeifen).
-    const spielerAmTisch=new Set();
-    for(const x of laufend){ echteSpieler(x.a).forEach(s=>spielerAmTisch.add(s)); echteSpieler(x.b).forEach(s=>spielerAmTisch.add(s)); }
-    const schiriFrei=(id)=> id && !belegteSchiris.has(id) && !schiriPausiert(id) && !spielerAmTisch.has(id);
+    // Alle Spieler mit noch offenen eigenen Spielen (turnierweit, gestartet & nicht
+    // fertig – unabhängig davon, ob das Spiel gerade an einem Tisch läuft oder wartet).
+    const spielerMitOffenenSpielen=new Set();
+    for(const x of alle){
+      if(!x.nurGestartet || x.fertig) continue;
+      echteSpieler(x.a).forEach(s=>spielerMitOffenenSpielen.add(s));
+      echteSpieler(x.b).forEach(s=>spielerMitOffenenSpielen.add(s));
+    }
+    const schiriFrei=(id)=> id && !belegteSchiris.has(id) && !schiriPausiert(id) && !spielerMitOffenenSpielen.has(id);
     // 1) bestehende Zuordnungen behalten, sofern noch gültig
     for(const x of laufend){
       const sid=aktuelleSchiris[x.gkey];
@@ -2320,16 +2338,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   const pausiert=schiriPausiert(sid);
                   // Ist der Schiri gerade eingeteilt?
                   const eingeteiltAn=Object.keys(schiriMapG).find(key=>schiriMapG[key]===sid);
-                  return <span key={sid} onClick={()=>toggleSchiriPause(sid)} title={pausiert?"fortsetzen":"pausieren"} style={{
+                  const spieltNoch=!pausiert && schiriHatOffeneSpiele(sid);   // hat selbst noch offene Spiele
+                  const titel = pausiert?"fortsetzen" : spieltNoch?"hat noch eigene Spiele – wird noch nicht eingeteilt" : "pausieren";
+                  return <span key={sid} onClick={()=>toggleSchiriPause(sid)} title={titel} style={{
                     display:"inline-flex",alignItems:"center",gap:5,padding:"4px 9px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
-                    border:pausiert?"1px solid #f59e0b":"1px solid #0ea5e955",
-                    background:pausiert?"#f59e0b18":"#0ea5e912",color:pausiert?"#f59e0b":"#0ea5e9",
+                    border:pausiert?"1px solid #f59e0b": spieltNoch?"1px solid var(--border2)":"1px solid #0ea5e955",
+                    background:pausiert?"#f59e0b18": spieltNoch?"var(--bg3)":"#0ea5e912",
+                    color:pausiert?"#f59e0b": spieltNoch?"var(--text4)":"#0ea5e9",
                   }}>
-                    {pausiert?"⏸":(eingeteiltAn?"▶":"○")} {nameVon(sid)}
+                    {pausiert?"⏸":(eingeteiltAn?"▶":(spieltNoch?"🏓":"○"))} {nameVon(sid)}{spieltNoch?" · spielt noch":""}
                   </span>;
                 })}
               </div>
-              <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Antippen zum Pausieren/Fortsetzen. Pausierte Schiedsrichter werden nicht automatisch eingeteilt.</div>
+              <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Antippen zum Pausieren/Fortsetzen. Pausierte Schiedsrichter und solche, die selbst noch offene Spiele haben, werden nicht automatisch eingeteilt.</div>
             </div>}
           </div>}
         </div>
