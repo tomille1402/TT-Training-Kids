@@ -1,4 +1,4 @@
-// === TTC-App · Version 322 · erstellt 09.08.2026 ===
+// === TTC-App · Version 323 · erstellt 10.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "322";
-const APP_DATUM   = "09.08.2026";
+const APP_VERSION = "323";
+const APP_DATUM   = "10.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1691,7 +1691,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const tm=teamVonId(id);
     if(tm){
       const p1=players.find(x=>x.id===tm.s1), p2=players.find(x=>x.id===tm.s2);
-      return `${p1?p1.firstName:"?"} / ${p2?p2.firstName:"?"}`;
+      const n1=p1?`${p1.firstName} ${p1.lastName}`:"?";
+      const n2=p2?`${p2.firstName} ${p2.lastName}`:"?";
+      return `${n1} / ${n2}`;
     }
     const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:id;
   };
@@ -2798,7 +2800,20 @@ function de_loese(struktur, slots, spieleMap){
 function ZoomBox({ children, min=0.2, max=1.6, step=0.1 }){
   const [zoom,setZoom]=useState(1);
   const pinch=useRef({aktiv:false, startDist:0, startZoom:1});
+  const innerRef=useRef(null);
+  const [natur,setNatur]=useState({w:0,h:0});   // natürliche (ungezoomte) Inhaltsgröße
   const clamp=(z)=> Math.min(max, Math.max(min, Math.round(z*100)/100));
+
+  // Natürliche Größe des Inhalts messen, damit der Scroll-Bereich exakt auf die
+  // SKALIERTE Größe begrenzt werden kann (kein Weiterscrollen ins Leere).
+  useEffect(()=>{
+    const el=innerRef.current; if(!el) return;
+    const mess=()=>{ setNatur({ w:el.scrollWidth, h:el.scrollHeight }); };
+    mess();
+    let ro=null;
+    if(typeof ResizeObserver!=="undefined"){ ro=new ResizeObserver(mess); ro.observe(el); }
+    return ()=>{ if(ro) ro.disconnect(); };
+  },[children]);
 
   function dist(t){
     const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY;
@@ -2824,6 +2839,9 @@ function ZoomBox({ children, min=0.2, max=1.6, step=0.1 }){
   }
 
   const btn={width:30,height:30,borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text2)",fontSize:16,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,padding:0};
+  // Skalierte Maße des Inhalts (Grundlage für die exakte Größe des Skalier-Wrappers).
+  const skalW = natur.w ? natur.w*zoom : undefined;
+  const skalH = natur.h ? natur.h*zoom : undefined;
   return <div>
     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
       <button onClick={()=>setZoom(z=>clamp(z-step))} title="verkleinern" style={btn}>−</button>
@@ -2837,9 +2855,13 @@ function ZoomBox({ children, min=0.2, max=1.6, step=0.1 }){
         Pinch-Geste wird separat über die zwei-Finger-Handler abgefangen. */}
     <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
       style={{overflow:"auto", maxHeight:"75vh", touchAction:"pan-x pan-y", WebkitOverflowScrolling:"touch"}}>
-      <div style={{transform:`scale(${zoom})`, transformOrigin:"top left",
-        width: `${100/zoom}%`, height: zoom<1 ? `${100/zoom}%` : undefined, minWidth:"min-content"}}>
-        {children}
+      {/* Äußerer Wrapper hat exakt die SKALIERTE Größe → Scrollbereich endet am Tableau,
+          es lässt sich nicht ins Leere scrollen. Der innere Wrapper wird skaliert. */}
+      <div style={{ width:skalW, height:skalH }}>
+        <div ref={innerRef} style={{transform:`scale(${zoom})`, transformOrigin:"top left",
+          width:"max-content", minWidth:"min-content"}}>
+          {children}
+        </div>
       </div>
     </div>
   </div>;
@@ -2858,14 +2880,39 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 
   const spielerName=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
   const spielerVorname=(id)=>{ const p=players.find(x=>x.id===id); return p?p.firstName:(id||""); };
-  // nameVon versteht sowohl einzelne Spieler-IDs als auch Doppel-Team-IDs.
+  // QTTR eines Spielers als Zahl (oder null), defensiv gegen Fehler in qttrVon.
+  const qttrNumVon=(id)=>{ try{ const q=qttrVon(players.find(x=>x.id===id)); return (q==null||Number.isNaN(Number(q)))?null:Number(q); }catch(e){ return null; } };
+  // Voller Name eines Spielers samt QTTR in Klammern: „Max Mustermann (1523)".
+  const spielerNameQttr=(id)=>{ const nm=spielerName(id); const q=qttrNumVon(id); return q!=null?`${nm} (${q})`:nm; };
+  // nameVon versteht einzelne Spieler-IDs und Doppel-Team-IDs. Im Doppel wird wegen
+  // häufiger Vornamens-Gleichheit der VOLLE Name beider Spieler samt QTTR gezeigt.
   const nameVon=(id)=>{
     if(!id) return "";
     const tm=teamVon(id);
-    if(tm) return `${spielerVorname(tm.s1)} / ${spielerVorname(tm.s2)}`;
+    if(tm) return `${spielerNameQttr(tm.s1)} / ${spielerNameQttr(tm.s2)}`;
     return spielerName(id);
   };
   const spielerVon=(id)=> players.find(x=>x.id===id);
+
+  // QTTR einer Tableau-Einheit: Einzel = Spieler-QTTR; Doppel = Summe beider Spieler.
+  const einheitQttr=(id)=>{
+    if(!id) return null;
+    const tm=teamVon(id);
+    if(tm){ const a=qttrNumVon(tm.s1), b=qttrNumVon(tm.s2); return (a==null||b==null)?null:(a+b); }
+    return qttrNumVon(id);
+  };
+  // Vorgabe (QTTR-basiert) ist an der Konkurrenz konfigurierbar — analog „Gruppe".
+  const hatVorgabe = konk.vorgabe==="ja" && (konk.vorgabeArt||"QTTR")==="QTTR";
+  // Liefert für ein Spiel {a,b} die Vorgabe-Info: welche Einheit wie viele Punkte
+  // pro Satz vorgegeben bekommt (der schwächere).
+  function vorgabeInfo(aId, bId){
+    if(!hatVorgabe || !aId || !bId) return null;
+    const qa=einheitQttr(aId), qb=einheitQttr(bId);
+    if(qa==null || qb==null) return null;
+    const pts=vorgabePunkte(qa, qb, konk.diffQTTR, konk.maxVorgabe);
+    if(!pts) return null;
+    return qa<qb ? {seite:"a", punkte:pts} : {seite:"b", punkte:pts};
+  }
 
   // Einheiten des Tableaus: im Doppel die Team-IDs, sonst die Einzel-Teilnehmer.
   // Seeding im Doppel bewusst NICHT nach QTTR (Reihenfolge = Team-Anlage; manuell
@@ -2978,6 +3025,36 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     }
     updKonk(patch);
   }
+  // Aus einer Liste von Spieler-Paaren [[a,b],…] Doppel-Teams bauen und speichern.
+  // Setzt bestehende Teams UND ein evtl. vorhandenes Tableau zurück (neue Auslosung).
+  function teamsSetzen(paare){
+    if(!isAdmin) return;
+    const neu=paare.map(([a,b],i)=>({ id:`d_${Date.now()}_${i}`, s1:a, s2:b }));
+    updKonk({ doppelTeams:neu, koSlots:null, koSpiele:{} });
+  }
+  // Button A „Auslosung QTTR": stärkster mit schwächstem, 2.-stärkster mit
+  // 2.-schwächstem usw. (nach QTTR absteigend sortieren, dann von außen paaren).
+  function auslosungQttr(){
+    if(!isAdmin) return;
+    const ids=[...(konk.teilnehmer||[])];
+    if(ids.length<2) return;
+    const sortiert=ids.sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
+    const paare=[]; let lo=0, hi=sortiert.length-1;
+    while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
+    // Bei ungerader Anzahl bleibt der mittlere Spieler ohne Partner (übrig).
+    if(!window.confirm(`Doppel nach QTTR auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    teamsSetzen(paare);
+  }
+  // Button B „Zufällige Auslosung": Teilnehmer mischen und paarweise koppeln.
+  function auslosungZufall(){
+    if(!isAdmin) return;
+    const ids=[...(konk.teilnehmer||[])];
+    if(ids.length<2) return;
+    for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
+    const paare=[]; for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
+    if(!window.confirm(`Doppel zufällig auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    teamsSetzen(paare);
+  }
 
   if(!konk.teilnehmer || konk.teilnehmer.length<2)
     return <div style={{padding:16,textAlign:"center",color:"var(--text3)",fontSize:13}}>Zuerst Teilnehmer auswählen (mind. 2).</div>;
@@ -2989,13 +3066,23 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
       <div style={{marginTop:10}}>
       {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln.</div>}
       {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
-        {doppelTeams.map((t,i)=>(
+        {doppelTeams.map((t,i)=>{
+          const q1=qttrNumVon(t.s1), q2=qttrNumVon(t.s2);
+          const summe=(q1!=null&&q2!=null)?(q1+q2):null;
+          return (
           <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"6px 10px",border:"1px solid var(--border2)"}}>
             <span style={{fontSize:11,fontWeight:700,color:"var(--text4)",minWidth:20}}>{i+1}.</span>
-            <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>{spielerName(t.s1)} / {spielerName(t.s2)}</span>
+            <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>
+              {spielerNameQttr(t.s1)} / {spielerNameQttr(t.s2)}
+              {summe!=null && <span style={{color:"#8b5cf6",fontWeight:700}}> · Σ {summe}</span>}
+            </span>
             {isAdmin && <button onClick={()=>teamLoeschen(t.id)} style={{border:"1px solid #ef444455",background:"#ef444418",color:"#ef4444",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 8px",cursor:"pointer"}}>entfernen</button>}
           </div>
-        ))}
+        );})}
+      </div>}
+      {isAdmin && (konk.teilnehmer||[]).length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+        <button onClick={auslosungQttr} style={{padding:"7px 11px",background:"#0ea5e9",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Auslosung QTTR</button>
+        <button onClick={auslosungZufall} style={{padding:"7px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Zufällige Auslosung</button>
       </div>}
       {isAdmin && teamKandidaten.length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <select value={teamS1} onChange={e=>setTeamS1(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
@@ -3060,6 +3147,10 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
       Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden {istDoppel?"Teams":"Spieler"} tauschen den Platz.
     </div>}
+    {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+      <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{istDoppel?" (nach QTTR-Summe des Teams)":""}</span>
+    </div>}
 
     {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
         vertikal so ausgerichtet, dass ein Spiel mittig zwischen seinen beiden
@@ -3089,7 +3180,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
-                    setSatz={setSatz} toggleFix={toggleFix}/>
+                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)}/>
                 </div>;
               })}
             </div>
@@ -3120,7 +3211,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung). Beim einfachen KO ergeben sie
   // sich aus der Spielposition (si*2 / si*2+1); beim doppelten KO werden sie explizit
   // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
@@ -3132,7 +3223,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   const beide = sp.a && sp.b;
   const abgeschlossen = ko_sieger(sp.saetze)!=null;
 
-  const zeile=(id,slotIdx,istSieger)=>{
+  const zeile=(id,slotIdx,istSieger,vorgabePunkte)=>{
     const q=qttrVon(spielerVon(id));
     const markiert = istErstrunde && tippSlot===slotIdx;
     return <div
@@ -3141,10 +3232,11 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
         background: markiert?"#8b5cf6": istSieger?"#10b98118":"var(--bg2)",
         borderRadius:5,cursor:(istErstrunde&&isAdmin)?"pointer":"default",
         border: markiert?"1px solid #8b5cf6":"1px solid transparent"}}>
-      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:100}}>
+      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>
         {id ? nameVon(id) : (istErstrunde && freilos ? "Freilos" : "—")}
       </span>
       <span style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+        {id && vorgabePunkte>0 && <span title="Vorgabe pro Satz" style={{fontSize:9,fontWeight:800,color:markiert?"#fff":"#f59e0b",background:markiert?"transparent":"#f59e0b22",borderRadius:4,padding:"0 4px"}}>+{vorgabePunkte}</span>}
         {id && q!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)"}}>{q}</span>}
         {istErstrunde && isAdmin && id && slotLeeren &&
           <span onClick={(e)=>{e.stopPropagation(); slotLeeren(slotIdx);}} title="Spieler entfernen"
@@ -3155,9 +3247,9 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
 
   return <div style={{position:"relative",background:"var(--bg)",border:fixiert?"1px solid #10b98155":"1px solid var(--border)",borderRadius:8,padding:6}}>
     {tischNr && !fixiert && <div style={{position:"absolute",top:-7,right:6,background:"#10b981",color:"#fff",fontSize:9,fontWeight:800,borderRadius:5,padding:"1px 6px",lineHeight:1.4,zIndex:1}}>Tisch {tischNr}</div>}
-    {zeile(sp.a, slotA, sieger && sieger===sp.a)}
+    {zeile(sp.a, slotA, sieger && sieger===sp.a, vorgabe && vorgabe.seite==="a" ? vorgabe.punkte : 0)}
     <div style={{height:3}}/>
-    {zeile(sp.b, slotB, sieger && sieger===sp.b)}
+    {zeile(sp.b, slotB, sieger && sieger===sp.b, vorgabe && vorgabe.seite==="b" ? vorgabe.punkte : 0)}
 
     {/* Sätze nur eingebbar, wenn beide Spieler feststehen und kein Freilos */}
     {beide && <div style={{marginTop:6}}>
@@ -3205,6 +3297,19 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 
   const slots = konk.koSlots && konk.koSlots.length ? konk.koSlots : null;
   const spieleMap = konk.koSpiele || {};
+
+  // Vorgabe (QTTR-basiert) – analog „Gruppe"/einfaches KO. Das doppelte KO ist ein
+  // Einzelwettbewerb; Vorgabe = QTTR-Differenz der beiden Spieler.
+  const qttrNumVon2=(id)=>{ try{ const q=qttrVon(spielerVon(id)); return (q==null||Number.isNaN(Number(q)))?null:Number(q); }catch(e){ return null; } };
+  const hatVorgabe = konk.vorgabe==="ja" && (konk.vorgabeArt||"QTTR")==="QTTR";
+  function vorgabeInfo(aId,bId){
+    if(!hatVorgabe || !aId || !bId) return null;
+    const qa=qttrNumVon2(aId), qb=qttrNumVon2(bId);
+    if(qa==null||qb==null) return null;
+    const pts=vorgabePunkte(qa,qb,konk.diffQTTR,konk.maxVorgabe);
+    if(!pts) return null;
+    return qa<qb ? {seite:"a",punkte:pts} : {seite:"b",punkte:pts};
+  }
   const imTableau = new Set((slots||[]).filter(Boolean));
   const fehlende = teilnehmerSortiert.filter(id=>!imTableau.has(id));
   const freieSlots = slots ? slots.filter(s=>!s).length : 0;
@@ -3293,7 +3398,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
       slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
       setSatz={setSatz} toggleFix={toggleFix}
-      slotIdxA={slotIdxA} slotIdxB={slotIdxB}/>;
+      slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)}/>;
   }
 
   const BOX=124;                       // Höhe einer Spiel-Box (wie einfaches KO)
@@ -3356,9 +3461,34 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
   const champion = gf2Aktiv
     ? (val["GF2"].sieger || null)                       // Reset entscheidet
     : (gfV.sieger && gfV.a && gfV.sieger===gfV.a ? gfV.sieger : null); // WB-Sieger gewinnt GF
+  // Platzierungen 1–4 ableiten:
+  //  1. Champion (Sieger des entscheidenden Finales)
+  //  2. Verlierer des entscheidenden Finales (GF2 falls gespielt, sonst GF)
+  //  3. Verlierer des LB-Finales (schied als Letzter vor dem Grand Final aus)
+  //  4. Verlierer der vorletzten LB-Stufe (bei genügend Teilnehmern eindeutig)
+  const platz2 = gf2Aktiv ? (val["GF2"]?.verlierer||null) : (gfV.verlierer||null);
+  const lbFinalV = val[struktur.lbFinalKey] || {};
+  const platz3 = lbFinalV.verlierer || null;
+  let platz4 = null;
+  if(struktur.lbStages.length>=2){
+    // vorletzte LB-Stufe: deren Verlierer, das NICHT schon Platz 3 ist
+    const vorletzte = struktur.lbStages[struktur.lbStages.length-2] || [];
+    const verlierer = vorletzte.map(k=>val[k]?.verlierer).filter(Boolean);
+    platz4 = verlierer.find(v=>v!==platz3) || verlierer[0] || null;
+  }
+  const platzierungen = [
+    ["1.", champion, "#f59e0b", "🥇"],
+    ["2.", platz2,  "#9ca3af", "🥈"],
+    ["3.", platz3,  "#b45309", "🥉"],
+    ["4.", platz4,  "var(--text3)", "4."],
+  ].filter(x=>x[1]);
   const gfSpalte = (
     <div key="gf" style={{display:"flex"}}>
-      {linien(1, BOX*Math.pow(2,struktur.wbRounds.length-1), "rechts")}
+      {/* Einfache waagrechte Verbindung vom WB-Finale zum Grand Final (keine Paar-
+          Klammer, damit unter dem Finale kein überflüssiger Strich erscheint). */}
+      <div style={{position:"relative",width:18,marginTop:24}}>
+        <div style={{position:"absolute",left:0,top:BOX*Math.pow(2,struktur.wbRounds.length-1)/2,width:18,height:2,background:"var(--border2)"}}/>
+      </div>
       <div style={{display:"flex",flexDirection:"column",minWidth:170}}>
         <div style={{fontSize:11,fontWeight:800,color:"var(--text3)",textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:8,height:16}}>Grand Final</div>
         <div style={{minHeight:BOX*Math.pow(2,struktur.wbRounds.length-1),display:"flex",flexDirection:"column",justifyContent:"center",gap:10}}>
@@ -3372,9 +3502,16 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
           </div> : (gfV.a && gfV.b && !gfV.sieger) ? <div style={{fontSize:10,color:"var(--text4)",lineHeight:1.4,maxWidth:150}}>
             Gewinnt der Spieler aus dem Loser-Bracket dieses Finale, folgt ein Entscheidungsspiel (dann hat jeder eine Niederlage).
           </div> : null}
-          {champion && <div style={{marginTop:4,background:"#10b98118",border:"1px solid #10b98155",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
-            <div style={{fontSize:10,color:"var(--text3)",fontWeight:700,marginBottom:2}}>🏆 Turniersieger</div>
-            <div style={{fontSize:13,fontWeight:800,color:"#10b981"}}>{nameVon(champion)}</div>
+          {champion && <div style={{marginTop:4,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:8,padding:"8px 10px"}}>
+            <div style={{fontSize:10,color:"var(--text3)",fontWeight:800,marginBottom:6,textAlign:"center",textTransform:"uppercase",letterSpacing:"0.04em"}}>Platzierungen</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {platzierungen.map(([rang,id,farbe,icon])=>(
+                <div key={rang} style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:12,minWidth:18,textAlign:"center"}}>{icon}</span>
+                  <span style={{fontSize:12,fontWeight:rang==="1."?800:600,color:farbe}}>{nameVon(id)}</span>
+                </div>
+              ))}
+            </div>
           </div>}
         </div>
       </div>
@@ -3424,6 +3561,10 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
       Das Loser-Bracket (links, orange) läuft nach rechts ins Winner-Bracket (grün) und mündet rechts im Grand Final. Wer zweimal verliert, scheidet aus.
+    </div>}
+    {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren</span>
     </div>}
 
     <div style={{display:"flex",gap:16,marginBottom:8}}>
