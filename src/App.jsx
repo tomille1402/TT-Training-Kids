@@ -1,4 +1,4 @@
-// === TTC-App · Version 323 · erstellt 10.08.2026 ===
+// === TTC-App · Version 324 · erstellt 10.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "323";
+const APP_VERSION = "324";
 const APP_DATUM   = "10.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1446,7 +1446,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
       key, name:neueKonk, art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
-      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
+      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[], schiedsrichterAktiv:false, schiedsrichter:[],
     }]}));
   }
   function updKonk(key,patch){ setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===key?{...k,...patch}:k)})); }
@@ -1719,6 +1719,20 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     updKonk({teilnehmer, gruppen});
   }
 
+  // Schiedsrichter-Kandidaten: alle aktiven Personen (nicht auf die Konkurrenz-Zuordnung
+  // beschränkt – auch andere Vereinsmitglieder können pfeifen), alphabetisch.
+  const schiriKandidaten = konk ? players.filter(p=>{
+    if(p.status==="passiv") return false;
+    if(p.group==="Gast") return false;
+    return true;
+  }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")) : [];
+  function toggleSchiedsrichter(id){
+    if(!isAdmin) return;
+    const drin=(konk.schiedsrichter||[]).includes(id);
+    const schiedsrichter = drin ? (konk.schiedsrichter||[]).filter(x=>x!==id) : [...(konk.schiedsrichter||[]), id];
+    updKonk({ schiedsrichter });
+  }
+
   // Gruppen initialisieren (leere Gruppen gemäß anzahlGruppen)
   function initGruppen(){
     const n=Math.max(1, Number(konk.anzahlGruppen)||1);
@@ -1849,6 +1863,24 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const gk=(konkKey,key)=>`${konkKey}::${key}`;
   const istPausiert = (konkKey,key)=> pausiertG.includes(gk(konkKey,key));
 
+  // ── Schiedsrichter (turnierweit, analog Tische) ──
+  // Zuordnung: "{konkKey}::{key}" -> Schiedsrichter-Spieler-ID (t.schiris).
+  // Pausierte Schiedsrichter (t.schirisPausiert) werden NICHT automatisch zugeteilt.
+  // Ob eine Konkurrenz Schiedsrichter einsetzt, steht je Konkurrenz in k.schiedsrichterAktiv;
+  // die zugelassenen Schiedsrichter je Konkurrenz stehen in k.schiedsrichter (Spieler-IDs).
+  const schiriMapG = t?.schiris || {};          // gkey -> Schiri-ID
+  const schirisPausiertG = t?.schirisPausiert || [];  // Liste Schiri-IDs (pausiert)
+  // Alle Schiedsrichter-IDs, die turnierweit in Konkurrenzen mit aktiviertem
+  // Schiedsrichter-Einsatz hinterlegt sind (für Anzeige/Pause-Steuerung).
+  const alleSchiris = (()=>{
+    const set=new Set();
+    for(const k of (t.konkurrenzen||[])){
+      if(k?.schiedsrichterAktiv) (k.schiedsrichter||[]).forEach(id=>set.add(id));
+    }
+    return [...set];
+  })();
+  const schiriPausiert=(id)=> schirisPausiertG.includes(id);
+
   // Ist eine Begegnung entschieden? (3 Gewinnsätze oder fixiert)
   // Für die Tischvergabe gilt eine Begegnung erst dann als abgeschlossen (und der Tisch
   // wird frei), wenn das Ergebnis GESPEICHERT (fixiert) wurde – nicht schon beim Eintippen
@@ -1911,6 +1943,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           pausiert: pausiertG.includes(gk(k.key, x.key)),
           tisch: tischMapG[gk(k.key, x.key)]||null,
           nurGestartet: !!k.gestartet,
+          schiriAktiv: !!k.schiedsrichterAktiv,          // setzt diese Konkurrenz Schiris ein?
+          schiri: schiriMapG[gk(k.key, x.key)]||null,    // aktuell zugeteilter Schiri (ID)
         });
       }
     }
@@ -1972,6 +2006,42 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     return neu;
   }
 
+  // Automatische Schiedsrichter-Zuordnung — analog zur Tischvergabe.
+  // Nur Begegnungen, die (a) an einem Tisch laufen, (b) in einer Konkurrenz mit
+  // aktivem Schiedsrichter-Einsatz liegen, bekommen einen Schiri. Ein Schiedsrichter
+  // wird pro Zeitpunkt nur EINEM Spiel zugeteilt; pausierte Schiris sowie Schiris, die
+  // gerade selbst spielen, werden übersprungen.
+  function schirisNeu(aktuelleTische, aktuelleSchiris){
+    const bg=alleBegegnungen().filter(x=>x.nurGestartet && !x.fertig && !x.pausiert && x.schiriAktiv);
+    // Zieltische: nur Spiele, die tatsächlich einen Tisch haben (laufen gerade).
+    const laufend=bg.filter(x=>aktuelleTische[x.gkey]);
+    const neu={};
+    const belegteSchiris=new Set();
+    // Spieler, die gerade an einem Tisch aktiv sind (dürfen nicht gleichzeitig pfeifen).
+    const spielerAmTisch=new Set();
+    for(const x of laufend){ echteSpieler(x.a).forEach(s=>spielerAmTisch.add(s)); echteSpieler(x.b).forEach(s=>spielerAmTisch.add(s)); }
+    const schiriFrei=(id)=> id && !belegteSchiris.has(id) && !schiriPausiert(id) && !spielerAmTisch.has(id);
+    // 1) bestehende Zuordnungen behalten, sofern noch gültig
+    for(const x of laufend){
+      const sid=aktuelleSchiris[x.gkey];
+      const zulaessig=(x_k=>{ const k=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey); return k?(k.schiedsrichter||[]):[]; })();
+      if(sid && zulaessig.includes(sid) && schiriFrei(sid)){
+        neu[x.gkey]=sid; belegteSchiris.add(sid);
+      }
+    }
+    // 2) freie, nicht pausierte Schiris an die übrigen laufenden Spiele verteilen
+    for(const x of laufend){
+      if(neu[x.gkey]) continue;
+      const k=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
+      const kandidaten=(k?.schiedsrichter||[]).filter(id=>schiriFrei(id));
+      if(kandidaten.length>0){
+        const sid=kandidaten[0];
+        neu[x.gkey]=sid; belegteSchiris.add(sid);
+      }
+    }
+    return neu;
+  }
+
   // Eine Begegnung aussetzen/fortsetzen (globaler Key).
   function togglePause(gkeyStr){
     const drin=pausiertG.includes(gkeyStr);
@@ -1979,6 +2049,27 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const tische={...tischMapG};
     if(!drin) delete tische[gkeyStr];   // beim Aussetzen Tisch freigeben
     updTurnier({ pausiert:neu, tische });
+  }
+
+  // Schiedsrichter pausieren/fortsetzen (Schiri-ID). Pausierte werden nicht zugeteilt;
+  // eine bestehende Zuordnung dieses Schiris wird beim Pausieren entfernt.
+  function toggleSchiriPause(schiriId){
+    const drin=schirisPausiertG.includes(schiriId);
+    const neu = drin ? schirisPausiertG.filter(id=>id!==schiriId) : [...schirisPausiertG, schiriId];
+    const schiris={...schiriMapG};
+    if(!drin){ // beim Pausieren: laufende Zuordnung dieses Schiris lösen
+      for(const key of Object.keys(schiris)) if(schiris[key]===schiriId) delete schiris[key];
+    }
+    updTurnier({ schirisPausiert:neu, schiris });
+  }
+  // Schiedsrichter für eine Begegnung manuell setzen (globaler Key); leer = entfernen.
+  // Bei Auswahl eines Schiris, der anderswo eingeteilt ist, wird er dort gelöst (Tausch).
+  function schiriSetzen(gkeyStr, schiriId){
+    const schiris={...schiriMapG};
+    if(!schiriId){ delete schiris[gkeyStr]; updTurnier({ schiris }); return; }
+    for(const key of Object.keys(schiris)) if(key!==gkeyStr && schiris[key]===schiriId) delete schiris[key];
+    schiris[gkeyStr]=schiriId;
+    updTurnier({ schiris });
   }
   // Tisch für eine Begegnung manuell setzen (globaler Key); bei belegtem Zieltisch Tausch.
   function tischSetzen(gkeyStr, tischNr){
@@ -1997,8 +2088,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   useEffect(()=>{
     if(anzahlTische<=0) return;
     const neu=tischeNeu(tischMapG);
+    let neueTische=tischMapG;
     if(JSON.stringify(neu)!==JSON.stringify(tischMapG)){
+      neueTische=neu;
       updTurnier({ tische:neu });
+    }
+    // Schiedsrichter automatisch zuordnen (auf Basis der aktuellen Tischvergabe).
+    if(alleSchiris.length>0){
+      const neuS=schirisNeu(neueTische, schiriMapG);
+      if(JSON.stringify(neuS)!==JSON.stringify(schiriMapG)){
+        updTurnier({ schiris:neuS });
+      }
     }
     const bg=alleBegegnungen();
     for(const x of bg){
@@ -2013,7 +2113,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neu[kk]) delete benachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(pausiertG), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.schiedsrichterAktiv,k.schiedsrichter])), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
   // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
@@ -2167,7 +2267,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             {mitTisch.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Aktuell kein Spiel an einem Tisch.</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {mitTisch.map(x=>(
-                <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
+                <div key={x.gkey} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"var(--bg)",borderRadius:8,padding:"7px 10px"}}>
                   {isAdmin
                     ? <select value={x.tisch} onChange={e=>tischSetzen(x.gkey, e.target.value)}
                         title="Tisch wechseln"
@@ -2180,6 +2280,22 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
                   {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="Begegnung aussetzen"
                     style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
+                  {/* Schiedsrichter (nur bei Konkurrenzen mit aktivem Schiri-Einsatz) */}
+                  {x.schiriAktiv && (()=>{
+                    const konkX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
+                    const optionen=(konkX?.schiedsrichter||[]);
+                    return <span style={{flexBasis:"100%",display:"flex",alignItems:"center",gap:6,paddingLeft:2}}>
+                      <span style={{fontSize:10,fontWeight:800,color:"#0ea5e9"}} title="Schiedsrichter">🎽 SR:</span>
+                      {isAdmin
+                        ? <select value={x.schiri||""} onChange={e=>schiriSetzen(x.gkey, e.target.value)}
+                            style={{height:26,borderRadius:6,background:x.schiri?"#0ea5e9":"var(--bg3)",color:x.schiri?"#fff":"var(--text3)",fontWeight:700,fontSize:11,border:"1px solid var(--border2)",padding:"0 6px",cursor:"pointer",maxWidth:150}}>
+                            <option value="" style={{background:"#fff",color:"#111"}}>— keiner —</option>
+                            {optionen.map(sid=>{ const p=spielerVon(sid); const pausiert=schiriPausiert(sid);
+                              return <option key={sid} value={sid} style={{background:"#fff",color:"#111"}}>{p?`${p.firstName} ${p.lastName}`:sid}{pausiert?" (Pause)":""}</option>; })}
+                          </select>
+                        : <span style={{fontSize:11,fontWeight:700,color:x.schiri?"#0ea5e9":"var(--text4)"}}>{x.schiri?nameVon(x.schiri):"—"}</span>}
+                    </span>;
+                  })()}
                 </div>
               ))}
             </div>
@@ -2194,6 +2310,26 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   </div>
                 ))}
               </div>
+            </div>}
+            {/* Schiedsrichter-Verwaltung: alle Schiris der Konkurrenzen mit aktivem
+                Einsatz; hier pausieren/fortsetzen. Pausierte werden nicht zugeteilt. */}
+            {isAdmin && alleSchiris.length>0 && <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#0ea5e9",marginBottom:5}}>🎽 Schiedsrichter ({alleSchiris.length}):</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {alleSchiris.map(sid=>{
+                  const pausiert=schiriPausiert(sid);
+                  // Ist der Schiri gerade eingeteilt?
+                  const eingeteiltAn=Object.keys(schiriMapG).find(key=>schiriMapG[key]===sid);
+                  return <span key={sid} onClick={()=>toggleSchiriPause(sid)} title={pausiert?"fortsetzen":"pausieren"} style={{
+                    display:"inline-flex",alignItems:"center",gap:5,padding:"4px 9px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+                    border:pausiert?"1px solid #f59e0b":"1px solid #0ea5e955",
+                    background:pausiert?"#f59e0b18":"#0ea5e912",color:pausiert?"#f59e0b":"#0ea5e9",
+                  }}>
+                    {pausiert?"⏸":(eingeteiltAn?"▶":"○")} {nameVon(sid)}
+                  </span>;
+                })}
+              </div>
+              <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Antippen zum Pausieren/Fortsetzen. Pausierte Schiedsrichter werden nicht automatisch eingeteilt.</div>
             </div>}
           </div>}
         </div>
@@ -2281,6 +2417,31 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           })}
         </div>
       </details>}
+
+      {/* Schiedsrichter-Einsatz (nur Admin) – je Konkurrenz aktivierbar */}
+      {isAdmin && <div style={{marginBottom:14}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+          <input type="checkbox" checked={!!konk.schiedsrichterAktiv}
+            onChange={e=>updKonk({schiedsrichterAktiv:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
+          <span style={{fontSize:13,fontWeight:700,color:"#0ea5e9"}}>Schiedsrichter einsetzen</span>
+        </label>
+        {konk.schiedsrichterAktiv && <details style={{marginTop:10}}>
+          <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#0ea5e9"}}>
+            Schiedsrichter auswählen ({(konk.schiedsrichter||[]).length})
+          </summary>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {schiriKandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden aktiven Personen gefunden.</div>}
+            {schiriKandidaten.map(p=>{
+              const drin=(konk.schiedsrichter||[]).includes(p.id);
+              return <span key={p.id} onClick={()=>toggleSchiedsrichter(p.id)} style={{
+                padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+                border:drin?"1px solid #0ea5e9":"1px solid var(--border2)",
+                background:drin?"#0ea5e922":"var(--bg2)",color:drin?"#0ea5e9":"var(--text2)",
+              }}>{p.firstName} {p.lastName}</span>;
+            })}
+          </div>
+        </details>}
+      </div>}
 
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
