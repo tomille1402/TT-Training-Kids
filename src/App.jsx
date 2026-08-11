@@ -1,4 +1,4 @@
-// === TTC-App · Version 327 · erstellt 11.08.2026 ===
+// === TTC-App · Version 328 · erstellt 11.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "327";
+const APP_VERSION = "328";
 const APP_DATUM   = "11.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3849,6 +3849,14 @@ function UrkundenTab({ players, isSuperAdmin }){
     return true;
   });
 
+  // Datum TT.MM.JJ (aus ISO-String YYYY-MM-DD); leere/ungültige bleiben leer.
+  const fmtDatum=(iso)=>{
+    if(!iso || typeof iso!=="string") return "";
+    const m=iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(!m) return iso;
+    return `${m[3]}.${m[2]}.${m[1].slice(2)}`;
+  };
+
   // Für jeden Spieler die Kennzahlen + je Urkunde: Datum (oder "") und ob fällig.
   const zeilen = basis.map(p=>{
     const {beginnerStars:af, advancedStars:fg, totalStars:sum}=getAward(p);
@@ -3881,9 +3889,16 @@ function UrkundenTab({ players, isSuperAdmin }){
     return u.datum || (u.faellig?"0000-fällig":"zzzz");
   };
 
-  // ── Spaltenfilter (Textfilter je Spalte) ──
+  // ── Spaltenfilter (Textfilter je Spalte, außer Gruppe = Mehrfachauswahl) ──
   const [filter,setFilter]=useState({});   // colKey -> Suchtext
-  // Extra-Filter: nur Spieler zeigen, die mind. eine fällige (erreicht, nicht vergebene) Urkunde haben.
+  // Gruppen-Mehrfachauswahl: standardmäßig Profi, Fortgeschrittene, Anfänger.
+  const alleGruppen = [...new Set(zeilen.map(z=>z.group))].sort((a,b)=>a.localeCompare(b,"de"));
+  const [gruppenSel,setGruppenSel]=useState(["Profi","Fortgeschrittene","Anfänger"]);
+  const [gruppenOffen,setGruppenOffen]=useState(false);
+  function toggleGruppe(g){
+    setGruppenSel(prev=> prev.includes(g) ? prev.filter(x=>x!==g) : [...prev,g]);
+  }
+  // Extra-Filter: nur Spieler zeigen, die mind. eine fällige Urkunde haben.
   const [nurFaellig,setNurFaellig]=useState(false);
 
   const textVon=(z,col)=>{
@@ -3896,7 +3911,10 @@ function UrkundenTab({ players, isSuperAdmin }){
   };
 
   let gefiltert = zeilen.filter(z=>{
+    // Gruppen-Mehrfachauswahl (nur wenn mindestens eine Gruppe gewählt ist)
+    if(gruppenSel.length>0 && !gruppenSel.includes(z.group)) return false;
     for(const col of Object.keys(filter)){
+      if(col==="group") continue;   // Gruppe läuft über Mehrfachauswahl
       const f=(filter[col]||"").trim().toLowerCase();
       if(!f) continue;
       if(!textVon(z,col).toLowerCase().includes(f)) return false;
@@ -3915,17 +3933,22 @@ function UrkundenTab({ players, isSuperAdmin }){
 
   const faelligeGesamt = zeilen.reduce((s,z)=>s+Object.values(z.urk).filter(u=>u.faellig).length,0);
 
-  // ── Styles ──
-  const thBase={position:"sticky",top:0,zIndex:2,background:"var(--bg3)",fontSize:10,fontWeight:800,color:"var(--text2)",padding:"7px 8px",whiteSpace:"nowrap",borderBottom:"2px solid var(--border)",cursor:"pointer",userSelect:"none"};
+  // ── Styles (kompakt) ──
+  // Sternspalten und Datumsspalten schmal halten; Namensspalte ~30% schmaler + Umbruch.
+  const thBase={position:"sticky",top:0,zIndex:2,background:"var(--bg3)",fontSize:10,fontWeight:800,color:"var(--text2)",padding:"6px 4px",whiteSpace:"nowrap",borderBottom:"2px solid var(--border)",cursor:"pointer",userSelect:"none",textAlign:"center"};
   const nameStick={position:"sticky",left:0,zIndex:3,background:"var(--bg2)",boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"};
-  const nameStickHead={...thBase,position:"sticky",left:0,top:0,zIndex:4,background:"var(--bg3)",boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"};
-  const td={fontSize:11,padding:"6px 8px",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap",textAlign:"center"};
+  const nameStickHead={...thBase,position:"sticky",left:0,top:0,zIndex:4,background:"var(--bg3)",boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)",textAlign:"left"};
+  const td={fontSize:11,padding:"5px 4px",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap",textAlign:"center"};
+  const W_STAR=34;    // Breite der Sternspalten (AF/FG/Σ)
+  const W_DATE=48;    // Breite der Urkunden-/Datumsspalten
+  const W_NAME=112;   // Namensspalte (~30% schmaler als vorher ~160)
+  const W_GROUP=92;
   const pfeil=(col)=> sortCol===col ? (sortDir==="asc"?" ▲":" ▼") : "";
 
   const kopf=(col,inhalt,extra={})=> <th key={col} onClick={()=>toggleSort(col)} style={{...thBase,...extra}} title="Klicken zum Sortieren">{inhalt}{pfeil(col)}</th>;
-  const filterZelle=(col,extra={})=> <th key={col} style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 5px",borderBottom:"1px solid var(--border)",...extra}}>
+  const filterZelle=(col,extra={})=> <th key={col} style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 3px",borderBottom:"1px solid var(--border)",...extra}}>
     <input value={filter[col]||""} onChange={e=>setFilter(f=>({...f,[col]:e.target.value}))}
-      placeholder="Filter" style={{width:"100%",minWidth:col==="name"?90:44,boxSizing:"border-box",padding:"3px 5px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
+      placeholder="…" style={{width:"100%",boxSizing:"border-box",padding:"3px 4px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
   </th>;
 
   return <div>
@@ -3940,21 +3963,48 @@ function UrkundenTab({ players, isSuperAdmin }){
     </div>
 
     <div style={{overflow:"auto",maxHeight:"78vh",border:"1px solid var(--border)",borderRadius:12}}>
-      <table style={{borderCollapse:"separate",borderSpacing:0,width:"max-content",minWidth:"100%"}}>
+      <table style={{borderCollapse:"separate",borderSpacing:0,width:"max-content",minWidth:"100%",tableLayout:"fixed"}}>
+        <colgroup>
+          <col style={{width:W_GROUP}}/>
+          <col style={{width:W_NAME}}/>
+          <col style={{width:W_STAR}}/>
+          <col style={{width:W_STAR}}/>
+          <col style={{width:W_STAR}}/>
+          {urkCols.map(c=> <col key={c.bereich+"_"+c.kurz} style={{width:W_DATE}}/>)}
+        </colgroup>
         <thead>
           <tr>
-            {kopf("group","Gruppe")}
-            <th onClick={()=>toggleSort("name")} style={nameStickHead} title="Klicken zum Sortieren">Name{pfeil("name")}</th>
-            {kopf("af","⭐ AF")}
-            {kopf("fg","⭐ FG")}
-            {kopf("sum","⭐ Σ")}
-            {urkCols.map(c=> kopf(c.bereich+"_"+c.kurz, `${c.bereich} ${c.emoji}`, {borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined}))}
+            {kopf("group","Gruppe",{width:W_GROUP})}
+            <th onClick={()=>toggleSort("name")} style={{...nameStickHead,width:W_NAME}} title="Klicken zum Sortieren">Name{pfeil("name")}</th>
+            {kopf("af","⭐AF",{width:W_STAR})}
+            {kopf("fg","⭐FG",{width:W_STAR})}
+            {kopf("sum","⭐Σ",{width:W_STAR})}
+            {urkCols.map(c=> kopf(c.bereich+"_"+c.kurz, <span>{c.bereich}<br/>{c.emoji}</span>, {width:W_DATE,borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined}))}
           </tr>
           <tr>
-            {filterZelle("group")}
-            <th style={{...nameStick,position:"sticky",left:0,top:28,zIndex:4,background:"var(--bg3)",padding:"3px 5px",borderBottom:"1px solid var(--border)"}}>
+            {/* Gruppe: Mehrfachauswahl-Dropdown statt Textfilter */}
+            <th style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 3px",borderBottom:"1px solid var(--border)"}}>
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setGruppenOffen(o=>!o)} style={{width:"100%",boxSizing:"border-box",padding:"3px 4px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title="Gruppen filtern">
+                  {gruppenSel.length===0?"alle":gruppenSel.length<=2?gruppenSel.join(", "):`${gruppenSel.length} gewählt`} ▾
+                </button>
+                {gruppenOffen && <div style={{position:"absolute",top:"100%",left:0,zIndex:20,marginTop:2,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,padding:"5px",minWidth:120,boxShadow:"0 4px 12px rgba(0,0,0,0.25)"}}>
+                  {alleGruppen.map(g=>(
+                    <label key={g} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 4px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",color:"var(--text)"}}>
+                      <input type="checkbox" checked={gruppenSel.includes(g)} onChange={()=>toggleGruppe(g)} style={{width:13,height:13,cursor:"pointer"}}/>
+                      {g}
+                    </label>
+                  ))}
+                  <div style={{display:"flex",gap:4,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
+                    <button onClick={()=>setGruppenSel(alleGruppen)} style={{flex:1,fontSize:9,padding:"3px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text3)",cursor:"pointer"}}>alle</button>
+                    <button onClick={()=>setGruppenSel([])} style={{flex:1,fontSize:9,padding:"3px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:4,color:"var(--text3)",cursor:"pointer"}}>keine</button>
+                  </div>
+                </div>}
+              </div>
+            </th>
+            <th style={{...nameStick,position:"sticky",left:0,top:28,zIndex:4,background:"var(--bg3)",padding:"3px 3px",borderBottom:"1px solid var(--border)"}}>
               <input value={filter["name"]||""} onChange={e=>setFilter(f=>({...f,name:e.target.value}))}
-                placeholder="Filter" style={{width:"100%",minWidth:90,boxSizing:"border-box",padding:"3px 5px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
+                placeholder="…" style={{width:"100%",boxSizing:"border-box",padding:"3px 4px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
             </th>
             {filterZelle("af")}
             {filterZelle("fg")}
@@ -3966,8 +4016,8 @@ function UrkundenTab({ players, isSuperAdmin }){
           {gefiltert.length===0 && <tr><td colSpan={5+urkCols.length} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Spieler gefunden.</td></tr>}
           {gefiltert.map(z=>(
             <tr key={z.id}>
-              <td style={{...td,textAlign:"left",color:"var(--text3)"}}>{z.group}</td>
-              <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{z.name}</td>
+              <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2}}>{z.group}</td>
+              <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,maxWidth:W_NAME}}>{z.name}</td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.af}</td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.fg}</td>
               <td style={{...td,fontWeight:800,color:"var(--text)"}}>{z.sum}</td>
@@ -3976,10 +4026,11 @@ function UrkundenTab({ players, isSuperAdmin }){
                 const gruen = u.faellig;
                 return <td key={c.bereich+"_"+c.kurz} style={{...td,
                   borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined,
-                  background: gruen?"#10b981":(u.datum?"transparent":"transparent"),
+                  background: gruen?"#10b981":"transparent",
                   color: gruen?"#fff":(u.datum?"var(--text2)":"var(--text4)"),
-                  fontWeight: u.datum?700:400}}>
-                  {u.datum ? u.datum : (u.faellig ? "fällig" : "–")}
+                  fontWeight: u.datum?700:400,
+                  fontVariantNumeric:"tabular-nums"}}>
+                  {u.datum ? fmtDatum(u.datum) : (u.faellig ? "fällig" : "–")}
                 </td>;
               })}
             </tr>
