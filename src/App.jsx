@@ -1,4 +1,4 @@
-// === TTC-App · Version 329 · erstellt 11.08.2026 ===
+// === TTC-App · Version 330 · erstellt 11.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "329";
+const APP_VERSION = "330";
 const APP_DATUM   = "11.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -4087,6 +4087,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
   // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
   const [verwaltungJumpId,setVerwaltungJumpId]=useState(null);
+  const [verwaltungJumpSection,setVerwaltungJumpSection]=useState(null);
   // Punkt 1: Höhe der fixierten Tab-Leiste messen, damit der Spacer exakt passt und
   // keine Überschriften abgeschnitten werden (v.a. Admin-Ansicht mit vielen Chips).
   const tabBarRef=useRef(null);
@@ -4465,7 +4466,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── URKUNDEN TAB ── */}
     {activeTab==="urkunden"&&<UrkundenTab players={players} isSuperAdmin={isSuperAdmin}
-      onSpielerKlick={isSuperAdmin ? (id)=>{ setVerwaltungJumpId(id); setActiveTab("verwaltung"); } : null}/>}
+      onSpielerKlick={isSuperAdmin ? (id)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("urkunden"); setActiveTab("verwaltung"); } : null}/>}
 
     {/* ── SCHLÄGER TAB ── */}
     {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
@@ -4490,7 +4491,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} onJumpHandled={()=>setVerwaltungJumpId(null)}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null);}}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -6196,7 +6197,7 @@ function TtrUpload({ showToast }){
   </div>;
 }
 
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,onJumpHandled=null}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
   // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
@@ -6229,13 +6230,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
       const grp = p.group || "Anfänger";
       setShowGrp(prev=>({...prev, [grp]:true}));   // Gruppe des Spielers aufklappen
-      // Nach dem Rendern zum Spieler-Element scrollen (kurzer Timeout, bis es sichtbar ist).
+      // Nach dem Rendern zum Ziel scrollen (kurzer Timeout, bis es sichtbar ist).
+      // Ist ein Abschnitt angefragt (z.B. "urkunden"), dorthin scrollen, sonst zum Spieler.
       if(typeof window!=="undefined"){
         setTimeout(()=>{
-          const el=document.getElementById("verwaltung-player-"+p.id);
-          if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:"center"});
+          const ziel = jumpToSection==="urkunden" ? document.getElementById("urkundendaten-"+p.id) : null;
+          const el = ziel || document.getElementById("verwaltung-player-"+p.id);
+          if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:ziel?"center":"center"});
           else window.scrollTo({top:0, behavior:"smooth"});
-        }, 120);
+        }, 160);
       }
     }
     onJumpHandled && onJumpHandled();
@@ -7776,7 +7779,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 const earnedAdv=ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
                 const allEarned=[...earnedBeg,...earnedAdv];
                 if(!allEarned.length&&!earnedBeg.length&&!earnedAdv.length) return null;
-                return <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                return <div id={"urkundendaten-"+editPlayer.id} style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                   <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
                   {allEarned.map(a=>{
                     const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
