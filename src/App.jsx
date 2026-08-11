@@ -1,4 +1,4 @@
-// === TTC-App · Version 325 · erstellt 10.08.2026 ===
+// === TTC-App · Version 326 · erstellt 11.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "325";
-const APP_DATUM   = "10.08.2026";
+const APP_VERSION = "326";
+const APP_DATUM   = "11.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1890,6 +1890,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     return false;
   }
+  // Spielt eine Person gerade AKTIV an einem Tisch (laufendes, nicht fertiges Spiel
+  // mit zugewiesenem Tisch)? Solche Personen erscheinen nicht im Schiri-Dropdown.
+  function schiriSpieltAmTisch(id){
+    if(!id) return false;
+    for(const x of alleBegegnungen()){
+      if(!x.nurGestartet || x.fertig || x.pausiert) continue;
+      if(!x.tisch) continue;   // nur Spiele, die tatsächlich an einem Tisch laufen
+      if(echteSpieler(x.a).includes(id) || echteSpieler(x.b).includes(id)) return true;
+    }
+    return false;
+  }
 
   // Ist eine Begegnung entschieden? (3 Gewinnsätze oder fixiert)
   // Für die Tischvergabe gilt eine Begegnung erst dann als abgeschlossen (und der Tisch
@@ -2103,6 +2114,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
   // Automatische Neuvergabe bei jeder relevanten Änderung + Push für neue Zuweisungen.
   const benachrichtigt=useRef({});
+  const schiriBenachrichtigt=useRef({});   // gkey -> "{schiriId}@{tisch}" (schon gepusht)
   useEffect(()=>{
     if(anzahlTische<=0) return;
     const neu=tischeNeu(tischMapG);
@@ -2112,9 +2124,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       updTurnier({ tische:neu });
     }
     // Schiedsrichter automatisch zuordnen (auf Basis der aktuellen Tischvergabe).
+    let neueSchiris=schiriMapG;
     if(alleSchiris.length>0){
       const neuS=schirisNeu(neueTische, schiriMapG);
       if(JSON.stringify(neuS)!==JSON.stringify(schiriMapG)){
+        neueSchiris=neuS;
         updTurnier({ schiris:neuS });
       }
     }
@@ -2129,6 +2143,21 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     for(const kk of Object.keys(benachrichtigt.current)){
       if(!neu[kk]) delete benachrichtigt.current[kk];
+    }
+    // Schiedsrichter benachrichtigen, sobald sie (neu) einem Spiel an einem Tisch
+    // zugeordnet werden — nur wenn Push fürs Turnier aktiv ist.
+    for(const x of bg){
+      if(x.fertig || !x.nurGestartet) continue;
+      const tisch=neu[x.gkey];
+      const sid=neueSchiris[x.gkey];
+      if(!tisch || !sid){ if(!sid) delete schiriBenachrichtigt.current[x.gkey]; continue; }
+      const merk=`${sid}@${tisch}`;
+      if(schiriBenachrichtigt.current[x.gkey]===merk) continue;
+      schiriBenachrichtigt.current[x.gkey]=merk;
+      if(t.pushAktiv) pushSchiriAnTisch(sid, x.a, x.b, tisch, x.konkName);
+    }
+    for(const kk of Object.keys(schiriBenachrichtigt.current)){
+      if(!neueSchiris[kk] || !neu[kk]) delete schiriBenachrichtigt.current[kk];
     }
     // eslint-disable-next-line
   },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.schiedsrichterAktiv,k.schiedsrichter])), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
@@ -2154,6 +2183,24 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         body: JSON.stringify({
           turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
           spielerA:A, spielerB:B,
+        })
+      });
+    }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
+  }
+
+  // Benachrichtigt den zugeteilten Schiedsrichter, an welchem Tisch er welche
+  // Begegnung leiten soll. Nutzt dieselbe Netlify-Funktion; das Feld „schiri"
+  // signalisiert dort eine Schiedsrichter-Nachricht (eigener Text).
+  async function pushSchiriAnTisch(schiriId, idA, idB, tisch, konkName){
+    try{
+      const nm=(id)=>{ const tm=teamVonId(id); if(tm){ const p1=spielerVon(tm.s1),p2=spielerVon(tm.s2); return `${p1?p1.firstName:"?"} / ${p2?p2.firstName:"?"}`; } const p=spielerVon(id); return p?`${p.firstName} ${p.lastName}`:""; };
+      const sp=spielerVon(schiriId);
+      await fetch("/.netlify/functions/turnieralarm", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
+          schiri:{ id:schiriId, name: sp?`${sp.firstName} ${sp.lastName}`:"", empfaenger:[schiriId] },
+          begegnung:{ a:nm(idA), b:nm(idB) },
         })
       });
     }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
@@ -2301,7 +2348,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   {/* Schiedsrichter (nur bei Konkurrenzen mit aktivem Schiri-Einsatz) */}
                   {x.schiriAktiv && (()=>{
                     const konkX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
-                    const optionen=(konkX?.schiedsrichter||[]);
+                    // Am Tisch spielende Schiris nicht anbieten (außer dem aktuell
+                    // zugeordneten, damit die bestehende Auswahl gültig bleibt).
+                    const optionen=(konkX?.schiedsrichter||[]).filter(sid=> sid===x.schiri || !schiriSpieltAmTisch(sid));
                     return <span style={{flexBasis:"100%",display:"flex",alignItems:"center",gap:6,paddingLeft:2}}>
                       <span style={{fontSize:10,fontWeight:800,color:"#0ea5e9"}} title="Schiedsrichter">🎽 SR:</span>
                       {isAdmin
