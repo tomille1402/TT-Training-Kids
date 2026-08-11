@@ -1,12 +1,16 @@
-// === TTC-App · Version 316 · netlify/functions/turnieralarm.js · erstellt 06.08.2026 ===
+// === TTC-App · Version 326 · netlify/functions/turnieralarm.js · erstellt 06.08.2026 ===
 // Benachrichtigt die beiden Seiten einer anstehenden Turnier-Begegnung per Web-Push:
 // „Bitte an Tisch X zum Spiel gegen Y einfinden.“ Zusätzlich wird eine In-App-Nachricht
 // (appNachrichten) abgelegt, damit die Meldung auch hinter der Glocke erscheint.
 //
-// Aufruf aus der App per POST mit JSON-Body:
+// Aufruf aus der App per POST mit JSON-Body, ENTWEDER als Spieler-Ruf:
 //   { turnier, konkurrenz, tisch, spielerA:{id,name,empfaenger?}, spielerB:{id,name,empfaenger?} }
 // Im Doppel enthält jede Seite ein optionales „empfaenger“-Array mit den Spieler-IDs
 // beider Team-Mitglieder; sonst wird die eine „id“ als Empfänger verwendet.
+// ODER als Schiedsrichter-Ruf:
+//   { turnier, konkurrenz, tisch, schiri:{id,name,empfaenger?}, begegnung:{a,b} }
+// Dann wird NUR der Schiedsrichter benachrichtigt, an welchem Tisch er welche
+// Begegnung zu leiten hat.
 //
 // Benötigte Umgebungsvariablen wie bei pushversand.js (Service-Account + VAPID).
 
@@ -26,18 +30,49 @@ exports.handler = async (event) => {
   const tisch      = body.tisch!=null ? String(body.tisch) : "";
   const spielerA   = body.spielerA || {};
   const spielerB   = body.spielerB || {};
+  const schiri     = body.schiri || null;
 
-  // Beide Seiten müssen mindestens eine Empfänger-ID haben. Im Doppel liefert die App
-  // je Seite eine „empfaenger"-Liste (beide Team-Mitglieder); sonst ist es die eine id.
-  const empfA = Array.isArray(spielerA.empfaenger) && spielerA.empfaenger.length ? spielerA.empfaenger : (spielerA.id ? [spielerA.id] : []);
-  const empfB = Array.isArray(spielerB.empfaenger) && spielerB.empfaenger.length ? spielerB.empfaenger : (spielerB.id ? [spielerB.id] : []);
-  const paare = [
-    ...empfA.map(id=>({ id, name: spielerA.name || "", gegner: spielerB.name || "dein Gegner" })),
-    ...empfB.map(id=>({ id, name: spielerB.name || "", gegner: spielerA.name || "dein Gegner" })),
-  ].filter(p=>p.id);
+  const tischTeil   = tisch ? `Tisch ${tisch}` : "dein Tisch steht bereit";
+  const turnierTeil = turnier ? ` (${turnier}${konkurrenz?" · "+konkurrenz:""})` : "";
+
+  // Empfängerliste je nach Ruf-Typ. Jeder Eintrag: { id, name, titel, text }.
+  let paare = [];
+  let inApp = null;   // { titel, text } für die In-App-Nachricht
+
+  if(schiri && schiri.id){
+    // ── Schiedsrichter-Ruf: nur der Schiedsrichter wird benachrichtigt ──
+    const ids = Array.isArray(schiri.empfaenger) && schiri.empfaenger.length ? schiri.empfaenger : [schiri.id];
+    const beg = body.begegnung || {};
+    const paarung = (beg.a || beg.b) ? `${beg.a||"?"} – ${beg.b||"?"}` : "";
+    const titel = `🎽 Schiedsrichter an ${tischTeil}`;
+    const text  = `Bitte leite an ${tischTeil}${paarung?` die Begegnung ${paarung}`:""}${turnierTeil}.`;
+    paare = ids.filter(Boolean).map(id=>({ id, name: schiri.name||"", titel, text }));
+    inApp = {
+      titel: tisch ? `🎽 Schiedsrichter an Tisch ${tisch}` : "🎽 Schiedsrichter-Einsatz",
+      text : `${schiri.name||"Schiedsrichter"}${paarung?`: ${paarung}`:""}${tisch?` an Tisch ${tisch}`:""}${turnierTeil}.`
+    };
+  } else {
+    // ── Spieler-Ruf (an den Tisch) – Verhalten wie bisher ──
+    // Beide Seiten müssen mindestens eine Empfänger-ID haben. Im Doppel liefert die App
+    // je Seite eine „empfaenger"-Liste (beide Team-Mitglieder); sonst ist es die eine id.
+    const empfA = Array.isArray(spielerA.empfaenger) && spielerA.empfaenger.length ? spielerA.empfaenger : (spielerA.id ? [spielerA.id] : []);
+    const empfB = Array.isArray(spielerB.empfaenger) && spielerB.empfaenger.length ? spielerB.empfaenger : (spielerB.id ? [spielerB.id] : []);
+    paare = [
+      ...empfA.map(id=>({ id, name: spielerA.name || "", gegner: spielerB.name || "dein Gegner" })),
+      ...empfB.map(id=>({ id, name: spielerB.name || "", gegner: spielerA.name || "dein Gegner" })),
+    ].filter(p=>p.id).map(p=>({
+      id:p.id, name:p.name,
+      titel: `🏓 ${tischTeil}: Spiel gegen ${p.gegner}`,
+      text : `Bitte an ${tischTeil} einfinden – Spiel gegen ${p.gegner}${turnierTeil}.`
+    }));
+    inApp = {
+      titel: tisch ? `🏓 Aufruf an Tisch ${tisch}` : "🏓 Nächstes Spiel",
+      text : `${spielerA.name||"?"} vs ${spielerB.name||"?"}${tisch?` an Tisch ${tisch}`:""}${turnierTeil}.`
+    };
+  }
 
   if(paare.length === 0){
-    return { statusCode:200, headers:cors(), body: JSON.stringify({ ok:true, ausgeloest:false, grund:"keine Spieler-IDs" }) };
+    return { statusCode:200, headers:cors(), body: JSON.stringify({ ok:true, ausgeloest:false, grund:"keine Empfänger-IDs" }) };
   }
 
   try{
@@ -57,17 +92,13 @@ exports.handler = async (event) => {
       subject: process.env.VAPID_SUBJECT || "mailto:admin@ttc-niederzeuzheim.de"
     };
 
-    const tischTeil = tisch ? `Tisch ${tisch}` : "dein Tisch steht bereit";
-    const turnierTeil = turnier ? ` (${turnier}${konkurrenz?" · "+konkurrenz:""})` : "";
-    const sendeId = `turnieralarm_${normName(turnier)}_${normName(konkurrenz)}_${tisch}_${Date.now()}`;
+    const sendeId = `turnieralarm_${normName(turnier)}_${normName(konkurrenz)}_${tisch}_${schiri&&schiri.id?"sr_"+schiri.id+"_":""}${Date.now()}`;
 
     let gesendet=0, fehler=0;
     const empfaengerStatus = [];
     const empfaengerIds = [];
     for(const p of paare){
       empfaengerIds.push(p.id);
-      const titel = `🏓 ${tischTeil}: Spiel gegen ${p.gegner}`;
-      const text  = `Bitte an ${tischTeil} einfinden – Spiel gegen ${p.gegner}${turnierTeil}.`;
       const geraete = aboMap[p.id] || [];
       if(geraete.length === 0){
         empfaengerStatus.push({ id:p.id, name:p.name, abo:false, zugestellt:false });
@@ -78,7 +109,7 @@ exports.handler = async (event) => {
         try{
           const r = await sendePush(
             { endpoint:g.endpoint, p256dh:g.p256dh, auth:g.auth },
-            { titel, text, url:"/", tag:sendeId },
+            { titel:p.titel, text:p.text, url:"/", tag:sendeId },
             vapid
           );
           if(r && r.ok){ gesendet++; erfolg=true; } else { fehler++; }
@@ -89,10 +120,8 @@ exports.handler = async (event) => {
 
     // In-App-Nachricht ablegen (auch ohne aktives Push-Abo sichtbar).
     try{
-      const titelIn = tisch ? `🏓 Aufruf an Tisch ${tisch}` : "🏓 Nächstes Spiel";
-      const textIn  = `${spielerA.name||"?"} vs ${spielerB.name||"?"}${tisch?` an Tisch ${tisch}`:""}${turnierTeil}.`;
       await patchDoc("appNachrichten/"+sendeId, {
-        titel: titelIn, text: textIn, empfaenger: empfaengerIds,
+        titel: inApp.titel, text: inApp.text, empfaenger: empfaengerIds,
         erstellt: new Date().toISOString().slice(0,10), ts: Date.now()
       });
     }catch(e){ /* Anzeige ist Zusatz */ }
