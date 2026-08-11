@@ -1,4 +1,4 @@
-// === TTC-App · Version 328 · erstellt 11.08.2026 ===
+// === TTC-App · Version 329 · erstellt 11.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "328";
+const APP_VERSION = "329";
 const APP_DATUM   = "11.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3826,7 +3826,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 // Vergabedaten der Anfänger- (AF) und Fortgeschrittenen-Urkunden (FG).
 // Ist die Sterne-Schwelle einer Urkunde erreicht, aber noch kein Vergabedatum
 // gesetzt, wird die Zelle grün markiert (= „fällig, aber noch nicht vergeben").
-function UrkundenTab({ players, isSuperAdmin }){
+function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
   // Datumsfeld-Key wie in der Verwaltung: awardDate_<Label mit _ statt Leerzeichen>.
   const dateKey=(label)=>`awardDate_${label.replace(/\s/g,"_")}`;
   // Spalten für die fünf Stufen je Bereich. stars = Schwelle, type = worauf sie sich
@@ -3891,9 +3891,9 @@ function UrkundenTab({ players, isSuperAdmin }){
 
   // ── Spaltenfilter (Textfilter je Spalte, außer Gruppe = Mehrfachauswahl) ──
   const [filter,setFilter]=useState({});   // colKey -> Suchtext
-  // Gruppen-Mehrfachauswahl: standardmäßig Profi, Fortgeschrittene, Anfänger.
+  // Gruppen-Mehrfachauswahl: standardmäßig Profis, Fortgeschrittene, Anfänger.
   const alleGruppen = [...new Set(zeilen.map(z=>z.group))].sort((a,b)=>a.localeCompare(b,"de"));
-  const [gruppenSel,setGruppenSel]=useState(["Profi","Fortgeschrittene","Anfänger"]);
+  const [gruppenSel,setGruppenSel]=useState(["Profis","Fortgeschrittene","Anfänger"]);
   const [gruppenOffen,setGruppenOffen]=useState(false);
   function toggleGruppe(g){
     setGruppenSel(prev=> prev.includes(g) ? prev.filter(x=>x!==g) : [...prev,g]);
@@ -4030,7 +4030,14 @@ function UrkundenTab({ players, isSuperAdmin }){
                   color: gruen?"#fff":(u.datum?"var(--text2)":"var(--text4)"),
                   fontWeight: u.datum?700:400,
                   fontVariantNumeric:"tabular-nums"}}>
-                  {u.datum ? fmtDatum(u.datum) : (u.faellig ? "fällig" : "–")}
+                  {u.datum
+                    ? fmtDatum(u.datum)
+                    : (u.faellig
+                        ? (onSpielerKlick
+                            ? <span onClick={()=>onSpielerKlick(z.id)} title="Zur Verwaltung springen und Urkundendatum eintragen"
+                                style={{cursor:"pointer",textDecoration:"underline",fontWeight:700}}>fällig</span>
+                            : "fällig")
+                        : "–")}
                 </td>;
               })}
             </tr>
@@ -4457,7 +4464,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     })()}
 
     {/* ── URKUNDEN TAB ── */}
-    {activeTab==="urkunden"&&<UrkundenTab players={players} isSuperAdmin={isSuperAdmin}/>}
+    {activeTab==="urkunden"&&<UrkundenTab players={players} isSuperAdmin={isSuperAdmin}
+      onSpielerKlick={isSuperAdmin ? (id)=>{ setVerwaltungJumpId(id); setActiveTab("verwaltung"); } : null}/>}
 
     {/* ── SCHLÄGER TAB ── */}
     {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
