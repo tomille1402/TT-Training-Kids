@@ -1,4 +1,4 @@
-// === TTC-App · Version 326 · erstellt 11.08.2026 ===
+// === TTC-App · Version 327 · erstellt 11.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "326";
+const APP_VERSION = "327";
 const APP_DATUM   = "11.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3821,6 +3821,179 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 }
 
 
+// ─── URKUNDEN-TAB ────────────────────────────────────────────────────────────
+// Übersicht aller aktiven Spieler (Funktion „Spieler") mit Sternen und den
+// Vergabedaten der Anfänger- (AF) und Fortgeschrittenen-Urkunden (FG).
+// Ist die Sterne-Schwelle einer Urkunde erreicht, aber noch kein Vergabedatum
+// gesetzt, wird die Zelle grün markiert (= „fällig, aber noch nicht vergeben").
+function UrkundenTab({ players, isSuperAdmin }){
+  // Datumsfeld-Key wie in der Verwaltung: awardDate_<Label mit _ statt Leerzeichen>.
+  const dateKey=(label)=>`awardDate_${label.replace(/\s/g,"_")}`;
+  // Spalten für die fünf Stufen je Bereich. stars = Schwelle, type = worauf sie sich
+  // bezieht (beginner → Anfängersterne, advanced → Gesamtsterne).
+  const stufen=[
+    {kurz:"Bronze",emoji:"🥉"},{kurz:"Silber",emoji:"🥈"},{kurz:"Gold",emoji:"🥇"},
+    {kurz:"Platin",emoji:"💎"},{kurz:"Diamant",emoji:"💠"},
+  ];
+  const afCols=BEGINNER_AWARDS.map((a,i)=>({ ...a, bereich:"AF", kurz:stufen[i].kurz, key:dateKey(a.label), type:"beginner" }));
+  const fgCols=ADVANCED_AWARDS.map((a,i)=>({ ...a, bereich:"FG", kurz:stufen[i].kurz, key:dateKey(a.label), type:"advanced" }));
+  const urkCols=[...afCols,...fgCols];
+
+  // Nur aktive Personen mit Funktion „Spieler" (keine Passiven, keine Erwachsenen/Gast-Sonderfälle).
+  const basis = players.filter(p=>{
+    if(p.status==="passiv") return false;
+    if(!p.roles?.player) return false;
+    const g=p.group||"Anfänger";
+    if(g==="Erwachsene") return false;
+    if(g==="Gast" && !isSuperAdmin) return false;
+    return true;
+  });
+
+  // Für jeden Spieler die Kennzahlen + je Urkunde: Datum (oder "") und ob fällig.
+  const zeilen = basis.map(p=>{
+    const {beginnerStars:af, advancedStars:fg, totalStars:sum}=getAward(p);
+    const urk={};
+    for(const c of urkCols){
+      const wert = c.type==="beginner" ? af : sum;   // AF nach Anfängersternen, FG nach Gesamtsternen
+      const erreicht = wert>=c.stars;
+      const datum = p[c.key] || "";
+      urk[c.bereich+"_"+c.kurz] = { datum, erreicht, faellig: erreicht && !datum };
+    }
+    return { id:p.id, name:`${p.firstName||""} ${p.lastName||""}`.trim(), group:p.group||"Anfänger", af, fg, sum, urk };
+  });
+
+  // ── Sortierung ──
+  const [sortCol,setSortCol]=useState("name");   // "group" | "name" | "af" | "fg" | "sum" | "AF_Bronze" ...
+  const [sortDir,setSortDir]=useState("asc");
+  function toggleSort(col){
+    if(sortCol===col){ setSortDir(d=>d==="asc"?"desc":"asc"); }
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+  const sortWert=(z,col)=>{
+    if(col==="group") return z.group.toLowerCase();
+    if(col==="name") return z.name.toLowerCase();
+    if(col==="af") return z.af;
+    if(col==="fg") return z.fg;
+    if(col==="sum") return z.sum;
+    // Urkunden-Spalte: nach Datum sortieren (leer ganz ans Ende), fällige zwischenrein
+    const u=z.urk[col];
+    if(!u) return "";
+    return u.datum || (u.faellig?"0000-fällig":"zzzz");
+  };
+
+  // ── Spaltenfilter (Textfilter je Spalte) ──
+  const [filter,setFilter]=useState({});   // colKey -> Suchtext
+  // Extra-Filter: nur Spieler zeigen, die mind. eine fällige (erreicht, nicht vergebene) Urkunde haben.
+  const [nurFaellig,setNurFaellig]=useState(false);
+
+  const textVon=(z,col)=>{
+    if(col==="group") return z.group;
+    if(col==="name") return z.name;
+    if(col==="af") return String(z.af);
+    if(col==="fg") return String(z.fg);
+    if(col==="sum") return String(z.sum);
+    const u=z.urk[col]; return u? (u.datum || (u.faellig?"fällig":"")) : "";
+  };
+
+  let gefiltert = zeilen.filter(z=>{
+    for(const col of Object.keys(filter)){
+      const f=(filter[col]||"").trim().toLowerCase();
+      if(!f) continue;
+      if(!textVon(z,col).toLowerCase().includes(f)) return false;
+    }
+    if(nurFaellig){
+      const hatFaellig=Object.values(z.urk).some(u=>u.faellig);
+      if(!hatFaellig) return false;
+    }
+    return true;
+  });
+  gefiltert.sort((a,b)=>{
+    const va=sortWert(a,sortCol), vb=sortWert(b,sortCol);
+    let r = (typeof va==="number" && typeof vb==="number") ? va-vb : String(va).localeCompare(String(vb),"de");
+    return sortDir==="asc" ? r : -r;
+  });
+
+  const faelligeGesamt = zeilen.reduce((s,z)=>s+Object.values(z.urk).filter(u=>u.faellig).length,0);
+
+  // ── Styles ──
+  const thBase={position:"sticky",top:0,zIndex:2,background:"var(--bg3)",fontSize:10,fontWeight:800,color:"var(--text2)",padding:"7px 8px",whiteSpace:"nowrap",borderBottom:"2px solid var(--border)",cursor:"pointer",userSelect:"none"};
+  const nameStick={position:"sticky",left:0,zIndex:3,background:"var(--bg2)",boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"};
+  const nameStickHead={...thBase,position:"sticky",left:0,top:0,zIndex:4,background:"var(--bg3)",boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"};
+  const td={fontSize:11,padding:"6px 8px",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap",textAlign:"center"};
+  const pfeil=(col)=> sortCol===col ? (sortDir==="asc"?" ▲":" ▼") : "";
+
+  const kopf=(col,inhalt,extra={})=> <th key={col} onClick={()=>toggleSort(col)} style={{...thBase,...extra}} title="Klicken zum Sortieren">{inhalt}{pfeil(col)}</th>;
+  const filterZelle=(col,extra={})=> <th key={col} style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 5px",borderBottom:"1px solid var(--border)",...extra}}>
+    <input value={filter[col]||""} onChange={e=>setFilter(f=>({...f,[col]:e.target.value}))}
+      placeholder="Filter" style={{width:"100%",minWidth:col==="name"?90:44,boxSizing:"border-box",padding:"3px 5px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
+  </th>;
+
+  return <div>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>📜 Urkunden ({gefiltert.length})</div>
+      <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,fontWeight:700,
+        background:nurFaellig?"#10b98122":"var(--bg2)",border:`1px solid ${nurFaellig?"#10b981":"var(--border2)"}`,borderRadius:9,padding:"6px 11px",color:nurFaellig?"#10b981":"var(--text2)"}}>
+        <input type="checkbox" checked={nurFaellig} onChange={e=>setNurFaellig(e.target.checked)} style={{width:15,height:15,cursor:"pointer"}}/>
+        Nur fällige Urkunden {faelligeGesamt>0 && <span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"0 7px",fontSize:11}}>{faelligeGesamt}</span>}
+      </label>
+      <span style={{fontSize:11,color:"var(--text4)"}}>Grün = Sterne erreicht, Urkunde noch nicht vergeben</span>
+    </div>
+
+    <div style={{overflow:"auto",maxHeight:"78vh",border:"1px solid var(--border)",borderRadius:12}}>
+      <table style={{borderCollapse:"separate",borderSpacing:0,width:"max-content",minWidth:"100%"}}>
+        <thead>
+          <tr>
+            {kopf("group","Gruppe")}
+            <th onClick={()=>toggleSort("name")} style={nameStickHead} title="Klicken zum Sortieren">Name{pfeil("name")}</th>
+            {kopf("af","⭐ AF")}
+            {kopf("fg","⭐ FG")}
+            {kopf("sum","⭐ Σ")}
+            {urkCols.map(c=> kopf(c.bereich+"_"+c.kurz, `${c.bereich} ${c.emoji}`, {borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined}))}
+          </tr>
+          <tr>
+            {filterZelle("group")}
+            <th style={{...nameStick,position:"sticky",left:0,top:28,zIndex:4,background:"var(--bg3)",padding:"3px 5px",borderBottom:"1px solid var(--border)"}}>
+              <input value={filter["name"]||""} onChange={e=>setFilter(f=>({...f,name:e.target.value}))}
+                placeholder="Filter" style={{width:"100%",minWidth:90,boxSizing:"border-box",padding:"3px 5px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",outline:"none"}}/>
+            </th>
+            {filterZelle("af")}
+            {filterZelle("fg")}
+            {filterZelle("sum")}
+            {urkCols.map(c=> filterZelle(c.bereich+"_"+c.kurz, {borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined}))}
+          </tr>
+        </thead>
+        <tbody>
+          {gefiltert.length===0 && <tr><td colSpan={5+urkCols.length} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Spieler gefunden.</td></tr>}
+          {gefiltert.map(z=>(
+            <tr key={z.id}>
+              <td style={{...td,textAlign:"left",color:"var(--text3)"}}>{z.group}</td>
+              <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{z.name}</td>
+              <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.af}</td>
+              <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.fg}</td>
+              <td style={{...td,fontWeight:800,color:"var(--text)"}}>{z.sum}</td>
+              {urkCols.map(c=>{
+                const u=z.urk[c.bereich+"_"+c.kurz];
+                const gruen = u.faellig;
+                return <td key={c.bereich+"_"+c.kurz} style={{...td,
+                  borderLeft:c.kurz==="Bronze"?"2px solid var(--border)":undefined,
+                  background: gruen?"#10b981":(u.datum?"transparent":"transparent"),
+                  color: gruen?"#fff":(u.datum?"var(--text2)":"var(--text4)"),
+                  fontWeight: u.datum?700:400}}>
+                  {u.datum ? u.datum : (u.faellig ? "fällig" : "–")}
+                </td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.5}}>
+      AF = Anfänger-Urkunden (nach Anfänger-Sternen), FG = Fortgeschrittenen-Urkunden (nach Gesamtsternen).
+      Stufen: 🥉 Bronze · 🥈 Silber · 🥇 Gold · 💎 Platin · 💠 Diamant. Datum = Tag der Urkundenvergabe (in der Verwaltung eingetragen).
+    </div>
+  </div>;
+}
+
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
     {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
@@ -3829,6 +4002,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"einheiten",    label:"Einheiten",     icon:"📝"},
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
+    {key:"urkunden",     label:"Urkunden",      icon:"📜"},
     {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
@@ -4230,6 +4404,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         </>}
       </div>;
     })()}
+
+    {/* ── URKUNDEN TAB ── */}
+    {activeTab==="urkunden"&&<UrkundenTab players={players} isSuperAdmin={isSuperAdmin}/>}
 
     {/* ── SCHLÄGER TAB ── */}
     {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
