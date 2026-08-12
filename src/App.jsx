@@ -1,4 +1,4 @@
-// === TTC-App · Version 330 · erstellt 11.08.2026 ===
+// === TTC-App · Version 332 · erstellt 13.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "330";
-const APP_DATUM   = "11.08.2026";
+const APP_VERSION = "332";
+const APP_DATUM   = "13.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1014,11 +1014,20 @@ const TURNIER_SICHTBAR_ROLLEN = [
   ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],
 ];
 const KONKURRENZEN = [
-  "Herren","Herren A","Herren B","Doppel gemischt","Doppel Herren","Doppel Nachwuchs",
+  "Herren","Herren A","Herren B",
   "Nachwuchs","Mädchen 9","Mädchen 11","Mädchen 13","Mädchen 15",
   "Jungen 9","Jungen 11","Jungen 13","Jungen 15",
 ];
 const VORGABE_ARTEN = ["QTTR","Mannschaft"];
+
+// Ist eine Konkurrenz ein Doppel? Primär über das Feld k.modus ("Einzel"/"Doppel");
+// für Altbestände zusätzlich über den Namen ("Doppel …") erkannt.
+function istDoppelKonk(konk){
+  if(!konk) return false;
+  if(konk.modus==="Doppel") return true;
+  if(konk.modus==="Einzel") return false;
+  return (konk.name||"").startsWith("Doppel");
+}
 
 // Welche Personen kommen für eine Konkurrenz in Frage? Grobfilter nach Erwachsene/
 // Nachwuchs und Geschlecht; die genaue Auswahl trifft der Organisator manuell.
@@ -1445,7 +1454,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
-      key, name:neueKonk, art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
+      key, name:neueKonk, modus:(neueKonk||"").startsWith("Doppel")?"Doppel":"Einzel", art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
       diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[], schiedsrichterAktiv:false, schiedsrichter:[],
     }]}));
   }
@@ -1525,6 +1534,15 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                     <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{k.name}</div>
                     <button onClick={()=>delKonk(k.key)} style={miniBtn("#ef4444")}>entfernen</button>
                   </div>
+
+                  {/* Einzel oder Doppel — bestimmt, ob einzelne Spieler oder Zweier-Teams
+                      gegeneinander antreten. Bei „Doppel" greift die Doppel-Team-Logik. */}
+                  <Feld label="Einzel / Doppel" klein>
+                    <select value={k.modus || (istDoppelKonk(k)?"Doppel":"Einzel")} onChange={e=>updKonk(k.key,{modus:e.target.value})} style={{...selT2,width:"100%"}}>
+                      <option value="Einzel">Einzel</option>
+                      <option value="Doppel">Doppel</option>
+                    </select>
+                  </Feld>
 
                   {/* Turnierart je Konkurrenz (kann pro Konkurrenz unterschiedlich sein) */}
                   <Feld label="Art" klein>
@@ -2313,12 +2331,39 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       const belegt=new Set(Object.values(tischMapG));
       // Badges: Spielnummer, Konkurrenz (bei mehreren), Gruppe (bei mehreren)
       const badge=(txt,farbe)=><span style={{fontSize:10,fontWeight:700,color:farbe||"var(--text4)",background:"var(--bg3)",borderRadius:5,padding:"1px 6px"}}>{txt}</span>;
-      const nameZeile=(x)=><span style={{flex:1,fontSize:12,fontWeight:600,display:"flex",flexWrap:"wrap",alignItems:"center",gap:5}}>
-        {badge(`#${x.nr}`,"var(--text3)")}
-        {x.mehrKonk && badge(x.konkName,"#8b5cf6")}
-        <span>{nameVon(x.a)} <span style={{color:"var(--text4)"}}>vs</span> {nameVon(x.b)}</span>
-        {x.mehrGr && x.key.startsWith("g_") && badge(`Gr. ${(x.gi??0)+1}`)}
-      </span>;
+      // QTTR-Summe einer Einheit (Doppel = Summe beider Spieler; Einzel = QTTR des Spielers).
+      const qttrEinheit=(id)=>{
+        const tm=teamVonId(id);
+        if(tm){ const a=qttrVon(spielerVon(tm.s1)), b=qttrVon(spielerVon(tm.s2)); return (a==null||b==null)?null:(a+b); }
+        const q=qttrVon(spielerVon(id)); return q==null?null:q;
+      };
+      const nameZeile=(x)=>{
+        const konkX=(t.konkurrenzen||[]).find(k=>k.key===x.konkKey);
+        const doppel=istDoppelKonk(konkX);
+        // Vorgabe (nur wenn Konkurrenz als Vorgabeturnier läuft): Punkte pro Satz für den
+        // Schwächeren, im Doppel auf Basis der QTTR-Summe des Teams.
+        let vorgabe=null;
+        if(konkX && konkX.vorgabe==="ja" && (konkX.vorgabeArt||"QTTR")==="QTTR"){
+          const qa=qttrEinheit(x.a), qb=qttrEinheit(x.b);
+          if(qa!=null && qb!=null){
+            const pts=vorgabePunkte(qa,qb,konkX.diffQTTR,konkX.maxVorgabe);
+            if(pts>0) vorgabe = qa<qb ? {seite:"a",pts} : {seite:"b",pts};
+          }
+        }
+        // QTTR-Summe je Doppel-Team (analog zum Abschnitt Doppel-Paarungen).
+        const sumA=doppel?qttrEinheit(x.a):null, sumB=doppel?qttrEinheit(x.b):null;
+        const teil=(id,sum,vorSeite)=><span>
+          {nameVon(id)}
+          {sum!=null && <span style={{color:"#8b5cf6",fontWeight:700}}> Σ{sum}</span>}
+          {vorgabe && vorgabe.seite===vorSeite && <span style={{color:"#ef4444",fontWeight:800}}> +{vorgabe.pts}</span>}
+        </span>;
+        return <span style={{flex:1,fontSize:12,fontWeight:600,display:"flex",flexWrap:"wrap",alignItems:"center",gap:5}}>
+          {badge(`#${x.nr}`,"var(--text3)")}
+          {x.mehrKonk && badge(x.konkName,"#8b5cf6")}
+          <span>{teil(x.a,sumA,"a")} <span style={{color:"var(--text4)"}}>vs</span> {teil(x.b,sumB,"b")}</span>
+          {x.mehrGr && x.key.startsWith("g_") && badge(`Gr. ${(x.gi??0)+1}`)}
+        </span>;
+      };
       const kopf=(offen,setOffen,titel,farbe)=>(
         <div onClick={()=>setOffen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}}>
           <span style={{fontSize:11,color:"var(--text3)",transform:offen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
@@ -3105,7 +3150,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   // Doppel-Modus: Bei Doppel-Konkurrenzen treten Zweier-Teams als Einheit an.
   // Die Teams werden manuell aus den Teilnehmern gekoppelt und in konk.doppelTeams
   // gespeichert: [{id, s1, s2}]. Im Tableau sind die „Teilnehmer" dann die Team-IDs.
-  const istDoppel = (konk.name||"").startsWith("Doppel");
+  const istDoppel = istDoppelKonk(konk);
   const doppelTeams = konk.doppelTeams || [];
   const teamVon=(tid)=> doppelTeams.find(t=>t.id===tid);
 
@@ -3448,6 +3493,8 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
   const slotA = (slotIdxA!=null && slotIdxA>=0) ? slotIdxA : (istErstrunde ? si*2   : null);
   const slotB = (slotIdxB!=null && slotIdxB>=0) ? slotIdxB : (istErstrunde ? si*2+1 : null);
+  // Welche Doppel-Namenszeile ist zur vollen Anzeige aufgeklappt (Slot-Index oder null)?
+  const [expandiert,setExpandiert]=useState(null);
 
   const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
   const freilos = (sp.a && !sp.b) || (sp.b && !sp.a);
@@ -3457,14 +3504,38 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   const zeile=(id,slotIdx,istSieger,vorgabePunkte)=>{
     const q=qttrVon(spielerVon(id));
     const markiert = istErstrunde && tippSlot===slotIdx;
+    const voll = id ? nameVon(id) : (istErstrunde && freilos ? "Freilos" : "—");
+    // Doppel erkennt man am Schrägstrich im Namen ("… / …"). Dann zweizeilig umbrechen:
+    // nach dem Schrägstrich in die zweite Zeile. Antippen zeigt den vollen Inhalt.
+    const istDoppelName = typeof voll==="string" && voll.includes(" / ");
+    const offen = expandiert===slotIdx;
+    const nameKlick=(e)=>{
+      if(istErstrunde && isAdmin){ slotAntippen(slotIdx); return; }
+      if(istDoppelName){ e.stopPropagation(); setExpandiert(o=>o===slotIdx?null:slotIdx); }
+    };
+    let nameInhalt;
+    if(istDoppelName){
+      const [teil1, teil2] = voll.split(" / ");
+      nameInhalt = <span style={{display:"flex",flexDirection:"column",lineHeight:1.15,
+        whiteSpace: offen?"normal":"nowrap", overflow: offen?"visible":"hidden", textOverflow: offen?"clip":"ellipsis",
+        wordBreak: offen?"break-word":"normal"}}>
+        <span style={{overflow:offen?"visible":"hidden",textOverflow:offen?"clip":"ellipsis",whiteSpace:offen?"normal":"nowrap"}}>{teil1} /</span>
+        <span style={{overflow:offen?"visible":"hidden",textOverflow:offen?"clip":"ellipsis",whiteSpace:offen?"normal":"nowrap"}}>{teil2}</span>
+      </span>;
+    } else {
+      nameInhalt = voll;
+    }
     return <div
       onClick={istErstrunde&&isAdmin?()=>slotAntippen(slotIdx):undefined}
       style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,padding:"4px 7px",
         background: markiert?"#8b5cf6": istSieger?"#10b98118":"var(--bg2)",
-        borderRadius:5,cursor:(istErstrunde&&isAdmin)?"pointer":"default",
+        borderRadius:5,cursor:(istErstrunde&&isAdmin)?"pointer":(istDoppelName?"pointer":"default"),
         border: markiert?"1px solid #8b5cf6":"1px solid transparent"}}>
-      <span style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>
-        {id ? nameVon(id) : (istErstrunde && freilos ? "Freilos" : "—")}
+      <span onClick={nameKlick} title={istDoppelName?voll:undefined}
+        style={{fontSize:11,fontWeight:istSieger?800:600,color:markiert?"#fff":(id?"var(--text)":"var(--text4)"),
+          maxWidth: offen?"none":160, minWidth:0, flex:"1 1 auto",
+          ...(istDoppelName?{}:{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"})}}>
+        {nameInhalt}
       </span>
       <span style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
         {id && vorgabePunkte>0 && <span title="Vorgabe pro Satz" style={{fontSize:9,fontWeight:800,color:markiert?"#fff":"#f59e0b",background:markiert?"transparent":"#f59e0b22",borderRadius:4,padding:"0 4px"}}>+{vorgabePunkte}</span>}
@@ -3942,7 +4013,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
   const W_STAR=34;    // Breite der Sternspalten (AF/FG/Σ)
   const W_DATE=48;    // Breite der Urkunden-/Datumsspalten
   const W_NAME=112;   // Namensspalte (~30% schmaler als vorher ~160)
-  const W_GROUP=92;
+  const W_GROUP=64;   // schmal; „Fortgeschrittene" wird zweizeilig umgebrochen
   const pfeil=(col)=> sortCol===col ? (sortDir==="asc"?" ▲":" ▼") : "";
 
   const kopf=(col,inhalt,extra={})=> <th key={col} onClick={()=>toggleSort(col)} style={{...thBase,...extra}} title="Klicken zum Sortieren">{inhalt}{pfeil(col)}</th>;
@@ -4016,7 +4087,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
           {gefiltert.length===0 && <tr><td colSpan={5+urkCols.length} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Spieler gefunden.</td></tr>}
           {gefiltert.map(z=>(
             <tr key={z.id}>
-              <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2}}>{z.group}</td>
+              <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",hyphens:"manual",lineHeight:1.2}}>{z.group==="Fortgeschrittene"?"Fortge\u00ADschrittene":z.group}</td>
               <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,maxWidth:W_NAME}}>{z.name}</td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.af}</td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.fg}</td>
@@ -6155,7 +6226,32 @@ function TtrUpload({ showToast }){
         stichtage:merged.stichtage, personen:merged.personen,
         pdfUrl:pdfUrl||"", pdfName:file.name, lastUpdated:ts
       });
-      showToast(`TTR-Liste gespeichert: ${merged.personen.length} Personen, ${merged.stichtage.length} Quartale`,"📊");
+      // Punkt 3: aktuellen QTTR-Wert bei allen Spielern aktualisieren, die sich in der
+      // (neuen) TTR-Liste wiederfinden. Spieler ohne TTR-Eintrag bleiben unverändert
+      // (dort gilt der ggf. manuell eingetragene Wert weiter).
+      let aktualisiert=0;
+      try{
+        const stichtagNeu=merged.stichtage[0]||null;
+        const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
+        // TTR-Werte per normalisiertem Namen indexieren.
+        const ttrIdx={};
+        for(const tp of (merged.personen||[])){
+          const w=ttrNum(tp.werte?.[stichtagNeu]);
+          if(w!=null) ttrIdx[norm(tp.vorname)+"|"+norm(tp.nachname)]=w;
+        }
+        const snap=await getDocs(collection(db,"players"));
+        const updates=[];
+        snap.forEach(d=>{
+          const p=d.data();
+          const w=ttrIdx[norm(p.firstName)+"|"+norm(p.lastName)];
+          if(w!=null && String(p.aktuellerQttr??"")!==String(w)){
+            updates.push(updateDoc(doc(db,"players",d.id),{aktuellerQttr:w}));
+          }
+        });
+        await Promise.all(updates);
+        aktualisiert=updates.length;
+      }catch(e){ /* QTTR-Sync ist Zusatz; TTR-Liste ist bereits gespeichert */ }
+      showToast(`TTR-Liste gespeichert: ${merged.personen.length} Personen, ${merged.stichtage.length} Quartale · ${aktualisiert} QTTR-Werte aktualisiert`,"📊");
       reload();
     }catch(e){ showToast("Fehler: "+(e.message||e),"❌"); }
     finally{ setUploading(false); }
@@ -6199,6 +6295,26 @@ function TtrUpload({ showToast }){
 
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
+  // TTR-Liste (für Vorbelegung/Anzeige des aktuellen QTTR-Werts je Spieler).
+  const [ttrDaten,setTtrDaten]=useState({stichtage:[],personen:[]});
+  useEffect(()=>{
+    let ab=false;
+    getDoc(doc(db,"config","ttrListe")).then(s=>{
+      if(ab||!s.exists()) return;
+      const d=s.data(); setTtrDaten({stichtage:d.stichtage||[], personen:d.personen||[]});
+    }).catch(()=>{});
+    return ()=>{ab=true;};
+  },[]);
+  const ttrStichtagV = ttrDaten.stichtage[0]||null;
+  // Aktueller QTTR aus der TTR-Liste (per Name), oder null wenn dort nicht vorhanden.
+  const qttrAusTtr=(p)=>{
+    if(!p||!ttrStichtagV) return null;
+    const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
+    const t=(ttrDaten.personen||[]).find(x=>norm(x.vorname)===norm(p.firstName)&&norm(x.nachname)===norm(p.lastName));
+    if(!t) return null;
+    const w=ttrNum(t.werte?.[ttrStichtagV]);
+    return (w==null)?null:w;
+  };
 
   // Sync editPlayer wenn sich Spielerdaten in Firestore ändern (z.B. nach Vergabe-Löschen)
   useEffect(()=>{
@@ -6532,6 +6648,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
+        aktuellerQttr: (()=>{ const v=editPlayer.aktuellerQttr; if(v===""||v==null) return ""; const n=Number(v); return Number.isNaN(n)?"":n; })(),
         mfClickTT:     editPlayer.mfClickTT||[],
         mannschaftsfuehrerTeam: editPlayer.mannschaftsfuehrerTeam||"",
         ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
@@ -7573,11 +7690,28 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   </select>
                 </div>
               </div>
-              <div style={{marginBottom:14}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Status</label>
-                <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))}>
-                  <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
-                </select>
+              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:120}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Status</label>
+                  <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))} style={{width:"100%"}}>
+                    <option value="aktiv">Aktiv</option><option value="passiv">Passiv</option>
+                  </select>
+                </div>
+                <div style={{flex:1,minWidth:120}}>
+                  {/* Aktueller QTTR-Wert: automatisch aus TTR-Reiter vorbelegt; für Spieler
+                      ohne TTR-Eintrag (z.B. Gäste) leer und manuell eingebbar. */}
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Aktueller QTTR-Wert</label>
+                  {(()=>{
+                    const ttrWert=qttrAusTtr(editPlayer);
+                    const gespeichert = editPlayer.aktuellerQttr;
+                    const anzeige = (gespeichert!=null && gespeichert!=="") ? gespeichert : (ttrWert!=null?ttrWert:"");
+                    return <input type="number" inputMode="numeric" value={anzeige}
+                      onChange={e=>setEditPlayer(prev=>({...prev,aktuellerQttr:e.target.value}))}
+                      placeholder={ttrWert!=null?String(ttrWert):"—"}
+                      style={{width:"100%",boxSizing:"border-box"}}/>;
+                  })()}
+                  {qttrAusTtr(editPlayer)!=null && <div style={{fontSize:9,color:"var(--text4)",marginTop:2}}>aus TTR-Liste ({ttrStichtagV})</div>}
+                </div>
               </div>
               {/* MF Click-tt (Mehrfachauswahl) + Mannschaftsführer (Einzelauswahl) — nebeneinander */}
               <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
