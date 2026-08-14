@@ -1,4 +1,4 @@
-// === TTC-App · Version 337 · erstellt 14.08.2026 ===
+// === TTC-App · Version 338 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "337";
+const APP_VERSION = "338";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1513,6 +1513,11 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
   // P6: Welche Konkurrenz-Boxen sind aufgeklappt? Standard: alle eingeklappt (leeres Set).
   const [konkOffen,setKonkOffen]=useState({});
   const toggleKonkOffen=(key)=>setKonkOffen(prev=>({...prev,[key]:!prev[key]}));
+  // Schiedsrichter-Auswahl: Sortierung (Vor-/Nachname) und Kategorie-Filter.
+  const [schiriSort,setSchiriSort]=useState("vorname");   // "vorname" | "nachname"
+  // Filter unabhängig an-/abwählbar; leer = alle anzeigen.
+  const [schiriFilter,setSchiriFilter]=useState({nachwuchs:false,erwachsene:false,eltern:false,trainer:false});
+  const toggleSchiriFilter=(k)=>setSchiriFilter(prev=>({...prev,[k]:!prev[k]}));
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
@@ -1555,17 +1560,59 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
       {/* P4: Schiedsrichter turnierweit — sie hängen an den Tischen und gelten
           konkurrenzübergreifend. Auswahl hier zentral, nicht mehr je Konkurrenz. */}
       {(()=>{
+        // Kategorie einer Spieler-Gruppe: bestimmt die Zuordnung zu den Filter-Buttons.
+        //   Nachwuchs  = Profis, Fortgeschrittene, Anfänger
+        //   Erwachsene = Gruppe Erwachsene
+        //   Trainer    = Gruppe Trainer
+        const katVonGruppe=(g)=>{
+          if(g==="Erwachsene") return "erwachsene";
+          if(g==="Trainer") return "trainer";
+          if(g==="Profis"||g==="Fortgeschrittene"||g==="Anfänger") return "nachwuchs";
+          return null; // z. B. Gast → fällt raus
+        };
         const spielerKand=(players||[]).filter(p=>{
           if(p.status==="passiv") return false;
           if(p.group==="Gast") return false;
           return true;
-        }).map(p=>({id:p.id,firstName:p.firstName||"",lastName:p.lastName||"",istEltern:false}));
-        const elternKand=istNachwuchsturnier(t)?elternSchiriKandidaten(players):[];
-        const kandidaten=[...spielerKand,...elternKand].sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
+        }).map(p=>({id:p.id,firstName:p.firstName||"",lastName:p.lastName||"",istEltern:false,kat:katVonGruppe(p.group)}))
+          .filter(p=>p.kat); // ohne zuordenbare Kategorie nicht anzeigen
+        // Namen der echten Spieler-Kandidaten, um Eltern-Duplikate zu entfernen (P1).
+        const spielerNamen=new Set(spielerKand.map(p=>`${p.firstName} ${p.lastName}`.trim().toLowerCase()));
+        // Eltern nur bei Nachwuchsturnier; „Eltern" = nicht in Gruppe Erwachsene
+        // (das stellt elternSchiriKandidaten bereits sicher). P1: bereits als
+        // Spieler vorhandene Personen NICHT zusätzlich als Eltern-Eintrag zeigen.
+        const elternKand=(istNachwuchsturnier(t)?elternSchiriKandidaten(players):[])
+          .filter(e=>!spielerNamen.has(`${e.firstName} ${e.lastName}`.trim().toLowerCase()))
+          .map(e=>({...e,kat:"eltern"}));
+        let kandidaten=[...spielerKand,...elternKand];
+        // Filter (unabhängig kombinierbar; keiner aktiv = alle anzeigen)
+        const filterAktiv=Object.values(schiriFilter).some(Boolean);
+        if(filterAktiv) kandidaten=kandidaten.filter(p=>schiriFilter[p.kat]);
+        // Sortierung nach Vor- oder Nachname
+        kandidaten.sort((a,b)=>{
+          const pa=schiriSort==="nachname"?[a.lastName,a.firstName]:[a.firstName,a.lastName];
+          const pb=schiriSort==="nachname"?[b.lastName,b.firstName]:[b.firstName,b.lastName];
+          return (pa[0]||"").localeCompare(pb[0]||"") || (pa[1]||"").localeCompare(pb[1]||"");
+        });
         const drinnen=(id)=>(t.schiedsrichter||[]).includes(id);
         const toggle=(id)=>{
           const cur=t.schiedsrichter||[];
           set("schiedsrichter", drinnen(id)?cur.filter(x=>x!==id):[...cur,id]);
+        };
+        const filterBtn=(key,label)=>{
+          const an=schiriFilter[key];
+          return <span onClick={()=>toggleSchiriFilter(key)} style={{
+            padding:"4px 10px",borderRadius:14,fontSize:11,fontWeight:700,cursor:"pointer",userSelect:"none",
+            border:an?"1px solid #0ea5e9":"1px solid var(--border2)",
+            background:an?"#0ea5e9":"var(--bg2)",color:an?"#fff":"var(--text3)",
+          }}>{label}</span>;
+        };
+        const sortBtn=(key,label)=>{
+          const an=schiriSort===key;
+          return <button onClick={()=>setSchiriSort(key)} style={{
+            padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",borderRadius:6,
+            background:an?"#8b5cf6":"var(--bg2)",color:an?"#fff":"var(--text3)",
+          }}>{label}</button>;
         };
         return <Feld label="Schiedsrichter (turnierweit)">
           <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>
@@ -1581,6 +1628,20 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
             <summary style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"#0ea5e9"}}>
               Schiedsrichter auswählen ({(t.schiedsrichter||[]).length})
             </summary>
+            {/* Sortierung */}
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"var(--text4)",fontWeight:700}}>Sortieren:</span>
+              {sortBtn("vorname","Vorname")}
+              {sortBtn("nachname","Nachname")}
+            </div>
+            {/* Kategorie-Filter (unabhängig) */}
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"var(--text4)",fontWeight:700}}>Filter:</span>
+              {filterBtn("nachwuchs","Nachwuchs")}
+              {filterBtn("erwachsene","Erwachsene")}
+              {istNachwuchsturnier(t) && filterBtn("eltern","Eltern")}
+              {filterBtn("trainer","Trainer")}
+            </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
               {kandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden Personen gefunden.</div>}
               {kandidaten.map(p=>{
