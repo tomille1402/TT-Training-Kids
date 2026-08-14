@@ -1,4 +1,4 @@
-// === TTC-App · Version 338 · erstellt 14.08.2026 ===
+// === TTC-App · Version 339 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "338";
+const APP_VERSION = "339";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1091,16 +1091,28 @@ function elternSchiriKandidaten(players){
 // können auch sie regulär gesetzt, gruppiert und mit Vorgabe berechnet werden.
 const QTTR_STANDARD = 500;
 
-// QTTR-Wert einer Person aus der TTR-Liste. Ist kein echter Wert hinterlegt, wird
-// der Standardwert (500) zurückgegeben, damit überall ein Wert vorhanden ist.
+// QTTR-Wert einer Person. Priorität:
+//   1) manuell in der Verwaltung gepflegter Wert (p.aktuellerQttr) – z. B. für Anfänger
+//      ohne echten TTR-Eintrag; dieser Wert hat immer Vorrang.
+//   2) Wert aus der TTR-Liste (neuester Stichtag), Matching per Name.
+//   3) Standardwert (500), damit überall ein Wert vorhanden ist.
 function qttrVonPerson(p, ttrPersonen, ttrStichtag){
   if(!p) return QTTR_STANDARD;
-  if(!ttrStichtag) return QTTR_STANDARD;
-  const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
-  const vn=norm(p.firstName), nn=norm(p.lastName);
-  const t=(ttrPersonen||[]).find(x=>norm(x.vorname)===vn && norm(x.nachname)===nn);
-  const wert = t ? ttrNum(t.werte?.[ttrStichtag]) : null;
-  return (wert==null) ? QTTR_STANDARD : wert;
+  // 1) manuell vergebener Wert aus der Spielerverwaltung
+  if(p.aktuellerQttr!=null && p.aktuellerQttr!==""){
+    const manuell=ttrNum(p.aktuellerQttr);
+    if(manuell!=null) return manuell;
+  }
+  // 2) Wert aus der TTR-Liste
+  if(ttrStichtag){
+    const norm=s=>(s||"").toLowerCase().replace(/\s+/g,"");
+    const vn=norm(p.firstName), nn=norm(p.lastName);
+    const t=(ttrPersonen||[]).find(x=>norm(x.vorname)===vn && norm(x.nachname)===nn);
+    const wert = t ? ttrNum(t.werte?.[ttrStichtag]) : null;
+    if(wert!=null) return wert;
+  }
+  // 3) Standard
+  return QTTR_STANDARD;
 }
 
 // Vorgabe-Punkte pro Satz aus QTTR-Differenz: je <diff> Punkte Unterschied 1 Punkt
