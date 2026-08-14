@@ -1,4 +1,4 @@
-// === TTC-App · Version 332 · erstellt 13.08.2026 ===
+// === TTC-App · Version 334 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,8 +19,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "332";
-const APP_DATUM   = "13.08.2026";
+const APP_VERSION = "334";
+const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -3423,9 +3423,9 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
       Tipp: Eine Position in der ersten Runde antippen, dann eine zweite — die beiden {istDoppel?"Teams":"Spieler"} tauschen den Platz.
     </div>}
-    {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+    {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
-      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{istDoppel?" (nach QTTR-Summe des Teams)":""}</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{istDoppel?" (nach QTTR-Summe des Teams)":""}{konk.maxVorgabe?` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
     </div>}
 
     {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
@@ -3456,7 +3456,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
-                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)}/>
+                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr}/>
                 </div>;
               })}
             </div>
@@ -3487,7 +3487,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null, qttrEinheit=null }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung). Beim einfachen KO ergeben sie
   // sich aus der Spielposition (si*2 / si*2+1); beim doppelten KO werden sie explizit
   // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
@@ -3502,7 +3502,8 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   const abgeschlossen = ko_sieger(sp.saetze)!=null;
 
   const zeile=(id,slotIdx,istSieger,vorgabePunkte)=>{
-    const q=qttrVon(spielerVon(id));
+    // QTTR der Einheit: bei Doppel die Team-Summe (Σ), sonst der Spieler-QTTR.
+    const qEinheit = qttrEinheit ? qttrEinheit(id) : qttrVon(spielerVon(id));
     const markiert = istErstrunde && tippSlot===slotIdx;
     const voll = id ? nameVon(id) : (istErstrunde && freilos ? "Freilos" : "—");
     // Doppel erkennt man am Schrägstrich im Namen ("… / …"). Dann zweizeilig umbrechen:
@@ -3539,7 +3540,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
       </span>
       <span style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
         {id && vorgabePunkte>0 && <span title="Vorgabe pro Satz" style={{fontSize:9,fontWeight:800,color:markiert?"#fff":"#f59e0b",background:markiert?"transparent":"#f59e0b22",borderRadius:4,padding:"0 4px"}}>+{vorgabePunkte}</span>}
-        {id && q!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)"}}>{q}</span>}
+        {id && qEinheit!=null && <span style={{fontSize:9,color:markiert?"#fff":"var(--text4)"}}>{istDoppelName?`Σ${qEinheit}`:qEinheit}</span>}
         {istErstrunde && isAdmin && id && slotLeeren &&
           <span onClick={(e)=>{e.stopPropagation(); slotLeeren(slotIdx);}} title="Spieler entfernen"
             style={{cursor:"pointer",color:markiert?"#fff":"#ef4444",fontSize:11,fontWeight:700,lineHeight:1}}>✕</span>}
@@ -3700,7 +3701,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
       slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
       setSatz={setSatz} toggleFix={toggleFix}
-      slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)}/>;
+      slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)} qttrEinheit={qttrNumVon2}/>;
   }
 
   const BOX=124;                       // Höhe einer Spiel-Box (wie einfaches KO)
@@ -3866,7 +3867,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     </div>}
     {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
-      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{konk.maxVorgabe?` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
     </div>}
 
     <div style={{display:"flex",gap:16,marginBottom:8}}>
@@ -11661,6 +11662,63 @@ function AufstellungUpload({showToast}) {
   </div>;
 }
 
+// pdf.js dynamisch laden (CDN) und ein PDF in Textzeilen umwandeln. Wird u.a. für
+// das Auslesen der Spielcode-PDFs genutzt.
+async function ladePdfJs(){
+  if(window.pdfjsLib) return window.pdfjsLib;
+  await new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+    document.head.appendChild(s);
+  });
+  if(window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  return window.pdfjsLib;
+}
+async function pdfDataUrlZuZeilen(dataUrl){
+  const pdfjs=await ladePdfJs();
+  if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+  const b64=(dataUrl.split(",")[1])||"";
+  const bin=atob(b64); const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  const pdf=await pdfjs.getDocument({data:bytes}).promise;
+  const zeilen=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const tc=await page.getTextContent();
+    const lines={};
+    for(const it of tc.items){
+      const y=Math.round(it.transform[5]); const x=it.transform[4];
+      (lines[y]=lines[y]||[]).push({x,s:it.str});
+    }
+    const ys=Object.keys(lines).map(Number).sort((a,b)=>b-a);
+    for(const y of ys){ zeilen.push(lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")); }
+  }
+  return zeilen;
+}
+// Aus den Zeilen einer Spielcode-PDF die Spieltage extrahieren:
+// {datum:"YYYY-MM-DD", gegner, code}. Erkennung: Zeile beginnt mit Datum, endet mit
+// dem 10–14-stelligen Spielcode (A–Z/0–9). Kopf-/Fußzeilen werden übersprungen.
+function parseSpielcodeZeilen(zeilen){
+  const ergebnis=[];
+  const codeRe=/([A-Z0-9]{10,14})\s*$/;
+  const datumRe=/(\d{2})\.(\d{2})\.(\d{4})/;
+  for(const z of (zeilen||[])){
+    const zt=String(z||"").replace(/\s+/g," ").trim();
+    const dm=zt.match(datumRe);
+    if(!dm || dm.index>6) continue;          // Datum muss am Zeilenanfang stehen
+    const cm=zt.match(codeRe);
+    if(!cm) continue;
+    const code=cm[1];
+    const datum=`${dm[3]}-${dm[2]}-${dm[1]}`;
+    let rest=zt.slice(0,cm.index).trim();
+    const nzIdx=rest.lastIndexOf("Niederzeuzheim");
+    const gegner = nzIdx>=0 ? rest.slice(nzIdx+"Niederzeuzheim".length).trim() : rest;
+    ergebnis.push({datum, gegner, code});
+  }
+  return ergebnis;
+}
+
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
@@ -11687,7 +11745,35 @@ function MannschaftenVerwaltung({showToast}) {
       const updated = {...teamFiles, [fileKey]:dataUrl, [`${fileKey}_name`]:file.name};
       await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
       setTeamFiles(updated);
-      showToast(`${file.name} hochgeladen`,"📎");
+      // Bei Spielcode-PDFs (Key endet auf "_code"): Spielcodes auslesen und je Mannschaft
+      // strukturiert speichern, damit der Vereinsspielplan sie den Spielen zuordnen kann.
+      if(fileKey.endsWith("_code") && file.name.toLowerCase().endsWith(".pdf")){
+        try{
+          // teamId aus fileKey "{seasonSlug}_{teamId}_code" ableiten.
+          const mid = fileKey.slice(0, -"_code".length).slice(seasonSlug.length+1);
+          const team = (seasonTeams||[]).find(t=>String(t.id)===String(mid));
+          const zeilen = await pdfDataUrlZuZeilen(dataUrl);
+          const codes = parseSpielcodeZeilen(zeilen);
+          if(codes.length>0){
+            // Ablage: config/spielcodes → { [seasonSlug]: { [teamName]: { [datum]: {code,gegner} } } }
+            const snap = await getDoc(doc(db,"config","spielcodes")).catch(()=>null);
+            const bestehend = (snap && snap.exists()) ? snap.data() : {};
+            const proSaison = {...(bestehend[seasonSlug]||{})};
+            const teamName = team?.name || mid;   // z.B. "Herren 1"
+            const eintrag = {};
+            for(const c of codes) eintrag[c.datum] = { code:c.code, gegner:c.gegner };
+            proSaison[teamName] = eintrag;
+            await setDoc(doc(db,"config","spielcodes"), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
+            showToast(`${file.name}: ${codes.length} Spielcodes übernommen`,"🎫");
+          } else {
+            showToast(`${file.name} hochgeladen (keine Spielcodes erkannt)`,"📎");
+          }
+        }catch(err){
+          showToast(`${file.name} hochgeladen (Spielcodes nicht lesbar)`,"📎");
+        }
+      } else {
+        showToast(`${file.name} hochgeladen`,"📎");
+      }
       setUploading(p=>({...p,[fileKey]:false}));
     };
     reader.readAsDataURL(file);
@@ -13627,6 +13713,7 @@ const SPIELPLAN_COLS = [
   {key:"gegner",    label:"Gegner",      w:"auto"},
   {key:"ergebnis",  label:"Ergebnis",    w:"64px"},
   {key:"aenderung", label:"Änd.",        w:"50px"},
+  {key:"spielcode", label:"Spielcode",   w:"110px"},
 ];
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
@@ -13918,6 +14005,36 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [seasons,setSeasons]=useState([]);
   const [selSeason,setSelSeason]=useState("");
   const [pdfUrl,setPdfUrl]=useState(null);
+  // Spielcodes je Saison/Mannschaft/Datum (aus den hochgeladenen Spielcode-PDFs).
+  const [spielcodes,setSpielcodes]=useState({});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","spielcodes"),snap=>{
+      setSpielcodes(snap.exists()?snap.data():{});
+    },()=>{});
+    return unsub;
+  },[]);
+  // Liefert den Spielcode für ein Spiel (Heimspiel) über Saison-Slug + Mannschaft + Datum.
+  const spielcodeVon=(s)=>{
+    if(!s || s.ort!=="Heim" || !s.datum) return "";
+    const m=(selSeason||"").match(/(\d{4})_(\d{4})/);
+    const kandidatenSaison=[];
+    if(m) kandidatenSaison.push(`${m[1]}_${m[2].slice(2)}`, `${m[1]}_${m[2]}`);
+    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielcodes||{});
+    // Die Spielcode-PDFs werden unter dem Team-Namen der Saison-Definition abgelegt
+    // (z.B. "Erwachsene I"), der Spielplan nutzt aber "Herren 1". Beide Schreibweisen
+    // sowie die Rohbezeichnung als Suchschlüssel probieren.
+    const namensKandidaten=[s.mannschaft];
+    const hm=String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
+    if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) namensKandidaten.push(`Erwachsene ${r}`); }
+    for(const sk of saisonKeys){
+      const proSaison=spielcodes?.[sk]; if(!proSaison) continue;
+      for(const nm of namensKandidaten){
+        const e=proSaison?.[nm]?.[s.datum];
+        if(e && e.code) return e.code;
+      }
+    }
+    return "";
+  };
 
   // Vereinstermine laden (für eigene Zeilen im Gesamtspielplan)
   useEffect(()=>{
@@ -14260,7 +14377,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
                 </td>
                 <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
                 <td style={{padding:"5px 6px"}}></td>
-                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={5}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
+                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={6}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
               </tr>;
             }
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
@@ -14310,9 +14427,26 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
               <td style={{padding:"5px 6px"}}>
                 {isChange&&<span style={{background:"#f59e0b22",color:"#f59e0b",borderRadius:4,padding:"2px 4px",fontSize:9,fontWeight:700}}>{s.aenderung}</span>}
               </td>
+              <td style={{padding:"5px 6px",fontSize:10,whiteSpace:"nowrap"}}>
+                {(()=>{
+                  // Digitaler Spielbericht (nuScore) — nur bei Heimspielen. Der Spielcode
+                  // stammt aus den hochgeladenen Spielcode-PDFs (per Mannschaft+Datum).
+                  if(s.ort!=="Heim") return <span style={{color:"var(--text4)"}}>—</span>;
+                  const code=spielcodeVon(s);
+                  // Echtes nuScore-Ziel: lädt den Spielbericht direkt über gamecode.
+                  const url = code
+                    ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`
+                    : `https://ttde-apps.liga.nu/nuliga/nuscore-tt/welcome`;
+                  return <a href={url} target="_blank" rel="noopener noreferrer"
+                    title={code?`Digitalen Spielbericht öffnen (Spielcode ${code})`:"Digitalen Spielbericht öffnen (kein Spielcode hinterlegt)"}
+                    style={{display:"inline-flex",alignItems:"center",gap:3,color:code?"#10b981":"var(--text4)",fontWeight:700,textDecoration:code?"underline":"none",fontVariantNumeric:"tabular-nums"}}>
+                    📝 {code || "Bericht"}
+                  </a>;
+                })()}
+              </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={11} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={12} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
