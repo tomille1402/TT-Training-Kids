@@ -1,4 +1,4 @@
-// === TTC-App · Version 336 · erstellt 14.08.2026 ===
+// === TTC-App · Version 337 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "336";
+const APP_VERSION = "337";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1015,8 +1015,9 @@ const TURNIER_SICHTBAR_ROLLEN = [
 ];
 const KONKURRENZEN = [
   "Herren","Herren A","Herren B",
-  "Nachwuchs","Mädchen 9","Mädchen 11","Mädchen 13","Mädchen 15",
-  "Jungen 9","Jungen 11","Jungen 13","Jungen 15",
+  "Nachwuchs",
+  "Mädchen 7","Mädchen 9","Mädchen 11","Mädchen 13","Mädchen 15","Mädchen 17","Mädchen 19",
+  "Jungen 7","Jungen 9","Jungen 11","Jungen 13","Jungen 15","Jungen 17","Jungen 19",
 ];
 const VORGABE_ARTEN = ["QTTR","Mannschaft"];
 
@@ -1043,6 +1044,46 @@ function konkurrenzPasst(konkurrenz, p){
   if(konkurrenz.startsWith("Mädchen")) return !istErw && istW;
   if(konkurrenz.startsWith("Jungen"))  return !istErw && istM;
   return true;
+}
+
+// P8: Ist ein Turnier ein Nachwuchsturnier? Wahr, sobald mindestens eine Konkurrenz
+// „Nachwuchs", „Jungen …" oder „Mädchen …" ist. Dann dürfen zusätzlich die Eltern
+// der Spieler als Schiedsrichter eingesetzt werden.
+function istNachwuchsturnier(t){
+  return (t?.konkurrenzen||[]).some(k=>{
+    const n=k?.name||"";
+    return n==="Nachwuchs" || n.startsWith("Jungen") || n.startsWith("Mädchen") || n==="Doppel Nachwuchs";
+  });
+}
+// P8: Aus den hinterlegten Elterndaten aller (Nachwuchs-)Spieler virtuelle
+// Schiedsrichter-Kandidaten bilden. Jeder Elternteil bekommt eine synthetische ID
+// „eltern::<spielerId>::<1|2>", damit er wie ein normaler Schiri zu-/abgewählt und
+// eingeteilt werden kann. Doppelte Namen (z. B. Elternteil mehrerer Kinder) werden
+// über den Namen zusammengeführt, sodass jede Person nur einmal erscheint.
+function elternSchiriKandidaten(players){
+  const out=[]; const gesehen=new Set();
+  const nichtNachwuchs=new Set(["Erwachsene","Gast","Trainer"]);
+  (players||[]).forEach(p=>{
+    if(nichtNachwuchs.has(p.group)) return;
+    if(p.roles?.erwachsene===true) return;
+    [1,2].forEach(i=>{
+      const vor=(p[`elternVorname${i}`]||"").trim();
+      const nach=(p[`elternNachname${i}`]||"").trim();
+      if(!vor && !nach) return;
+      const name=`${vor} ${nach}`.trim();
+      const schluessel=name.toLowerCase();
+      if(gesehen.has(schluessel)) return;
+      gesehen.add(schluessel);
+      out.push({
+        id:`eltern::${p.id}::${i}`,
+        firstName:vor, lastName:nach,
+        rolle:p[`elternteil${i}`]||"",
+        vonKind:`${p.firstName||""} ${p.lastName||""}`.trim(),
+        istEltern:true,
+      });
+    });
+  });
+  return out.sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
 }
 
 // QTTR-Wert einer Person aus der TTR-Liste (neuester Stichtag). Matching per Name.
@@ -1367,7 +1408,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   // auch wenn gerade die Detailansicht eines Turniers offen ist.
   if(formOffen){
     return <TurnierForm
-      start={editTurnier} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
+      start={editTurnier} players={players} onAbbrechenAll={()=>{setFormOffen(false);setEditTurnier(null);}}
       onSpeichern={(t)=>speichern(t,true)}
     />;
   }
@@ -1438,12 +1479,30 @@ function deDatumT(iso){ return iso?String(iso).split("-").reverse().join("."):""
 function miniBtn(color){ return {padding:"5px 9px",background:color+"18",border:`1px solid ${color}55`,borderRadius:7,color,fontSize:11,fontWeight:700,cursor:"pointer"}; }
 
 // ─── Turnier-Formular (Anlegen/Bearbeiten) ──────────────────────────────────
-function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
+function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
   const leer={
     name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0], anzahlTische:6, sichtbarFuer:[],
+    schiedsrichterAktiv:false, schiedsrichter:[],   // P4: Schiedsrichter turnierweit
     konkurrenzen:[], // [{key, name, anzahlGruppen, vorgabe, vorgabeArt, diffQTTR, maxVorgabe, teilnehmer:[], gruppen:[], spiele:[]}]
   };
-  const [t,setT]=useState(start? {...leer, ...start, konkurrenzen:start.konkurrenzen||[]} : leer);
+  // P4-Migration: Bei Altbeständen die pro-Konkurrenz gepflegten Schiedsrichter in die
+  // turnierweite Liste zusammenführen (falls turnierweit noch nichts hinterlegt ist).
+  const initT=(()=>{
+    if(!start) return leer;
+    const base={...leer, ...start, konkurrenzen:start.konkurrenzen||[]};
+    if(!Array.isArray(base.schiedsrichter) || base.schiedsrichter.length===0){
+      const set=new Set();
+      let irgendAktiv=false;
+      (base.konkurrenzen||[]).forEach(k=>{
+        if(k?.schiedsrichterAktiv) irgendAktiv=true;
+        (k?.schiedsrichter||[]).forEach(id=>set.add(id));
+      });
+      base.schiedsrichter=[...set];
+      if(base.schiedsrichterAktiv===undefined) base.schiedsrichterAktiv=irgendAktiv;
+    }
+    return base;
+  })();
+  const [t,setT]=useState(initT);
   const set=(k,v)=>setT(prev=>({...prev,[k]:v}));
   // Turniername: aus Vorschlägen wählen oder „eigener Name". Der Freitext-Modus ist aktiv,
   // wenn der aktuelle Name nicht in der Vorschlagsliste steht.
@@ -1451,11 +1510,14 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
 
   // Konkurrenz-Editor: die Konkurrenzen dieses Turniers verwalten
   const [neueKonk,setNeueKonk]=useState(KONKURRENZEN[0]);
+  // P6: Welche Konkurrenz-Boxen sind aufgeklappt? Standard: alle eingeklappt (leeres Set).
+  const [konkOffen,setKonkOffen]=useState({});
+  const toggleKonkOffen=(key)=>setKonkOffen(prev=>({...prev,[key]:!prev[key]}));
   function addKonkurrenz(){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
       key, name:neueKonk, modus:(neueKonk||"").startsWith("Doppel")?"Doppel":"Einzel", art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
-      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[], schiedsrichterAktiv:false, schiedsrichter:[],
+      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
   function updKonk(key,patch){ setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===key?{...k,...patch}:k)})); }
@@ -1489,6 +1551,50 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
           onBlur={e=>{ const n=Number(e.target.value)||1; set("anzahlTische",Math.min(50,Math.max(1,n))); }}
           style={{...selT2,width:90,maxWidth:90,display:"block"}}/>
       </Feld>
+
+      {/* P4: Schiedsrichter turnierweit — sie hängen an den Tischen und gelten
+          konkurrenzübergreifend. Auswahl hier zentral, nicht mehr je Konkurrenz. */}
+      {(()=>{
+        const spielerKand=(players||[]).filter(p=>{
+          if(p.status==="passiv") return false;
+          if(p.group==="Gast") return false;
+          return true;
+        }).map(p=>({id:p.id,firstName:p.firstName||"",lastName:p.lastName||"",istEltern:false}));
+        const elternKand=istNachwuchsturnier(t)?elternSchiriKandidaten(players):[];
+        const kandidaten=[...spielerKand,...elternKand].sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
+        const drinnen=(id)=>(t.schiedsrichter||[]).includes(id);
+        const toggle=(id)=>{
+          const cur=t.schiedsrichter||[];
+          set("schiedsrichter", drinnen(id)?cur.filter(x=>x!==id):[...cur,id]);
+        };
+        return <Feld label="Schiedsrichter (turnierweit)">
+          <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>
+            Schiedsrichter gelten für alle Konkurrenzen gemeinsam (abhängig von den Tischen).
+            {istNachwuchsturnier(t) && " Bei Nachwuchsturnieren stehen auch die Eltern zur Auswahl."}
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none",marginBottom:8}}>
+            <input type="checkbox" checked={!!t.schiedsrichterAktiv}
+              onChange={e=>set("schiedsrichterAktiv",e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
+            <span style={{fontSize:13,fontWeight:700,color:"#0ea5e9"}}>Schiedsrichter einsetzen</span>
+          </label>
+          {t.schiedsrichterAktiv && <details>
+            <summary style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"#0ea5e9"}}>
+              Schiedsrichter auswählen ({(t.schiedsrichter||[]).length})
+            </summary>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+              {kandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden Personen gefunden.</div>}
+              {kandidaten.map(p=>{
+                const drin=drinnen(p.id);
+                return <span key={p.id} onClick={()=>toggle(p.id)} style={{
+                  padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+                  border:drin?"1px solid #0ea5e9":"1px solid var(--border2)",
+                  background:drin?"#0ea5e922":"var(--bg2)",color:drin?"#0ea5e9":"var(--text2)",
+                }}>{p.firstName} {p.lastName}{p.istEltern?" 👪":""}</span>;
+              })}
+            </div>
+          </details>}
+        </Feld>;
+      })()}
       <Feld label="Datum Turnier">
         <input type="date" value={t.datum} onChange={e=>set("datum",e.target.value)} style={selT2}/>
       </Feld>
@@ -1528,13 +1634,18 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
         {t.konkurrenzen.length===0
           ? <div style={{fontSize:11,color:"var(--text4)",padding:"8px 0"}}>Noch keine Konkurrenz hinzugefügt.</div>
           : <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {t.konkurrenzen.map(k=>(
+              {[...t.konkurrenzen].sort((a,b)=>(a.name||"").localeCompare(b.name||"",undefined,{numeric:true})).map(k=>(
                 <div key={k.key} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:12}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{k.name}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:konkOffen[k.key]?8:0}}>
+                    <div onClick={()=>toggleKonkOffen(k.key)} style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",flex:1,userSelect:"none"}}>
+                      <span style={{fontSize:11,color:"var(--text3)",transition:"transform .15s",transform:konkOffen[k.key]?"rotate(90deg)":"none"}}>▶</span>
+                      <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{k.name}</span>
+                      <span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>({k.modus || (istDoppelKonk(k)?"Doppel":"Einzel")})</span>
+                    </div>
                     <button onClick={()=>delKonk(k.key)} style={miniBtn("#ef4444")}>entfernen</button>
                   </div>
 
+                  {konkOffen[k.key] && <>
                   {/* Einzel oder Doppel — bestimmt, ob einzelne Spieler oder Zweier-Teams
                       gegeneinander antreten. Bei „Doppel" greift die Doppel-Team-Logik. */}
                   <Feld label="Einzel / Doppel" klein>
@@ -1596,6 +1707,7 @@ function TurnierForm({ start, onAbbrechenAll, onSpeichern }){
                       </Feld>
                     </>}
                   </>}
+                  </>}
                 </div>
               ))}
             </div>}
@@ -1622,7 +1734,9 @@ const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--bo
 // ─── Turnier-Detail: Teilnehmer, Gruppen (Drag&Drop), Tabelle, Spiele ───────
 function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrainer, myPlayer, onBack, onEdit, onSpeichern }){
   const [t,setT]=useState(turnier);
-  const [aktiveKonk,setAktiveKonk]=useState((turnier.konkurrenzen||[])[0]?.key||null);
+  const [aktiveKonk,setAktiveKonk]=useState(
+    [...(turnier.konkurrenzen||[])].sort((a,b)=>(a.name||"").localeCompare(b.name||"",undefined,{numeric:true}))[0]?.key||null
+  );
   const [dirty,setDirty]=useState(false);
   const [autoStatus,setAutoStatus]=useState("");   // "" | "speichert" | "gespeichert"
   const [sortSpalte,setSortSpalte]=useState("platz");   // "nr" | "name" | "qttr" | "platz"
@@ -1630,7 +1744,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [laufendOffen,setLaufendOffen]=useState(true);   // Box „Laufende Spiele" (Standard: auf)
   const [naechstesOffen,setNaechstesOffen]=useState(false); // Box „Als Nächstes" (Standard: zu)
   const [gruppenphaseOffen,setGruppenphaseOffen]=useState(true); // Gruppenphase bei gemischt
-  const [teilnSort,setTeilnSort]=useState("name");   // Teilnehmerauswahl-Sortierung: "name" | "qttr"
+  const [teilnSort,setTeilnSort]=useState("name");   // Teilnehmerauswahl-Sortierung: "name" | "qttr" | "alter"
   const darfAlle = isAdmin || isTrainer;
   const speichernTimer=useRef(null);
   const letzterStand=useRef(turnier);
@@ -1697,6 +1811,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(d!==0) return d;
       return (a.firstName||"").localeCompare(b.firstName||"");
     }
+    if(teilnSort==="alter"){
+      // P5: Alter aufsteigend (jüngste zuerst); ohne Geburtsdatum ans Ende, dann alphabetisch
+      const aa=alterVon(a), ab=alterVon(b);
+      if(aa==null && ab==null) return (a.firstName||"").localeCompare(b.firstName||"");
+      if(aa==null) return 1;
+      if(ab==null) return -1;
+      if(aa!==ab) return aa-ab;
+      return (a.firstName||"").localeCompare(b.firstName||"");
+    }
     // alphabetisch aufsteigend nach Vorname
     return (a.firstName||"").localeCompare(b.firstName||"");
   }) : [];
@@ -1706,6 +1829,18 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const teamVonId=(id)=> alleDoppelTeams.find(tm=>tm.id===id);
   const nameVon = (id)=>{
     if(!id) return "";
+    // P8: Eltern-Schiedsrichter „eltern::<spielerId>::<1|2>" auflösen.
+    if(typeof id==="string" && id.startsWith("eltern::")){
+      const [,kindId,idx]=id.split("::");
+      const kind=players.find(x=>x.id===kindId);
+      if(kind){
+        const vor=(kind[`elternVorname${idx}`]||"").trim();
+        const nach=(kind[`elternNachname${idx}`]||"").trim();
+        const nm=`${vor} ${nach}`.trim();
+        return nm || id;
+      }
+      return id;
+    }
     const tm=teamVonId(id);
     if(tm){
       const p1=players.find(x=>x.id===tm.s1), p2=players.find(x=>x.id===tm.s2);
@@ -1737,19 +1872,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     updKonk({teilnehmer, gruppen});
   }
 
-  // Schiedsrichter-Kandidaten: alle aktiven Personen (nicht auf die Konkurrenz-Zuordnung
-  // beschränkt – auch andere Vereinsmitglieder können pfeifen), alphabetisch.
-  const schiriKandidaten = konk ? players.filter(p=>{
-    if(p.status==="passiv") return false;
-    if(p.group==="Gast") return false;
-    return true;
-  }).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"")) : [];
-  function toggleSchiedsrichter(id){
-    if(!isAdmin) return;
-    const drin=(konk.schiedsrichter||[]).includes(id);
-    const schiedsrichter = drin ? (konk.schiedsrichter||[]).filter(x=>x!==id) : [...(konk.schiedsrichter||[]), id];
-    updKonk({ schiedsrichter });
-  }
+  // P4: Schiedsrichter werden turnierweit im Turnier-Formular verwaltet
+  // (t.schiedsrichter / t.schiedsrichterAktiv), nicht mehr je Konkurrenz.
 
   // Gruppen initialisieren (leere Gruppen gemäß anzahlGruppen)
   function initGruppen(){
@@ -1884,19 +2008,26 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // ── Schiedsrichter (turnierweit, analog Tische) ──
   // Zuordnung: "{konkKey}::{key}" -> Schiedsrichter-Spieler-ID (t.schiris).
   // Pausierte Schiedsrichter (t.schirisPausiert) werden NICHT automatisch zugeteilt.
-  // Ob eine Konkurrenz Schiedsrichter einsetzt, steht je Konkurrenz in k.schiedsrichterAktiv;
-  // die zugelassenen Schiedsrichter je Konkurrenz stehen in k.schiedsrichter (Spieler-IDs).
+  // P4: Ob Schiedsrichter eingesetzt werden, steht turnierweit in t.schiedsrichterAktiv;
+  // die zugelassenen Schiedsrichter stehen turnierweit in t.schiedsrichter (IDs).
+  // (Migration alter Turniere: siehe schiriZugelassen unten.)
   const schiriMapG = t?.schiris || {};          // gkey -> Schiri-ID
   const schirisPausiertG = t?.schirisPausiert || [];  // Liste Schiri-IDs (pausiert)
-  // Alle Schiedsrichter-IDs, die turnierweit in Konkurrenzen mit aktiviertem
-  // Schiedsrichter-Einsatz hinterlegt sind (für Anzeige/Pause-Steuerung).
-  const alleSchiris = (()=>{
+  // Turnierweite Liste der zugelassenen Schiedsrichter. Bei Altbeständen ohne
+  // turnierweite Liste aus den pro-Konkurrenz gepflegten Schiris zusammenführen.
+  const schiriZugelassen = (()=>{
+    if(Array.isArray(t?.schiedsrichter) && t.schiedsrichter.length>0) return t.schiedsrichter;
     const set=new Set();
-    for(const k of (t.konkurrenzen||[])){
-      if(k?.schiedsrichterAktiv) (k.schiedsrichter||[]).forEach(id=>set.add(id));
-    }
+    for(const k of (t.konkurrenzen||[])) (k?.schiedsrichter||[]).forEach(id=>set.add(id));
     return [...set];
   })();
+  // Einsatz aktiv? Turnierweit; bei Alt-Turnieren ersatzweise, wenn irgendeine
+  // Konkurrenz früher Schiris aktiviert hatte.
+  const schiriEinsatzAktiv = (t?.schiedsrichterAktiv!==undefined)
+    ? !!t.schiedsrichterAktiv
+    : (t.konkurrenzen||[]).some(k=>k?.schiedsrichterAktiv);
+  // Alle Schiedsrichter-IDs für Anzeige/Pause-Steuerung (nur wenn Einsatz aktiv).
+  const alleSchiris = schiriEinsatzAktiv ? [...schiriZugelassen] : [];
   const schiriPausiert=(id)=> schirisPausiertG.includes(id);
   // Prüft, ob eine Person turnierweit noch ein offenes (gestartetes, nicht fertiges)
   // eigenes Spiel hat. Solche Personen werden nicht als Schiedsrichter eingeteilt.
@@ -1982,7 +2113,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           pausiert: pausiertG.includes(gk(k.key, x.key)),
           tisch: tischMapG[gk(k.key, x.key)]||null,
           nurGestartet: !!k.gestartet,
-          schiriAktiv: !!k.schiedsrichterAktiv,          // setzt diese Konkurrenz Schiris ein?
+          schiriAktiv: schiriEinsatzAktiv,               // P4: turnierweit – Schiris im Einsatz?
           schiri: schiriMapG[gk(k.key, x.key)]||null,    // aktuell zugeteilter Schiri (ID)
         });
       }
@@ -2068,10 +2199,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       echteSpieler(x.b).forEach(s=>spielerMitOffenenSpielen.add(s));
     }
     const schiriFrei=(id)=> id && !belegteSchiris.has(id) && !schiriPausiert(id) && !spielerMitOffenenSpielen.has(id);
+    // P4: Zulässige Schiedsrichter gelten turnierweit (konkurrenzübergreifend).
+    const zulaessig=schiriZugelassen;
     // 1) bestehende Zuordnungen behalten, sofern noch gültig
     for(const x of laufend){
       const sid=aktuelleSchiris[x.gkey];
-      const zulaessig=(x_k=>{ const k=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey); return k?(k.schiedsrichter||[]):[]; })();
       if(sid && zulaessig.includes(sid) && schiriFrei(sid)){
         neu[x.gkey]=sid; belegteSchiris.add(sid);
       }
@@ -2079,8 +2211,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     // 2) freie, nicht pausierte Schiris an die übrigen laufenden Spiele verteilen
     for(const x of laufend){
       if(neu[x.gkey]) continue;
-      const k=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
-      const kandidaten=(k?.schiedsrichter||[]).filter(id=>schiriFrei(id));
+      const kandidaten=zulaessig.filter(id=>schiriFrei(id));
       if(kandidaten.length>0){
         const sid=kandidaten[0];
         neu[x.gkey]=sid; belegteSchiris.add(sid);
@@ -2178,7 +2309,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neueSchiris[kk] || !neu[kk]) delete schiriBenachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.schiedsrichterAktiv,k.schiedsrichter])), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
   // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
@@ -2213,11 +2344,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     try{
       const nm=(id)=>{ const tm=teamVonId(id); if(tm){ const p1=spielerVon(tm.s1),p2=spielerVon(tm.s2); return `${p1?p1.firstName:"?"} / ${p2?p2.firstName:"?"}`; } const p=spielerVon(id); return p?`${p.firstName} ${p.lastName}`:""; };
       const sp=spielerVon(schiriId);
+      const schiriName = sp?`${sp.firstName} ${sp.lastName}`:nameVon(schiriId);
       await fetch("/.netlify/functions/turnieralarm", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
-          schiri:{ id:schiriId, name: sp?`${sp.firstName} ${sp.lastName}`:"", empfaenger:[schiriId] },
+          schiri:{ id:schiriId, name: schiriName, empfaenger:[schiriId] },
           begegnung:{ a:nm(idA), b:nm(idB) },
         })
       });
@@ -2473,15 +2605,21 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       </div>;
     })()}
 
-    {/* Konkurrenz-Auswahl */}
+    {/* Konkurrenz-Auswahl (P3: alphabetisch sortiert) */}
     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-      {(t.konkurrenzen||[]).map(k=>(
-        <span key={k.key} onClick={()=>setAktiveKonk(k.key)} style={{
-          padding:"6px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",
-          border:k.key===aktiveKonk?"1px solid #8b5cf6":"1px solid var(--border2)",
-          background:k.key===aktiveKonk?"#8b5cf6":"transparent",color:k.key===aktiveKonk?"#fff":"var(--text2)",
-        }}>{k.gestartet?"▶ ":""}{k.name}</span>
-      ))}
+      {[...(t.konkurrenzen||[])].sort((a,b)=>(a.name||"").localeCompare(b.name||"",undefined,{numeric:true})).map(k=>{
+        const modus=k.modus || (istDoppelKonk(k)?"Doppel":"Einzel");   // P7
+        const aktiv=k.key===aktiveKonk;
+        return <span key={k.key} onClick={()=>setAktiveKonk(k.key)} style={{
+          display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.15,
+          padding:"6px 12px",borderRadius:16,fontSize:12,fontWeight:700,cursor:"pointer",
+          border:aktiv?"1px solid #8b5cf6":"1px solid var(--border2)",
+          background:aktiv?"#8b5cf6":"transparent",color:aktiv?"#fff":"var(--text2)",
+        }}>
+          <span>{k.gestartet?"▶ ":""}{k.name}</span>
+          <span style={{fontSize:9,fontWeight:600,opacity:.85}}>({modus})</span>
+        </span>;
+      })}
     </div>
 
     {/* Start-Button je Konkurrenz: erst nach dem Start gehen die Spiele in die
@@ -2522,6 +2660,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               background:teilnSort==="name"?"#8b5cf6":"var(--bg2)",color:teilnSort==="name"?"#fff":"var(--text3)"}}>A–Z</button>
             <button onClick={()=>setTeilnSort("qttr")} style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",
               background:teilnSort==="qttr"?"#8b5cf6":"var(--bg2)",color:teilnSort==="qttr"?"#fff":"var(--text3)"}}>TTR ▼</button>
+            <button onClick={()=>setTeilnSort("alter")} style={{padding:"4px 10px",fontSize:11,fontWeight:700,border:"none",cursor:"pointer",
+              background:teilnSort==="alter"?"#8b5cf6":"var(--bg2)",color:teilnSort==="alter"?"#fff":"var(--text3)"}}>Alter ▲</button>
           </div>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
@@ -2539,29 +2679,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         </div>
       </details>}
 
-      {/* Schiedsrichter-Einsatz (nur Admin) – je Konkurrenz aktivierbar */}
-      {isAdmin && <div style={{marginBottom:14}}>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
-          <input type="checkbox" checked={!!konk.schiedsrichterAktiv}
-            onChange={e=>updKonk({schiedsrichterAktiv:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
-          <span style={{fontSize:13,fontWeight:700,color:"#0ea5e9"}}>Schiedsrichter einsetzen</span>
-        </label>
-        {konk.schiedsrichterAktiv && <details style={{marginTop:10}}>
-          <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#0ea5e9"}}>
-            Schiedsrichter auswählen ({(konk.schiedsrichter||[]).length})
-          </summary>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
-            {schiriKandidaten.length===0 && <div style={{fontSize:11,color:"var(--text4)"}}>Keine passenden aktiven Personen gefunden.</div>}
-            {schiriKandidaten.map(p=>{
-              const drin=(konk.schiedsrichter||[]).includes(p.id);
-              return <span key={p.id} onClick={()=>toggleSchiedsrichter(p.id)} style={{
-                padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
-                border:drin?"1px solid #0ea5e9":"1px solid var(--border2)",
-                background:drin?"#0ea5e922":"var(--bg2)",color:drin?"#0ea5e9":"var(--text2)",
-              }}>{p.firstName} {p.lastName}</span>;
-            })}
-          </div>
-        </details>}
+      {/* P4: Schiedsrichter werden jetzt turnierweit im Bereich „Turnier bearbeiten"
+          (Parameter) verwaltet – nicht mehr je Konkurrenz. */}
+      {isAdmin && schiriEinsatzAktiv && <div style={{marginBottom:14,fontSize:11,color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:"8px 11px"}}>
+        🎽 Schiedsrichter ({schiriZugelassen.length}) werden turnierweit über „Parameter → Turnier bearbeiten" verwaltet und gelten konkurrenzübergreifend.
       </div>}
 
       {/* Gruppen-Modus */}
