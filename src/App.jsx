@@ -1,4 +1,4 @@
-// === TTC-App · Version 334 · erstellt 14.08.2026 ===
+// === TTC-App · Version 335 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "334";
+const APP_VERSION = "335";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2265,7 +2265,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }
   function spielFixiert(sp){ return !!(sp && sp.fixiert); }
   function toggleFixSpiel(spIndex, fix){
-    if(!isAdmin) return;   // nur der Admin darf Ergebnisse speichern/ändern
+    if(!darfAlle) return;   // Admin und Trainer dürfen Ergebnisse speichern/ändern
     const spiele=konk.spiele.map((s,i)=> i===spIndex ? {...s, fixiert: fix?true:false} : s);
     updKonk({spiele});
   }
@@ -3242,7 +3242,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   // Tipp-Verschiebung der Erstrunden-Positionen (wie bei den Gruppen, touch-tauglich)
   const [tippSlot,setTippSlot]=useState(null);
   function slotAntippen(i){
-    if(!isAdmin) return;
+    if(!darfAlle) return;
     if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
     if(tippSlot===i){ setTippSlot(null); return; }
     // zwei Slots tauschen
@@ -3253,7 +3253,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   }
   // Einen Spieler aus dem Tableau entfernen: sein Erstrunden-Platz wird frei (Freilos).
   function slotLeeren(i){
-    if(!isAdmin) return;
+    if(!darfAlle) return;
     const neu=[...slots];
     neu[i]=null;
     setTippSlot(null);
@@ -3271,7 +3271,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     updKonk({ koSpiele:map });
   }
   function toggleFix(key, fix){
-    if(!isAdmin) return;   // nur der Admin darf Ergebnisse speichern/ändern
+    if(!darfAlle) return;   // Admin und Trainer dürfen Ergebnisse speichern/ändern
     const map={...spieleMap};
     map[key]={...(map[key]||{}), fixiert:!!fix};
     updKonk({ koSpiele:map });
@@ -3454,7 +3454,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                 return <div key={sp.key} style={{minHeight:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
                   <KoSpielBox sp={sp} ri={ri} si={si} istErstrunde={istErstrunde}
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
-                    fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
+                    fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
                     setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr}/>
                 </div>;
@@ -3636,14 +3636,14 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 
   const [tippSlot,setTippSlot]=useState(null);
   function slotAntippen(i){
-    if(!isAdmin) return;
+    if(!darfAlle) return;
     if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
     if(tippSlot===i){ setTippSlot(null); return; }
     const neu=[...slots]; const tmp=neu[i]; neu[i]=neu[tippSlot]; neu[tippSlot]=tmp;
     updKonk({ koSlots:neu }); setTippSlot(null);
   }
   function slotLeeren(i){
-    if(!isAdmin) return;
+    if(!darfAlle) return;
     const neu=[...slots]; neu[i]=null; setTippSlot(null); updKonk({ koSlots:neu });
   }
   function setSatz(key, satzIndex, seite, wert){
@@ -3656,7 +3656,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     updKonk({ koSpiele:map });
   }
   function toggleFix(key, fix){
-    if(!isAdmin) return;
+    if(!darfAlle) return;
     const map={...spieleMap};
     map[key]={...(map[key]||{}), fixiert:!!fix};
     updKonk({ koSpiele:map });
@@ -3698,7 +3698,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     const tischNr = tischMap[`k_${mkey}`] || null;
     return <KoSpielBox key={mkey} sp={sp} ri={istErstrunde?0:1} si={0} istErstrunde={istErstrunde}
       nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
-      fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={isAdmin} tischNr={tischNr}
+      fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
       slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
       setSatz={setSatz} toggleFix={toggleFix}
       slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)} qttrEinheit={qttrNumVon2}/>;
