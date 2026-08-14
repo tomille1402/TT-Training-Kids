@@ -1,4 +1,4 @@
-// === TTC-App · Version 335 · erstellt 14.08.2026 ===
+// === TTC-App · Version 336 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "335";
+const APP_VERSION = "336";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2226,9 +2226,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
 
 
-  // Nicht zugeteilte Teilnehmer (im Pool)
+  // Grundeinheiten der Konkurrenz: bei Einzel die Teilnehmer (Spieler-IDs), bei Doppel
+  // die gebildeten Teams (Team-IDs). So verteilt der Gruppen-Modus bei Doppel-Konkurrenzen
+  // die Teams statt einzelner Spieler. nameVon() versteht beide ID-Arten.
+  const konkEinheiten = istDoppelKonk(konk)
+    ? ((konk?.doppelTeams||[]).map(t=>t.id))
+    : (konk?.teilnehmer||[]);
+  // Nicht zugeteilte Einheiten (im Pool)
   const zugeteilt=new Set((konk?.gruppen||[]).flat());
-  const pool=(konk?.teilnehmer||[]).filter(id=>!zugeteilt.has(id));
+  const pool=konkEinheiten.filter(id=>!zugeteilt.has(id));
   // Tische der AKTIVEN Konkurrenz auf lokale KO-Keys abgebildet (für das KO-Tableau).
   const koTischMap={};
   if(konk){ for(const [g,tt] of Object.entries(tischMapG)){ const pref=`${konk.key}::`; if(g.startsWith(pref)) koTischMap[g.slice(pref.length)]=tt; } }
@@ -2560,6 +2566,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
+        {/* Bei Doppel-Konkurrenzen zuerst die Teams bilden — auch im Gruppen-/gemischt-
+            Modus, da sonst keine Möglichkeit zur Doppel-Zusammenstellung bestünde. */}
+        {istDoppelKonk(konk) && <DoppelTeamVerwaltung konk={konk} players={players} qttrVon={qttrVon} darfAlle={darfAlle} updKonk={updKonk}/>}
         {(!konk.gruppen || konk.gruppen.length===0)
           ? <button onClick={initGruppen} disabled={!isAdmin} style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default",marginBottom:12}}>
               {konk.anzahlGruppen} Gruppen anlegen
@@ -2796,6 +2805,109 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   </div>;
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOPPEL-TEAM-VERWALTUNG — eigenständig, damit sie bei jeder Turnierart (Gruppen,
+// gemischt, KO) oberhalb der eigentlichen Spiel-Logik angezeigt werden kann.
+// Bildet aus den Teilnehmern (Spieler-IDs in konk.teilnehmer) Zweier-Teams und
+// speichert sie in konk.doppelTeams. Ohne Teams gibt es bei Doppel-Konkurrenzen
+// nichts zu spielen — daher muss dieser Schritt immer erreichbar sein.
+function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlots=null }){
+  const [teamS1,setTeamS1]=useState("");
+  const [teamS2,setTeamS2]=useState("");
+  const doppelTeams = konk.doppelTeams || [];
+  const spielerVon=(id)=> players.find(p=>p.id===id);
+  const qttrNumVon=(id)=>{ const q=qttrVon(spielerVon(id)); return (q==null||Number.isNaN(Number(q)))?null:Number(q); };
+  const spielerName=(id)=>{ const p=spielerVon(id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():id; };
+  const spielerNameQttr=(id)=>{ const q=qttrNumVon(id); return spielerName(id)+(q!=null?` (${q})`:""); };
+
+  const verplant=new Set();
+  doppelTeams.forEach(t=>{ verplant.add(t.s1); verplant.add(t.s2); });
+  const teamKandidaten=(konk.teilnehmer||[]).filter(id=>!verplant.has(id));
+
+  function teamAnlegen(){
+    if(!darfAlle || !teamS1 || !teamS2 || teamS1===teamS2) return;
+    const neu=[...doppelTeams, { id:`d_${Date.now()}_${Math.floor(Math.random()*1000)}`, s1:teamS1, s2:teamS2 }];
+    setTeamS1(""); setTeamS2("");
+    updKonk({ doppelTeams:neu });
+  }
+  function teamLoeschen(tid){
+    if(!darfAlle) return;
+    const neu=doppelTeams.filter(t=>t.id!==tid);
+    let patch={ doppelTeams:neu };
+    if(koSlots && koSlots.includes(tid)) patch.koSlots = koSlots.map(s=> s===tid ? null : s);
+    updKonk(patch);
+  }
+  function teamsSetzen(paare){
+    if(!darfAlle) return;
+    const neu=paare.map(([a,b],i)=>({ id:`d_${Date.now()}_${i}`, s1:a, s2:b }));
+    updKonk({ doppelTeams:neu, koSlots:null, koSpiele:{} });
+  }
+  function auslosungQttr(){
+    if(!darfAlle) return;
+    const ids=[...(konk.teilnehmer||[])];
+    if(ids.length<2) return;
+    const sortiert=ids.sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
+    const paare=[]; let lo=0, hi=sortiert.length-1;
+    while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
+    if(!window.confirm(`Doppel nach QTTR auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    teamsSetzen(paare);
+  }
+  function auslosungZufall(){
+    if(!darfAlle) return;
+    const ids=[...(konk.teilnehmer||[])];
+    if(ids.length<2) return;
+    for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
+    const paare=[]; for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
+    if(!window.confirm(`Doppel zufällig auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    teamsSetzen(paare);
+  }
+
+  if(!konk.teilnehmer || konk.teilnehmer.length<2)
+    return <div style={{marginBottom:14,padding:"12px 14px",background:"#8b5cf618",border:"1px solid #8b5cf655",borderRadius:12,fontSize:12,color:"var(--text2)"}}>
+      <b style={{color:"#8b5cf6"}}>Doppel-Konkurrenz:</b> Zuerst oben die Teilnehmer auswählen (mind. 2), dann können hier die Doppel gebildet werden.
+    </div>;
+
+  return <details open style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
+    <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+    <div style={{marginTop:10}}>
+    {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln – oder unten automatisch auslosen.</div>}
+    {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+      {doppelTeams.map((t,i)=>{
+        const q1=qttrNumVon(t.s1), q2=qttrNumVon(t.s2);
+        const summe=(q1!=null&&q2!=null)?(q1+q2):null;
+        return (
+        <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",borderRadius:8,padding:"6px 10px",border:"1px solid var(--border2)"}}>
+          <span style={{fontSize:11,fontWeight:700,color:"var(--text4)",minWidth:20}}>{i+1}.</span>
+          <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>
+            {spielerNameQttr(t.s1)} / {spielerNameQttr(t.s2)}
+            {summe!=null && <span style={{color:"#8b5cf6",fontWeight:700}}> · Σ {summe}</span>}
+          </span>
+          {darfAlle && <button onClick={()=>teamLoeschen(t.id)} style={{border:"1px solid #ef444455",background:"#ef444418",color:"#ef4444",borderRadius:6,fontSize:10,fontWeight:700,padding:"3px 8px",cursor:"pointer"}}>entfernen</button>}
+        </div>
+      );})}
+    </div>}
+    {darfAlle && (konk.teilnehmer||[]).length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+      <button onClick={auslosungQttr} style={{padding:"7px 11px",background:"#0ea5e9",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Auslosung QTTR</button>
+      <button onClick={auslosungZufall} style={{padding:"7px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Zufällige Auslosung</button>
+    </div>}
+    {darfAlle && teamKandidaten.length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      <select value={teamS1} onChange={e=>setTeamS1(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
+        <option value="">Spieler 1…</option>
+        {teamKandidaten.filter(id=>id!==teamS2).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+      </select>
+      <span style={{fontSize:12,color:"var(--text4)",fontWeight:700}}>+</span>
+      <select value={teamS2} onChange={e=>setTeamS2(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
+        <option value="">Spieler 2…</option>
+        {teamKandidaten.filter(id=>id!==teamS1).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+      </select>
+      <button onClick={teamAnlegen} disabled={!teamS1||!teamS2} style={{padding:"7px 12px",background:(teamS1&&teamS2)?"#10b981":"var(--bg3)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:(teamS1&&teamS2)?"pointer":"default"}}>koppeln</button>
+    </div>}
+    {darfAlle && teamKandidaten.length===1 && <div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Ein Teilnehmer ist noch ohne Partner ({spielerName(teamKandidaten[0])}).</div>}
+    {darfAlle && teamKandidaten.length===0 && doppelTeams.length>0 && <div style={{fontSize:11,color:"var(--text4)",marginTop:4}}>Alle Teilnehmer sind einem Team zugeordnet.</div>}
+    </div>
+  </details>;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // KO-TABLEAU (Single Elimination) — grafisches Bracket, Setzung nach QTTR
