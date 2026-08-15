@@ -1,4 +1,4 @@
-// === TTC-App · Version 339 · erstellt 14.08.2026 ===
+// === TTC-App · Version 340 · erstellt 14.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "339";
+const APP_VERSION = "340";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1236,10 +1236,12 @@ function paarungenFuerGruppe(ids){
   return paare;
 }
 
-// Wieviele Satz-Eingabefelder sollen sichtbar sein? Best of 5 (3 Gewinnsätze):
-// Start mit 3 Feldern; erst wenn nach den bisher eingetragenen Sätzen noch keine
-// Entscheidung (3 Satzsiege) gefallen ist, kommen der 4. und 5. Satz hinzu.
-function anzahlSichtbareSaetze(saetze){
+// Wieviele Satz-Eingabefelder sollen sichtbar sein? Abhängig vom Modus (Gewinnsätze g):
+// Best of (2g-1). Start mit g Feldern; erst wenn nach den bisher eingetragenen Sätzen
+// noch keine Entscheidung (g Satzsiege) gefallen ist, kommen weitere Sätze hinzu (bis max 2g-1).
+function anzahlSichtbareSaetze(saetze, gewinnsaetze=3){
+  const g=Math.max(1, Number(gewinnsaetze)||3);
+  const maxS=2*g-1;   // Best of (2g-1)
   let a=0,b=0;
   for(const s of (saetze||[])){
     const pa=Number(s[0]), pb=Number(s[1]);
@@ -1247,10 +1249,10 @@ function anzahlSichtbareSaetze(saetze){
     if(pa>pb) a++; else if(pb>pa) b++;
   }
   const gespielt=a+b;
-  // Entscheidung gefallen (jemand hat 3) → nur die tatsächlich gespielten Sätze zeigen.
-  if(a>=3||b>=3) return Math.max(3, gespielt);
-  // sonst: mindestens 3, plus die schon begonnenen weiteren, bis max. 5
-  return Math.min(5, Math.max(3, gespielt+1>3?gespielt+1:3));
+  // Entscheidung gefallen (jemand hat g) → nur die tatsächlich gespielten Sätze zeigen.
+  if(a>=g||b>=g) return Math.max(g, gespielt);
+  // sonst: mindestens g, plus die schon begonnenen weiteren, bis max. maxS
+  return Math.min(maxS, Math.max(g, gespielt+1>g?gespielt+1:g));
 }
 
 // Prüft ein fertiges Satzergebnis (beide Zahlen gesetzt) auf Gültigkeit:
@@ -1534,7 +1536,7 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
     const key=`k_${Date.now()}`;
     setT(prev=>({...prev, konkurrenzen:[...prev.konkurrenzen, {
       key, name:neueKonk, modus:(neueKonk||"").startsWith("Doppel")?"Doppel":"Einzel", art:TURNIER_ARTEN[0], anzahlGruppen:2, aufsteiger:2, gestartet:false, vorgabe:"nein", vorgabeArt:"QTTR",
-      diffQTTR:80, maxVorgabe:5, teilnehmer:[], gruppen:[], spiele:[],
+      diffQTTR:80, maxVorgabe:5, gewinnsaetze:3, teilnehmer:[], gruppen:[], spiele:[],
     }]}));
   }
   function updKonk(key,patch){ setT(prev=>({...prev, konkurrenzen:prev.konkurrenzen.map(k=>k.key===key?{...k,...patch}:k)})); }
@@ -1725,6 +1727,17 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
                     <select value={k.modus || (istDoppelKonk(k)?"Doppel":"Einzel")} onChange={e=>updKonk(k.key,{modus:e.target.value})} style={{...selT2,width:"100%"}}>
                       <option value="Einzel">Einzel</option>
                       <option value="Doppel">Doppel</option>
+                    </select>
+                  </Feld>
+
+                  {/* Spielmodus je Konkurrenz: Anzahl Gewinnsätze (Best of 2g-1).
+                      Voreinstellung: 3 Gewinnsätze (Best of 5). */}
+                  <Feld label="Modus" klein>
+                    <select value={String(k.gewinnsaetze??3)} onChange={e=>updKonk(k.key,{gewinnsaetze:Number(e.target.value)})} style={{...selT2,width:"100%"}}>
+                      <option value="1">1 Gewinnsatz (Best of 1)</option>
+                      <option value="2">2 Gewinnsätze (Best of 3)</option>
+                      <option value="3">3 Gewinnsätze (Best of 5)</option>
+                      <option value="4">4 Gewinnsätze (Best of 7)</option>
                     </select>
                   </Feld>
 
@@ -1979,13 +1992,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     return sp.every(s=>{
       if(!s.a || !s.b) return false;          // unvollständige Begegnung → nicht fertig
       if(!s.fixiert) return false;             // noch nicht gespeichert
-      return ko_sieger(s.saetze)!=null;        // gültiges Endergebnis vorhanden
+      return ko_sieger(s.saetze, konk?.gewinnsaetze??3)!=null;        // gültiges Endergebnis vorhanden
     });
   }
   // Anzahl der noch offenen (nicht gespeicherten) Gruppenspiele – für die Anzeige.
   function offeneGruppenspiele(){
     const sp=konk?.spiele||[];
-    return sp.filter(s=> !s.a || !s.b || !s.fixiert || ko_sieger(s.saetze)==null).length;
+    return sp.filter(s=> !s.a || !s.b || !s.fixiert || ko_sieger(s.saetze, konk?.gewinnsaetze??3)==null).length;
   }
   // Aufsteiger je Gruppe nach Platzierung ermitteln (Anzahl aus konk.aufsteiger).
   function ermittleAufsteiger(){
@@ -2145,7 +2158,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         // Doppel-KO: Begegnungen aus der aufgelösten DE-Struktur ziehen. Runde für die
         // faire Reihenfolge = Stage-Index (W-Runde bzw. LB-Stufe, GF am Ende).
         const struktur=de_baueStruktur(k.koSlots.length);
-        const val=de_loese(struktur, k.koSlots, k.koSpiele||{});
+        const val=de_loese(struktur, k.koSlots, k.koSpiele||{}, k.gewinnsaetze??3);
         struktur.matches.forEach(m=>{
           if(m.key==="GF2" && !val["GF2"]) return;      // Reset nur wenn aktiv
           const v=val[m.key]; if(!v || !v.a || !v.b) return;
@@ -2155,7 +2168,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             gi:0, runde:rundeNr, fertig:istFertig(gesp.saetze, gesp.fixiert) });
         });
       } else {
-        const runden=ko_baueRunden(k.koSlots, k.koSpiele||{});
+        const runden=ko_baueRunden(k.koSlots, k.koSpiele||{}, k.gewinnsaetze??3);
         runden.forEach((spiele,ri)=>spiele.forEach(sp=>{
           if(!sp.a || !sp.b) return;
           liste.push({ key:`k_${sp.key}`, a:sp.a, b:sp.b, saetze:sp.saetze,
@@ -2463,8 +2476,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Fixierung auf SPIEL-Ebene: ein abgeschlossenes Spiel kann fixiert werden, damit
   // die Ergebnisse nicht versehentlich geändert werden. Marker: Feld `fixiert` am Spiel.
   function satzKomplett(satz){ return satz && satz[0]!=="" && satz[1]!=="" && satz[0]!=null && satz[1]!=null; }
-  // Ein Spiel ist "abgeschlossen", sobald ein Spieler 3 Sätze gewonnen hat (Best of 5).
+  // Ein Spiel ist "abgeschlossen", sobald ein Spieler die nötigen Gewinnsätze erreicht hat.
   function spielAbgeschlossen(sp){
+    const g=Math.max(1, Number(konk?.gewinnsaetze??3)||3);
     let a=0,b=0;
     for(const s of (sp.saetze||[])){
       if(!satzKomplett(s)) continue;
@@ -2472,7 +2486,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(Number.isNaN(na)||Number.isNaN(nb)) continue;
       if(na>nb) a++; else if(nb>na) b++;
     }
-    return a>=3 || b>=3;
+    return a>=g || b>=g;
   }
   function spielFixiert(sp){ return !!(sp && sp.fixiert); }
   function toggleFixSpiel(spIndex, fix){
@@ -2899,7 +2913,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                         Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
                       </div>}
                       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                        {Array.from({length:anzahlSichtbareSaetze(sp.saetze)}).map((_,si)=>{
+                        {Array.from({length:anzahlSichtbareSaetze(sp.saetze, konk.gewinnsaetze??3)}).map((_,si)=>{
                           const satz=sp.saetze[si]||["",""];
                           const fehler=satzFehler(satz[0],satz[1]);
                           return <div key={si} style={{display:"flex",flexDirection:"column",gap:2}}>
@@ -3141,8 +3155,10 @@ function ko_erstRunde(idsSortiert){
 // Wir speichern die Erstrunden-Belegung (slots) + je Spiel die Sätze. Die Gewinner
 // werden aus den Ergebnissen (oder Freilosen) automatisch nach oben durchgereicht.
 
-// Sieger eines Spiels anhand der Sätze (Best of 5, 3 Gewinnsätze). Rückgabe: "a"|"b"|null
-function ko_sieger(saetze){
+// Sieger eines Spiels anhand der Sätze. g = nötige Gewinnsätze (Default 3 = Best of 5).
+// Rückgabe: "a"|"b"|null
+function ko_sieger(saetze, gewinnsaetze=3){
+  const g=Math.max(1, Number(gewinnsaetze)||3);
   let a=0,b=0;
   for(const s of (saetze||[])){
     if(!s||s[0]===""||s[1]===""||s[0]==null||s[1]==null) continue;
@@ -3150,8 +3166,8 @@ function ko_sieger(saetze){
     if(Number.isNaN(na)||Number.isNaN(nb)) continue;
     if(na>nb) a++; else if(nb>na) b++;
   }
-  if(a>=3) return "a";
-  if(b>=3) return "b";
+  if(a>=g) return "a";
+  if(b>=g) return "b";
   return null;
 }
 
@@ -3161,9 +3177,11 @@ function ko_sieger(saetze){
 // wenn im gegnerischen Teilbaum ÜBERHAUPT KEIN Spieler steht (echtes Freilos). Steht
 // dort noch ein unentschiedenes Spiel, bleibt das Feld leer („Gegner steht noch nicht
 // fest"). So zieht sich ein Erstrunden-Freilos nicht fälschlich bis ins Finale.
-function ko_baueRunden(slots, spieleMap){
+function ko_baueRunden(slots, spieleMap, gewinnsaetze=3){
   const runden=[];
   const rundenAnzahl=Math.log2(slots.length);
+  const g=Math.max(1, Number(gewinnsaetze)||3);
+  const leereSaetze=()=>Array.from({length:g},()=>["",""]);
 
   // belegt[r][i] = enthält der Teilbaum, der zu Position i in Runde r gehört,
   // mindestens einen echten Spieler? Runde 0 = Slots direkt; höhere Runden per OR.
@@ -3183,7 +3201,7 @@ function ko_baueRunden(slots, spieleMap){
     for(let i=0;i<vorPaare.length;i++){
       const key=`${r}-${i}`;
       const gesp=spieleMap[key]||{};
-      const saetze=gesp.saetze||[["",""],["",""],["",""]];
+      const saetze=gesp.saetze||leereSaetze();
       spiele.push({...vorPaare[i], key, saetze, fixiert:!!gesp.fixiert});
     }
     runden.push(spiele);
@@ -3194,7 +3212,7 @@ function ko_baueRunden(slots, spieleMap){
       const sp=spiele[i];
       const seiteA = belegt[r] ? belegt[r][2*i]   : !!sp.a;
       const seiteB = belegt[r] ? belegt[r][2*i+1] : !!sp.b;
-      sp._gewinner = ko_gewinnerVon(sp, seiteA, seiteB);
+      sp._gewinner = ko_gewinnerVon(sp, seiteA, seiteB, g);
     }
     // je zwei benachbarte Spiele speisen ein Spiel der nächsten Runde
     const next=[];
@@ -3210,11 +3228,11 @@ function ko_baueRunden(slots, spieleMap){
 // überhaupt einen Spieler enthält. Fehlt ein Spieler und ist sein Teilbaum LEER, ist
 // es ein echtes Freilos → der andere rückt auf. Ist der Teilbaum dagegen belegt (der
 // Gegner steht nur noch nicht fest), rückt niemand automatisch auf.
-function ko_gewinnerVon(spiel, seiteABelegt=true, seiteBBelegt=true){
+function ko_gewinnerVon(spiel, seiteABelegt=true, seiteBBelegt=true, gewinnsaetze=3){
   if(!spiel) return null;
   const {a,b,saetze}=spiel;
   if(a && b){
-    const s=ko_sieger(saetze);
+    const s=ko_sieger(saetze, gewinnsaetze);
     return s==="a"?a : s==="b"?b : null;
   }
   if(!a && !b) return null;
@@ -3314,7 +3332,7 @@ function de_baueStruktur(size){
 // des Gegners GAR KEINEN Spieler enthalten kann (dauerhaft leerer Erstrunden-Slot).
 // Steht der Gegner nur noch nicht fest (Quellspiel läuft), bleibt die Seite leer und
 // es rückt niemand automatisch vor. So wird niemand fälschlich durchgeschrieben.
-function de_loese(struktur, slots, spieleMap){
+function de_loese(struktur, slots, spieleMap, gewinnsaetze=3){
   const val={};
 
   // kannBelegen(src): Kann aus dieser Quelle jemals ein Spieler kommen? Rekursiv über
@@ -3355,7 +3373,7 @@ function de_loese(struktur, slots, spieleMap){
       }
       const a=resolveSrc(m.aSrc), b=resolveSrc(m.bSrc);
       const gesp=spieleMap[m.key]||{};
-      const erg=ko_sieger(gesp.saetze);   // "a" | "b" | null
+      const erg=ko_sieger(gesp.saetze, gewinnsaetze);   // "a" | "b" | null
       let sieger=null, verlierer=null;
       if(a && b){
         // beide stehen fest: Sieger nur mit echtem Ergebnis (kein Auto-Advance)
@@ -3706,7 +3724,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
       </div>
     </div>;
 
-  const runden=ko_baueRunden(slots, spieleMap);
+  const runden=ko_baueRunden(slots, spieleMap, konk.gewinnsaetze??3);
   const rundenTitel=(ri)=>{
     const spieleInRunde=runden[ri].length;
     if(spieleInRunde===1) return "Finale";
@@ -3762,7 +3780,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
-                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr}/>
+                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr} gewinnsaetze={konk.gewinnsaetze??3}/>
                 </div>;
               })}
             </div>
@@ -3793,7 +3811,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null, qttrEinheit=null }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null, qttrEinheit=null, gewinnsaetze=3 }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung). Beim einfachen KO ergeben sie
   // sich aus der Spielposition (si*2 / si*2+1); beim doppelten KO werden sie explizit
   // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
@@ -3805,7 +3823,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
   const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
   const freilos = (sp.a && !sp.b) || (sp.b && !sp.a);
   const beide = sp.a && sp.b;
-  const abgeschlossen = ko_sieger(sp.saetze)!=null;
+  const abgeschlossen = ko_sieger(sp.saetze, gewinnsaetze)!=null;
 
   const zeile=(id,slotIdx,istSieger,vorgabePunkte)=>{
     // QTTR der Einheit: bei Doppel die Team-Summe (Σ), sonst der Spieler-QTTR.
@@ -3863,7 +3881,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
     {/* Sätze nur eingebbar, wenn beide Spieler feststehen und kein Freilos */}
     {beide && <div style={{marginTop:6}}>
       <div style={{display:"flex",gap:3,flexWrap:"nowrap",alignItems:"center",overflowX:"auto"}}>
-        {Array.from({length: anzahlSichtbareSaetze(sp.saetze)}).map((_,idx)=>{
+        {Array.from({length: anzahlSichtbareSaetze(sp.saetze, gewinnsaetze)}).map((_,idx)=>{
           const satz=sp.saetze[idx]||["",""];
           const fehler=satzFehler(satz[0],satz[1]);
           return <div key={idx} style={{flexShrink:0,display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
@@ -3983,8 +4001,9 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     </div>;
 
   const size = slots.length;
+  const gewinnsaetze = konk.gewinnsaetze??3;
   const struktur = de_baueStruktur(size);
-  const val = de_loese(struktur, slots, spieleMap);
+  const val = de_loese(struktur, slots, spieleMap, gewinnsaetze);
 
   // Eine einzelne Match-Box rendern (nutzt KoSpielBox wie beim einfachen KO).
   function renderMatch(mkey, istErstrunde){
@@ -4007,7 +4026,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
       slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
       setSatz={setSatz} toggleFix={toggleFix}
-      slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)} qttrEinheit={qttrNumVon2}/>;
+      slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)} qttrEinheit={qttrNumVon2} gewinnsaetze={gewinnsaetze}/>;
   }
 
   const BOX=124;                       // Höhe einer Spiel-Box (wie einfaches KO)
