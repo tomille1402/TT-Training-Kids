@@ -1,4 +1,4 @@
-// === TTC-App · Version 343 · erstellt 15.08.2026 ===
+// === TTC-App · Version 344 · erstellt 15.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "343";
+const APP_VERSION = "344";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1886,6 +1886,69 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     });
     setDirty(true);
   }
+  // Wie updKonk, aber für eine BELIEBIGE Konkurrenz per Key (nicht nur die aktive).
+  // Wird u. a. für die Ergebniseingabe direkt in „Laufende Spiele" gebraucht, da dort
+  // Begegnungen verschiedener Konkurrenzen gemischt erscheinen.
+  function updKonkByKey(konkKey, patchOrFn){
+    setT(prev=>{
+      const neu={...prev, konkurrenzen:prev.konkurrenzen.map(k=>{
+        if(k.key!==konkKey) return k;
+        const patch = typeof patchOrFn==="function" ? patchOrFn(k) : patchOrFn;
+        return {...k, ...patch};
+      })};
+      letzterStand.current=neu;
+      planeAutoSave();
+      return neu;
+    });
+    setDirty(true);
+  }
+  // Ergebnis (einen Satz) einer beliebigen Begegnung setzen – anhand des globalen Keys
+  // "{konkKey}::{lokalKey}". lokalKey ist "g_<idx>" (Gruppenspiel) oder "k_<matchKey>"
+  // (KO-Spiel). So kann direkt in der Box „Laufende Spiele" getippt werden.
+  function ergebnisSetzenGlobal(konkKey, lokalKey, satzIndex, seite, wert){
+    const val=String(wert).replace(/[^\d]/g,"");
+    const seiteIdx = seite==="a" ? 0 : 1;
+    if(lokalKey.startsWith("g_")){
+      const idx=Number(lokalKey.slice(2));
+      updKonkByKey(konkKey, k=>{
+        const spiele=(k.spiele||[]).map((s,i)=>{
+          if(i!==idx) return s;
+          const saetze=(s.saetze||[]).map(x=>[...x]);
+          while(saetze.length<=satzIndex) saetze.push(["",""]);
+          saetze[satzIndex][seiteIdx]=val;
+          return {...s, saetze};
+        });
+        return { spiele };
+      });
+    } else if(lokalKey.startsWith("k_")){
+      const mkey=lokalKey.slice(2);
+      updKonkByKey(konkKey, k=>{
+        const map={...(k.koSpiele||{})};
+        const eintrag={...(map[mkey]||{})};
+        const saetze=(eintrag.saetze||[]).map(x=>[...x]);
+        while(saetze.length<=satzIndex) saetze.push(["",""]);
+        saetze[satzIndex][seiteIdx]=val;
+        eintrag.saetze=saetze;
+        map[mkey]=eintrag;
+        return { koSpiele:map };
+      });
+    }
+  }
+  // Ergebnis einer Begegnung fixieren/lösen (globaler Key), analog für Gruppe/KO.
+  function ergebnisFixGlobal(konkKey, lokalKey, fix){
+    if(!darfAlle) return;
+    if(lokalKey.startsWith("g_")){
+      const idx=Number(lokalKey.slice(2));
+      updKonkByKey(konkKey, k=>({ spiele:(k.spiele||[]).map((s,i)=> i===idx?{...s, fixiert:fix}:s) }));
+    } else if(lokalKey.startsWith("k_")){
+      const mkey=lokalKey.slice(2);
+      updKonkByKey(konkKey, k=>{
+        const map={...(k.koSpiele||{})};
+        map[mkey]={...(map[mkey]||{}), fixiert:fix};
+        return { koSpiele:map };
+      });
+    }
+  }
   function planeAutoSave(){
     if(speichernTimer.current) clearTimeout(speichernTimer.current);
     setAutoStatus("speichert");
@@ -1980,15 +2043,62 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   function toggleTeilnehmer(id){
     if(!isAdmin) return; // Teilnehmer festlegen nur Admin
     const drin=(konk.teilnehmer||[]).includes(id);
-    const teilnehmer = drin ? konk.teilnehmer.filter(x=>x!==id) : [...(konk.teilnehmer||[]), id];
-    // aus Gruppen entfernen, falls ausgeschlossen
+    if(!drin){
+      // Hinzufügen: nur zur Teilnehmerliste; Gruppen/Spiele unverändert.
+      updKonk({ teilnehmer:[...(konk.teilnehmer||[]), id] });
+      return;
+    }
+    // ── Entfernen ──────────────────────────────────────────────────────────────
+    // WICHTIG (P4): Nur die Spiele des ENTFERNTEN Spielers dürfen verschwinden.
+    // Bereits gespielte Spiele ANDERER Paarungen behalten ihre Ergebnisse.
+    const patch={ teilnehmer:(konk.teilnehmer||[]).filter(x=>x!==id) };
+
+    // Gruppen: Spieler herausnehmen und Spiele key-basiert neu ableiten. erzeugeSpiele
+    // überträgt bestehende Ergebnisse per „a|b"-Schlüssel – fremde Paarungen bleiben,
+    // nur die Paarungen mit dem entfernten Spieler fallen weg.
     let gruppen=konk.gruppen||[];
-    if(drin) gruppen=gruppen.map(g=>g.filter(x=>x!==id));
-    updKonk({teilnehmer, gruppen});
+    gruppen=gruppen.map(g=>g.filter(x=>x!==id));
+    patch.gruppen=gruppen;
+    if(Array.isArray(konk.spiele)){
+      // Nur Spiele OHNE den entfernten Spieler behalten; deren Ergebnisse bleiben 1:1.
+      patch.spiele=(konk.spiele||[]).filter(s=> s.a!==id && s.b!==id);
+    }
+
+    // KO-System: den Spieler aus den Erstrunden-Slots nehmen (Position wird „frei").
+    // Die übrigen Slots bleiben an ihrer Stelle, daher bleiben ALLE Match-Keys stabil
+    // und die in koSpiele gespeicherten Ergebnisse fremder Paarungen unangetastet.
+    // Das Erstrundenspiel des Entfernten löst sich über die Freilos-Regel auf (Gegner
+    // rückt vor). koSpiele wird bewusst NICHT umgeschrieben, um keine fremden Ergebnisse
+    // zu gefährden (die Keys sind positions-/rundenbasiert, nicht spielerbasiert).
+    if(Array.isArray(konk.koSlots) && konk.koSlots.length){
+      patch.koSlots=konk.koSlots.map(sid=> sid===id ? null : sid);
+    }
+    updKonk(patch);
   }
 
-  // P4: Schiedsrichter werden turnierweit im Turnier-Formular verwaltet
-  // (t.schiedsrichter / t.schiedsrichterAktiv), nicht mehr je Konkurrenz.
+  // P2: Einen Spieler in DIESER Konkurrenz pausieren/fortsetzen. Pausiert ein Spieler,
+  // gelten automatisch ALLE seine (noch offenen) Begegnungen als ausgesetzt – sie
+  // bekommen keinen Tisch und erscheinen nicht unter „Als Nächstes", bis er fortgesetzt
+  // wird. Bereits gespielte/fixierte Ergebnisse bleiben unberührt.
+  function toggleSpielerPause(id){
+    if(!isAdmin || !konk) return;
+    const cur=konk.spielerPausiert||[];
+    const drin=cur.includes(id);
+    const spielerPausiert = drin ? cur.filter(x=>x!==id) : [...cur, id];
+    // Beim Pausieren: laufende Tisch-Zuordnungen der betroffenen Begegnungen freigeben.
+    if(!drin){
+      const tische={...(t.tische||{})};
+      for(const x of begegnungenDerKonk(konk)){
+        if(echteSpieler(x.a).includes(id) || echteSpieler(x.b).includes(id)){
+          delete tische[gk(konk.key, x.key)];
+        }
+      }
+      updKonk({ spielerPausiert });
+      updTurnier({ tische });
+    } else {
+      updKonk({ spielerPausiert });
+    }
+  }
 
   // Gruppen initialisieren (leere Gruppen gemäß anzahlGruppen)
   function initGruppen(){
@@ -2216,6 +2326,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const mehrKonk=(t.konkurrenzen||[]).length>1;
     for(const k of (t.konkurrenzen||[])){
       const mehrGr=(k?.gruppen?.length||0)>1;
+      const spielerPausiertK = new Set(k?.spielerPausiert||[]);   // P2: pausierte Spieler dieser Konkurrenz
+      const begegnungHatPausiertenSpieler=(x)=>{
+        if(spielerPausiertK.size===0) return false;
+        for(const s of echteSpieler(x.a)) if(spielerPausiertK.has(s)) return true;
+        for(const s of echteSpieler(x.b)) if(spielerPausiertK.has(s)) return true;
+        return false;
+      };
       for(const x of begegnungenDerKonk(k)){
         nr+=1;
         liste.push({
@@ -2225,7 +2342,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           konkName: k.name,
           mehrKonk, mehrGr,
           nr,
-          pausiert: pausiertG.includes(gk(k.key, x.key)),
+          pausiert: pausiertG.includes(gk(k.key, x.key)) || begegnungHatPausiertenSpieler(x),  // P2
           tisch: tischMapG[gk(k.key, x.key)]||null,
           nurGestartet: !!k.gestartet,
           schiriAktiv: schiriEinsatzAktiv,               // P4: turnierweit – Schiris im Einsatz?
@@ -2317,10 +2434,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     // P4: Zulässige Schiedsrichter gelten turnierweit (konkurrenzübergreifend).
     const zulaessig=schiriZugelassen;
     const manuell=Array.isArray(t?.schirisManuell)?t.schirisManuell:[];
+    // P3: Spiele, für die der Admin bewusst „keiner" gewählt hat, bekommen keinen Schiri.
+    const keiner=Array.isArray(t?.schirisKeiner)?t.schirisKeiner:[];
+    const keinSchiri=(gkey)=>keiner.includes(gkey);
     // 0) MANUELL gesetzte Zuordnungen haben Vorrang und bleiben immer bestehen,
     //    sofern der Schiri zulässig und nicht pausiert ist – auch wenn er selbst noch
     //    ein eigenes offenes Spiel hat. Sie belegen den Schiri für andere Spiele.
     for(const x of laufend){
+      if(keinSchiri(x.gkey)) continue;
       const sid=aktuelleSchiris[x.gkey];
       if(sid && manuell.includes(x.gkey) && zulaessig.includes(sid) && !schiriPausiert(sid) && !belegteSchiris.has(sid)){
         neu[x.gkey]=sid; belegteSchiris.add(sid);
@@ -2328,7 +2449,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     // 1) bestehende (automatische) Zuordnungen behalten, sofern noch gültig
     for(const x of laufend){
-      if(neu[x.gkey]) continue;
+      if(neu[x.gkey] || keinSchiri(x.gkey)) continue;
       const sid=aktuelleSchiris[x.gkey];
       if(sid && !manuell.includes(x.gkey) && zulaessig.includes(sid) && schiriFrei(sid)){
         neu[x.gkey]=sid; belegteSchiris.add(sid);
@@ -2336,7 +2457,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }
     // 2) freie, nicht pausierte Schiris an die übrigen laufenden Spiele verteilen
     for(const x of laufend){
-      if(neu[x.gkey]) continue;
+      if(neu[x.gkey] || keinSchiri(x.gkey)) continue;
       const kandidaten=zulaessig.filter(id=>schiriFrei(id));
       if(kandidaten.length>0){
         const sid=kandidaten[0];
@@ -2375,19 +2496,24 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   function schiriSetzen(gkeyStr, schiriId){
     const schiris={...schiriMapG};
     let manuell=Array.isArray(t?.schirisManuell)?[...t.schirisManuell]:[];
+    let keiner=Array.isArray(t?.schirisKeiner)?[...t.schirisKeiner]:[];
     if(!schiriId){
+      // P3: „keiner" ist eine bewusste Admin-Entscheidung → merken, damit die
+      // automatische Vergabe dieses Spiel NICHT wieder mit einem Schiri belegt.
       delete schiris[gkeyStr];
-      manuell=manuell.filter(k=>k!==gkeyStr);   // Markierung entfernen
-      updTurnier({ schiris, schirisManuell:manuell });
+      manuell=manuell.filter(k=>k!==gkeyStr);
+      if(!keiner.includes(gkeyStr)) keiner.push(gkeyStr);
+      updTurnier({ schiris, schirisManuell:manuell, schirisKeiner:keiner });
       return;
     }
+    keiner=keiner.filter(k=>k!==gkeyStr);   // wieder ein Schiri gewünscht
     for(const key of Object.keys(schiris)) if(key!==gkeyStr && schiris[key]===schiriId){
       delete schiris[key];
       manuell=manuell.filter(k=>k!==key);        // dort war es ggf. manuell → aufheben
     }
     schiris[gkeyStr]=schiriId;
     if(!manuell.includes(gkeyStr)) manuell.push(gkeyStr);
-    updTurnier({ schiris, schirisManuell:manuell });
+    updTurnier({ schiris, schirisManuell:manuell, schirisKeiner:keiner });
   }
   // Tisch für eine Begegnung manuell setzen (globaler Key); bei belegtem Zieltisch Tausch.
   function tischSetzen(gkeyStr, tischNr){
@@ -2449,7 +2575,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neueSchiris[kk] || !neu[kk]) delete schiriBenachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(t.schirisManuell), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.spielerPausiert])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(t.schirisManuell), JSON.stringify(t.schirisKeiner), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
   // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
@@ -2607,6 +2733,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       const ausgesetzt=bgAlle.filter(x=>x.pausiert);
       if(mitTisch.length===0 && wartendAlle.length===0 && ausgesetzt.length===0) return null;
       const satzText=(saetze)=>(saetze||[]).filter(s=>s[0]!==""&&s[1]!=="").map(s=>`${s[0]}:${s[1]}`).join(" ")||"—";
+      // Kleines Eingabefeld für die Satzeingabe direkt in „Laufende Spiele".
+      const satzInp={width:26,height:28,textAlign:"center",fontSize:12,fontWeight:700,padding:0,
+        border:"1px solid var(--border2)",borderRadius:5,background:"var(--bg)",color:"var(--text)",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"};
+      // Ist die Begegnung fixiert (Ergebnis gespeichert)? Für Gruppen- und KO-Spiel.
+      const istBegegnungFixiert=(x)=>{
+        const kX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
+        if(!kX) return false;
+        if(x.key.startsWith("g_")){ const i=Number(x.key.slice(2)); return !!(kX.spiele||[])[i]?.fixiert; }
+        if(x.key.startsWith("k_")){ const mk=x.key.slice(2); return !!((kX.koSpiele||{})[mk]?.fixiert); }
+        return false;
+      };
       const belegt=new Set(Object.values(tischMapG));
       // Badges: Spielnummer, Konkurrenz (bei mehreren), Gruppe (bei mehreren)
       const badge=(txt,farbe)=><span style={{fontSize:10,fontWeight:700,color:farbe||"var(--text4)",background:"var(--bg3)",borderRadius:5,padding:"1px 6px"}}>{txt}</span>;
@@ -2666,7 +2803,36 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                       </select>
                     : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{x.tisch}</span>}
                   {nameZeile(x)}
-                  <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
+                  {/* P1: Ergebnis direkt hier eintragen (Admin/Trainer). Sonst nur Anzeige. */}
+                  {(()=>{
+                    const kX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
+                    const g=kX?.gewinnsaetze??3;
+                    const anz=anzahlSichtbareSaetze(x.saetze, g);
+                    if(!darfAlle){
+                      return <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>;
+                    }
+                    const fixiert=istBegegnungFixiert(x);
+                    return <span style={{display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                      {Array.from({length:anz}).map((_,si)=>{
+                        const satz=(x.saetze&&x.saetze[si])||["",""];
+                        return <span key={si} style={{display:"inline-flex",alignItems:"center",gap:1}}>
+                          <input inputMode="numeric" value={satz[0]??""} disabled={fixiert}
+                            onChange={e=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",e.target.value)}
+                            style={satzInp}/>
+                          <span style={{fontSize:10,color:"var(--text4)"}}>:</span>
+                          <input inputMode="numeric" value={satz[1]??""} disabled={fixiert}
+                            onChange={e=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",e.target.value)}
+                            style={satzInp}/>
+                        </span>;
+                      })}
+                      <button onClick={()=>ergebnisFixGlobal(x.konkKey,x.key,!fixiert)}
+                        title={fixiert?"Ergebnis freigeben":"Ergebnis speichern"}
+                        style={{flexShrink:0,border:"none",borderRadius:6,fontSize:10,fontWeight:800,padding:"4px 8px",cursor:"pointer",
+                          background:fixiert?"#10b981":"var(--bg3)",color:fixiert?"#fff":"var(--text2)"}}>
+                        {fixiert?"✓":"💾"}
+                      </button>
+                    </span>;
+                  })()}
                   {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="Begegnung aussetzen"
                     style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
                   {/* Schiedsrichter (nur wenn turnierweit Schiri-Einsatz aktiv) */}
@@ -2825,6 +2991,34 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       {isAdmin && schiriEinsatzAktiv && <div style={{marginBottom:14,fontSize:11,color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:"8px 11px"}}>
         🎽 Schiedsrichter ({schiriZugelassen.length}) werden turnierweit über „Parameter → Turnier bearbeiten" verwaltet und gelten konkurrenzübergreifend.
       </div>}
+
+      {/* P2: Spieler pausieren (nur bei gestarteter Konkurrenz, Admin). Ein pausierter
+          Spieler setzt automatisch alle seine offenen Begegnungen aus. */}
+      {isAdmin && konk.gestartet && (()=>{
+        const pausierteSp=konk.spielerPausiert||[];
+        // Einheiten: bei Doppel die Team-Mitglieder einzeln, sonst die Teilnehmer.
+        const ids=[...new Set((konk.teilnehmer||[]).flatMap(id=>{ const tm=teamVonId(id); return tm?[tm.s1,tm.s2]:[id]; }))];
+        const sortiert=ids.map(id=>spielerVon(id)).filter(Boolean).sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
+        if(sortiert.length===0) return null;
+        return <details style={{marginBottom:14}}>
+          <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#f59e0b"}}>
+            ⏸ Spieler pausieren{pausierteSp.length>0?` (${pausierteSp.length} pausiert)`:""}
+          </summary>
+          <div style={{fontSize:10,color:"var(--text4)",margin:"6px 0"}}>
+            Ein pausierter Spieler setzt automatisch alle seine offenen Spiele aus. Bereits gespeicherte Ergebnisse bleiben erhalten.
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {sortiert.map(p=>{
+              const pausiert=pausierteSp.includes(p.id);
+              return <span key={p.id} onClick={()=>toggleSpielerPause(p.id)} style={{
+                padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",
+                border:pausiert?"1px solid #f59e0b":"1px solid var(--border2)",
+                background:pausiert?"#f59e0b":"var(--bg2)",color:pausiert?"#fff":"var(--text2)",
+              }}>{pausiert?"⏸ ":""}{p.firstName} {p.lastName}{pausiert?" (pausiert)":""}</span>;
+            })}
+          </div>
+        </details>;
+      })()}
 
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
