@@ -1,4 +1,4 @@
-// === TTC-App · Version 341 · erstellt 15.08.2026 ===
+// === TTC-App · Version 342 · erstellt 15.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "341";
+const APP_VERSION = "342";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1377,23 +1377,22 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   }
   const sichtbareTurniere = turniere.filter(turnierSichtbar);
 
-  // Turniere + TTR laden
+  // Turniere live abonnieren (onSnapshot), damit Ergebnisse, die ein ANDERER Admin/Trainer
+  // eingibt, sofort bei allen erscheinen – nicht erst nach einem Reload. TTR einmalig laden.
   useEffect(()=>{
-    let ab=false;
+    const unsub=onSnapshot(collection(db,"turniere"), snap=>{
+      const list=[]; snap.forEach(d=>list.push(turnierVonFirestore({id:d.id,...(d.data()||{})})));
+      list.sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
+      setTurniere(list);
+      setLaedt(false);
+    }, err=>{ setTurniere([]); setLaedt(false); });
     (async()=>{
       try{
-        const snap=await getDocs(collection(db,"turniere"));
-        const list=[]; snap.forEach(d=>list.push(turnierVonFirestore({id:d.id,...(d.data()||{})})));
-        list.sort((a,b)=>(b.datum||"").localeCompare(a.datum||""));
-        if(!ab) setTurniere(list);
-      }catch(e){ if(!ab) setTurniere([]); }
-      try{
         const t=await getDoc(doc(db,"config","ttrListe"));
-        if(!ab && t.exists()){ const d=t.data(); setTtr({stichtage:d.stichtage||[],personen:d.personen||[]}); }
+        if(t.exists()){ const d=t.data(); setTtr({stichtage:d.stichtage||[],personen:d.personen||[]}); }
       }catch(e){}
-      if(!ab) setLaedt(false);
     })();
-    return ()=>{ ab=true; };
+    return ()=>{ unsub(); };
   },[]);
 
   const ttrStichtag = ttr.stichtage[0]||null;
@@ -1846,6 +1845,24 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const letzterStand=useRef(turnier);
 
   const konk=(t.konkurrenzen||[]).find(k=>k.key===aktiveKonk)||null;
+
+  // Live-Updates: Kommt von außen (Firestore-Listener) ein neuer Turnierstand herein –
+  // etwa weil ein ANDERER Admin/Trainer ein Ergebnis gespeichert hat –, übernehmen wir ihn
+  // in die geöffnete Detailansicht. ABER nur, wenn hier gerade KEINE eigenen ungespeicherten
+  // Änderungen anstehen (kein dirty, kein laufender Auto-Save). So gehen eigene Eingaben nie
+  // verloren, während fremde Ergebnisse trotzdem sofort sichtbar werden.
+  useEffect(()=>{
+    if(dirty) return;                       // eigene Eingabe hat Vorrang
+    if(speichernTimer.current) return;      // Auto-Save läuft noch → nicht überschreiben
+    const eingehend=turnier?.aktualisiert||0;
+    const aktuell=letzterStand.current?.aktualisiert||0;
+    // Nur übernehmen, wenn der eingehende Stand neuer ist ODER es ein anderes Turnier ist.
+    if(turnier?.id!==letzterStand.current?.id || eingehend>aktuell){
+      setT(turnier);
+      letzterStand.current=turnier;
+    }
+    // eslint-disable-next-line
+  },[turnier]);
 
   // Änderungen an einer Konkurrenz übernehmen UND automatisch speichern. Damit
   // schnelles Tippen nicht jeden Tastendruck einzeln schreibt, wird das Speichern
