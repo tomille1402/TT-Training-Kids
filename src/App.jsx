@@ -1,4 +1,4 @@
-// === TTC-App · Version 342 · erstellt 15.08.2026 ===
+// === TTC-App · Version 343 · erstellt 15.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "342";
+const APP_VERSION = "343";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1862,7 +1862,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       letzterStand.current=turnier;
     }
     // eslint-disable-next-line
-  },[turnier]);
+  },[turnier, dirty]);
 
   // Änderungen an einer Konkurrenz übernehmen UND automatisch speichern. Damit
   // schnelles Tippen nicht jeden Tastendruck einzeln schreibt, wird das Speichern
@@ -1892,16 +1892,18 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     speichernTimer.current=setTimeout(async()=>{
       try{
         await onSpeichern(letzterStand.current);
+        speichernTimer.current=null;         // Timer abgeschlossen → Live-Übernahme wieder erlauben
         setDirty(false);
         setAutoStatus("gespeichert");
         setTimeout(()=>setAutoStatus(""), 1500);
       }catch(e){
+        speichernTimer.current=null;         // auch bei Fehler freigeben
         setAutoStatus("");
       }
     }, 800);
   }
   async function speichern(){
-    if(speichernTimer.current) clearTimeout(speichernTimer.current);
+    if(speichernTimer.current){ clearTimeout(speichernTimer.current); speichernTimer.current=null; }
     await onSpeichern(letzterStand.current); setDirty(false);
   }
   // Beim Verlassen der Ansicht ausstehende Änderungen sofort sichern.
