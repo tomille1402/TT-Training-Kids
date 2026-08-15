@@ -1,4 +1,4 @@
-// === TTC-App · Version 340 · erstellt 14.08.2026 ===
+// === TTC-App · Version 341 · erstellt 15.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "340";
+const APP_VERSION = "341";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1359,11 +1359,21 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   // die für mindestens eine ihrer Funktionen (Rollen) freigeschaltet wurden. Standard leer
   // = für niemanden sichtbar. So bleiben Turniere in der Entstehungs-/Testphase privat.
   const meineRollen = myPlayer?.roles || {};
+  // „Spieler" gilt – wie in der übrigen App – auch dann, wenn die Person über ihre GRUPPE
+  // (Profis/Fortgeschrittene/Anfänger/Gast) Spieler ist oder ein Profil ohne reine
+  // Sonderrolle (Erwachsene/MF/Trainer/Admin) hat. Sonst würden Spieler ohne explizit
+  // gesetztes roles.player-Flag ein für „Spieler" freigegebenes Turnier nicht sehen.
+  const myGrp = myPlayer?.group || "";
+  const inSpielerGruppe = myGrp==="Profis" || myGrp==="Fortgeschrittene" || myGrp==="Anfänger" || myGrp==="Gast";
+  const istSpieler = meineRollen.player===true || inSpielerGruppe ||
+    (!!myPlayer && meineRollen.erwachsene!==true && meineRollen.mannschaftsfuehrer!==true && meineRollen.trainer!==true && meineRollen.admin!==true);
+  // Abgeleitete Rollen-Map für die Sichtbarkeitsprüfung (player ggf. aus Gruppe ergänzt).
+  const meineRollenEff = { ...meineRollen, player: istSpieler || meineRollen.player===true };
   function turnierSichtbar(t){
     if(darfAlleErgebnisse) return true;              // Admin/Trainer immer
     const fuer = t.sichtbarFuer || [];
     if(fuer.length===0) return false;                // für niemanden freigegeben
-    return fuer.some(rk => meineRollen[rk]===true);  // eine passende Funktion?
+    return fuer.some(rk => meineRollenEff[rk]===true);  // eine passende Funktion?
   }
   const sichtbareTurniere = turniere.filter(turnierSichtbar);
 
@@ -2287,10 +2297,21 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const schiriFrei=(id)=> id && !belegteSchiris.has(id) && !schiriPausiert(id) && !spielerMitOffenenSpielen.has(id);
     // P4: Zulässige Schiedsrichter gelten turnierweit (konkurrenzübergreifend).
     const zulaessig=schiriZugelassen;
-    // 1) bestehende Zuordnungen behalten, sofern noch gültig
+    const manuell=Array.isArray(t?.schirisManuell)?t.schirisManuell:[];
+    // 0) MANUELL gesetzte Zuordnungen haben Vorrang und bleiben immer bestehen,
+    //    sofern der Schiri zulässig und nicht pausiert ist – auch wenn er selbst noch
+    //    ein eigenes offenes Spiel hat. Sie belegen den Schiri für andere Spiele.
     for(const x of laufend){
       const sid=aktuelleSchiris[x.gkey];
-      if(sid && zulaessig.includes(sid) && schiriFrei(sid)){
+      if(sid && manuell.includes(x.gkey) && zulaessig.includes(sid) && !schiriPausiert(sid) && !belegteSchiris.has(sid)){
+        neu[x.gkey]=sid; belegteSchiris.add(sid);
+      }
+    }
+    // 1) bestehende (automatische) Zuordnungen behalten, sofern noch gültig
+    for(const x of laufend){
+      if(neu[x.gkey]) continue;
+      const sid=aktuelleSchiris[x.gkey];
+      if(sid && !manuell.includes(x.gkey) && zulaessig.includes(sid) && schiriFrei(sid)){
         neu[x.gkey]=sid; belegteSchiris.add(sid);
       }
     }
@@ -2321,19 +2342,33 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const drin=schirisPausiertG.includes(schiriId);
     const neu = drin ? schirisPausiertG.filter(id=>id!==schiriId) : [...schirisPausiertG, schiriId];
     const schiris={...schiriMapG};
-    if(!drin){ // beim Pausieren: laufende Zuordnung dieses Schiris lösen
-      for(const key of Object.keys(schiris)) if(schiris[key]===schiriId) delete schiris[key];
+    let manuell=Array.isArray(t?.schirisManuell)?[...t.schirisManuell]:[];
+    if(!drin){ // beim Pausieren: laufende Zuordnung dieses Schiris lösen (inkl. Markierung)
+      for(const key of Object.keys(schiris)) if(schiris[key]===schiriId){ delete schiris[key]; manuell=manuell.filter(k=>k!==key); }
     }
-    updTurnier({ schirisPausiert:neu, schiris });
+    updTurnier({ schirisPausiert:neu, schiris, schirisManuell:manuell });
   }
   // Schiedsrichter für eine Begegnung manuell setzen (globaler Key); leer = entfernen.
   // Bei Auswahl eines Schiris, der anderswo eingeteilt ist, wird er dort gelöst (Tausch).
+  // Manuell gesetzte Zuordnungen werden in t.schirisManuell vermerkt und von der
+  // automatischen Neuvergabe nicht mehr überschrieben (auch nicht, wenn der Schiri
+  // selbst noch ein eigenes offenes Spiel hat).
   function schiriSetzen(gkeyStr, schiriId){
     const schiris={...schiriMapG};
-    if(!schiriId){ delete schiris[gkeyStr]; updTurnier({ schiris }); return; }
-    for(const key of Object.keys(schiris)) if(key!==gkeyStr && schiris[key]===schiriId) delete schiris[key];
+    let manuell=Array.isArray(t?.schirisManuell)?[...t.schirisManuell]:[];
+    if(!schiriId){
+      delete schiris[gkeyStr];
+      manuell=manuell.filter(k=>k!==gkeyStr);   // Markierung entfernen
+      updTurnier({ schiris, schirisManuell:manuell });
+      return;
+    }
+    for(const key of Object.keys(schiris)) if(key!==gkeyStr && schiris[key]===schiriId){
+      delete schiris[key];
+      manuell=manuell.filter(k=>k!==key);        // dort war es ggf. manuell → aufheben
+    }
     schiris[gkeyStr]=schiriId;
-    updTurnier({ schiris });
+    if(!manuell.includes(gkeyStr)) manuell.push(gkeyStr);
+    updTurnier({ schiris, schirisManuell:manuell });
   }
   // Tisch für eine Begegnung manuell setzen (globaler Key); bei belegtem Zieltisch Tausch.
   function tischSetzen(gkeyStr, tischNr){
@@ -2395,7 +2430,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neueSchiris[kk] || !neu[kk]) delete schiriBenachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(t.schirisManuell), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
   // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
@@ -2615,20 +2650,20 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   <span style={{fontSize:11,color:"var(--text3)",fontVariantNumeric:"tabular-nums"}}>{satzText(x.saetze)}</span>
                   {isAdmin && <button onClick={()=>togglePause(x.gkey)} title="Begegnung aussetzen"
                     style={{flexShrink:0,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text3)",borderRadius:7,fontSize:10,fontWeight:700,padding:"4px 7px",cursor:"pointer"}}>⏸</button>}
-                  {/* Schiedsrichter (nur bei Konkurrenzen mit aktivem Schiri-Einsatz) */}
+                  {/* Schiedsrichter (nur wenn turnierweit Schiri-Einsatz aktiv) */}
                   {x.schiriAktiv && (()=>{
-                    const konkX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
-                    // Am Tisch spielende Schiris nicht anbieten (außer dem aktuell
-                    // zugeordneten, damit die bestehende Auswahl gültig bleibt).
-                    const optionen=(konkX?.schiedsrichter||[]).filter(sid=> sid===x.schiri || !schiriSpieltAmTisch(sid));
+                    // P4: Zulässige Schiedsrichter gelten turnierweit (nicht mehr je
+                    // Konkurrenz). Am Tisch spielende Schiris nicht anbieten (außer dem
+                    // aktuell zugeordneten, damit die bestehende Auswahl gültig bleibt).
+                    const optionen=schiriZugelassen.filter(sid=> sid===x.schiri || !schiriSpieltAmTisch(sid));
                     return <span style={{flexBasis:"100%",display:"flex",alignItems:"center",gap:6,paddingLeft:2}}>
                       <span style={{fontSize:10,fontWeight:800,color:"#0ea5e9"}} title="Schiedsrichter">🎽 SR:</span>
                       {isAdmin
                         ? <select value={x.schiri||""} onChange={e=>schiriSetzen(x.gkey, e.target.value)}
                             style={{height:26,borderRadius:6,background:x.schiri?"#0ea5e9":"var(--bg3)",color:x.schiri?"#fff":"var(--text3)",fontWeight:700,fontSize:11,border:"1px solid var(--border2)",padding:"0 6px",cursor:"pointer",maxWidth:150}}>
                             <option value="" style={{background:"#fff",color:"#111"}}>— keiner —</option>
-                            {optionen.map(sid=>{ const p=spielerVon(sid); const pausiert=schiriPausiert(sid);
-                              return <option key={sid} value={sid} style={{background:"#fff",color:"#111"}}>{p?`${p.firstName} ${p.lastName}`:sid}{pausiert?" (Pause)":""}</option>; })}
+                            {optionen.map(sid=>{ const pausiert=schiriPausiert(sid);
+                              return <option key={sid} value={sid} style={{background:"#fff",color:"#111"}}>{nameVon(sid)}{pausiert?" (Pause)":""}</option>; })}
                           </select>
                         : <span style={{fontSize:11,fontWeight:700,color:x.schiri?"#0ea5e9":"var(--text4)"}}>{x.schiri?nameVon(x.schiri):"—"}</span>}
                     </span>;
