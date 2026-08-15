@@ -1,4 +1,4 @@
-// === TTC-App · Version 344 · erstellt 15.08.2026 ===
+// === TTC-App · Version 345 · erstellt 15.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "344";
+const APP_VERSION = "345";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -10531,7 +10531,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={false}/>
+          <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>
           <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
@@ -11912,6 +11912,56 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     setNachrGelesen(neu);
     try { localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); } catch(_){}
   }
+  // Mehrere Nachrichten auf einmal als gelesen ausblenden (für „Gruppe ausblenden").
+  function nachrichtenWegklicken(ids){
+    const neu=[...new Set([...nachrGelesen,...ids])].slice(-300);
+    setNachrGelesen(neu);
+    try { localStorage.setItem("ttc_nachr_gelesen",JSON.stringify(neu)); } catch(_){}
+  }
+  // Admin: eine Nachricht WIRKLICH aus Firestore löschen (für alle Nutzer).
+  async function nachrichtLoeschen(id){
+    try{ await deleteDoc(doc(db,"appNachrichten",id)); }
+    catch(e){ /* stiller Fehler – onSnapshot hält die Liste konsistent */ }
+  }
+  // Admin: mehrere Nachrichten (ganze Gruppe) wirklich löschen.
+  async function nachrichtenLoeschen(ids){
+    for(const id of ids){ try{ await deleteDoc(doc(db,"appNachrichten",id)); }catch(e){} }
+  }
+
+  // ── Kategorie einer Benachrichtigung (rückwirkend aus Titel/Text abgeleitet) ──
+  // Vier Gruppen: Turniere, Mannschafts-Spiele, Vereins-Termine, Geburtstage.
+  // Da bestehende Nachrichten kein Kategorie-Feld haben, erkennen wir sie am Titel:
+  //   🎂/🎉 → Geburtstage · 📌 → Vereins-Termine · „– Spiel" → Mannschafts-Spiele
+  //   🎽 oder Tisch-/Turnier-Bezug → Turniere · sonst „Sonstiges".
+  function kategorieVon(n){
+    const tt=`${n?.titel||""}`;
+    const tx=`${n?.text||""}`;
+    const s=(tt+" "+tx);
+    if(n?.kategorie) {
+      // Falls künftig serverseitig gesetzt, hat das Vorrang.
+      const k=String(n.kategorie);
+      if(["turniere","mannschaft","verein","geburtstag"].includes(k)) return k;
+    }
+    if(tt.includes("🎂")||tt.includes("🎉")||/Geburtstag/i.test(s)) return "geburtstag";
+    if(tt.includes("📌")||/Vereinstermin|Vereins-Termin|Termin/i.test(tt)) return "verein";
+    if(/–\s*Spiel|Mannschaft|Punktspiel|Verbandsrunde/i.test(s)) return "mannschaft";
+    if(tt.includes("🎽")||/Tisch|Turnier|Schiedsrichter|Konkurrenz/i.test(s)) return "turniere";
+    return "sonstiges";
+  }
+  const KAT_META=[
+    ["turniere","🏓 Turniere"],
+    ["mannschaft","🏓 Mannschafts-Spiele"],
+    ["verein","📌 Vereins-Termine"],
+    ["geburtstag","🎂 Geburtstage"],
+    ["sonstiges","🔔 Sonstiges"],
+  ];
+  // Offene Nachrichten nach Kategorie bündeln (nur ungelesene, wie gewünscht).
+  const gruppen={}; for(const [k] of KAT_META) gruppen[k]=[];
+  for(const n of offeneNachrichten){ const k=kategorieVon(n); (gruppen[k]||gruppen.sonstiges).push(n); }
+
+  // Welche Gruppen sind aufgeklappt? Standard: alle eingeklappt.
+  const [offeneGruppen,setOffeneGruppen]=useState({});
+  const toggleGruppe=(k)=>setOffeneGruppen(p=>({...p,[k]:!p[k]}));
 
   // Zähler + Sichtbarkeit basieren jetzt allein auf den Benachrichtigungen
   // (Geburtstage sind darin als normale Nachrichten enthalten).
@@ -11944,18 +11994,54 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
 
       {/* Liste – scrollbar über die volle Höhe */}
       <div style={{overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 18px 24px",flex:"1 1 auto",minHeight:0,maxWidth:600,width:"100%",margin:"0 auto"}}>
-        {/* Alle Benachrichtigungen (inkl. Geburtstage) – chronologisch, einzeln wegklickbar */}
-        {offeneNachrichten.map(n=>(
-          <div key={n.id} style={{background:"var(--bg2)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:12}}>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,color:"var(--text)",fontSize:15,marginBottom:3}}>{n.titel}</div>
-              <div style={{fontSize:14,color:"var(--text2)"}}>{n.text}</div>
+        {/* Nach Art gruppiert, einklappbar (Standard eingeklappt). Bezieht sich nur auf
+            ungelesene Nachrichten. „Ausblenden" betrifft nur den eigenen Nutzer; das
+            echte Löschen (🗑, aus Firestore, für alle) steht nur Admins zur Verfügung. */}
+        {KAT_META.map(([k,label])=>{
+          const items=gruppen[k]||[];
+          if(items.length===0) return null;
+          const auf=!!offeneGruppen[k];
+          const ids=items.map(n=>n.id);
+          return <div key={k} style={{marginBottom:12,border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+            {/* Gruppen-Kopf */}
+            <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg2)",padding:"10px 14px"}}>
+              <div onClick={()=>toggleGruppe(k)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1,userSelect:"none"}}>
+                <span style={{fontSize:12,color:"var(--text3)",transition:"transform .15s",transform:auf?"rotate(90deg)":"none"}}>▶</span>
+                <span style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{label}</span>
+                <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#3b82f6",borderRadius:10,padding:"1px 8px"}}>{items.length}</span>
+              </div>
+              {/* Ganze Gruppe ausblenden (eigener Nutzer) */}
+              <button onClick={()=>nachrichtenWegklicken(ids)} title="Ganze Gruppe ausblenden" style={{
+                background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,color:"#10b981",
+                fontSize:12,fontWeight:700,padding:"5px 10px",cursor:"pointer",flexShrink:0}}>✓ alle</button>
+              {/* Ganze Gruppe wirklich löschen (nur Admin) */}
+              {istAdmin && <button onClick={()=>{ if(window.confirm(`Alle ${items.length} Nachrichten der Gruppe „${label}" für ALLE Nutzer löschen?`)) nachrichtenLoeschen(ids); }}
+                title="Ganze Gruppe für alle löschen (Admin)" style={{
+                background:"#ef444422",border:"1px solid #ef444444",borderRadius:8,color:"#ef4444",
+                fontSize:12,fontWeight:700,padding:"5px 10px",cursor:"pointer",flexShrink:0}}>🗑 alle</button>}
             </div>
-            <button onClick={()=>nachrichtWegklicken(n.id)} title="Als gelesen markieren" style={{
-              background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
-              color:"#10b981",fontSize:16,padding:"6px 12px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
-          </div>
-        ))}
+            {/* Gruppen-Inhalt */}
+            {auf && <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+              {items.map(n=>(
+                <div key={n.id} style={{background:"var(--bg2)",borderRadius:10,padding:"11px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:3}}>{n.titel}</div>
+                    <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+                  </div>
+                  {/* Ausblenden (eigener Nutzer) */}
+                  <button onClick={()=>nachrichtWegklicken(n.id)} title="Für mich ausblenden" style={{
+                    background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
+                    color:"#10b981",fontSize:15,padding:"5px 10px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
+                  {/* Wirklich löschen (nur Admin) */}
+                  {istAdmin && <button onClick={()=>{ if(window.confirm("Diese Nachricht für ALLE Nutzer löschen?")) nachrichtLoeschen(n.id); }}
+                    title="Für alle löschen (Admin)" style={{
+                    background:"#ef444422",border:"1px solid #ef444444",borderRadius:8,
+                    color:"#ef4444",fontSize:15,padding:"5px 10px",cursor:"pointer",flexShrink:0,fontWeight:700}}>🗑</button>}
+                </div>
+              ))}
+            </div>}
+          </div>;
+        })}
 
         {/* Leerzustand */}
         {offeneNachrichten.length===0 && <div style={{fontSize:14,color:"var(--text3)",textAlign:"center",padding:"40px 0"}}>
