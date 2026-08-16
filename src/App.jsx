@@ -1,4 +1,4 @@
-// === TTC-App · Version 351 · erstellt 16.08.2026 ===
+// === TTC-App · Version 352 · erstellt 16.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "351";
+const APP_VERSION = "352";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -13485,11 +13485,52 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 
   const heuteStr=new Date().toLocaleDateString("sv");
 
+  // ── Finale Nominierung durch den Mannschaftsführer (Anf. 1) ──────────────────
+  // Pro Spieltag wird unter einsaetze[sk]._nominiert ein Array der endgültig
+  // aufgestellten Spieler-IDs gehalten. Nur MF/Trainer/Admin (viewerCanEditAll)
+  // dürfen nominieren. Die Liste ist für alle Spieler der Mannschaft sichtbar (Anf. 2)
+  // und steuert später den Punktspiel-Push (Anf. 3).
+  async function toggleNominiert(spiel, targetPlayerId){
+    if(!viewerCanEditAll) return;
+    const sk=spielKey(spiel);
+    const cur = einsaetze[sk]||{};
+    const bisher = Array.isArray(cur._nominiert)?cur._nominiert:[];
+    const drin = bisher.includes(targetPlayerId);
+    const neu = drin ? bisher.filter(x=>x!==targetPlayerId) : [...bisher, targetPlayerId];
+    const updated = {...einsaetze, [sk]:{...cur, _nominiert:neu}};
+    setEinsaetze(updated);
+    try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+  }
+
   // Wer darf Betreuer/Fahrer setzen? Admin/Trainer/MF (viewerCanEditAll) sowie
   // Eltern (über den Kind-Account) und Erwachsene für sich — praktisch jeder, der
   // dieses Spiel in seiner Einsätze-Sicht sieht. Reine Nur-Lese-Fälle gibt es hier
   // nicht, daher an viewerCanEditAll ODER vorhandenem myPlayer festmachen.
   const kannBetreuerFahrer = !!(viewerCanEditAll || myPlayer);
+
+  // Anf.2: Block mit der finalen Aufstellung – für ALLE Spieler der Mannschaft sichtbar.
+  function nominierungsBlock(spiel){
+    const sk=spielKey(spiel);
+    const cur=einsaetze[sk]||{};
+    const ids=Array.isArray(cur._nominiert)?cur._nominiert:[];
+    if(ids.length===0){
+      if(!viewerCanEditAll) return null;   // Spieler sehen erst etwas, wenn nominiert wurde
+      return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)",fontSize:11,color:"var(--text4)"}}>
+        Noch keine finale Aufstellung festgelegt. Mit ⭐ die endgültig aufgestellten Spieler markieren.
+      </div>;
+    }
+    const nameVonId=(id)=>{ const p=(players||[]).find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:null; };
+    const geordnet=[
+      ...spielberechtigt.filter(p=>ids.includes(p.id)).map(p=>`${p.firstName} ${p.lastName}`),
+      ...ids.filter(id=>!spielberechtigt.some(p=>p.id===id)).map(nameVonId).filter(Boolean),
+    ];
+    return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#f59e0b",marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>⭐ Finale Aufstellung ({geordnet.length})</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        {geordnet.map((nm,i)=><span key={i} style={{fontSize:12,fontWeight:600,color:"var(--text)",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:7,padding:"3px 9px"}}>{nm}</span>)}
+      </div>
+    </div>;
+  }
 
   // Rendert den Betreuer-/Fahrer-Block für ein Nachwuchsspiel.
   function betreuerFahrerBlock(spiel){
@@ -13643,6 +13684,16 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   {p._rang&&<span style={{color:"var(--text4)",fontWeight:700,marginRight:5}}>{p._rang}</span>}
                   {p.avatar||"🏓"} {p.firstName} {p.lastName}{isMe?" (ich)":""}
                 </span>
+                {/* Anf.1: finale Nominierung durch MF/Trainer/Admin */}
+                {(()=>{
+                  const nominiert=(entries._nominiert||[]).includes(p.id);
+                  return <button onClick={()=>toggleNominiert(spiel,p.id)} title={nominiert?"Nominierung entfernen":"Für dieses Spiel nominieren"}
+                    style={{padding:"4px 8px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",
+                      border:`1.5px solid ${nominiert?"#f59e0b":"var(--border2)"}`,
+                      background:nominiert?"#f59e0b22":"transparent",color:nominiert?"#f59e0b":"var(--text3)"}}>
+                    {nominiert?"⭐":"☆"}
+                  </button>;
+                })()}
                 <div style={{display:"flex",gap:4}}>
                   {EINSATZ_OPTS.map(opt=>{
                     const active=entry.status===opt.key;
@@ -13668,10 +13719,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
             </div>;
           })}
           {betreuerFahrerBlock(spiel)}
+          {nominierungsBlock(spiel)}
         </div>}
-        {/* Self-View (Spieler/Erwachsene/Eltern): Betreuer/Fahrer unter den Ankreuzfeldern */}
-        {!viewerCanEditAll&&selfPlayer&&selTeamIstNachwuchs&&<div style={{padding:"0 12px 10px"}}>
-          {betreuerFahrerBlock(spiel)}
+        {/* Self-View (Spieler/Erwachsene/Eltern): finale Aufstellung + ggf. Betreuer/Fahrer */}
+        {!viewerCanEditAll&&selfPlayer&&<div style={{padding:"0 12px 10px"}}>
+          {selTeamIstNachwuchs&&betreuerFahrerBlock(spiel)}
+          {nominierungsBlock(spiel)}
         </div>}
       </div>;
     })}
