@@ -1,4 +1,4 @@
-// === TTC-App · Version 346 · erstellt 15.08.2026 ===
+// === TTC-App · Version 347 · erstellt 16.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "346";
+const APP_VERSION = "347";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1021,14 +1021,17 @@ const KONKURRENZEN = [
 ];
 const VORGABE_ARTEN = ["QTTR","Mannschaft"];
 
-// Ist eine Konkurrenz ein Doppel? Primär über das Feld k.modus ("Einzel"/"Doppel");
-// für Altbestände zusätzlich über den Namen ("Doppel …") erkannt.
+// Ist eine Konkurrenz ein Doppel? Primär über das Feld k.modus ("Einzel"/"Doppel"/
+// "Mixed"); für Altbestände zusätzlich über den Namen ("Doppel …") erkannt.
+// Mixed ist spielerisch ein Doppel (Zweier-Teams), daher hier ebenfalls „true".
 function istDoppelKonk(konk){
   if(!konk) return false;
-  if(konk.modus==="Doppel") return true;
+  if(konk.modus==="Doppel"||konk.modus==="Mixed") return true;
   if(konk.modus==="Einzel") return false;
   return (konk.name||"").startsWith("Doppel");
 }
+// Ist eine Konkurrenz ein Mixed (Doppel mit der Vorgabe „ein Mann + eine Frau je Team")?
+function istMixedKonk(konk){ return konk?.modus==="Mixed"; }
 
 // Welche Personen kommen für eine Konkurrenz in Frage? Grobfilter nach Erwachsene/
 // Nachwuchs und Geschlecht; die genaue Auswahl trifft der Organisator manuell.
@@ -1277,20 +1280,41 @@ function fokusNaechstesSatzfeld(aktuellesInput){
     else if(aktuellesInput.blur) aktuellesInput.blur();
   }catch(e){}
 }
-// Gemeinsame Eingabe-Props für ein Satz-Eingabefeld: markiert beim Fokus den Inhalt
-// (Punkt 7) und springt bei gültiger Zahl (0–20) automatisch ins nächste Feld (Punkt 6).
-function satzInputProps(setzeWert){
+// Aus einer „-N"-Eingabe das verlorene Satzergebnis der EIGENEN Seite ableiten:
+// eigener Wert = N, Gegner = (N>=10 ? N+2 : 11). Beispiele: -1→1:11, -10→10:12, -11→11:13.
+function verlorenGegner(n){ const x=Math.abs(Number(n)||0); return x>=10 ? x+2 : 11; }
+// Gemeinsame Eingabe-Props für ein Satz-Eingabefeld:
+//  • markiert beim Fokus den Inhalt
+//  • springt bei gültiger Zahl (0–20) automatisch ins nächste Feld (Auto-Advance)
+//  • „-N" erfasst den Satz automatisch als verloren (eigenes Feld N, Gegner passend)
+// seite: 0 = linkes (eigenes) Feld, 1 = rechtes Feld.
+// setzeWert(v): setzt den Wert dieses Feldes. setzeGegner(v): setzt das Partnerfeld
+// desselben Satzes (für die Minus-Automatik). setzeGegner darf fehlen (dann nur eigenes Feld).
+function satzInputProps(setzeWert, setzeGegner){
   return {
     "data-satzfeld":"1",
     onFocus:(e)=>{ if(e.target.select) e.target.select(); },
+    onKeyDown:(e)=>{
+      // Bei „-" am Feldanfang nichts blockieren; Auswertung passiert in onChange.
+    },
     onChange:(e)=>{
-      const roh=e.target.value.replace(/[^\d]/g,"");
-      setzeWert(roh);
-      // Auto-Advance sobald eine gültige Zahl 0..20 eingegeben ist
-      const n=Number(roh);
-      if(roh!=="" && !Number.isNaN(n) && n>=0 && n<=20){
-        // zweistellige Zahlen (10..20) springen sofort; einstellige, sobald sie eindeutig sind
-        if(roh.length>=2 || n>2){
+      const raw=e.target.value;
+      const istMinus=/^-/.test(raw.trim());
+      const ziffern=raw.replace(/[^\d]/g,"");
+      if(istMinus && typeof setzeGegner==="function"){
+        // Satz als verloren erfassen: eigenes Feld = N, Gegnerfeld = verlorenGegner(N).
+        setzeWert(ziffern);
+        if(ziffern!==""){
+          setzeGegner(String(verlorenGegner(ziffern)));
+          const inp=e.target;
+          setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);   // Satz fertig → weiter
+        }
+        return;
+      }
+      setzeWert(ziffern);
+      const n=Number(ziffern);
+      if(ziffern!=="" && !Number.isNaN(n) && n>=0 && n<=20){
+        if(ziffern.length>=2 || n>2){
           const inp=e.target;
           setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);
         }
@@ -1732,10 +1756,11 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
                   {konkOffen[k.key] && <>
                   {/* Einzel oder Doppel — bestimmt, ob einzelne Spieler oder Zweier-Teams
                       gegeneinander antreten. Bei „Doppel" greift die Doppel-Team-Logik. */}
-                  <Feld label="Einzel / Doppel" klein>
+                  <Feld label="Disziplin" klein>
                     <select value={k.modus || (istDoppelKonk(k)?"Doppel":"Einzel")} onChange={e=>updKonk(k.key,{modus:e.target.value})} style={{...selT2,width:"100%"}}>
                       <option value="Einzel">Einzel</option>
                       <option value="Doppel">Doppel</option>
+                      <option value="Mixed">Mixed</option>
                     </select>
                   </Feld>
 
@@ -1906,6 +1931,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // "{konkKey}::{lokalKey}". lokalKey ist "g_<idx>" (Gruppenspiel) oder "k_<matchKey>"
   // (KO-Spiel). So kann direkt in der Box „Laufende Spiele" getippt werden.
   function ergebnisSetzenGlobal(konkKey, lokalKey, satzIndex, seite, wert){
+    // P3: Nach Abschluss der Konkurrenz nur noch durch den Admin änderbar.
+    const kZiel=(t.konkurrenzen||[]).find(kk=>kk.key===konkKey);
+    if(kZiel?.abgeschlossen && !isAdmin) return;
     const val=String(wert).replace(/[^\d]/g,"");
     const seiteIdx = seite==="a" ? 0 : 1;
     if(lokalKey.startsWith("g_")){
@@ -1937,6 +1965,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Ergebnis einer Begegnung fixieren/lösen (globaler Key), analog für Gruppe/KO.
   function ergebnisFixGlobal(konkKey, lokalKey, fix){
     if(!darfAlle) return;
+    const kZiel=(t.konkurrenzen||[]).find(kk=>kk.key===konkKey);
+    if(kZiel?.abgeschlossen && !isAdmin) return;   // P3
     if(lokalKey.startsWith("g_")){
       const idx=Number(lokalKey.slice(2));
       updKonkByKey(konkKey, k=>({ spiele:(k.spiele||[]).map((s,i)=> i===idx?{...s, fixiert:fix}:s) }));
@@ -2183,6 +2213,88 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   function koPhaseZuruecksetzen(){
     if(!window.confirm("KO-Phase verwerfen und zur Gruppenphase zurück? Die im KO eingetragenen Ergebnisse gehen verloren.")) return;
     updKonk({ koSlots:[], koSpiele:{}, koGestartet:false });
+  }
+
+  // ─── P3: Konkurrenz abschließen ──────────────────────────────────────────────
+  // Alle relevanten Spiele müssen gespielt UND gespeichert (fixiert) sein. Danach
+  // kann außer dem Admin niemand mehr Ergebnisse ändern; Folgeprozesse (Urkunden,
+  // Übertrag in die Turniererfolge) werden möglich.
+  const koHelpers = { de_baueStruktur, de_loese, ko_baueRunden, berechneGruppenTabelle };
+  function konkAbschliessbar(k){
+    if(!k) return false;
+    const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
+    if(hatKO){
+      // KO: es muss ein Endergebnis (Champion) feststehen. Über die Platzierungen
+      // prüfen wir, ob ein Platz 1 ermittelt wurde.
+      const pl=endplatzierungenKonk(k, koHelpers);
+      const hatSieger=Object.values(pl).includes(1);
+      // zusätzlich müssen die KO-Spiele mit Ergebnis fixiert sein
+      const alleFix=Object.values(k.koSpiele||{}).every(s=> !s || !s.saetze || ko_sieger(s.saetze, k.gewinnsaetze??3)==null || s.fixiert);
+      return hatSieger && alleFix;
+    }
+    // reines Gruppensystem: alle Gruppenspiele fertig + fixiert
+    const sp=k.spiele||[];
+    if(sp.length===0) return false;
+    return sp.every(s=> s.a && s.b && s.fixiert && ko_sieger(s.saetze, k.gewinnsaetze??3)!=null);
+  }
+
+  // Turniername ohne angehängte Jahreszahl (z. B. „Vereinsmeisterschaft 2026" → „…schaft").
+  function turnierNameOhneJahr(name){
+    return String(name||"").replace(/\s*\b(19|20)\d{2}\b\s*$/,"").trim();
+  }
+
+  async function konkurrenzAbschliessen(){
+    if(!isAdmin || !konk) return;
+    if(!konkAbschliessbar(konk)){
+      alert("Die Konkurrenz kann erst abgeschlossen werden, wenn alle Spiele gespielt und gespeichert sind.");
+      return;
+    }
+    if(!window.confirm(`Konkurrenz „${konk.name}" abschließen?\n\nDanach kann nur noch der Admin Ergebnisse ändern. Die Platzierungen werden automatisch in die Turniererfolge der Teilnehmer übertragen.`)) return;
+
+    // 1) Konkurrenz sperren
+    updKonk({ abgeschlossen:true, abgeschlossenAm:new Date().toISOString() });
+
+    // 2) P7: Platzierungen ermitteln und je Teilnehmer in dessen Turniererfolge übertragen.
+    try{
+      const platzMap=endplatzierungenKonk(konk, koHelpers);   // spielerId → Platz
+      const disziplin = konk.modus || (istDoppelKonk(konk)?"Doppel":"Einzel");  // Feld „konkurrenz"/Label „Disziplin"
+      const datum = t.datum || "";
+      const jahr = (datum||"").slice(0,4);
+      const nameOhneJahr = turnierNameOhneJahr(t.name);
+      // Herkunfts-Kennung, damit erneutes Abschließen den vorhandenen Eintrag aktualisiert.
+      const herkunft = `auto:${t.id||t.name}:${konk.key}`;
+
+      const updates=[];
+      for(const [spielerId, platz] of Object.entries(platzMap)){
+        const p=players.find(x=>x.id===spielerId);
+        if(!p) continue;
+        const eintrag={
+          type:"vereinsintern",
+          name:nameOhneJahr,
+          place:String(platz),
+          konkurrenz:disziplin,        // Label „Disziplin"
+          altersklasse:konk.name,      // Label „Konkurrenz"
+          date:datum,
+          year:jahr,
+          herkunft,                    // interne Dedup-Kennung
+        };
+        const bisher=Array.isArray(p.tournaments)?p.tournaments:[];
+        const idx=bisher.findIndex(e=>e && e.herkunft===herkunft);
+        let neu;
+        if(idx>=0){ neu=bisher.map((e,i)=> i===idx ? {...e, ...eintrag} : e); }
+        else { neu=[...bisher, eintrag]; }
+        updates.push(updateDoc(doc(db,"players",p.id),{ tournaments:neu }).catch(()=>{}));
+      }
+      await Promise.all(updates);
+      alert(`Konkurrenz „${konk.name}" abgeschlossen. ${updates.length} Turniererfolg(e) wurden in die Spielerprofile übertragen.`);
+    }catch(e){
+      alert("Die Konkurrenz wurde abgeschlossen, aber beim Übertrag der Erfolge gab es ein Problem: "+(e?.message||e));
+    }
+  }
+  function konkurrenzWiederOeffnen(){
+    if(!isAdmin || !konk) return;
+    if(!window.confirm(`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
+    updKonk({ abgeschlossen:false });
   }
   // Zuteilung: primär „antippen & Ziel wählen“ (funktioniert auf Touch/Handy),
   // zusätzlich klassisches Drag&Drop für die Maus am Desktop.
@@ -2647,6 +2759,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
   // Ergebnis-Eingabe erlaubt?
   function darfSpielEingeben(sp){
+    // P3: Nach Abschluss der Konkurrenz darf NUR der Admin noch etwas ändern.
+    if(konk?.abgeschlossen) return isAdmin;
     if(darfAlle) return true;
     if(!myPlayer) return false;
     return sp.a===myPlayer.id || sp.b===myPlayer.id;
@@ -2824,13 +2938,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                       {Array.from({length:anz}).map((_,si)=>{
                         const satz=(x.saetze&&x.saetze[si])||["",""];
                         return <span key={si} style={{display:"inline-flex",alignItems:"center",gap:1}}>
-                          <input inputMode="numeric" value={satz[0]??""} disabled={fixiert}
-                            onChange={e=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",e.target.value)}
-                            style={satzInp}/>
+                          <input inputMode="numeric" value={satz[0]??""} disabled={fixiert} style={satzInp}
+                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v))}/>
                           <span style={{fontSize:10,color:"var(--text4)"}}>:</span>
-                          <input inputMode="numeric" value={satz[1]??""} disabled={fixiert}
-                            onChange={e=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",e.target.value)}
-                            style={satzInp}/>
+                          <input inputMode="numeric" value={satz[1]??""} disabled={fixiert} style={satzInp}
+                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v))}/>
                         </span>;
                       })}
                       <button onClick={()=>ergebnisFixGlobal(x.konkKey,x.key,!fixiert)}
@@ -3028,6 +3140,28 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         </details>;
       })()}
 
+      {/* P3: Konkurrenz abschließen / Status. Sichtbar sobald die Konkurrenz gestartet ist. */}
+      {isAdmin && konk.gestartet && (()=>{
+        if(konk.abgeschlossen){
+          return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#10b98118",border:"1px solid #10b98155",borderRadius:11,padding:"10px 13px"}}>
+            <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
+            <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
+            <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
+          </div>;
+        }
+        const bereit=konkAbschliessbar(konk);
+        return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:11,padding:"10px 13px"}}>
+          <span style={{fontSize:12,fontWeight:700,color:bereit?"#10b981":"var(--text3)"}}>
+            {bereit?"Alle Spiele fertig – bereit zum Abschluss.":"Konkurrenz abschließen möglich, sobald alle Spiele gespielt und gespeichert sind."}
+          </span>
+          <button onClick={konkurrenzAbschliessen} disabled={!bereit} style={{
+            marginLeft:"auto",padding:"7px 13px",borderRadius:8,fontSize:12,fontWeight:800,cursor:bereit?"pointer":"default",
+            border:"none",background:bereit?"#10b981":"var(--bg3)",color:bereit?"#fff":"var(--text4)"}}>
+            🏁 Konkurrenz abschließen
+          </button>
+        </div>;
+      })()}
+
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
         {/* Bei Doppel-Konkurrenzen zuerst die Teams bilden — auch im Gruppen-/gemischt-
@@ -3176,10 +3310,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                             <div style={{display:"flex",alignItems:"center",gap:3,
                               background:fixiert?"#10b98118":"var(--bg2)",borderRadius:6,padding:"2px 4px",
                               border:fehler?"1px solid #ef4444":"1px solid transparent"}}>
-                              <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,0,v))}
+                              <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,0,v), v=>setSatz(sp._idx,si,1,v))}
                                 style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                               <span style={{color:"var(--text4)",fontSize:11}}>:</span>
-                              <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,1,v))}
+                              <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,1,v), v=>setSatz(sp._idx,si,0,v))}
                                 style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                             </div>
                             {fehler && <span style={{fontSize:8,color:"#ef4444",maxWidth:80,lineHeight:1.2}}>⚠</span>}
@@ -3289,8 +3423,19 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
   doppelTeams.forEach(t=>{ verplant.add(t.s1); verplant.add(t.s2); });
   const teamKandidaten=(konk.teilnehmer||[]).filter(id=>!verplant.has(id));
 
+  // P6: Mixed = Doppel mit der Vorgabe „ein Mann + eine Frau je Team".
+  const mixed = istMixedKonk(konk);
+  const geschlechtVon=(id)=>{ const p=spielerVon(id); return (p?.gender||"").toLowerCase(); };
+  const istMann=(id)=>{ const g=geschlechtVon(id); return g==="m"||g.startsWith("mä")||g==="h"; };
+  const istFrau=(id)=>{ const g=geschlechtVon(id); return g==="w"||g==="d"||g.startsWith("weib"); };
+  const gemischtesPaar=(a,b)=> (istMann(a)&&istFrau(b)) || (istFrau(a)&&istMann(b));
+
   function teamAnlegen(){
     if(!darfAlle || !teamS1 || !teamS2 || teamS1===teamS2) return;
+    if(mixed && !gemischtesPaar(teamS1,teamS2)){
+      alert("Mixed: Ein Team muss aus einer Frau und einem Mann bestehen. Bitte beim Spieler/Erwachsenen das Geschlecht prüfen.");
+      return;
+    }
     const neu=[...doppelTeams, { id:`d_${Date.now()}_${Math.floor(Math.random()*1000)}`, s1:teamS1, s2:teamS2 }];
     setTeamS1(""); setTeamS2("");
     updKonk({ doppelTeams:neu });
@@ -3311,9 +3456,20 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
     if(!darfAlle) return;
     const ids=[...(konk.teilnehmer||[])];
     if(ids.length<2) return;
-    const sortiert=ids.sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
-    const paare=[]; let lo=0, hi=sortiert.length-1;
-    while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
+    let paare=[];
+    if(mixed){
+      // Männer und Frauen getrennt nach QTTR sortieren, dann paarweise koppeln
+      // (stärkster Mann + stärkste Frau usw.). Überzählige bleiben ungepaart.
+      const maenner=ids.filter(istMann).sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
+      const frauen =ids.filter(istFrau ).sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
+      const n=Math.min(maenner.length, frauen.length);
+      for(let i=0;i<n;i++) paare.push([maenner[i], frauen[i]]);
+      if(n===0){ alert("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein."); return; }
+    } else {
+      const sortiert=ids.sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
+      let lo=0, hi=sortiert.length-1;
+      while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
+    }
     if(!window.confirm(`Doppel nach QTTR auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
@@ -3321,8 +3477,19 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
     if(!darfAlle) return;
     const ids=[...(konk.teilnehmer||[])];
     if(ids.length<2) return;
-    for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
-    const paare=[]; for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
+    let paare=[];
+    if(mixed){
+      const maenner=ids.filter(istMann);
+      const frauen =ids.filter(istFrau);
+      for(let i=maenner.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [maenner[i],maenner[j]]=[maenner[j],maenner[i]]; }
+      for(let i=frauen.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [frauen[i],frauen[j]]=[frauen[j],frauen[i]]; }
+      const n=Math.min(maenner.length, frauen.length);
+      for(let i=0;i<n;i++) paare.push([maenner[i], frauen[i]]);
+      if(n===0){ alert("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein."); return; }
+    } else {
+      for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
+      for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
+    }
     if(!window.confirm(`Doppel zufällig auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
@@ -3351,6 +3518,9 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
         </div>
       );})}
     </div>}
+    {mixed && <div style={{fontSize:11,color:"#8b5cf6",fontWeight:700,marginBottom:8}}>
+      Mixed-Regel: Jedes Team besteht aus einer Frau und einem Mann. Die Auswahl/Auslosung berücksichtigt das Geschlecht aus der Verwaltung.
+    </div>}
     {darfAlle && (konk.teilnehmer||[]).length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
       <button onClick={auslosungQttr} style={{padding:"7px 11px",background:"#0ea5e9",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Auslosung QTTR</button>
       <button onClick={auslosungZufall} style={{padding:"7px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Zufällige Auslosung</button>
@@ -3358,12 +3528,12 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
     {darfAlle && teamKandidaten.length>=2 && <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
       <select value={teamS1} onChange={e=>setTeamS1(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
         <option value="">Spieler 1…</option>
-        {teamKandidaten.filter(id=>id!==teamS2).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+        {teamKandidaten.filter(id=>id!==teamS2).map(id=><option key={id} value={id}>{spielerName(id)}{mixed?(istMann(id)?" ♂":istFrau(id)?" ♀":""):""}</option>)}
       </select>
       <span style={{fontSize:12,color:"var(--text4)",fontWeight:700}}>+</span>
       <select value={teamS2} onChange={e=>setTeamS2(e.target.value)} style={{padding:"7px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,maxWidth:150}}>
         <option value="">Spieler 2…</option>
-        {teamKandidaten.filter(id=>id!==teamS1).map(id=><option key={id} value={id}>{spielerName(id)}</option>)}
+        {teamKandidaten.filter(id=>id!==teamS1).filter(id=>!mixed||!teamS1||gemischtesPaar(teamS1,id)).map(id=><option key={id} value={id}>{spielerName(id)}{mixed?(istMann(id)?" ♂":istFrau(id)?" ♀":""):""}</option>)}
       </select>
       <button onClick={teamAnlegen} disabled={!teamS1||!teamS2} style={{padding:"7px 12px",background:(teamS1&&teamS2)?"#10b981":"var(--bg3)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:(teamS1&&teamS2)?"pointer":"default"}}>koppeln</button>
     </div>}
@@ -3647,6 +3817,105 @@ function de_loese(struktur, slots, spieleMap, gewinnsaetze=3){
     if(!geaendert) break;
   }
   return val;
+}
+
+// ─── Endplatzierungen einer Konkurrenz (für den Übertrag in die Turniererfolge) ───
+// Liefert eine Map spielerId → Platz (1-basiert). Bei Doppel/Mixed werden beide
+// Team-Mitglieder auf den Team-Platz gesetzt. Deckt Gruppe, einfaches KO, Doppel-KO
+// und den gemischten Modus (Gruppe → KO) ab. „Platz kann immer ermittelt werden":
+// Restliche/ausgeschiedene Teilnehmer werden nach ihrer Ausscheide-Stufe bzw. ihrem
+// Gruppenrang hinter die ermittelten Plätze gereiht.
+function endplatzierungenKonk(konk, helpers){
+  const g = konk?.gewinnsaetze??3;
+  const doppel = (konk?.modus==="Doppel"||konk?.modus==="Mixed") || (konk?.name||"").startsWith("Doppel");
+  // Team-ID → [s1,s2] auflösen (nur relevant bei Doppel/Mixed)
+  const teamMitglieder=(id)=>{ const tm=(konk?.doppelTeams||[]).find(t=>t.id===id); return tm?[tm.s1,tm.s2].filter(Boolean):[id]; };
+  const platzMap={};           // einheitId (Spieler- oder Team-ID) → Platz
+  const setPlatz=(id,pl)=>{ if(id!=null && platzMap[id]==null) platzMap[id]=pl; };
+
+  const hatKO = Array.isArray(konk?.koSlots) && konk.koSlots.some(Boolean);
+
+  if(hatKO){
+    // ── KO-Phase vorhanden (einfaches oder doppeltes KO) ──
+    const istDoppelKO = (konk?.art==="doppeltes KO-System"||konk?.art==="Doppel-KO"||konk?.art==="Double Elimination"||konk?.koTyp==="de");
+    if(istDoppelKO && typeof helpers?.de_baueStruktur==="function"){
+      const struktur=helpers.de_baueStruktur(konk.koSlots.length);
+      const val=helpers.de_loese(struktur, konk.koSlots, konk.koSpiele||{}, g);
+      const gfV=val["GF"]||{}; const gf2=val["GF2"];
+      const champion = gf2 ? (gf2.sieger||null) : (gfV.sieger&&gfV.a&&gfV.sieger===gfV.a?gfV.sieger:null);
+      const platz2 = gf2 ? (gf2.verlierer||null) : (gfV.verlierer||null);
+      const lbFinal=val[struktur.lbFinalKey]||{}; const platz3=lbFinal.verlierer||null;
+      setPlatz(champion,1); setPlatz(platz2,2); setPlatz(platz3,3);
+      // übrige LB-Stufen von hinten nach vorne = weiter hinten platziert
+      let pl=4;
+      for(let s=struktur.lbStages.length-2;s>=0;s--){
+        const stufe=struktur.lbStages[s]||[];
+        const verl=stufe.map(k=>val[k]?.verlierer).filter(Boolean);
+        for(const v of verl) setPlatz(v,pl);
+        if(verl.length) pl+=verl.length;
+      }
+    } else if(typeof helpers?.ko_baueRunden==="function"){
+      // Einfaches KO: Platz nach erreichter Runde. Finalsieger 1, Finalverlierer 2,
+      // Halbfinalverlierer 3 (geteilt), Viertelfinalverlierer 5 (geteilt), …
+      const runden=helpers.ko_baueRunden(konk.koSlots, konk.koSpiele||{}, g);
+      const letzte=runden[runden.length-1]||[];
+      const finale=letzte[0];
+      if(finale){
+        // Das Finale bekommt in ko_baueRunden kein _gewinner (break davor) → selbst bestimmen.
+        const sieger = ko_gewinnerVon(finale, true, true, g);
+        const verlierer = sieger ? (finale.a===sieger?finale.b:finale.a) : null;
+        setPlatz(sieger,1); setPlatz(verlierer,2);
+      }
+      // Verlierer je Runde (von der vorletzten nach vorne) bekommen aufsteigende Plätze.
+      let pl=3;
+      for(let r=runden.length-2;r>=0;r--){
+        const spiele=runden[r]||[];
+        const verlierer=[];
+        for(const sp of spiele){
+          if(sp && sp.a && sp.b && sp._gewinner){
+            verlierer.push(sp.a===sp._gewinner?sp.b:sp.a);
+          }
+        }
+        for(const v of verlierer) setPlatz(v,pl);
+        if(verlierer.length) pl+=verlierer.length;
+      }
+      // Nicht angetretene/übrige KO-Slots ohne Platz → ans Ende
+      for(const sid of konk.koSlots){ if(sid) setPlatz(sid, pl); }
+    }
+    // Gemischt (Gruppe → KO): in der Gruppe Ausgeschiedene hinter die KO-Plätze reihen.
+    if(Array.isArray(konk?.gruppen) && konk.gruppen.length && typeof helpers?.berechneGruppenTabelle==="function"){
+      const maxPl=Math.max(0,...Object.values(platzMap));
+      let pl=maxPl+1;
+      for(const grp of konk.gruppen){
+        const rows=helpers.berechneGruppenTabelle(grp, konk.spiele||[]);
+        for(const r of rows){ if(platzMap[r.id]==null){ setPlatz(r.id, pl); pl++; } }
+      }
+    }
+  } else if(Array.isArray(konk?.gruppen) && konk.gruppen.length && typeof helpers?.berechneGruppenTabelle==="function"){
+    // ── Reines Gruppensystem ──
+    if(konk.gruppen.length===1){
+      const rows=helpers.berechneGruppenTabelle(konk.gruppen[0], konk.spiele||[]);
+      rows.forEach((r,idx)=>setPlatz(r.id, idx+1));
+    } else {
+      // Mehrere Gruppen: erst alle Gruppensieger (Platz 1), dann alle Zweiten (Platz 2)…
+      const tabellen=konk.gruppen.map(grp=>helpers.berechneGruppenTabelle(grp, konk.spiele||[]));
+      const maxLen=Math.max(0,...tabellen.map(t=>t.length));
+      let pl=1;
+      for(let rang=0;rang<maxLen;rang++){
+        let gesetzt=0;
+        for(const tab of tabellen){ const r=tab[rang]; if(r){ setPlatz(r.id, pl); gesetzt++; } }
+        if(gesetzt) pl+=gesetzt;
+      }
+    }
+  }
+
+  // Auf Spieler-Ebene auflösen (Doppel/Mixed: beide Mitglieder erhalten den Team-Platz).
+  const ergebnis={};
+  for(const [einheitId, pl] of Object.entries(platzMap)){
+    if(doppel){ for(const sid of teamMitglieder(einheitId)) if(sid) ergebnis[sid]=pl; }
+    else ergebnis[einheitId]=pl;
+  }
+  return ergebnis;
 }
 
 // ─── Zoom-Hülle für Tableaus (Buttons + Pinch-Geste) ────────────────────────
@@ -4028,7 +4297,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
               {spiele.map((sp,si)=>{
                 const fixiert=!!sp.fixiert;
                 const sieger=ko_gewinnerVon(sp);
-                const darf = darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id));
+                const darf = konk?.abgeschlossen ? isAdmin : (darfAlle || (myPlayer && (sp.a===myPlayer.id||sp.b===myPlayer.id)));
                 const istErstrunde = ri===0;
                 const tischNr = tischMap[`k_${sp.key}`] || null;
                 return <div key={sp.key} style={{minHeight:einheit,display:"flex",flexDirection:"column",justifyContent:"center"}}>
@@ -4141,10 +4410,10 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
           const satz=sp.saetze[idx]||["",""];
           const fehler=satzFehler(satz[0],satz[1]);
           return <div key={idx} style={{flexShrink:0,display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
-            <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v))}
+            <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v), v=>setSatz(sp.key,idx,1,v))}
               style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
             <span style={{color:"var(--text4)",fontSize:10}}>:</span>
-            <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v))}
+            <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v), v=>setSatz(sp.key,idx,0,v))}
               style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
           </div>;
         })}
@@ -4272,7 +4541,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     const sp = { key:mkey, a:v.a, b:v.b, saetze: gesp.saetze || [["",""],["",""],["",""]], fixiert:!!gesp.fixiert };
     const fixiert = !!gesp.fixiert;
     const sieger = v.sieger;
-    const darf = darfAlle || (myPlayer && (v.a===myPlayer.id || v.b===myPlayer.id));
+    const darf = konk?.abgeschlossen ? isAdmin : (darfAlle || (myPlayer && (v.a===myPlayer.id || v.b===myPlayer.id)));
     // Erstrunden-Slot-Indizes nur für WB-Runde 0 (dort ist Tausch/Entfernen erlaubt).
     const slotIdxA = (istErstrunde && m.aSrc.slot!=null) ? m.aSrc.slot : -1;
     const slotIdxB = (istErstrunde && m.bSrc.slot!=null) ? m.bSrc.slot : -1;
@@ -8595,7 +8864,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                           )}
                         </div>
                       </div>
-                      {/* Zeile 2: Platz + Konkurrenz + Altersklasse */}
+                      {/* Zeile 2: Platz + Disziplin + Konkurrenz (P4: Labels umbenannt;
+                          interne Feldnamen bleiben konkurrenz/altersklasse für Datenkompatibilität) */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
                         <div>
                           <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Platz</label>
@@ -8603,15 +8873,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                             style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Konkurrenz</label>
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Disziplin</label>
                           <select value={t.konkurrenz||""} onChange={e=>updateT(i,"konkurrenz",e.target.value)} style={{fontSize:11,padding:"4px 6px",width:"100%"}}>
                             <option value="">—</option>
                             {KONKURRENZ.map(k=><option key={k}>{k}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Altersklasse</label>
-                          <input value={t.altersklasse||""} onChange={e=>updateT(i,"altersklasse",e.target.value)} placeholder="z. B. U13"
+                          <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Konkurrenz</label>
+                          <input value={t.altersklasse||""} onChange={e=>updateT(i,"altersklasse",e.target.value)} placeholder="z. B. Jungen 13"
                             style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                       </div>
