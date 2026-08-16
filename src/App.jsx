@@ -1,4 +1,4 @@
-// === TTC-App · Version 347 · erstellt 16.08.2026 ===
+// === TTC-App · Version 349 · erstellt 16.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "347";
+const APP_VERSION = "349";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1293,23 +1293,29 @@ function verlorenGegner(n){ const x=Math.abs(Number(n)||0); return x>=10 ? x+2 :
 function satzInputProps(setzeWert, setzeGegner){
   return {
     "data-satzfeld":"1",
-    onFocus:(e)=>{ if(e.target.select) e.target.select(); },
+    inputMode:"text",   // erlaubt die Eingabe des Minuszeichens auch auf Mobilgeräten
+    onFocus:(e)=>{ if(e.target.select) e.target.select(); e.target.dataset.minus=""; },
     onKeyDown:(e)=>{
-      // Bei „-" am Feldanfang nichts blockieren; Auswertung passiert in onChange.
+      // Merker setzen, sobald ein „-" getippt wird. Beim Fokus/leerem Feld beginnt eine
+      // „verloren"-Eingabe; die tatsächliche Auswertung passiert, sobald die Ziffer folgt.
+      if(e.key==="-"){ e.target.dataset.minus="1"; }
     },
     onChange:(e)=>{
       const raw=e.target.value;
-      const istMinus=/^-/.test(raw.trim());
+      const merker = e.target.dataset.minus==="1";
+      const istMinus = merker || /^-/.test(raw.trim());
       const ziffern=raw.replace(/[^\d]/g,"");
       if(istMinus && typeof setzeGegner==="function"){
-        // Satz als verloren erfassen: eigenes Feld = N, Gegnerfeld = verlorenGegner(N).
-        setzeWert(ziffern);
+        // „verloren": eigenes Feld = N, Gegnerfeld = verlorenGegner(N). Erst wenn eine
+        // Ziffer vorliegt, wird gesetzt und weitergesprungen; sonst Merker halten.
         if(ziffern!==""){
+          setzeWert(ziffern);
           setzeGegner(String(verlorenGegner(ziffern)));
+          e.target.dataset.minus="";
           const inp=e.target;
-          setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);   // Satz fertig → weiter
+          setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);
         }
-        return;
+        return;   // reines „-" ohne Ziffer: nichts setzen, Merker bleibt
       }
       setzeWert(ziffern);
       const n=Number(ziffern);
@@ -1391,13 +1397,14 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   const inSpielerGruppe = myGrp==="Profis" || myGrp==="Fortgeschrittene" || myGrp==="Anfänger" || myGrp==="Gast";
   const istSpieler = meineRollen.player===true || inSpielerGruppe ||
     (!!myPlayer && meineRollen.erwachsene!==true && meineRollen.mannschaftsfuehrer!==true && meineRollen.trainer!==true && meineRollen.admin!==true);
-  // Abgeleitete Rollen-Map für die Sichtbarkeitsprüfung (player ggf. aus Gruppe ergänzt).
-  const meineRollenEff = { ...meineRollen, player: istSpieler || meineRollen.player===true };
+  // Abgeleitete Rollen-Map für die Sichtbarkeitsprüfung (player ggf. aus Gruppe ergänzt,
+  // trainer aus dem übergebenen isTrainer-Flag abgesichert).
+  const meineRollenEff = { ...meineRollen, player: istSpieler || meineRollen.player===true, trainer: isTrainer || meineRollen.trainer===true };
   function turnierSichtbar(t){
-    if(darfAlleErgebnisse) return true;              // Admin/Trainer immer
+    if(isAdmin) return true;                          // nur Admin sieht standardmäßig alles
     const fuer = t.sichtbarFuer || [];
     if(fuer.length===0) return false;                // für niemanden freigegeben
-    return fuer.some(rk => meineRollenEff[rk]===true);  // eine passende Funktion?
+    return fuer.some(rk => meineRollenEff[rk]===true);  // eine passende Funktion (auch Trainer)?
   }
   const sichtbareTurniere = turniere.filter(turnierSichtbar);
 
@@ -2938,10 +2945,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                       {Array.from({length:anz}).map((_,si)=>{
                         const satz=(x.saetze&&x.saetze[si])||["",""];
                         return <span key={si} style={{display:"inline-flex",alignItems:"center",gap:1}}>
-                          <input inputMode="numeric" value={satz[0]??""} disabled={fixiert} style={satzInp}
+                          <input value={satz[0]??""} disabled={fixiert} style={satzInp}
                             {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v))}/>
                           <span style={{fontSize:10,color:"var(--text4)"}}>:</span>
-                          <input inputMode="numeric" value={satz[1]??""} disabled={fixiert} style={satzInp}
+                          <input value={satz[1]??""} disabled={fixiert} style={satzInp}
                             {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v))}/>
                         </span>;
                       })}
@@ -12305,6 +12312,20 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:3}}>{n.titel}</div>
                     <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+                    {(()=>{
+                      // Zeitstempel der Meldung: bevorzugt ts (ms), sonst erstellt (Datum).
+                      let d=null;
+                      if(n.ts!=null && !Number.isNaN(Number(n.ts))) d=new Date(Number(n.ts));
+                      else if(n.erstellt){ const p=new Date(n.erstellt); if(!Number.isNaN(p.getTime())) d=p; }
+                      if(!d) return null;
+                      const hatZeit = n.ts!=null;
+                      const p2=(x)=>String(x).padStart(2,"0");
+                      const datum=`${p2(d.getDate())}.${p2(d.getMonth()+1)}.${d.getFullYear()}`;   // TT.MM.JJJJ
+                      const zeit=hatZeit? `${p2(d.getHours())}:${p2(d.getMinutes())}` : "";          // HH:MM
+                      return <div style={{fontSize:11,color:"var(--text4)",marginTop:5}}>
+                        🕒 {datum}{zeit?` · ${zeit} h`:""}
+                      </div>;
+                    })()}
                   </div>
                   {/* Ausblenden (eigener Nutzer) */}
                   <button onClick={()=>nachrichtWegklicken(n.id)} title="Für mich ausblenden" style={{
