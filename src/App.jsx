@@ -1,4 +1,4 @@
-// === TTC-App · Version 350 · erstellt 16.08.2026 ===
+// === TTC-App · Version 351 · erstellt 16.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "350";
+const APP_VERSION = "351";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -12748,6 +12748,43 @@ function parseSpielcodeZeilen(zeilen){
   return ergebnis;
 }
 
+// Aus den Zeilen einer Spiel-PIN-PDF die Spieltage extrahieren:
+// {datum:"YYYY-MM-DD", gegner, pin}. Format je Zeile:
+//   „<Wochentag>. TT.MM.JJJJ HH:MM <Halle> <Heim> <Gast> <PIN(4-stellig)>"
+// Der PIN ist die 4-stellige Zahl am Zeilenende; Kopf-/Fußzeilen (ohne End-PIN oder
+// mit Datum nicht am Zeilenanfang) werden übersprungen.
+function parseSpielpinZeilen(zeilen){
+  const ergebnis=[];
+  const pinRe=/(\d{4})\s*$/;
+  const datumRe=/(\d{2})\.(\d{2})\.(\d{4})/;
+  for(const z of (zeilen||[])){
+    const zt=String(z||"").replace(/\s+/g," ").trim();
+    const dm=zt.match(datumRe);
+    if(!dm || dm.index>4) continue;          // Datum muss am Zeilenanfang stehen (nach „Mi. ")
+    const pm=zt.match(pinRe);
+    if(!pm) continue;
+    const pin=pm[1];
+    const datum=`${dm[3]}-${dm[2]}-${dm[1]}`;
+    // Rest zwischen Datum und PIN → Gegner bestimmen (die Mannschaft, die nicht wir sind).
+    // Struktur: „HH:MM <Halle> <Heim> <Gast>". Unser Verein ist „TTC Niederzeuzheim".
+    let rest=zt.slice(dm.index+dm[0].length, pm.index).trim();
+    // führende Uhrzeit + Hallennummer entfernen
+    rest=rest.replace(/^\d{1,2}:\d{2}\s*\d*\s*/,"").trim();
+    let gegner=rest;
+    const marker="TTC Niederzeuzheim";
+    const idx=rest.indexOf(marker);
+    if(idx>=0){
+      const vor=rest.slice(0,idx).trim();
+      const nach=rest.slice(idx+marker.length).trim();
+      // Heimspiel: „TTC Niederzeuzheim <Gast>" → Gegner=nach; Auswärts: „<Heim> TTC Niederzeuzheim" → Gegner=vor.
+      gegner = nach || vor;
+    }
+    gegner=gegner.replace(/\s+/g," ").trim();
+    ergebnis.push({datum, gegner, pin});
+  }
+  return ergebnis;
+}
+
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
@@ -12799,6 +12836,31 @@ function MannschaftenVerwaltung({showToast}) {
           }
         }catch(err){
           showToast(`${file.name} hochgeladen (Spielcodes nicht lesbar)`,"📎");
+        }
+      } else if(fileKey.endsWith("_pin") && file.name.toLowerCase().endsWith(".pdf")){
+        // Spiel-PIN-PDFs: PINs auslesen und je Mannschaft strukturiert speichern, damit
+        // der Vereinsspielplan sie den Spielen zuordnen kann (Spalte „Spiel-PIN").
+        try{
+          const mid = fileKey.slice(0, -"_pin".length).slice(seasonSlug.length+1);
+          const team = (seasonTeams||[]).find(t=>String(t.id)===String(mid));
+          const zeilen = await pdfDataUrlZuZeilen(dataUrl);
+          const pins = parseSpielpinZeilen(zeilen);
+          if(pins.length>0){
+            // Ablage: config/spielpins → { [seasonSlug]: { [teamName]: { [datum]: {pin,gegner} } } }
+            const snap = await getDoc(doc(db,"config","spielpins")).catch(()=>null);
+            const bestehend = (snap && snap.exists()) ? snap.data() : {};
+            const proSaison = {...(bestehend[seasonSlug]||{})};
+            const teamName = team?.name || mid;   // z.B. "Herren 1"
+            const eintrag = {};
+            for(const p of pins) eintrag[p.datum] = { pin:p.pin, gegner:p.gegner };
+            proSaison[teamName] = eintrag;
+            await setDoc(doc(db,"config","spielpins"), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
+            showToast(`${file.name}: ${pins.length} Spiel-PINs übernommen`,"🔑");
+          } else {
+            showToast(`${file.name} hochgeladen (keine PINs erkannt)`,"📎");
+          }
+        }catch(err){
+          showToast(`${file.name} hochgeladen (PINs nicht lesbar)`,"📎");
         }
       } else {
         showToast(`${file.name} hochgeladen`,"📎");
@@ -14743,6 +14805,7 @@ const SPIELPLAN_COLS = [
   {key:"ergebnis",  label:"Ergebnis",    w:"64px"},
   {key:"aenderung", label:"Änd.",        w:"50px"},
   {key:"spielcode", label:"Spielcode",   w:"110px"},
+  {key:"spielpin",  label:"Spiel-PIN",   w:"80px"},
 ];
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
@@ -15065,7 +15128,34 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     return "";
   };
 
-  // Vereinstermine laden (für eigene Zeilen im Gesamtspielplan)
+  // Spiel-PINs je Saison/Mannschaft/Datum (aus den hochgeladenen Spiel-PIN-PDFs).
+  const [spielpins,setSpielpins]=useState({});
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","spielpins"),snap=>{
+      setSpielpins(snap.exists()?snap.data():{});
+    },()=>{});
+    return unsub;
+  },[]);
+  // Liefert den Spiel-PIN für ein Spiel über Saison-Slug + Mannschaft + Datum.
+  // Anders als der Spielcode gelten PINs für Heim- UND Auswärtsspiele.
+  const spielpinVon=(s)=>{
+    if(!s || !s.datum) return "";
+    const m=(selSeason||"").match(/(\d{4})_(\d{4})/);
+    const kandidatenSaison=[];
+    if(m) kandidatenSaison.push(`${m[1]}_${m[2].slice(2)}`, `${m[1]}_${m[2]}`);
+    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielpins||{});
+    const namensKandidaten=[s.mannschaft];
+    const hm=String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
+    if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) namensKandidaten.push(`Erwachsene ${r}`); }
+    for(const sk of saisonKeys){
+      const proSaison=spielpins?.[sk]; if(!proSaison) continue;
+      for(const nm of namensKandidaten){
+        const e=proSaison?.[nm]?.[s.datum];
+        if(e && e.pin) return e.pin;
+      }
+    }
+    return "";
+  };
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
       setVereinstermine(snap.exists()?(snap.data().termine||[]):[]);
@@ -15406,7 +15496,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
                 </td>
                 <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
                 <td style={{padding:"5px 6px"}}></td>
-                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={6}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
+                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={7}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
               </tr>;
             }
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
@@ -15473,9 +15563,19 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
                   </a>;
                 })()}
               </td>
+              <td style={{padding:"5px 6px",fontSize:11,fontWeight:700,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+                {(()=>{
+                  // Spiel-PIN aus den hochgeladenen PIN-PDFs (per Mannschaft+Datum),
+                  // gilt für Heim- und Auswärtsspiele.
+                  const pin=spielpinVon(s);
+                  return pin
+                    ? <span style={{color:"#0ea5e9"}}>🔑 {pin}</span>
+                    : <span style={{color:"var(--text4)"}}>—</span>;
+                })()}
+              </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={12} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={13} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
