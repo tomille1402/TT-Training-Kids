@@ -1,4 +1,4 @@
-// === TTC-App · Version 268 · netlify/functions/pushversand.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 352 · netlify/functions/pushversand.js · erstellt 29.07.2026 (V352: Push nur an final Nominierte) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -167,7 +167,19 @@ function zusageIds(spielKey, einsaetzeData){
   }
   return ids;
 }
+// Finale Nominierung durch den Mannschaftsführer (falls gesetzt): Liste der
+// endgültig aufgestellten Spieler-IDs unter einsaetze[spielKey]._nominiert.
+function nominierteIds(spielKey, einsaetzeData){
+  const e = einsaetzeData[spielKey] || {};
+  return Array.isArray(e._nominiert) ? e._nominiert.filter(Boolean) : null;
+}
 function spielEmpfaenger(opts, mannschaft, spielKey, aufSpieler, einsaetzeData, players){
+  // Anf.3: Sobald der MF eine finale Aufstellung nominiert hat, erhalten AUSSCHLIESSLICH
+  // die nominierten Spieler die Punktspiel-Benachrichtigung – unabhängig von Stamm/Zusage.
+  const nominiert = nominierteIds(spielKey, einsaetzeData);
+  if(nominiert && nominiert.length>0){
+    return [...new Set(nominiert)];
+  }
   const set = new Set();
   const wollen = opts && opts.length ? opts : ["stammPlusZusage"];
   if(wollen.includes("stammPlusZusage")){
