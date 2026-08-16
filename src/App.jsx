@@ -1,4 +1,4 @@
-// === TTC-App · Version 349 · erstellt 16.08.2026 ===
+// === TTC-App · Version 350 · erstellt 16.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "349";
+const APP_VERSION = "350";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1272,11 +1272,14 @@ function satzFehler(pa, pb){
   return "";
 }
 // Fokus in das nächste Satz-Eingabefeld setzen (per data-satzfeld-Reihenfolge).
-function fokusNaechstesSatzfeld(aktuellesInput){
+// schritte: wie viele Felder weiter (Standard 1). Bei „verloren"-Eingabe 2, damit der
+// Cursor über das automatisch befüllte Gegnerfeld hinweg in den nächsten Satz springt.
+function fokusNaechstesSatzfeld(aktuellesInput, schritte=1){
   try{
     const alle=Array.from(document.querySelectorAll('input[data-satzfeld="1"]'));
     const idx=alle.indexOf(aktuellesInput);
-    if(idx>=0 && idx+1<alle.length){ const n=alle[idx+1]; n.focus(); if(n.select) n.select(); }
+    const ziel=idx+schritte;
+    if(idx>=0 && ziel<alle.length){ const n=alle[ziel]; n.focus(); if(n.select) n.select(); }
     else if(aktuellesInput.blur) aktuellesInput.blur();
   }catch(e){}
 }
@@ -1290,7 +1293,7 @@ function verlorenGegner(n){ const x=Math.abs(Number(n)||0); return x>=10 ? x+2 :
 // seite: 0 = linkes (eigenes) Feld, 1 = rechtes Feld.
 // setzeWert(v): setzt den Wert dieses Feldes. setzeGegner(v): setzt das Partnerfeld
 // desselben Satzes (für die Minus-Automatik). setzeGegner darf fehlen (dann nur eigenes Feld).
-function satzInputProps(setzeWert, setzeGegner){
+function satzInputProps(setzeWert, setzeGegner, setzeBeide, seiteEigen){
   return {
     "data-satzfeld":"1",
     inputMode:"text",   // erlaubt die Eingabe des Minuszeichens auch auf Mobilgeräten
@@ -1305,15 +1308,21 @@ function satzInputProps(setzeWert, setzeGegner){
       const merker = e.target.dataset.minus==="1";
       const istMinus = merker || /^-/.test(raw.trim());
       const ziffern=raw.replace(/[^\d]/g,"");
-      if(istMinus && typeof setzeGegner==="function"){
+      if(istMinus && (typeof setzeBeide==="function" || typeof setzeGegner==="function")){
         // „verloren": eigenes Feld = N, Gegnerfeld = verlorenGegner(N). Erst wenn eine
         // Ziffer vorliegt, wird gesetzt und weitergesprungen; sonst Merker halten.
         if(ziffern!==""){
-          setzeWert(ziffern);
-          setzeGegner(String(verlorenGegner(ziffern)));
+          const gegner=String(verlorenGegner(ziffern));
+          // WICHTIG: Beide Werte in EINEM Update setzen, sonst überschreibt der zweite
+          // Aufruf den ersten (beide gehen vom selben alten State aus).
+          if(typeof setzeBeide==="function") setzeBeide(ziffern, gegner);
+          else { setzeWert(ziffern); setzeGegner(gegner); }
           e.target.dataset.minus="";
           const inp=e.target;
-          setTimeout(()=>fokusNaechstesSatzfeld(inp), 0);
+          // Ganzen Satz überspringen: aus dem linken Feld 2 Felder weiter (über das
+          // befüllte Gegnerfeld), aus dem rechten Feld 1 Feld weiter.
+          const schritte = seiteEigen===0 ? 2 : 1;
+          setTimeout(()=>fokusNaechstesSatzfeld(inp, schritte), 0);
         }
         return;   // reines „-" ohne Ziffer: nichts setzen, Merker bleibt
       }
@@ -1964,6 +1973,34 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         while(saetze.length<=satzIndex) saetze.push(["",""]);
         saetze[satzIndex][seiteIdx]=val;
         eintrag.saetze=saetze;
+        map[mkey]=eintrag;
+        return { koSpiele:map };
+      });
+    }
+  }
+  // Beide Seiten eines Satzes einer beliebigen Begegnung in EINEM Update setzen
+  // (für die „-"/verloren-Eingabe in „Laufende Spiele").
+  function ergebnisSetzenBeide(konkKey, lokalKey, satzIndex, seiteEigen, wertEigen, wertGegner){
+    const kZiel=(t.konkurrenzen||[]).find(kk=>kk.key===konkKey);
+    if(kZiel?.abgeschlossen && !isAdmin) return;
+    const ve=String(wertEigen).replace(/[^\d]/g,"");
+    const vg=String(wertGegner).replace(/[^\d]/g,"");
+    const setzen=(saetze)=>{
+      const s=(saetze||[]).map(x=>[...x]);
+      while(s.length<=satzIndex) s.push(["",""]);
+      s[satzIndex][seiteEigen]=ve;
+      s[satzIndex][seiteEigen===0?1:0]=vg;
+      return s;
+    };
+    if(lokalKey.startsWith("g_")){
+      const idx=Number(lokalKey.slice(2));
+      updKonkByKey(konkKey, k=>({ spiele:(k.spiele||[]).map((s,i)=> i===idx?{...s, saetze:setzen(s.saetze)}:s) }));
+    } else if(lokalKey.startsWith("k_")){
+      const mkey=lokalKey.slice(2);
+      updKonkByKey(konkKey, k=>{
+        const map={...(k.koSpiele||{})};
+        const eintrag={...(map[mkey]||{})};
+        eintrag.saetze=setzen(eintrag.saetze);
         map[mkey]=eintrag;
         return { koSpiele:map };
       });
@@ -2782,6 +2819,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     });
     updKonk({spiele});
   }
+  // Beide Seiten eines Satzes in EINEM Update setzen (für die „-"/verloren-Eingabe).
+  // seiteEigen: 0 oder 1 = das Feld, in das getippt wurde; der Rest ist die Gegenseite.
+  function setSatzBeide(spIndex, satzIndex, seiteEigen, wertEigen, wertGegner){
+    const spiele=konk.spiele.map((s,i)=>{
+      if(i!==spIndex) return s;
+      const saetze=(s.saetze||[]).map(x=>[...x]);
+      while(saetze.length<=satzIndex) saetze.push(["",""]);
+      saetze[satzIndex][seiteEigen]=String(wertEigen).replace(/[^\d]/g,"");
+      saetze[satzIndex][seiteEigen===0?1:0]=String(wertGegner).replace(/[^\d]/g,"");
+      return {...s, saetze};
+    });
+    updKonk({spiele});
+  }
   // Fixierung auf SPIEL-Ebene: ein abgeschlossenes Spiel kann fixiert werden, damit
   // die Ergebnisse nicht versehentlich geändert werden. Marker: Feld `fixiert` am Spiel.
   function satzKomplett(satz){ return satz && satz[0]!=="" && satz[1]!=="" && satz[0]!=null && satz[1]!=null; }
@@ -2946,10 +2996,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                         const satz=(x.saetze&&x.saetze[si])||["",""];
                         return <span key={si} style={{display:"inline-flex",alignItems:"center",gap:1}}>
                           <input value={satz[0]??""} disabled={fixiert} style={satzInp}
-                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v))}/>
+                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v), (e,gg)=>ergebnisSetzenBeide(x.konkKey,x.key,si,0,e,gg), 0)}/>
                           <span style={{fontSize:10,color:"var(--text4)"}}>:</span>
                           <input value={satz[1]??""} disabled={fixiert} style={satzInp}
-                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v))}/>
+                            {...satzInputProps(v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"b",v), v=>ergebnisSetzenGlobal(x.konkKey,x.key,si,"a",v), (e,gg)=>ergebnisSetzenBeide(x.konkKey,x.key,si,1,e,gg), 1)}/>
                         </span>;
                       })}
                       <button onClick={()=>ergebnisFixGlobal(x.konkKey,x.key,!fixiert)}
@@ -3317,10 +3367,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                             <div style={{display:"flex",alignItems:"center",gap:3,
                               background:fixiert?"#10b98118":"var(--bg2)",borderRadius:6,padding:"2px 4px",
                               border:fehler?"1px solid #ef4444":"1px solid transparent"}}>
-                              <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,0,v), v=>setSatz(sp._idx,si,1,v))}
+                              <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,0,v), v=>setSatz(sp._idx,si,1,v), (e,g)=>setSatzBeide(sp._idx,si,0,e,g), 0)}
                                 style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                               <span style={{color:"var(--text4)",fontSize:11}}>:</span>
-                              <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,1,v), v=>setSatz(sp._idx,si,0,v))}
+                              <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp._idx,si,1,v), v=>setSatz(sp._idx,si,0,v), (e,g)=>setSatzBeide(sp._idx,si,1,e,g), 1)}
                                 style={{width:26,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:12,opacity:fixiert?0.75:1}} placeholder="–"/>
                             </div>
                             {fehler && <span style={{fontSize:8,color:"#ef4444",maxWidth:80,lineHeight:1.2}}>⚠</span>}
@@ -4126,6 +4176,17 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     map[key]=eintrag;
     updKonk({ koSpiele:map });
   }
+  function setSatzBeide(key, satzIndex, seiteEigen, wertEigen, wertGegner){
+    const map={...spieleMap};
+    const eintrag={...(map[key]||{})};
+    const saetze=(eintrag.saetze||[["",""],["",""],["",""]]).map(x=>[...x]);
+    while(saetze.length<=satzIndex) saetze.push(["",""]);
+    saetze[satzIndex][seiteEigen]=String(wertEigen).replace(/[^\d]/g,"");
+    saetze[satzIndex][seiteEigen===0?1:0]=String(wertGegner).replace(/[^\d]/g,"");
+    eintrag.saetze=saetze;
+    map[key]=eintrag;
+    updKonk({ koSpiele:map });
+  }
   function toggleFix(key, fix){
     if(!darfAlle) return;   // Admin und Trainer dürfen Ergebnisse speichern/ändern
     const map={...spieleMap};
@@ -4312,7 +4373,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
                     nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
                     fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
                     slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
-                    setSatz={setSatz} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr} gewinnsaetze={konk.gewinnsaetze??3}/>
+                    setSatz={setSatz} setSatzBeide={setSatzBeide} toggleFix={toggleFix} vorgabe={vorgabeInfo(sp.a, sp.b)} qttrEinheit={einheitQttr} gewinnsaetze={konk.gewinnsaetze??3}/>
                 </div>;
               })}
             </div>
@@ -4343,7 +4404,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
 }
 
 // Eine Spiel-Box im Tableau
-function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, toggleFix, slotIdxA, slotIdxB, vorgabe=null, qttrEinheit=null, gewinnsaetze=3 }){
+function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fixiert, sieger, darf, isAdmin, tischNr, slots, tippSlot, slotAntippen, slotLeeren, setSatz, setSatzBeide, toggleFix, slotIdxA, slotIdxB, vorgabe=null, qttrEinheit=null, gewinnsaetze=3 }){
   // Erstrunden-Slot-Indizes (für Tipp-Verschiebung). Beim einfachen KO ergeben sie
   // sich aus der Spielposition (si*2 / si*2+1); beim doppelten KO werden sie explizit
   // übergeben (slotIdxA/slotIdxB), da die Slot-Zuordnung dort aus der Struktur kommt.
@@ -4417,10 +4478,10 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
           const satz=sp.saetze[idx]||["",""];
           const fehler=satzFehler(satz[0],satz[1]);
           return <div key={idx} style={{flexShrink:0,display:"flex",alignItems:"center",gap:1,background:fixiert?"#10b98118":"var(--bg2)",borderRadius:4,padding:"1px 3px",border:fehler?"1px solid #ef4444":"1px solid transparent"}} title={fehler||""}>
-            <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v), v=>setSatz(sp.key,idx,1,v))}
+            <input value={satz[0]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,0,v), v=>setSatz(sp.key,idx,1,v), setSatzBeide?((e,g)=>setSatzBeide(sp.key,idx,0,e,g)):undefined, 0)}
               style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
             <span style={{color:"var(--text4)",fontSize:10}}>:</span>
-            <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v), v=>setSatz(sp.key,idx,0,v))}
+            <input value={satz[1]} disabled={!darf||fixiert} {...satzInputProps(v=>setSatz(sp.key,idx,1,v), v=>setSatz(sp.key,idx,0,v), setSatzBeide?((e,g)=>setSatzBeide(sp.key,idx,1,e,g)):undefined, 1)}
               style={{width:18,textAlign:"center",background:"transparent",border:"none",color:"var(--text)",fontSize:11,opacity:fixiert?0.7:1}} placeholder="–"/>
           </div>;
         })}
@@ -4511,6 +4572,16 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     eintrag.saetze=saetze; map[key]=eintrag;
     updKonk({ koSpiele:map });
   }
+  function setSatzBeide(key, satzIndex, seiteEigen, wertEigen, wertGegner){
+    const map={...spieleMap};
+    const eintrag={...(map[key]||{})};
+    const saetze=(eintrag.saetze||[["",""],["",""],["",""]]).map(x=>[...x]);
+    while(saetze.length<=satzIndex) saetze.push(["",""]);
+    saetze[satzIndex][seiteEigen]=String(wertEigen).replace(/[^\d]/g,"");
+    saetze[satzIndex][seiteEigen===0?1:0]=String(wertGegner).replace(/[^\d]/g,"");
+    eintrag.saetze=saetze; map[key]=eintrag;
+    updKonk({ koSpiele:map });
+  }
   function toggleFix(key, fix){
     if(!darfAlle) return;
     const map={...spieleMap};
@@ -4557,7 +4628,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
       nameVon={nameVon} qttrVon={qttrVon} spielerVon={spielerVon}
       fixiert={fixiert} sieger={sieger} darf={darf} isAdmin={darfAlle} tischNr={tischNr}
       slots={slots} tippSlot={tippSlot} slotAntippen={slotAntippen} slotLeeren={slotLeeren}
-      setSatz={setSatz} toggleFix={toggleFix}
+      setSatz={setSatz} setSatzBeide={setSatzBeide} toggleFix={toggleFix}
       slotIdxA={slotIdxA} slotIdxB={slotIdxB} vorgabe={vorgabeInfo(v.a, v.b)} qttrEinheit={qttrNumVon2} gewinnsaetze={gewinnsaetze}/>;
   }
 
