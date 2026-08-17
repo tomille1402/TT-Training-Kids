@@ -1,4 +1,4 @@
-// === TTC-App · Version 354 · erstellt 17.08.2026 ===
+// === TTC-App · Version 355 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "354";
+const APP_VERSION = "355";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2350,7 +2350,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(tm) return `${nm(tm.s1)} / ${nm(tm.s2)}`;
       return nm(id);
     };
-    const qNum=(id)=>{ try{ const q=qttrVon(spielerVon(id)); return (q==null?null:q); }catch(e){ return null; } };
+    // Numerischer QTTR einer EINHEIT: Einzel = Spieler-QTTR; Doppel/Mixed = Summe beider.
+    const qttrEinzel=(id)=>{ try{ const q=qttrVon(spielerVon(id)); return (q==null||Number.isNaN(Number(q)))?null:Number(q); }catch(e){ return null; } };
+    const einheitQttrB=(id)=>{
+      const tm=teamVonId(id);
+      if(tm){ const a=qttrEinzel(tm.s1), b=qttrEinzel(tm.s2); return (a==null||b==null)?null:(a+b); }
+      return qttrEinzel(id);
+    };
     const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
     // Fakten
@@ -2424,7 +2430,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       const erg=satzErgebnisText(sp.saetze)||"–";
       let vorgTxt="";
       if(hatVorg){
-        const qa=qNum(sp.a), qb=qNum(sp.b);
+        const qa=einheitQttrB(sp.a), qb=einheitQttrB(sp.b);
         const pts=vorgabePunkte(qa,qb,k.diffQTTR,k.maxVorgabe);
         if(pts>0 && qa!=null && qb!=null){
           const gibt = qa>qb ? sp.a : sp.b;
@@ -2450,8 +2456,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 <style>
   :root{ --rot:#c8102e; --schwarz:#1a1a1a; --grau:#6b7280; --hell:#f7f7f8; --linie:#e5e7eb; }
   *{ box-sizing:border-box; }
-  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); margin:0; background:#fff; }
-  .wrap{ max-width:900px; margin:0 auto; padding:28px 26px 90px; position:relative; }
+  html,body{ margin:0; padding:0; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); background:#fff; }
+  /* WICHTIG: .wrap darf KEINEN eigenen Positionierungs-/Transformkontext erzeugen,
+     sonst wird das per position:fixed platzierte Logo beim Drucken falsch verortet
+     bzw. nur auf Seite 1 gezeigt. */
+  .wrap{ max-width:900px; margin:0 auto; padding:24px 26px 8px; }
   header{ border-bottom:4px solid var(--rot); padding-bottom:14px; margin-bottom:20px; }
   .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:12px; }
   h1{ font-size:26px; margin:4px 0 2px; }
@@ -2461,11 +2471,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   .fakt{ background:var(--hell); border:1px solid var(--linie); border-left:4px solid var(--rot); border-radius:8px; padding:9px 12px; }
   .fakt .k{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); font-weight:700; }
   .fakt .v{ font-size:14px; font-weight:700; margin-top:2px; }
-  h2{ font-size:16px; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:8px; }
+  h2{ font-size:16px; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:8px; break-after:avoid; page-break-after:avoid; }
   h2::before{ content:""; width:12px; height:12px; background:var(--rot); border-radius:2px; display:inline-block; }
-  h3{ font-size:13px; margin:14px 0 6px; color:var(--rot); font-weight:800; }
+  h3{ font-size:13px; margin:14px 0 6px; color:var(--rot); font-weight:800; break-after:avoid; page-break-after:avoid; }
   ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
-  ol.platz li{ display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--linie); border-radius:8px; background:#fff; }
+  ol.platz li{ display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--linie); border-radius:8px; background:#fff; break-inside:avoid; page-break-inside:avoid; }
   ol.platz li.medal{ border-color:var(--rot); background:#fff5f6; }
   ol.platz .rank{ font-size:16px; font-weight:800; min-width:30px; text-align:center; color:var(--schwarz); }
   ol.platz li.medal .rank{ font-size:20px; }
@@ -2477,23 +2487,34 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   table td.pkt{ font-weight:800; color:var(--rot); }
   table .erg{ font-variant-numeric:tabular-nums; font-weight:700; }
   table .vorg{ font-size:11px; color:var(--grau); text-align:left; }
+  tr{ break-inside:avoid; page-break-inside:avoid; }
   tr.top1 td{ background:#fff5f6; font-weight:700; }
   tr.top2 td, tr.top3 td{ background:#fafafa; }
-  .ko-runde{ margin:10px 0; }
+  .ko-runde{ margin:10px 0; break-inside:avoid; page-break-inside:avoid; }
   .ko-titel{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); margin-bottom:5px; }
-  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--linie); border-radius:7px; margin-bottom:5px; font-size:13px; }
+  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--linie); border-radius:7px; margin-bottom:5px; font-size:13px; break-inside:avoid; page-break-inside:avoid; }
   .ko-spiel .erg{ font-weight:800; color:var(--rot); font-variant-numeric:tabular-nums; }
   .ko-spiel span:first-child{ text-align:right; }
   .ko-spiel .win{ font-weight:800; }
-  .logo-fix{ position:fixed; right:16px; bottom:14px; width:74px; height:74px; opacity:.96; }
-  .logo-fix img{ width:100%; height:100%; object-fit:contain; }
-  footer{ margin-top:30px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; }
+  footer{ margin-top:26px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; }
   .toolbar{ position:sticky; top:0; background:#fff; padding:10px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
   .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
   .toolbar button.sec{ background:var(--schwarz); }
-  @media print{ .toolbar{ display:none; } .wrap{ padding-bottom:40px; } }
+  /* Logo: fest unten rechts. Als direktes body-Kind wird es in Chromium beim Druck
+     auf JEDER Seite wiederholt. Am Bildschirm ebenfalls unten rechts fixiert. */
+  .logo-fix{ position:fixed; right:14px; bottom:12px; width:70px; height:70px; opacity:.96; z-index:50; }
+  .logo-fix img{ width:100%; height:100%; object-fit:contain; }
+  @media print{
+    .toolbar{ display:none !important; }
+    .wrap{ padding-bottom:0; }
+    footer{ margin-bottom:0; }
+    /* etwas Platz am rechten/unteren Rand für das Logo auf jeder Seite */
+    @page{ margin:14mm 12mm 20mm 12mm; }
+    .logo-fix{ right:6mm; bottom:6mm; }
+  }
 </style></head>
-<body><div class="wrap">
+<body>
+  <div class="wrap">
   <div class="toolbar">
     <button onclick="window.print()">🖨️ Drucken / als PDF speichern</button>
     <button class="sec" onclick="window.close()">Schließen</button>
@@ -2526,8 +2547,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     <div>Erstellt am ${esc(new Date().toLocaleDateString("de-DE"))} · ${esc(vereinName)}</div>
     <div>TTC-Trainings-App</div>
   </footer>
+  </div>
   ${logo?`<div class="logo-fix"><img src="${logo}" alt="Vereinswappen"></div>`:""}
-</div></body></html>`;
+</body></html>`;
 
     const w=window.open("","_blank");
     if(!w){ alert("Bitte Popups für diese Seite erlauben, um den Bericht anzuzeigen."); return; }
