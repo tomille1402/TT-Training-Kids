@@ -1,4 +1,4 @@
-// === TTC-App · Version 355 · erstellt 17.08.2026 ===
+// === TTC-App · Version 356 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "355";
+const APP_VERSION = "356";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2458,11 +2458,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); background:#fff; }
-  /* WICHTIG: .wrap darf KEINEN eigenen Positionierungs-/Transformkontext erzeugen,
-     sonst wird das per position:fixed platzierte Logo beim Drucken falsch verortet
-     bzw. nur auf Seite 1 gezeigt. */
   .wrap{ max-width:900px; margin:0 auto; padding:24px 26px 8px; }
-  header{ border-bottom:4px solid var(--rot); padding-bottom:14px; margin-bottom:20px; }
+  header{ border-bottom:4px solid var(--rot); padding-bottom:14px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:18px; }
+  header .htext{ min-width:0; }
+  header .hlogo{ flex-shrink:0; width:96px; height:96px; }
+  header .hlogo img{ width:100%; height:100%; object-fit:contain; }
   .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:12px; }
   h1{ font-size:26px; margin:4px 0 2px; }
   h1 .konk{ color:var(--rot); }
@@ -2500,17 +2500,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   .toolbar{ position:sticky; top:0; background:#fff; padding:10px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
   .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
   .toolbar button.sec{ background:var(--schwarz); }
-  /* Logo: fest unten rechts. Als direktes body-Kind wird es in Chromium beim Druck
-     auf JEDER Seite wiederholt. Am Bildschirm ebenfalls unten rechts fixiert. */
-  .logo-fix{ position:fixed; right:14px; bottom:12px; width:70px; height:70px; opacity:.96; z-index:50; }
-  .logo-fix img{ width:100%; height:100%; object-fit:contain; }
   @media print{
     .toolbar{ display:none !important; }
     .wrap{ padding-bottom:0; }
     footer{ margin-bottom:0; }
-    /* etwas Platz am rechten/unteren Rand für das Logo auf jeder Seite */
-    @page{ margin:14mm 12mm 20mm 12mm; }
-    .logo-fix{ right:6mm; bottom:6mm; }
+    @page{ margin:14mm 12mm 16mm 12mm; }
   }
 </style></head>
 <body>
@@ -2520,9 +2514,12 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     <button class="sec" onclick="window.close()">Schließen</button>
   </div>
   <header>
-    <div class="kicker">Turnierbericht · ${esc(vereinName)}</div>
-    <h1>${esc(t.name)} – <span class="konk">${esc(k.name)}</span></h1>
-    <div class="datum">${esc(deDatumT(t.datum))}</div>
+    <div class="htext">
+      <div class="kicker">Turnierbericht · ${esc(vereinName)}</div>
+      <h1>${esc(t.name)} – <span class="konk">${esc(k.name)}</span></h1>
+      <div class="datum">${esc(deDatumT(t.datum))}</div>
+    </div>
+    ${logo?`<div class="hlogo"><img src="${logo}" alt="Vereinswappen"></div>`:""}
   </header>
 
   <div class="fakten">
@@ -2548,7 +2545,6 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     <div>TTC-Trainings-App</div>
   </footer>
   </div>
-  ${logo?`<div class="logo-fix"><img src="${logo}" alt="Vereinswappen"></div>`:""}
 </body></html>`;
 
     const w=window.open("","_blank");
