@@ -1,4 +1,4 @@
-// === TTC-App · Version 360 · erstellt 17.08.2026 ===
+// === TTC-App · Version 361 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "360";
+const APP_VERSION = "361";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6417,6 +6417,44 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   </div>;
 }
 
+// Lädt eine Bilddatei, skaliert sie proportional auf max. Maße herunter und gibt eine
+// komprimierte JPEG-Data-URL zurück, deren Länge unter maxLen liegt (für Firestore).
+// Weißer Hintergrund, damit transparente PNG-Bereiche nicht schwarz werden.
+function komprimiereBild(file, opts={}){
+  const maxBreite=opts.maxBreite||1240, maxHoehe=opts.maxHoehe||1754, maxLen=opts.maxLen||900000;
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+          if(!w||!h){ reject(new Error("Das Bild konnte nicht gelesen werden.")); return; }
+          const skala=Math.min(1, maxBreite/w, maxHoehe/h);
+          w=Math.round(w*skala); h=Math.round(h*skala);
+          const canvas=document.createElement("canvas");
+          canvas.width=w; canvas.height=h;
+          const ctx=canvas.getContext("2d");
+          ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,w,h);
+          ctx.drawImage(img,0,0,w,h);
+          let q=0.9, out=canvas.toDataURL("image/jpeg", q);
+          // Qualität schrittweise senken, bis die Data-URL klein genug ist.
+          while(out.length>maxLen && q>0.4){ q-=0.1; out=canvas.toDataURL("image/jpeg", q); }
+          if(out.length>maxLen){
+            reject(new Error("Die Vorlage ist auch nach Komprimierung zu groß. Bitte ein kleineres oder einfacheres Bild wählen."));
+            return;
+          }
+          resolve(out);
+        }catch(e){ reject(new Error("Das Bild konnte nicht verarbeitet werden.")); }
+      };
+      img.onerror=()=>reject(new Error("Das Bild konnte nicht geladen werden."));
+      img.src=reader.result;
+    };
+    reader.onerror=()=>reject(new Error("Die Datei konnte nicht gelesen werden."));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
 function BrandingEditor({showToast}) {
   const [name,     setName]     = useState("");
@@ -6458,25 +6496,15 @@ function BrandingEditor({showToast}) {
   async function saveLogo(file) {
     if(!file) return;
     setLogoSaving(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target.result;
-      if(dataUrl.length > 700000) {
-        window.alert("Bild zu groß! Bitte unter 500KB wählen.");
-        setLogoSaving(false);
-        return;
-      }
+    try{
+      const dataUrl = await komprimiereBild(file, { maxBreite:512, maxHoehe:512, maxLen:400000 });
       setLogo(dataUrl);
-      try {
-        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:false});
-        showToast("Wappen gespeichert 🖼️","🖼️");
-      } catch(e) {
-        window.alert("Fehler:\n"+e.code+"\n"+e.message);
-      }
-      setLogoSaving(false);
-    };
-    reader.onerror = ()=>{ window.alert("Datei konnte nicht gelesen werden"); setLogoSaving(false); };
-    reader.readAsDataURL(file);
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:false});
+      showToast("Wappen gespeichert 🖼️","🖼️");
+    }catch(err){
+      window.alert(err && err.message ? err.message : "Das Wappen konnte nicht verarbeitet werden.");
+    }
+    setLogoSaving(false);
   }
 
   async function deleteLogo() {
@@ -6492,25 +6520,15 @@ function BrandingEditor({showToast}) {
   async function saveUrkunde(file) {
     if(!file) return;
     setUrkundeSaving(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target.result;
-      if(dataUrl.length > 1400000) {
-        window.alert("Bild zu groß! Bitte eine Vorlage unter ca. 1 MB wählen.");
-        setUrkundeSaving(false);
-        return;
-      }
+    try{
+      const dataUrl = await komprimiereBild(file, { maxBreite:1240, maxHoehe:1754, maxLen:900000 });
       setUrkunde(dataUrl);
-      try {
-        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:false});
-        showToast("Urkunden-Vorlage gespeichert 📜","📜");
-      } catch(e) {
-        window.alert("Fehler:\n"+e.code+"\n"+e.message);
-      }
-      setUrkundeSaving(false);
-    };
-    reader.onerror = ()=>{ window.alert("Datei konnte nicht gelesen werden"); setUrkundeSaving(false); };
-    reader.readAsDataURL(file);
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:false});
+      showToast("Urkunden-Vorlage gespeichert 📜","📜");
+    }catch(err){
+      window.alert(err && err.message ? err.message : "Die Vorlage konnte nicht verarbeitet werden.");
+    }
+    setUrkundeSaving(false);
   }
 
   async function deleteUrkunde() {
@@ -6564,7 +6582,7 @@ function BrandingEditor({showToast}) {
     </div>
     <label style={{display:"block",padding:"9px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:8,textAlign:"center",cursor:logoSaving?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
-      {logoSaving?"⏳ Hochladen...":"📎 JPG/PNG hochladen (max 500KB)"}
+      {logoSaving?"⏳ Hochladen...":"📎 JPG/PNG hochladen"}
       <input type="file" accept="image/*" style={{display:"none"}} disabled={logoSaving}
         onChange={e=>saveLogo(e.target.files?.[0])}/>
     </label>
@@ -6582,7 +6600,7 @@ function BrandingEditor({showToast}) {
     </div>
     <label style={{display:"block",padding:"9px",background:"var(--bg3)",border:"2px dashed var(--border2)",
       borderRadius:8,textAlign:"center",cursor:urkundeSaving?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
-      {urkundeSaving?"⏳ Hochladen...":"📎 Urkunden-Vorlage hochladen (JPG/PNG, max ~1 MB)"}
+      {urkundeSaving?"⏳ Wird verarbeitet...":"📎 Urkunden-Vorlage hochladen (JPG/PNG)"}
       <input type="file" accept="image/*" style={{display:"none"}} disabled={urkundeSaving}
         onChange={e=>saveUrkunde(e.target.files?.[0])}/>
     </label>
