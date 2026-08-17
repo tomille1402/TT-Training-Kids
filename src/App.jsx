@@ -1,4 +1,4 @@
-// === TTC-App · Version 353 · erstellt 17.08.2026 ===
+// === TTC-App · Version 354 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "353";
+const APP_VERSION = "354";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2335,6 +2335,205 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       alert("Die Konkurrenz wurde abgeschlossen, aber beim Übertrag der Erfolge gab es ein Problem: "+(e?.message||e));
     }
   }
+  // ─── Turnierbericht einer abgeschlossenen Konkurrenz (ansprechende HTML-Seite) ──
+  // Öffnet einen druck-/teilbaren Bericht im TTC-Corporate-Design (schwarz/rot) mit
+  // allen Fakten, Platzierungen (mit Medaillen), Tabelle/Tableau und Spielliste.
+  async function turnierberichtOeffnen(konkArg){
+    const k = konkArg || konk;
+    if(!k) return;
+    const g = k.gewinnsaetze??3;
+    const istDoppelK = istDoppelKonk(k);
+    // Namen einer Einheit (Einzel = Spielername; Doppel/Mixed = „A / B").
+    const nm=(id)=>{ const p=spielerVon(id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():String(id||""); };
+    const einheitName=(id)=>{
+      const tm=teamVonId(id);
+      if(tm) return `${nm(tm.s1)} / ${nm(tm.s2)}`;
+      return nm(id);
+    };
+    const qNum=(id)=>{ try{ const q=qttrVon(spielerVon(id)); return (q==null?null:q); }catch(e){ return null; } };
+    const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+    // Fakten
+    const modusText = ({1:"Best of 1",2:"Best of 3",3:"Best of 5",4:"Best of 7"})[g] || `Gewinnsätze: ${g}`;
+    const disziplin = k.modus || (istDoppelK?"Doppel":"Einzel");
+    const art = k.art || "—";
+    const hatVorg = k.vorgabe==="ja" && (k.vorgabeArt||"QTTR")==="QTTR";
+    const vorgabeText = hatVorg
+      ? `QTTR-Vorgabe aktiv · je ${k.diffQTTR||"?"} QTTR-Punkte 1 Vorgabepunkt${k.maxVorgabe?` · max. ${k.maxVorgabe}`:""}`
+      : "keine Vorgabe";
+
+    // Platzierungen (alle Teilnehmer)
+    const platzMap = endplatzierungenKonk(k, koHelpers);   // spielerId → Platz
+    const platzEinheiten=[];
+    if(istDoppelK){
+      for(const tm of (k.doppelTeams||[])){
+        const pl = platzMap[tm.s1] || platzMap[tm.s2] || null;
+        if(pl!=null) platzEinheiten.push({name:einheitName(tm.id), platz:pl});
+      }
+    } else {
+      const seen=new Set();
+      for(const [pid,pl] of Object.entries(platzMap)){ if(seen.has(pid))continue; seen.add(pid); platzEinheiten.push({name:nm(pid), platz:pl}); }
+    }
+    platzEinheiten.sort((a,b)=>a.platz-b.platz);
+    const medaille=(pl)=> pl===1?"🥇":pl===2?"🥈":pl===3?"🥉":"";
+
+    // Tabelle (Gruppen) bzw. Tableau (KO)
+    const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
+    let tabelleHtml="";
+    if(!hatKO && Array.isArray(k.gruppen) && k.gruppen.length){
+      k.gruppen.forEach((grp,gi)=>{
+        if(!grp || grp.length===0) return;
+        const rows=berechneGruppenTabelle(grp, (k.spiele||[]).filter(s=>s.gi===gi));
+        tabelleHtml += `<h3>${k.gruppen.length>1?`Gruppe ${gi+1}`:"Tabelle"}</h3>
+        <table class="tab"><thead><tr><th>#</th><th>Name</th><th>S</th><th>N</th><th>Sätze</th><th>Pkt</th></tr></thead><tbody>`;
+        rows.forEach((r,i)=>{
+          tabelleHtml += `<tr class="${i<3?"top"+(i+1):""}"><td>${i+1}</td><td class="l">${esc(einheitName(r.id))}</td><td>${r.spSieg}</td><td>${r.spNied}</td><td>${r.satzGew}:${r.satzVerl}</td><td class="pkt">${r.punkte}</td></tr>`;
+        });
+        tabelleHtml += `</tbody></table>`;
+      });
+    } else if(hatKO){
+      const begeg=begegnungenDerKonk(k).filter(x=>String(x.key).startsWith("k_"));
+      const rundenMap={};
+      for(const x of begeg){ (rundenMap[x.runde]=rundenMap[x.runde]||[]).push(x); }
+      const rundenKeys=Object.keys(rundenMap).map(Number).sort((a,b)=>a-b);
+      const rundenTitel=(rk,anzahl)=>{
+        if(rk===99) return "Finale (Gesamt)";
+        if(anzahl===1) return "Finale";
+        if(anzahl===2) return "Halbfinale";
+        if(anzahl<=4) return "Viertelfinale";
+        return "Runde";
+      };
+      tabelleHtml += `<h3>Tableau (${esc(art)})</h3>`;
+      for(const rk of rundenKeys){
+        const spiele=rundenMap[rk];
+        tabelleHtml += `<div class="ko-runde"><div class="ko-titel">${rundenTitel(rk,spiele.length)}</div>`;
+        for(const sp of spiele){
+          const erg=satzErgebnisText(sp.saetze);
+          const sieger=ko_sieger(sp.saetze, g);
+          const aWin=sieger==="a", bWin=sieger==="b";
+          tabelleHtml += `<div class="ko-spiel"><span class="${aWin?"win":""}">${esc(einheitName(sp.a))}</span><span class="erg">${esc(erg||"–")}</span><span class="${bWin?"win":""}">${esc(einheitName(sp.b))}</span></div>`;
+        }
+        tabelleHtml += `</div>`;
+      }
+    }
+
+    // Alle Spiele mit Sätzen + Vorgabe
+    const alleSp=begegnungenDerKonk(k);
+    let spieleHtml=`<table class="spiele"><thead><tr><th>#</th><th>Begegnung</th><th>Ergebnis</th>${hatVorg?"<th>Vorgabe</th>":""}</tr></thead><tbody>`;
+    alleSp.forEach((sp,i)=>{
+      const erg=satzErgebnisText(sp.saetze)||"–";
+      let vorgTxt="";
+      if(hatVorg){
+        const qa=qNum(sp.a), qb=qNum(sp.b);
+        const pts=vorgabePunkte(qa,qb,k.diffQTTR,k.maxVorgabe);
+        if(pts>0 && qa!=null && qb!=null){
+          const gibt = qa>qb ? sp.a : sp.b;
+          vorgTxt=`${esc(einheitName(gibt))} gibt ${pts} vor`;
+        } else vorgTxt="—";
+      }
+      spieleHtml += `<tr><td>${i+1}</td><td class="l">${esc(einheitName(sp.a))} <b>vs</b> ${esc(einheitName(sp.b))}</td><td class="erg">${esc(erg)}</td>${hatVorg?`<td class="vorg">${esc(vorgTxt)}</td>`:""}</tr>`;
+    });
+    spieleHtml += `</tbody></table>`;
+
+    // Logo aus clubConfig laden (Data-URL). Fällt weg, falls nicht vorhanden.
+    let logo="";
+    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()) logo=snap.data().logo||""; }catch(e){}
+
+    const platzHtml = platzEinheiten.map(e=>
+      `<li class="pl${e.platz<=3?" medal":""}"><span class="rank">${medaille(e.platz)||e.platz+"."}</span><span class="pname">${esc(e.name)}</span></li>`
+    ).join("");
+
+    const vereinName = "TTC Niederzeuzheim";
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turnierbericht – ${esc(t.name)} · ${esc(k.name)}</title>
+<style>
+  :root{ --rot:#c8102e; --schwarz:#1a1a1a; --grau:#6b7280; --hell:#f7f7f8; --linie:#e5e7eb; }
+  *{ box-sizing:border-box; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); margin:0; background:#fff; }
+  .wrap{ max-width:900px; margin:0 auto; padding:28px 26px 90px; position:relative; }
+  header{ border-bottom:4px solid var(--rot); padding-bottom:14px; margin-bottom:20px; }
+  .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:12px; }
+  h1{ font-size:26px; margin:4px 0 2px; }
+  h1 .konk{ color:var(--rot); }
+  .datum{ color:var(--grau); font-size:13px; }
+  .fakten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:18px 0 24px; }
+  .fakt{ background:var(--hell); border:1px solid var(--linie); border-left:4px solid var(--rot); border-radius:8px; padding:9px 12px; }
+  .fakt .k{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); font-weight:700; }
+  .fakt .v{ font-size:14px; font-weight:700; margin-top:2px; }
+  h2{ font-size:16px; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:8px; }
+  h2::before{ content:""; width:12px; height:12px; background:var(--rot); border-radius:2px; display:inline-block; }
+  h3{ font-size:13px; margin:14px 0 6px; color:var(--rot); font-weight:800; }
+  ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
+  ol.platz li{ display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--linie); border-radius:8px; background:#fff; }
+  ol.platz li.medal{ border-color:var(--rot); background:#fff5f6; }
+  ol.platz .rank{ font-size:16px; font-weight:800; min-width:30px; text-align:center; color:var(--schwarz); }
+  ol.platz li.medal .rank{ font-size:20px; }
+  ol.platz .pname{ font-weight:600; font-size:14px; }
+  table{ width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:13px; }
+  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:6px 8px; text-align:center; border-bottom:1px solid var(--linie); }
+  table th{ background:var(--schwarz); color:#fff; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  table td.l{ text-align:left; }
+  table td.pkt{ font-weight:800; color:var(--rot); }
+  table .erg{ font-variant-numeric:tabular-nums; font-weight:700; }
+  table .vorg{ font-size:11px; color:var(--grau); text-align:left; }
+  tr.top1 td{ background:#fff5f6; font-weight:700; }
+  tr.top2 td, tr.top3 td{ background:#fafafa; }
+  .ko-runde{ margin:10px 0; }
+  .ko-titel{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); margin-bottom:5px; }
+  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--linie); border-radius:7px; margin-bottom:5px; font-size:13px; }
+  .ko-spiel .erg{ font-weight:800; color:var(--rot); font-variant-numeric:tabular-nums; }
+  .ko-spiel span:first-child{ text-align:right; }
+  .ko-spiel .win{ font-weight:800; }
+  .logo-fix{ position:fixed; right:16px; bottom:14px; width:74px; height:74px; opacity:.96; }
+  .logo-fix img{ width:100%; height:100%; object-fit:contain; }
+  footer{ margin-top:30px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .toolbar{ position:sticky; top:0; background:#fff; padding:10px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
+  .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
+  .toolbar button.sec{ background:var(--schwarz); }
+  @media print{ .toolbar{ display:none; } .wrap{ padding-bottom:40px; } }
+</style></head>
+<body><div class="wrap">
+  <div class="toolbar">
+    <button onclick="window.print()">🖨️ Drucken / als PDF speichern</button>
+    <button class="sec" onclick="window.close()">Schließen</button>
+  </div>
+  <header>
+    <div class="kicker">Turnierbericht · ${esc(vereinName)}</div>
+    <h1>${esc(t.name)} – <span class="konk">${esc(k.name)}</span></h1>
+    <div class="datum">${esc(deDatumT(t.datum))}</div>
+  </header>
+
+  <div class="fakten">
+    <div class="fakt"><div class="k">Turnier</div><div class="v">${esc(t.name)}</div></div>
+    <div class="fakt"><div class="k">Konkurrenz</div><div class="v">${esc(k.name)}</div></div>
+    <div class="fakt"><div class="k">Disziplin</div><div class="v">${esc(disziplin)}</div></div>
+    <div class="fakt"><div class="k">Modus</div><div class="v">${esc(modusText)}</div></div>
+    <div class="fakt"><div class="k">Art</div><div class="v">${esc(art)}</div></div>
+    <div class="fakt"><div class="k">Vorgabe</div><div class="v">${esc(vorgabeText)}</div></div>
+  </div>
+
+  <h2>Platzierungen</h2>
+  <ol class="platz">${platzHtml||"<li>Keine Platzierungen ermittelbar.</li>"}</ol>
+
+  <h2>${hatKO?"Tableau":"Tabelle"}</h2>
+  ${tabelleHtml||"<p>Keine Tabellendaten.</p>"}
+
+  <h2>Alle Spiele</h2>
+  ${spieleHtml}
+
+  <footer>
+    <div>Erstellt am ${esc(new Date().toLocaleDateString("de-DE"))} · ${esc(vereinName)}</div>
+    <div>TTC-Trainings-App</div>
+  </footer>
+  ${logo?`<div class="logo-fix"><img src="${logo}" alt="Vereinswappen"></div>`:""}
+</div></body></html>`;
+
+    const w=window.open("","_blank");
+    if(!w){ alert("Bitte Popups für diese Seite erlauben, um den Bericht anzuzeigen."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   function konkurrenzWiederOeffnen(){
     if(!isAdmin || !konk) return;
     if(!window.confirm(`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
@@ -3203,6 +3402,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#10b98118",border:"1px solid #10b98155",borderRadius:11,padding:"10px 13px"}}>
             <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
             <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
+            <button onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
             <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
           </div>;
         }
@@ -3640,6 +3840,13 @@ function ko_erstRunde(idsSortiert){
 
 // Sieger eines Spiels anhand der Sätze. g = nötige Gewinnsätze (Default 3 = Best of 5).
 // Rückgabe: "a"|"b"|null
+// Ergebnis-Text einer Satzfolge, z. B. „11:7  9:11  11:8". Leere Sätze übersprungen.
+function satzErgebnisText(saetze){
+  return (saetze||[])
+    .filter(s=>Array.isArray(s) && s[0]!=="" && s[1]!=="" && s[0]!=null && s[1]!=null)
+    .map(s=>`${s[0]}:${s[1]}`)
+    .join("  ");
+}
 function ko_sieger(saetze, gewinnsaetze=3){
   const g=Math.max(1, Number(gewinnsaetze)||3);
   let a=0,b=0;
