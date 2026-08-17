@@ -1,4 +1,4 @@
-// === TTC-App · Version 357 · erstellt 17.08.2026 ===
+// === TTC-App · Version 358 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "357";
+const APP_VERSION = "358";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2458,67 +2458,67 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); background:#fff; }
-  .wrap{ max-width:900px; margin:0 auto; padding:24px 26px 8px; }
-  header{ border-bottom:4px solid var(--rot); padding-bottom:14px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:18px; }
+  .wrap{ max-width:900px; margin:0 auto; padding:20px 24px 8px; }
+  header{ border-bottom:3px solid var(--rot); padding-bottom:11px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
   header .htext{ min-width:0; }
-  header .hlogo{ flex-shrink:0; width:96px; height:96px; }
+  header .hlogo{ flex-shrink:0; width:78px; height:78px; }
   header .hlogo img{ width:100%; height:100%; object-fit:contain; }
-  .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:12px; }
-  h1{ font-size:26px; margin:4px 0 2px; }
-  h1 .konk{ color:var(--rot); }
-  .datum{ color:var(--grau); font-size:13px; }
-  .fakten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:18px 0 24px; }
-  .fakt{ background:var(--hell); border:1px solid var(--linie); border-left:4px solid var(--rot); border-radius:8px; padding:9px 12px; }
-  .fakt .k{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); font-weight:700; }
-  .fakt .v{ font-size:14px; font-weight:700; margin-top:2px; }
-  h2{ font-size:16px; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:8px; break-after:avoid; page-break-after:avoid; }
-  h2::before{ content:""; width:12px; height:12px; background:var(--rot); border-radius:2px; display:inline-block; }
-  h3{ font-size:13px; margin:14px 0 6px; color:var(--rot); font-weight:800; break-after:avoid; page-break-after:avoid; }
-  ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
-  ol.platz li{ display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--linie); border-radius:8px; background:#fff; break-inside:avoid; page-break-inside:avoid; }
+  .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:10px; }
+  h1{ font-size:21px; margin:3px 0 1px; }
+  .konkzeile{ font-size:16px; font-weight:800; color:var(--rot); margin:1px 0 3px; }
+  .datum{ color:var(--grau); font-size:11px; }
+  .fakten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin:14px 0 18px; }
+  .fakt{ background:var(--hell); border:1px solid var(--linie); border-left:4px solid var(--rot); border-radius:7px; padding:7px 10px; }
+  .fakt.fakt-voll{ grid-column:1 / -1; }
+  .fakt .k{ font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); font-weight:700; }
+  .fakt .v{ font-size:12px; font-weight:700; margin-top:2px; }
+  h2{ font-size:13px; margin:20px 0 8px; padding-bottom:5px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:7px; break-after:avoid; page-break-after:avoid; }
+  h2::before{ content:""; width:10px; height:10px; background:var(--rot); border-radius:2px; display:inline-block; }
+  h2.seitenumbruch{ break-before:page; page-break-before:always; }
+  h3{ font-size:11px; margin:12px 0 5px; color:var(--rot); font-weight:800; break-after:avoid; page-break-after:avoid; }
+  ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:5px; }
+  ol.platz li{ display:flex; align-items:center; gap:9px; padding:5px 10px; border:1px solid var(--linie); border-radius:7px; background:#fff; break-inside:avoid; page-break-inside:avoid; }
   ol.platz li.medal{ border-color:var(--rot); background:#fff5f6; }
-  ol.platz .rank{ font-size:16px; font-weight:800; min-width:30px; text-align:center; color:var(--schwarz); flex-shrink:0; }
-  ol.platz li.medal .rank{ font-size:20px; }
-  ol.platz .pname{ font-weight:600; font-size:14px; overflow-wrap:anywhere; }
+  ol.platz .rank{ font-size:13px; font-weight:800; min-width:26px; text-align:center; color:var(--schwarz); flex-shrink:0; }
+  ol.platz li.medal .rank{ font-size:17px; }
+  ol.platz .pname{ font-weight:600; font-size:12px; overflow-wrap:anywhere; }
   @media print{
-    /* Im Druck die Platzierungen als Blockfluss, damit jede Kachel als Ganzes
-       umbricht und Doppel-Namen (zwei Namen) nie am Seitenrand abgeschnitten werden. */
     ol.platz{ display:block; }
-    ol.platz li{ margin-bottom:6px; }
+    ol.platz li{ margin-bottom:5px; }
   }
-  table{ width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:13px; }
-  /* Tabellen dürfen Kopfzeile bei Umbruch wiederholen; Zeilen bleiben zusammen. */
+  table{ width:100%; border-collapse:collapse; margin:6px 0 4px; font-size:11px; }
   table.tab thead, table.spiele thead{ display:table-header-group; }
   table.tab tr, table.spiele tr{ break-inside:avoid; page-break-inside:avoid; }
   table.tab td, table.tab th, table.spiele td, table.spiele th{ break-inside:avoid; page-break-inside:avoid; }
-  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:6px 8px; text-align:center; border-bottom:1px solid var(--linie); vertical-align:top; }
-  table th{ background:var(--schwarz); color:#fff; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:5px 7px; text-align:center; border-bottom:1px solid var(--linie); vertical-align:top; }
+  table th{ background:var(--schwarz); color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
   table td.l{ text-align:left; }
   table td.pkt{ font-weight:800; color:var(--rot); }
   table .erg{ font-variant-numeric:tabular-nums; font-weight:700; }
-  table .vorg{ font-size:11px; color:var(--grau); text-align:left; }
+  table .vorg{ font-size:10px; color:var(--grau); text-align:left; }
   tr{ break-inside:avoid; page-break-inside:avoid; }
   tr.top1 td{ background:#fff5f6; font-weight:700; }
   tr.top2 td, tr.top3 td{ background:#fafafa; }
-  .ko-runde{ margin:10px 0; break-inside:avoid; page-break-inside:avoid; }
-  .ko-titel{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); margin-bottom:5px; }
-  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; padding:6px 10px; border:1px solid var(--linie); border-radius:7px; margin-bottom:5px; font-size:13px; break-inside:avoid; page-break-inside:avoid; }
+  .ko-runde{ margin:8px 0; break-inside:avoid; page-break-inside:avoid; }
+  .ko-titel{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); margin-bottom:4px; }
+  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:9px; padding:5px 9px; border:1px solid var(--linie); border-radius:6px; margin-bottom:4px; font-size:11px; break-inside:avoid; page-break-inside:avoid; }
   .ko-spiel .erg{ font-weight:800; color:var(--rot); font-variant-numeric:tabular-nums; }
   .ko-spiel span:first-child{ text-align:right; }
   .ko-spiel .win{ font-weight:800; }
-  footer{ margin-top:26px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; break-inside:avoid; page-break-inside:avoid; }
-  .toolbar{ position:sticky; top:0; background:#fff; padding:10px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
-  .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
+  footer{ margin-top:22px; padding-top:10px; border-top:2px solid var(--rot); color:var(--grau); font-size:10px; display:flex; justify-content:space-between; align-items:flex-end; break-inside:avoid; page-break-inside:avoid; }
+  .toolbar{ position:sticky; top:0; background:#fff; padding:9px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
+  .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:7px 13px; font-weight:700; font-size:12px; cursor:pointer; }
   .toolbar button.sec{ background:var(--schwarz); }
   @media print{
     .toolbar{ display:none !important; }
     .wrap{ padding-bottom:0; }
     footer{ margin-bottom:0; }
-    /* Etwas mehr Bodenrand, damit die letzte Zeile einer Seite nicht angeschnitten wird. */
-    @page{ margin:14mm 12mm 18mm 12mm; }
-    /* Doppelte Absicherung gegen abgeschnittene Zeilen/Namen im Druck. */
+    @page{ margin:13mm 11mm 16mm 11mm; }
+    /* Zeilen/Namen nie am Seitenende abschneiden. */
     tr, td, th, li, .ko-spiel, .ko-runde{ break-inside:avoid !important; page-break-inside:avoid !important; }
-    thead{ display:table-header-group; }
+    /* Harter Seitenumbruch vor „Alle Spiele" – die Tabelle beginnt so oben auf einer
+       neuen Seite und wird vollständig (nicht nur die Kopfzeile) gedruckt. */
+    h2.seitenumbruch{ break-before:page !important; page-break-before:always !important; }
   }
 </style></head>
 <body>
@@ -2530,19 +2530,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   <header>
     <div class="htext">
       <div class="kicker">Turnierbericht · ${esc(vereinName)}</div>
-      <h1>${esc(t.name)} – <span class="konk">${esc(k.name)}</span></h1>
+      <h1>${esc(t.name)}</h1>
+      <div class="konkzeile">${esc(k.name)}</div>
       <div class="datum">${esc(deDatumT(t.datum))}</div>
     </div>
     ${logo?`<div class="hlogo"><img src="${logo}" alt="Vereinswappen"></div>`:""}
   </header>
 
   <div class="fakten">
-    <div class="fakt"><div class="k">Turnier</div><div class="v">${esc(t.name)}</div></div>
     <div class="fakt"><div class="k">Konkurrenz</div><div class="v">${esc(k.name)}</div></div>
     <div class="fakt"><div class="k">Disziplin</div><div class="v">${esc(disziplin)}</div></div>
     <div class="fakt"><div class="k">Modus</div><div class="v">${esc(modusText)}</div></div>
     <div class="fakt"><div class="k">Art</div><div class="v">${esc(art)}</div></div>
-    <div class="fakt"><div class="k">Vorgabe</div><div class="v">${esc(vorgabeText)}</div></div>
+    <div class="fakt${hatVorg?" fakt-voll":""}"><div class="k">Vorgabe</div><div class="v">${esc(vorgabeText)}</div></div>
   </div>
 
   <h2>Platzierungen</h2>
@@ -2551,7 +2551,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   <h2>${hatKO?"Tableau":"Tabelle"}</h2>
   ${tabelleHtml||"<p>Keine Tabellendaten.</p>"}
 
-  <h2>Alle Spiele</h2>
+  <h2 class="seitenumbruch">Alle Spiele</h2>
   ${spieleHtml}
 
   <footer>
