@@ -1,4 +1,4 @@
-// === TTC-App · Version 359 · erstellt 17.08.2026 ===
+// === TTC-App · Version 360 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "359";
+const APP_VERSION = "360";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1613,6 +1613,12 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
           placeholder="Turniername eingeben" autoFocus
           style={{...selT2,marginTop:6,display:"block",width:"100%"}}/>}
       </Feld>
+      <Feld label="Urkunden-Einleitung">
+        <select value={t.urkundeAnrede||"Bei den"} onChange={e=>set("urkundeAnrede",e.target.value)} style={selT2}>
+          <option value="Bei den">Bei den … (z. B. „Bei den Vereinsmeisterschaften")</option>
+          <option value="Beim">Beim … (z. B. „Beim Nikolaus-Cup")</option>
+        </select>
+      </Feld>
       <Feld label="Anzahl Tische (gesamt)">
         <input type="number" min={1} max={50} value={t.anzahlTische??6}
           onChange={e=>set("anzahlTische", e.target.value===""?"":Number(e.target.value))}
@@ -2566,6 +2572,129 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     w.document.open(); w.document.write(html); w.document.close();
   }
 
+  // ─── Urkunden einer abgeschlossenen Konkurrenz (Entwurf C: elegant) ──────────
+  // nurEinheit: optionale Einheit-ID (Spieler- oder Team-ID) für Einzeldruck; sonst alle.
+  async function urkundenOeffnen(konkArg, nurEinheit){
+    const k = konkArg || konk;
+    if(!k) return;
+    const istDoppelK = istDoppelKonk(k);
+    const nm=(id)=>{ const p=spielerVon(id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():""; };
+    const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+    // Platzierungen je Einheit ermitteln.
+    const platzMap = endplatzierungenKonk(k, koHelpers);   // spielerId → Platz
+    // Einheiten aufbauen: {platz, namenVarianten:[...]}. Doppel/Mixed → zwei Varianten.
+    const einheiten=[];
+    if(istDoppelK){
+      for(const tm of (k.doppelTeams||[])){
+        const pl = platzMap[tm.s1] || platzMap[tm.s2] || null;
+        if(pl==null) continue;
+        if(nurEinheit && tm.id!==nurEinheit) continue;
+        const a=nm(tm.s1), b=nm(tm.s2);
+        einheiten.push({ platz:pl, id:tm.id, namen:[`${a} / ${b}`, `${b} / ${a}`] });
+      }
+    } else {
+      const seen=new Set();
+      for(const [pid,pl] of Object.entries(platzMap)){
+        if(seen.has(pid))continue; seen.add(pid);
+        if(nurEinheit && pid!==nurEinheit) continue;
+        einheiten.push({ platz:pl, id:pid, namen:[nm(pid)] });
+      }
+    }
+    einheiten.sort((a,b)=>a.platz-b.platz);
+    if(einheiten.length===0){ alert("Keine Teilnehmer mit Platzierung gefunden."); return; }
+
+    // Vorlage + Wappen aus clubConfig laden.
+    let urkundeBg="", wappen="";
+    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()){ const d=snap.data(); urkundeBg=d.urkunde||""; wappen=d.logo||""; } }catch(e){}
+
+    const anrede = t.urkundeAnrede || "Bei den";
+    const datumLang = (()=>{ // „17. August 2026"
+      const iso=t.datum; if(!iso) return "";
+      const [y,mo,d]=String(iso).split("-").map(Number);
+      const monate=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+      if(!y||!mo||!d) return deDatumT(iso);
+      return `${d}. ${monate[mo-1]} ${y}`;
+    })();
+    const platzText=(pl)=>`${pl}.`;
+
+    // Eine einzelne Urkunden-Seite (Entwurf C).
+    const seite=(name, platz)=>`
+      <section class="urk">
+        ${urkundeBg?`<img class="bg" src="${urkundeBg}" alt="">`:""}
+        <div class="inhalt">
+          <div class="zeile klein">${esc(anrede)}</div>
+          <div class="turnier">${esc(t.name)}</div>
+          <div class="zeile klein">in der Konkurrenz <span class="konk">${esc(k.name)}</span></div>
+          <div class="zeile hat">hat</div>
+          <div class="ziername">
+            <span class="zierlinie"></span>
+            <span class="pname">${esc(name)}</span>
+            <span class="zierlinie"></span>
+          </div>
+          <div class="zeile klein">den</div>
+          <div class="platz">${esc(platzText(platz))} Platz</div>
+          <div class="zeile klein belegt">belegt.</div>
+          <div class="signaturen">
+            <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Verein</div></div>
+            <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Turnierleitung</div></div>
+          </div>
+          <div class="ortdatum">Niederzeuzheim, den ${esc(datumLang)}</div>
+        </div>
+      </section>`;
+
+    let seiten="";
+    for(const e of einheiten){ for(const name of e.namen){ seiten+=seite(name, e.platz); } }
+
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urkunden – ${esc(t.name)} · ${esc(k.name)}</title>
+<style>
+  :root{ --rot:#c8102e; --schwarz:#1a1a1a; --grau:#5b5b5b; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ font-family:Georgia,"Times New Roman",serif; color:var(--schwarz); background:#e5e7eb; }
+  .toolbar{ position:sticky; top:0; z-index:10; background:#fff; padding:10px; display:flex; gap:8px; justify-content:center; border-bottom:1px solid #ddd; }
+  .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; font-family:-apple-system,sans-serif; }
+  .toolbar button.sec{ background:var(--schwarz); }
+  .urk{ position:relative; width:210mm; height:297mm; margin:12px auto; background:#fff; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,.15); }
+  .urk .bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
+  .inhalt{ position:absolute; z-index:1; left:0; right:0; top:40%; transform:translateY(-42%); display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 26mm; }
+  .zeile{ margin:2mm 0; }
+  .klein{ font-size:15pt; color:var(--grau); }
+  .hat{ font-size:16pt; color:var(--schwarz); margin-top:4mm; }
+  .turnier{ font-size:26pt; font-weight:bold; color:var(--rot); margin:2mm 0; letter-spacing:.5px; }
+  .konk{ font-weight:bold; color:var(--schwarz); }
+  .ziername{ display:flex; align-items:center; gap:6mm; margin:5mm 0 3mm; width:100%; justify-content:center; }
+  .zierlinie{ height:1.5px; background:var(--rot); flex:1; max-width:28mm; }
+  .pname{ font-size:30pt; font-weight:bold; color:var(--schwarz); white-space:nowrap; }
+  .platz{ font-size:24pt; font-weight:bold; color:var(--rot); margin:1mm 0; }
+  .belegt{ margin-top:0; }
+  .signaturen{ display:flex; gap:20mm; margin-top:22mm; width:100%; justify-content:center; }
+  .sig{ width:58mm; text-align:center; }
+  .sigline{ height:1px; background:#333; margin-bottom:2mm; }
+  .siglabel{ font-size:11pt; color:var(--grau); }
+  .ortdatum{ font-size:12pt; color:var(--schwarz); margin-top:10mm; }
+  @media print{
+    body{ background:#fff; }
+    .toolbar{ display:none !important; }
+    .urk{ margin:0; box-shadow:none; page-break-after:always; break-after:page; }
+    .urk:last-child{ page-break-after:auto; break-after:auto; }
+    @page{ size:A4 portrait; margin:0; }
+  }
+</style></head>
+<body>
+  <div class="toolbar">
+    <button onclick="window.print()">🖨️ Alle drucken / als PDF speichern</button>
+    <button class="sec" onclick="window.close()">Schließen</button>
+  </div>
+  ${seiten}
+</body></html>`;
+
+    const w=window.open("","_blank");
+    if(!w){ alert("Bitte Popups für diese Seite erlauben, um die Urkunden anzuzeigen."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   function konkurrenzWiederOeffnen(){
     if(!isAdmin || !konk) return;
     if(!window.confirm(`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
@@ -3438,11 +3567,40 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       {/* P3: Konkurrenz abschließen / Status. Sichtbar sobald die Konkurrenz gestartet ist. */}
       {isAdmin && konk.gestartet && (()=>{
         if(konk.abgeschlossen){
-          return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#10b98118",border:"1px solid #10b98155",borderRadius:11,padding:"10px 13px"}}>
-            <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
-            <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
-            <button onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
-            <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
+          return <div style={{marginBottom:14,background:"#10b98118",border:"1px solid #10b98155",borderRadius:11,padding:"10px 13px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
+              <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
+              <button onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
+              <button onClick={()=>urkundenOeffnen(konk)} style={{padding:"6px 11px",background:"#1a1a1a",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>🏅 Urkunden (alle)</button>
+              <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
+            </div>
+            {/* Einzeldruck je Teilnehmer/Team */}
+            {(()=>{
+              const istDoppelK=istDoppelKonk(konk);
+              const platzMap=endplatzierungenKonk(konk, koHelpers);
+              const nmv=(id)=>{ const p=spielerVon(id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():""; };
+              const liste=[];
+              if(istDoppelK){
+                for(const tm of (konk.doppelTeams||[])){ const pl=platzMap[tm.s1]||platzMap[tm.s2]||null; if(pl!=null) liste.push({id:tm.id,platz:pl,label:`${nmv(tm.s1)} / ${nmv(tm.s2)}`}); }
+              } else {
+                const seen=new Set();
+                for(const [pid,pl] of Object.entries(platzMap)){ if(seen.has(pid))continue; seen.add(pid); liste.push({id:pid,platz:pl,label:nmv(pid)}); }
+              }
+              liste.sort((a,b)=>a.platz-b.platz);
+              if(liste.length===0) return null;
+              return <details style={{marginTop:10}}>
+                <summary style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--text2)"}}>Urkunden einzeln drucken ({liste.length})</summary>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                  {liste.map(e=><button key={e.id} onClick={()=>urkundenOeffnen(konk, e.id)} style={{
+                    padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
+                    border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text2)"}}>
+                    <span style={{color:"#c8102e",fontWeight:800}}>{e.platz}.</span> {e.label}{istDoppelK?" 📄📄":""}
+                  </button>)}
+                </div>
+                {istDoppelK && <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Bei Doppel/Mixed werden je Team zwei Urkunden erzeugt (Spieler 1 / Spieler 2 und umgekehrt).</div>}
+              </details>;
+            })()}
           </div>;
         }
         const bereit=konkAbschliessbar(konk);
@@ -6265,8 +6423,10 @@ function BrandingEditor({showToast}) {
   const [subtitle, setSubtitle] = useState("");
   const [loginFooter, setLoginFooter] = useState("");
   const [logo,     setLogo]     = useState("");
+  const [urkunde,  setUrkunde]  = useState("");   // Urkunden-Hintergrundvorlage (Data-URL)
   const [saving,   setSaving]   = useState(false);
   const [logoSaving,setLogoSaving] = useState(false);
+  const [urkundeSaving,setUrkundeSaving] = useState(false);
   const [loaded,   setLoaded]   = useState(false);
 
   // Einmalig beim Mount aus Firestore laden
@@ -6278,6 +6438,7 @@ function BrandingEditor({showToast}) {
         setSubtitle(d.subtitle||"");
         setLoginFooter(d.loginFooter||"");
         setLogo(d.logo||"");
+        setUrkunde(d.urkunde||"");
       }
       setLoaded(true);
     }).catch(()=>setLoaded(true));
@@ -6286,7 +6447,7 @@ function BrandingEditor({showToast}) {
   async function saveText() {
     setSaving(true);
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde},{merge:false});
       showToast("Gespeichert ✅","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -6307,7 +6468,7 @@ function BrandingEditor({showToast}) {
       }
       setLogo(dataUrl);
       try {
-        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl},{merge:false});
+        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:false});
         showToast("Wappen gespeichert 🖼️","🖼️");
       } catch(e) {
         window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -6321,8 +6482,42 @@ function BrandingEditor({showToast}) {
   async function deleteLogo() {
     setLogo("");
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:""},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:"",urkunde},{merge:false});
       showToast("Wappen entfernt","✅");
+    } catch(e) {
+      window.alert("Fehler:\n"+e.code+"\n"+e.message);
+    }
+  }
+
+  async function saveUrkunde(file) {
+    if(!file) return;
+    setUrkundeSaving(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      if(dataUrl.length > 1400000) {
+        window.alert("Bild zu groß! Bitte eine Vorlage unter ca. 1 MB wählen.");
+        setUrkundeSaving(false);
+        return;
+      }
+      setUrkunde(dataUrl);
+      try {
+        await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:false});
+        showToast("Urkunden-Vorlage gespeichert 📜","📜");
+      } catch(e) {
+        window.alert("Fehler:\n"+e.code+"\n"+e.message);
+      }
+      setUrkundeSaving(false);
+    };
+    reader.onerror = ()=>{ window.alert("Datei konnte nicht gelesen werden"); setUrkundeSaving(false); };
+    reader.readAsDataURL(file);
+  }
+
+  async function deleteUrkunde() {
+    setUrkunde("");
+    try {
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:""},{merge:false});
+      showToast("Urkunden-Vorlage entfernt","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
     }
@@ -6377,6 +6572,27 @@ function BrandingEditor({showToast}) {
       background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>
       ✕ Wappen entfernen
     </button>}
+
+    <label style={{fontSize:11,color:"var(--text3)",display:"block",margin:"16px 0 6px"}}>Urkunden-Vorlage (Hintergrundbild, A4 hochkant)</label>
+    <div style={{textAlign:"center",marginBottom:8}}>
+      {urkunde
+        ? <img src={urkunde} alt="Urkunden-Vorlage" style={{width:120,height:170,objectFit:"contain",borderRadius:8,border:"1px solid var(--border2)",background:"#fff"}}/>
+        : <div style={{fontSize:40}}>📜</div>
+      }
+    </div>
+    <label style={{display:"block",padding:"9px",background:"var(--bg3)",border:"2px dashed var(--border2)",
+      borderRadius:8,textAlign:"center",cursor:urkundeSaving?"not-allowed":"pointer",fontSize:12,color:"var(--text3)"}}>
+      {urkundeSaving?"⏳ Hochladen...":"📎 Urkunden-Vorlage hochladen (JPG/PNG, max ~1 MB)"}
+      <input type="file" accept="image/*" style={{display:"none"}} disabled={urkundeSaving}
+        onChange={e=>saveUrkunde(e.target.files?.[0])}/>
+    </label>
+    {urkunde&&<button onClick={deleteUrkunde} style={{marginTop:6,width:"100%",padding:6,
+      background:"#ef444422",border:"1px solid #ef444466",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer"}}>
+      ✕ Urkunden-Vorlage entfernen
+    </button>}
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.4}}>
+      Diese Vorlage wird als Hintergrund für die Urkunden verwendet (Schläger oben, „URKUNDE"-Titel, Wappen unten). Der Text wird automatisch darüber platziert.
+    </div>
   </div>;
 }
 
