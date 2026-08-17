@@ -1,4 +1,4 @@
-// === TTC-App · Version 352 · erstellt 16.08.2026 ===
+// === TTC-App · Version 359 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "352";
+const APP_VERSION = "359";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2335,6 +2335,237 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       alert("Die Konkurrenz wurde abgeschlossen, aber beim Übertrag der Erfolge gab es ein Problem: "+(e?.message||e));
     }
   }
+  // ─── Turnierbericht einer abgeschlossenen Konkurrenz (ansprechende HTML-Seite) ──
+  // Öffnet einen druck-/teilbaren Bericht im TTC-Corporate-Design (schwarz/rot) mit
+  // allen Fakten, Platzierungen (mit Medaillen), Tabelle/Tableau und Spielliste.
+  async function turnierberichtOeffnen(konkArg){
+    const k = konkArg || konk;
+    if(!k) return;
+    const g = k.gewinnsaetze??3;
+    const istDoppelK = istDoppelKonk(k);
+    // Namen einer Einheit (Einzel = Spielername; Doppel/Mixed = „A / B").
+    const nm=(id)=>{ const p=spielerVon(id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():String(id||""); };
+    const einheitName=(id)=>{
+      const tm=teamVonId(id);
+      if(tm) return `${nm(tm.s1)} / ${nm(tm.s2)}`;
+      return nm(id);
+    };
+    // Numerischer QTTR einer EINHEIT: Einzel = Spieler-QTTR; Doppel/Mixed = Summe beider.
+    const qttrEinzel=(id)=>{ try{ const q=qttrVon(spielerVon(id)); return (q==null||Number.isNaN(Number(q)))?null:Number(q); }catch(e){ return null; } };
+    const einheitQttrB=(id)=>{
+      const tm=teamVonId(id);
+      if(tm){ const a=qttrEinzel(tm.s1), b=qttrEinzel(tm.s2); return (a==null||b==null)?null:(a+b); }
+      return qttrEinzel(id);
+    };
+    const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+    // Fakten
+    const modusText = ({1:"Best of 1",2:"Best of 3",3:"Best of 5",4:"Best of 7"})[g] || `Gewinnsätze: ${g}`;
+    const disziplin = k.modus || (istDoppelK?"Doppel":"Einzel");
+    const art = k.art || "—";
+    const hatVorg = k.vorgabe==="ja" && (k.vorgabeArt||"QTTR")==="QTTR";
+    const vorgabeText = hatVorg
+      ? `QTTR-Vorgabe aktiv · je ${k.diffQTTR||"?"} QTTR-Punkte 1 Vorgabepunkt${k.maxVorgabe?` · max. ${k.maxVorgabe}`:""}`
+      : "keine Vorgabe";
+
+    // Platzierungen (alle Teilnehmer)
+    const platzMap = endplatzierungenKonk(k, koHelpers);   // spielerId → Platz
+    const platzEinheiten=[];
+    if(istDoppelK){
+      for(const tm of (k.doppelTeams||[])){
+        const pl = platzMap[tm.s1] || platzMap[tm.s2] || null;
+        if(pl!=null) platzEinheiten.push({name:einheitName(tm.id), platz:pl});
+      }
+    } else {
+      const seen=new Set();
+      for(const [pid,pl] of Object.entries(platzMap)){ if(seen.has(pid))continue; seen.add(pid); platzEinheiten.push({name:nm(pid), platz:pl}); }
+    }
+    platzEinheiten.sort((a,b)=>a.platz-b.platz);
+    const medaille=(pl)=> pl===1?"🥇":pl===2?"🥈":pl===3?"🥉":"";
+
+    // Tabelle (Gruppen) bzw. Tableau (KO)
+    const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
+    let tabelleHtml="";
+    if(!hatKO && Array.isArray(k.gruppen) && k.gruppen.length){
+      k.gruppen.forEach((grp,gi)=>{
+        if(!grp || grp.length===0) return;
+        const rows=berechneGruppenTabelle(grp, (k.spiele||[]).filter(s=>s.gi===gi));
+        tabelleHtml += `<h3>${k.gruppen.length>1?`Gruppe ${gi+1}`:"Tabelle"}</h3>
+        <table class="tab"><thead><tr><th>#</th><th>Name</th><th>S</th><th>N</th><th>Sätze</th><th>Pkt</th></tr></thead><tbody>`;
+        rows.forEach((r,i)=>{
+          tabelleHtml += `<tr class="${i<3?"top"+(i+1):""}"><td>${i+1}</td><td class="l">${esc(einheitName(r.id))}</td><td>${r.spSieg}</td><td>${r.spNied}</td><td>${r.satzGew}:${r.satzVerl}</td><td class="pkt">${r.punkte}</td></tr>`;
+        });
+        tabelleHtml += `</tbody></table>`;
+      });
+    } else if(hatKO){
+      const begeg=begegnungenDerKonk(k).filter(x=>String(x.key).startsWith("k_"));
+      const rundenMap={};
+      for(const x of begeg){ (rundenMap[x.runde]=rundenMap[x.runde]||[]).push(x); }
+      const rundenKeys=Object.keys(rundenMap).map(Number).sort((a,b)=>a-b);
+      const rundenTitel=(rk,anzahl)=>{
+        if(rk===99) return "Finale (Gesamt)";
+        if(anzahl===1) return "Finale";
+        if(anzahl===2) return "Halbfinale";
+        if(anzahl<=4) return "Viertelfinale";
+        return "Runde";
+      };
+      tabelleHtml += `<h3>Tableau (${esc(art)})</h3>`;
+      for(const rk of rundenKeys){
+        const spiele=rundenMap[rk];
+        tabelleHtml += `<div class="ko-runde"><div class="ko-titel">${rundenTitel(rk,spiele.length)}</div>`;
+        for(const sp of spiele){
+          const erg=satzErgebnisText(sp.saetze);
+          const sieger=ko_sieger(sp.saetze, g);
+          const aWin=sieger==="a", bWin=sieger==="b";
+          tabelleHtml += `<div class="ko-spiel"><span class="${aWin?"win":""}">${esc(einheitName(sp.a))}</span><span class="erg">${esc(erg||"–")}</span><span class="${bWin?"win":""}">${esc(einheitName(sp.b))}</span></div>`;
+        }
+        tabelleHtml += `</div>`;
+      }
+    }
+
+    // Alle Spiele mit Sätzen + Vorgabe
+    const alleSp=begegnungenDerKonk(k);
+    let spieleHtml=`<table class="spiele"><thead><tr><th>#</th><th>Begegnung</th><th>Ergebnis</th>${hatVorg?"<th>Vorgabe</th>":""}</tr></thead><tbody>`;
+    alleSp.forEach((sp,i)=>{
+      const erg=satzErgebnisText(sp.saetze)||"–";
+      let vorgTxt="";
+      if(hatVorg){
+        const qa=einheitQttrB(sp.a), qb=einheitQttrB(sp.b);
+        const pts=vorgabePunkte(qa,qb,k.diffQTTR,k.maxVorgabe);
+        if(pts>0 && qa!=null && qb!=null){
+          const gibt = qa>qb ? sp.a : sp.b;
+          vorgTxt=`${esc(einheitName(gibt))} gibt ${pts} vor`;
+        } else vorgTxt="—";
+      }
+      spieleHtml += `<tr><td>${i+1}</td><td class="l">${esc(einheitName(sp.a))} <b>vs</b> ${esc(einheitName(sp.b))}</td><td class="erg">${esc(erg)}</td>${hatVorg?`<td class="vorg">${esc(vorgTxt)}</td>`:""}</tr>`;
+    });
+    spieleHtml += `</tbody></table>`;
+
+    // Logo aus clubConfig laden (Data-URL). Fällt weg, falls nicht vorhanden.
+    let logo="";
+    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()) logo=snap.data().logo||""; }catch(e){}
+
+    const platzHtml = platzEinheiten.map(e=>
+      `<li class="pl${e.platz<=3?" medal":""}"><span class="rank">${medaille(e.platz)||e.platz+"."}</span><span class="pname">${esc(e.name)}</span></li>`
+    ).join("");
+
+    const vereinName = "TTC Niederzeuzheim";
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turnierbericht – ${esc(t.name)} · ${esc(k.name)}</title>
+<style>
+  :root{ --rot:#c8102e; --schwarz:#1a1a1a; --grau:#6b7280; --hell:#f7f7f8; --linie:#e5e7eb; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--schwarz); background:#fff; }
+  .wrap{ max-width:900px; margin:0 auto; padding:20px 24px 8px; }
+  header{ border-bottom:3px solid var(--rot); padding-bottom:11px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  header .htext{ min-width:0; }
+  header .hlogo{ flex-shrink:0; width:78px; height:78px; }
+  header .hlogo img{ width:100%; height:100%; object-fit:contain; }
+  .kicker{ color:var(--rot); font-weight:800; letter-spacing:.08em; text-transform:uppercase; font-size:10px; }
+  h1{ font-size:21px; margin:3px 0 1px; }
+  .konkzeile{ font-size:16px; font-weight:800; color:var(--rot); margin:1px 0 3px; }
+  .datum{ color:var(--grau); font-size:11px; }
+  .fakten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin:14px 0 18px; }
+  .fakt{ background:var(--hell); border:1px solid var(--linie); border-left:4px solid var(--rot); border-radius:7px; padding:7px 10px; }
+  .fakt.fakt-voll{ grid-column:1 / -1; }
+  .fakt .k{ font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); font-weight:700; }
+  .fakt .v{ font-size:12px; font-weight:700; margin-top:2px; }
+  h2{ font-size:13px; margin:20px 0 8px; padding-bottom:5px; border-bottom:2px solid var(--schwarz); display:flex; align-items:center; gap:7px; break-after:avoid; page-break-after:avoid; }
+  h2::before{ content:""; width:10px; height:10px; background:var(--rot); border-radius:2px; display:inline-block; }
+  h2.seitenumbruch{ break-before:page; page-break-before:always; }
+  h3{ font-size:11px; margin:12px 0 5px; color:var(--rot); font-weight:800; break-after:avoid; page-break-after:avoid; }
+  ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:5px; }
+  ol.platz li{ display:flex; align-items:center; gap:9px; padding:5px 10px; border:1px solid var(--linie); border-radius:7px; background:#fff; break-inside:avoid; page-break-inside:avoid; }
+  ol.platz li.medal{ border-color:var(--rot); background:#fff5f6; }
+  ol.platz .rank{ font-size:13px; font-weight:800; min-width:26px; text-align:center; color:var(--schwarz); flex-shrink:0; }
+  ol.platz li.medal .rank{ font-size:17px; }
+  ol.platz .pname{ font-weight:600; font-size:12px; overflow-wrap:anywhere; }
+  @media print{
+    ol.platz{ display:block; }
+    ol.platz li{ margin-bottom:5px; }
+  }
+  table{ width:100%; border-collapse:collapse; margin:6px 0 4px; font-size:11px; }
+  table.tab thead, table.spiele thead{ display:table-header-group; }
+  table.tab tr, table.spiele tr{ break-inside:avoid; page-break-inside:avoid; }
+  table.tab td, table.tab th, table.spiele td, table.spiele th{ break-inside:avoid; page-break-inside:avoid; }
+  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:5px 7px; text-align:center; border-bottom:1px solid var(--linie); vertical-align:top; }
+  table th{ background:var(--schwarz); color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
+  table td.l{ text-align:left; }
+  table td.pkt{ font-weight:800; color:var(--rot); }
+  table .erg{ font-variant-numeric:tabular-nums; font-weight:700; }
+  table .vorg{ font-size:10px; color:var(--grau); text-align:left; }
+  tr{ break-inside:avoid; page-break-inside:avoid; }
+  tr.top1 td{ background:#fff5f6; font-weight:700; }
+  tr.top2 td, tr.top3 td{ background:#fafafa; }
+  .ko-runde{ margin:8px 0; break-inside:avoid; page-break-inside:avoid; }
+  .ko-titel{ font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--grau); margin-bottom:4px; }
+  .ko-spiel{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:9px; padding:5px 9px; border:1px solid var(--linie); border-radius:6px; margin-bottom:4px; font-size:11px; break-inside:avoid; page-break-inside:avoid; }
+  .ko-spiel .erg{ font-weight:800; color:var(--rot); font-variant-numeric:tabular-nums; }
+  .ko-spiel span:first-child{ text-align:right; }
+  .ko-spiel .win{ font-weight:800; }
+  footer{ margin-top:22px; padding-top:10px; border-top:2px solid var(--rot); color:var(--grau); font-size:10px; display:flex; justify-content:space-between; align-items:flex-end; break-inside:avoid; page-break-inside:avoid; }
+  .toolbar{ position:sticky; top:0; background:#fff; padding:9px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
+  .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:7px 13px; font-weight:700; font-size:12px; cursor:pointer; }
+  .toolbar button.sec{ background:var(--schwarz); }
+  @media print{
+    .toolbar{ display:none !important; }
+    .wrap{ padding-bottom:0; }
+    footer{ margin-bottom:0; }
+    @page{ margin:13mm 11mm 16mm 11mm; }
+    /* Zeilen/Namen nie am Seitenende abschneiden. */
+    tr, td, th, li, .ko-spiel, .ko-runde{ break-inside:avoid !important; page-break-inside:avoid !important; }
+    /* Harter Seitenumbruch vor „Alle Spiele" – die Tabelle beginnt so oben auf einer
+       neuen Seite und wird vollständig (nicht nur die Kopfzeile) gedruckt. */
+    h2.seitenumbruch{ break-before:page !important; page-break-before:always !important; }
+  }
+</style></head>
+<body>
+  <div class="wrap">
+  <div class="toolbar">
+    <button onclick="window.print()">🖨️ Drucken / als PDF speichern</button>
+    <button class="sec" onclick="window.close()">Schließen</button>
+  </div>
+  <header>
+    <div class="htext">
+      <div class="kicker">Turnierbericht · ${esc(vereinName)}</div>
+      <h1>${esc(t.name)}</h1>
+      <div class="konkzeile">${esc(k.name)}</div>
+      <div class="datum">${esc(deDatumT(t.datum))}</div>
+    </div>
+    ${logo?`<div class="hlogo"><img src="${logo}" alt="Vereinswappen"></div>`:""}
+  </header>
+
+  <div class="fakten">
+    <div class="fakt"><div class="k">Konkurrenz</div><div class="v">${esc(k.name)}</div></div>
+    <div class="fakt"><div class="k">Disziplin</div><div class="v">${esc(disziplin)}</div></div>
+    <div class="fakt"><div class="k">Modus</div><div class="v">${esc(modusText)}</div></div>
+    <div class="fakt"><div class="k">Art</div><div class="v">${esc(art)}</div></div>
+    <div class="fakt${hatVorg?" fakt-voll":""}"><div class="k">Vorgabe</div><div class="v">${esc(vorgabeText)}</div></div>
+  </div>
+
+  <h2>Platzierungen</h2>
+  <ol class="platz">${platzHtml||"<li>Keine Platzierungen ermittelbar.</li>"}</ol>
+
+  <h2>${hatKO?"Tableau":"Tabelle"}</h2>
+  ${tabelleHtml||"<p>Keine Tabellendaten.</p>"}
+
+  <h2 class="seitenumbruch">Alle Spiele</h2>
+  ${spieleHtml}
+
+  <footer>
+    <div>Erstellt am ${esc(new Date().toLocaleDateString("de-DE"))} · ${esc(vereinName)}</div>
+    <div>TTC-Trainings-App</div>
+  </footer>
+  </div>
+</body></html>`;
+
+    const w=window.open("","_blank");
+    if(!w){ alert("Bitte Popups für diese Seite erlauben, um den Bericht anzuzeigen."); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
   function konkurrenzWiederOeffnen(){
     if(!isAdmin || !konk) return;
     if(!window.confirm(`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
@@ -2855,13 +3086,20 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }
 
   const hatVorgabe = konk && konk.vorgabe==="ja" && konk.vorgabeArt==="QTTR";
+  // QTTR einer Einheit: Einzel = Spieler-QTTR; Doppel/Mixed = Summe beider Spieler.
+  // (Wichtig für die Vorgabe: sp.a/sp.b sind bei Doppel/Mixed TEAM-IDs, keine Spieler-IDs.)
+  function qttrEinheitTD(id){
+    const tm=teamVonId(id);
+    if(tm){ const a=qttrVon(spielerVon(tm.s1)), b=qttrVon(spielerVon(tm.s2)); return (a==null||b==null)?null:(a+b); }
+    const q=qttrVon(spielerVon(id)); return q==null?null:q;
+  }
   function vorgabeFuer(sp){
     if(!hatVorgabe) return null;
-    const pa=spielerVon(sp.a), pb=spielerVon(sp.b);
-    const qa=qttrVon(pa), qb=qttrVon(pb);
+    const qa=qttrEinheitTD(sp.a), qb=qttrEinheitTD(sp.b);
+    if(qa==null || qb==null) return null;
     const pts=vorgabePunkte(qa,qb,konk.diffQTTR,konk.maxVorgabe);
-    if(pts<=0 || qa==null || qb==null) return null;
-    const gibtVor = qa>qb ? sp.a : sp.b; // höherer QTTR gibt vor
+    if(pts<=0) return null;
+    const gibtVor = qa>qb ? sp.a : sp.b; // höhere QTTR-Summe gibt vor
     return {pts, gibtVor};
   }
 
@@ -3203,6 +3441,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#10b98118",border:"1px solid #10b98155",borderRadius:11,padding:"10px 13px"}}>
             <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
             <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
+            <button onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
             <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
           </div>;
         }
@@ -3335,22 +3574,26 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   {spieleOffen[gi] && gruppenSpiele.map((sp,spListIdx)=>{
                     const vg=vorgabeFuer(sp);
                     const darf=darfSpielEingeben(sp);
-                    const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
+                    const istDoppelMixed=istDoppelKonk(konk);
+                    const qa=qttrEinheitTD(sp.a), qb=qttrEinheitTD(sp.b);
                     const diff=(qa!=null&&qb!=null)?Math.abs(qa-qb):null;
                     // Runden-Überschrift vor dem ersten Spiel einer neuen Runde
                     const vorherige=gruppenSpiele[spListIdx-1];
                     const neueRunde = sp.runde && (!vorherige || vorherige.runde!==sp.runde);
                     const fixiert=spielFixiert(sp);
                     const abgeschlossen=spielAbgeschlossen(sp);
+                    // QTTR-Darstellung: Einzel „(1234)"; Doppel/Mixed „(Σ2480)" wie im
+                    // Abschnitt Mixed-/Doppel-Paarungen.
+                    const qttrTxt=(v)=> v==null?"–":(istDoppelMixed?`Σ${v}`:`${v}`);
                     return <React.Fragment key={sp._idx}>
                       {neueRunde && <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:spListIdx>0?4:0}}>Runde {sp.runde}</div>}
                       <div style={{background:fixiert?"#10b98112":"var(--bg)",borderRadius:9,padding:"8px 10px",
                         border:fixiert?"1px solid #10b98155":"1px solid var(--border)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
-                          {nameVon(sp.a)} <span style={{color:"var(--text4)",fontWeight:400}}>({qa!=null?qa:"–"})</span>
+                          {nameVon(sp.a)} <span style={{color:istDoppelMixed?"#8b5cf6":"var(--text4)",fontWeight:istDoppelMixed?700:400}}>({qttrTxt(qa)})</span>
                           {" "}<span style={{color:"var(--text4)"}}>vs</span>{" "}
-                          {nameVon(sp.b)} <span style={{color:"var(--text4)",fontWeight:400}}>({qb!=null?qb:"–"})</span>
+                          {nameVon(sp.b)} <span style={{color:istDoppelMixed?"#8b5cf6":"var(--text4)",fontWeight:istDoppelMixed?700:400}}>({qttrTxt(qb)})</span>
                           {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
                         {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
@@ -3553,11 +3796,11 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
 
   if(!konk.teilnehmer || konk.teilnehmer.length<2)
     return <div style={{marginBottom:14,padding:"12px 14px",background:"#8b5cf618",border:"1px solid #8b5cf655",borderRadius:12,fontSize:12,color:"var(--text2)"}}>
-      <b style={{color:"#8b5cf6"}}>Doppel-Konkurrenz:</b> Zuerst oben die Teilnehmer auswählen (mind. 2), dann können hier die Doppel gebildet werden.
+      <b style={{color:"#8b5cf6"}}>{mixed?"Mixed-Konkurrenz:":"Doppel-Konkurrenz:"}</b> Zuerst oben die Teilnehmer auswählen (mind. 2), dann können hier die {mixed?"Mixed-Paare":"Doppel"} gebildet werden.
     </div>;
 
   return <details open style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
-    <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+    <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>{mixed?"Mixed-Paarungen":"Doppel-Paarungen"} ({doppelTeams.length})</summary>
     <div style={{marginTop:10}}>
     {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln – oder unten automatisch auslosen.</div>}
     {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
@@ -3640,6 +3883,13 @@ function ko_erstRunde(idsSortiert){
 
 // Sieger eines Spiels anhand der Sätze. g = nötige Gewinnsätze (Default 3 = Best of 5).
 // Rückgabe: "a"|"b"|null
+// Ergebnis-Text einer Satzfolge, z. B. „11:7  9:11  11:8". Leere Sätze übersprungen.
+function satzErgebnisText(saetze){
+  return (saetze||[])
+    .filter(s=>Array.isArray(s) && s[0]!=="" && s[1]!=="" && s[0]!=null && s[1]!=null)
+    .map(s=>`${s[0]}:${s[1]}`)
+    .join("  ");
+}
 function ko_sieger(saetze, gewinnsaetze=3){
   const g=Math.max(1, Number(gewinnsaetze)||3);
   let a=0,b=0;
@@ -4255,7 +4505,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   // Doppel: Team-Bildungs-UI. Wird oberhalb des Tableaus angezeigt.
   const doppelVerwaltung = istDoppel && (
     <details style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
-      <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+      <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>{istMixedKonk(konk)?"Mixed-Paarungen":"Doppel-Paarungen"} ({doppelTeams.length})</summary>
       <div style={{marginTop:10}}>
       {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln.</div>}
       {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
@@ -10755,7 +11005,10 @@ function GeburtstageTab({players,showToast}) {
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
-  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Maßgeblich ist die eingeloggte Person (forcePlayer hat Vorrang). Login-Auflösung
+  // case-insensitiv über findLoginPlayer – ein früherer case-sensitiver Vergleich
+  // (p.email===user.email) konnte zur falschen Person führen.
+  const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, false);
   // Hinweis: Der Bestellungen-Reiter nutzt bewusst myPlayer (die ANGEZEIGTE Person),
   // damit die Artikelauswahl immer zur Gruppe dieser Person passt — z.B. sieht ein
   // Anfänger/Fortgeschrittener nur den Nachwuchs-Artikel, auch wenn ein Trainer
@@ -16225,7 +16478,11 @@ function EhrungenView({player}) {
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
 function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
-  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Maßgeblich ist IMMER die eingeloggte Person. forcePlayer (Funktionswechsel/Admin-
+  // Betrachtung) hat Vorrang; sonst die Login-Person case-insensitiv auflösen.
+  // (Früher wurde hier p.email===user.email case-SENSITIV verglichen – das konnte bei
+  // abweichender Groß-/Kleinschreibung fehlschlagen und zur falschen Person führen.)
+  const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, true);
   // Immer die tatsächlich EINGELOGGTE Person (unabhängig von forcePlayer/Funktionswechsel).
   // Für den Bestellungen-Reiter maßgeblich, damit dort stets die eigene Bestellung
   // erfasst/geändert wird und nicht die der gerade betrachteten Person.
@@ -16397,6 +16654,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
+  // Sobald die eingeloggte Person feststeht und noch nichts ausgewählt wurde, die
+  // Auswahl auf die EIGENE Person setzen (verhindert einen Fallback auf eine fremde
+  // Person, falls myPlayer beim ersten Render noch nicht geladen war).
+  useEffect(()=>{ if(myPlayer?.id && viewAsPlayer==null) setViewAsPlayer(myPlayer.id); },[myPlayer?.id]);
   const [groupFilter,setGroupFilter] = useState("all");
   const [adminGroupFilters,setAdminGroupFilters] = useState({});
   const [showOnlyPresent,setShowOnlyPresent] = useState(false);
@@ -16458,14 +16719,20 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     : groupFilter==="all" ? spielerPlayers
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
-  // For erwachsene-only: force own player, no selection possible
+  // For erwachsene-only: force own player, no selection possible.
+  // WICHTIG (Identitäts-Sicherheit): Nur Admins dürfen über die Chip-Leiste eine ANDERE
+  // Person betrachten (viewAsPlayer). Für alle Nicht-Admins ist IMMER die eingeloggte
+  // Person maßgeblich – niemals ein Fallback auf mfPlayers[0]/erwachsenePlayers[0], der
+  // sonst (z.B. wenn viewAsPlayer noch null ist) den ersten fremden MF anzeigen würde.
   const selectedPlayer = lockedPlayer
     ? myPlayer
     : isErwachseneOnly
     ? myPlayer
+    : !hasAdminRole
+    ? myPlayer
     : players.find(p=>p.id===viewAsPlayer)
-      || (activeView==="erwachsene" ? erwachsenePlayers[0]
-        : activeView==="mannschaftsfuehrer" ? (mfPlayers[0]||myPlayer)
+      || (activeView==="erwachsene" ? (myPlayer||erwachsenePlayers[0])
+        : activeView==="mannschaftsfuehrer" ? (myPlayer||mfPlayers[0])
         : (myPlayer||spielerPlayers[0]));
 
   // Punkt 3+7: In der Erwachsene-/MF-View nur für Admins die Namensleiste zeigen.
