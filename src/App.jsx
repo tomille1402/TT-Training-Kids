@@ -1,4 +1,4 @@
-// === TTC-App · Version 352 · erstellt 16.08.2026 ===
+// === TTC-App · Version 353 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "352";
+const APP_VERSION = "353";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -10755,7 +10755,10 @@ function GeburtstageTab({players,showToast}) {
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
-  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Maßgeblich ist die eingeloggte Person (forcePlayer hat Vorrang). Login-Auflösung
+  // case-insensitiv über findLoginPlayer – ein früherer case-sensitiver Vergleich
+  // (p.email===user.email) konnte zur falschen Person führen.
+  const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, false);
   // Hinweis: Der Bestellungen-Reiter nutzt bewusst myPlayer (die ANGEZEIGTE Person),
   // damit die Artikelauswahl immer zur Gruppe dieser Person passt — z.B. sieht ein
   // Anfänger/Fortgeschrittener nur den Nachwuchs-Artikel, auch wenn ein Trainer
@@ -16225,7 +16228,11 @@ function EhrungenView({player}) {
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
 function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
   const [activeTab,setActiveTab]=useState("spielbetrieb");
-  const myPlayer=forcePlayer||players.find(p=>p.email===user?.email);
+  // Maßgeblich ist IMMER die eingeloggte Person. forcePlayer (Funktionswechsel/Admin-
+  // Betrachtung) hat Vorrang; sonst die Login-Person case-insensitiv auflösen.
+  // (Früher wurde hier p.email===user.email case-SENSITIV verglichen – das konnte bei
+  // abweichender Groß-/Kleinschreibung fehlschlagen und zur falschen Person führen.)
+  const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, true);
   // Immer die tatsächlich EINGELOGGTE Person (unabhängig von forcePlayer/Funktionswechsel).
   // Für den Bestellungen-Reiter maßgeblich, damit dort stets die eigene Bestellung
   // erfasst/geändert wird und nicht die der gerade betrachteten Person.
@@ -16397,6 +16404,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
+  // Sobald die eingeloggte Person feststeht und noch nichts ausgewählt wurde, die
+  // Auswahl auf die EIGENE Person setzen (verhindert einen Fallback auf eine fremde
+  // Person, falls myPlayer beim ersten Render noch nicht geladen war).
+  useEffect(()=>{ if(myPlayer?.id && viewAsPlayer==null) setViewAsPlayer(myPlayer.id); },[myPlayer?.id]);
   const [groupFilter,setGroupFilter] = useState("all");
   const [adminGroupFilters,setAdminGroupFilters] = useState({});
   const [showOnlyPresent,setShowOnlyPresent] = useState(false);
@@ -16458,14 +16469,20 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     : groupFilter==="all" ? spielerPlayers
     : spielerPlayers.filter(p=>(p.group||"Anfänger")===groupFilter);
 
-  // For erwachsene-only: force own player, no selection possible
+  // For erwachsene-only: force own player, no selection possible.
+  // WICHTIG (Identitäts-Sicherheit): Nur Admins dürfen über die Chip-Leiste eine ANDERE
+  // Person betrachten (viewAsPlayer). Für alle Nicht-Admins ist IMMER die eingeloggte
+  // Person maßgeblich – niemals ein Fallback auf mfPlayers[0]/erwachsenePlayers[0], der
+  // sonst (z.B. wenn viewAsPlayer noch null ist) den ersten fremden MF anzeigen würde.
   const selectedPlayer = lockedPlayer
     ? myPlayer
     : isErwachseneOnly
     ? myPlayer
+    : !hasAdminRole
+    ? myPlayer
     : players.find(p=>p.id===viewAsPlayer)
-      || (activeView==="erwachsene" ? erwachsenePlayers[0]
-        : activeView==="mannschaftsfuehrer" ? (mfPlayers[0]||myPlayer)
+      || (activeView==="erwachsene" ? (myPlayer||erwachsenePlayers[0])
+        : activeView==="mannschaftsfuehrer" ? (myPlayer||mfPlayers[0])
         : (myPlayer||spielerPlayers[0]));
 
   // Punkt 3+7: In der Erwachsene-/MF-View nur für Admins die Namensleiste zeigen.
