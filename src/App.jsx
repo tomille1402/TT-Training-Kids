@@ -1,4 +1,4 @@
-// === TTC-App · Version 358 · erstellt 17.08.2026 ===
+// === TTC-App · Version 359 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "358";
+const APP_VERSION = "359";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -3086,13 +3086,20 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   }
 
   const hatVorgabe = konk && konk.vorgabe==="ja" && konk.vorgabeArt==="QTTR";
+  // QTTR einer Einheit: Einzel = Spieler-QTTR; Doppel/Mixed = Summe beider Spieler.
+  // (Wichtig für die Vorgabe: sp.a/sp.b sind bei Doppel/Mixed TEAM-IDs, keine Spieler-IDs.)
+  function qttrEinheitTD(id){
+    const tm=teamVonId(id);
+    if(tm){ const a=qttrVon(spielerVon(tm.s1)), b=qttrVon(spielerVon(tm.s2)); return (a==null||b==null)?null:(a+b); }
+    const q=qttrVon(spielerVon(id)); return q==null?null:q;
+  }
   function vorgabeFuer(sp){
     if(!hatVorgabe) return null;
-    const pa=spielerVon(sp.a), pb=spielerVon(sp.b);
-    const qa=qttrVon(pa), qb=qttrVon(pb);
+    const qa=qttrEinheitTD(sp.a), qb=qttrEinheitTD(sp.b);
+    if(qa==null || qb==null) return null;
     const pts=vorgabePunkte(qa,qb,konk.diffQTTR,konk.maxVorgabe);
-    if(pts<=0 || qa==null || qb==null) return null;
-    const gibtVor = qa>qb ? sp.a : sp.b; // höherer QTTR gibt vor
+    if(pts<=0) return null;
+    const gibtVor = qa>qb ? sp.a : sp.b; // höhere QTTR-Summe gibt vor
     return {pts, gibtVor};
   }
 
@@ -3567,22 +3574,26 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   {spieleOffen[gi] && gruppenSpiele.map((sp,spListIdx)=>{
                     const vg=vorgabeFuer(sp);
                     const darf=darfSpielEingeben(sp);
-                    const qa=qttrVon(spielerVon(sp.a)), qb=qttrVon(spielerVon(sp.b));
+                    const istDoppelMixed=istDoppelKonk(konk);
+                    const qa=qttrEinheitTD(sp.a), qb=qttrEinheitTD(sp.b);
                     const diff=(qa!=null&&qb!=null)?Math.abs(qa-qb):null;
                     // Runden-Überschrift vor dem ersten Spiel einer neuen Runde
                     const vorherige=gruppenSpiele[spListIdx-1];
                     const neueRunde = sp.runde && (!vorherige || vorherige.runde!==sp.runde);
                     const fixiert=spielFixiert(sp);
                     const abgeschlossen=spielAbgeschlossen(sp);
+                    // QTTR-Darstellung: Einzel „(1234)"; Doppel/Mixed „(Σ2480)" wie im
+                    // Abschnitt Mixed-/Doppel-Paarungen.
+                    const qttrTxt=(v)=> v==null?"–":(istDoppelMixed?`Σ${v}`:`${v}`);
                     return <React.Fragment key={sp._idx}>
                       {neueRunde && <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:spListIdx>0?4:0}}>Runde {sp.runde}</div>}
                       <div style={{background:fixiert?"#10b98112":"var(--bg)",borderRadius:9,padding:"8px 10px",
                         border:fixiert?"1px solid #10b98155":"1px solid var(--border)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6}}>
                         <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>
-                          {nameVon(sp.a)} <span style={{color:"var(--text4)",fontWeight:400}}>({qa!=null?qa:"–"})</span>
+                          {nameVon(sp.a)} <span style={{color:istDoppelMixed?"#8b5cf6":"var(--text4)",fontWeight:istDoppelMixed?700:400}}>({qttrTxt(qa)})</span>
                           {" "}<span style={{color:"var(--text4)"}}>vs</span>{" "}
-                          {nameVon(sp.b)} <span style={{color:"var(--text4)",fontWeight:400}}>({qb!=null?qb:"–"})</span>
+                          {nameVon(sp.b)} <span style={{color:istDoppelMixed?"#8b5cf6":"var(--text4)",fontWeight:istDoppelMixed?700:400}}>({qttrTxt(qb)})</span>
                           {diff!=null && <span style={{color:"var(--text4)",fontWeight:400,fontSize:11}}> · Δ {diff}</span>}
                         </div>
                         {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
@@ -3785,11 +3796,11 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
 
   if(!konk.teilnehmer || konk.teilnehmer.length<2)
     return <div style={{marginBottom:14,padding:"12px 14px",background:"#8b5cf618",border:"1px solid #8b5cf655",borderRadius:12,fontSize:12,color:"var(--text2)"}}>
-      <b style={{color:"#8b5cf6"}}>Doppel-Konkurrenz:</b> Zuerst oben die Teilnehmer auswählen (mind. 2), dann können hier die Doppel gebildet werden.
+      <b style={{color:"#8b5cf6"}}>{mixed?"Mixed-Konkurrenz:":"Doppel-Konkurrenz:"}</b> Zuerst oben die Teilnehmer auswählen (mind. 2), dann können hier die {mixed?"Mixed-Paare":"Doppel"} gebildet werden.
     </div>;
 
   return <details open style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
-    <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+    <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>{mixed?"Mixed-Paarungen":"Doppel-Paarungen"} ({doppelTeams.length})</summary>
     <div style={{marginTop:10}}>
     {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln – oder unten automatisch auslosen.</div>}
     {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
@@ -4494,7 +4505,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   // Doppel: Team-Bildungs-UI. Wird oberhalb des Tableaus angezeigt.
   const doppelVerwaltung = istDoppel && (
     <details style={{marginBottom:14,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
-      <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>Doppel-Paarungen ({doppelTeams.length})</summary>
+      <summary style={{cursor:"pointer",fontSize:13,fontWeight:800,color:"#8b5cf6"}}>{istMixedKonk(konk)?"Mixed-Paarungen":"Doppel-Paarungen"} ({doppelTeams.length})</summary>
       <div style={{marginTop:10}}>
       {doppelTeams.length===0 && <div style={{fontSize:11,color:"var(--text4)",marginBottom:8}}>Noch keine Teams gebildet. Zwei Spieler auswählen und koppeln.</div>}
       {doppelTeams.length>0 && <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
