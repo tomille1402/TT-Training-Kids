@@ -1,4 +1,4 @@
-// === TTC-App · Version 356 · erstellt 17.08.2026 ===
+// === TTC-App · Version 357 · erstellt 17.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "356";
+const APP_VERSION = "357";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2477,11 +2477,21 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   ol.platz{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
   ol.platz li{ display:flex; align-items:center; gap:10px; padding:7px 12px; border:1px solid var(--linie); border-radius:8px; background:#fff; break-inside:avoid; page-break-inside:avoid; }
   ol.platz li.medal{ border-color:var(--rot); background:#fff5f6; }
-  ol.platz .rank{ font-size:16px; font-weight:800; min-width:30px; text-align:center; color:var(--schwarz); }
+  ol.platz .rank{ font-size:16px; font-weight:800; min-width:30px; text-align:center; color:var(--schwarz); flex-shrink:0; }
   ol.platz li.medal .rank{ font-size:20px; }
-  ol.platz .pname{ font-weight:600; font-size:14px; }
+  ol.platz .pname{ font-weight:600; font-size:14px; overflow-wrap:anywhere; }
+  @media print{
+    /* Im Druck die Platzierungen als Blockfluss, damit jede Kachel als Ganzes
+       umbricht und Doppel-Namen (zwei Namen) nie am Seitenrand abgeschnitten werden. */
+    ol.platz{ display:block; }
+    ol.platz li{ margin-bottom:6px; }
+  }
   table{ width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:13px; }
-  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:6px 8px; text-align:center; border-bottom:1px solid var(--linie); }
+  /* Tabellen dürfen Kopfzeile bei Umbruch wiederholen; Zeilen bleiben zusammen. */
+  table.tab thead, table.spiele thead{ display:table-header-group; }
+  table.tab tr, table.spiele tr{ break-inside:avoid; page-break-inside:avoid; }
+  table.tab td, table.tab th, table.spiele td, table.spiele th{ break-inside:avoid; page-break-inside:avoid; }
+  table.tab th, table.tab td, table.spiele th, table.spiele td{ padding:6px 8px; text-align:center; border-bottom:1px solid var(--linie); vertical-align:top; }
   table th{ background:var(--schwarz); color:#fff; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
   table td.l{ text-align:left; }
   table td.pkt{ font-weight:800; color:var(--rot); }
@@ -2496,7 +2506,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   .ko-spiel .erg{ font-weight:800; color:var(--rot); font-variant-numeric:tabular-nums; }
   .ko-spiel span:first-child{ text-align:right; }
   .ko-spiel .win{ font-weight:800; }
-  footer{ margin-top:26px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; }
+  footer{ margin-top:26px; padding-top:12px; border-top:2px solid var(--rot); color:var(--grau); font-size:11px; display:flex; justify-content:space-between; align-items:flex-end; break-inside:avoid; page-break-inside:avoid; }
   .toolbar{ position:sticky; top:0; background:#fff; padding:10px 0; display:flex; gap:8px; justify-content:flex-end; border-bottom:1px solid var(--linie); margin-bottom:8px; }
   .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
   .toolbar button.sec{ background:var(--schwarz); }
@@ -2504,7 +2514,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     .toolbar{ display:none !important; }
     .wrap{ padding-bottom:0; }
     footer{ margin-bottom:0; }
-    @page{ margin:14mm 12mm 16mm 12mm; }
+    /* Etwas mehr Bodenrand, damit die letzte Zeile einer Seite nicht angeschnitten wird. */
+    @page{ margin:14mm 12mm 18mm 12mm; }
+    /* Doppelte Absicherung gegen abgeschnittene Zeilen/Namen im Druck. */
+    tr, td, th, li, .ko-spiel, .ko-runde{ break-inside:avoid !important; page-break-inside:avoid !important; }
+    thead{ display:table-header-group; }
   }
 </style></head>
 <body>
