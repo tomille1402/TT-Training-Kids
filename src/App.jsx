@@ -1,4 +1,4 @@
-// === TTC-App · Version 361 · erstellt 17.08.2026 ===
+// === TTC-App · Version 362 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "361";
+const APP_VERSION = "362";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2583,7 +2583,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
     // Platzierungen je Einheit ermitteln.
     const platzMap = endplatzierungenKonk(k, koHelpers);   // spielerId → Platz
-    // Einheiten aufbauen: {platz, namenVarianten:[...]}. Doppel/Mixed → zwei Varianten.
+    // Einheiten aufbauen. Doppel/Mixed → zwei Varianten, jeweils ZWEIZEILIG:
+    //   Zeile 1: „Spieler 1 &", Zeile 2: „Spieler 2" (und in der zweiten Variante getauscht).
+    // esc() schützt die Namen; das „&" und die Zeilentrennung sind bewusstes Markup.
+    const zweiZeilen=(oben,unten)=>`<span>${esc(oben)} &amp;</span><span>${esc(unten)}</span>`;
+    const einZeilig=(n)=>`<span>${esc(n)}</span>`;
     const einheiten=[];
     if(istDoppelK){
       for(const tm of (k.doppelTeams||[])){
@@ -2591,14 +2595,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(pl==null) continue;
         if(nurEinheit && tm.id!==nurEinheit) continue;
         const a=nm(tm.s1), b=nm(tm.s2);
-        einheiten.push({ platz:pl, id:tm.id, namen:[`${a} / ${b}`, `${b} / ${a}`] });
+        einheiten.push({ platz:pl, id:tm.id, namen:[zweiZeilen(a,b), zweiZeilen(b,a)] });
       }
     } else {
       const seen=new Set();
       for(const [pid,pl] of Object.entries(platzMap)){
         if(seen.has(pid))continue; seen.add(pid);
         if(nurEinheit && pid!==nurEinheit) continue;
-        einheiten.push({ platz:pl, id:pid, namen:[nm(pid)] });
+        einheiten.push({ platz:pl, id:pid, namen:[einZeilig(nm(pid))] });
       }
     }
     einheiten.sort((a,b)=>a.platz-b.platz);
@@ -2617,24 +2621,27 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       return `${d}. ${monate[mo-1]} ${y}`;
     })();
     const platzText=(pl)=>`${pl}.`;
+    const hatWort = istDoppelK ? "haben" : "hat";
 
-    // Eine einzelne Urkunden-Seite (Entwurf C).
-    const seite=(name, platz)=>`
+    // Eine einzelne Urkunden-Seite (Entwurf C). nameHtml ist bereits sicheres Markup.
+    const seite=(nameHtml, platz)=>`
       <section class="urk">
         ${urkundeBg?`<img class="bg" src="${urkundeBg}" alt="">`:""}
         <div class="inhalt">
           <div class="zeile klein">${esc(anrede)}</div>
           <div class="turnier">${esc(t.name)}</div>
           <div class="zeile klein">in der Konkurrenz <span class="konk">${esc(k.name)}</span></div>
-          <div class="zeile hat">hat</div>
+          <div class="zeile hat">${hatWort}</div>
           <div class="ziername">
             <span class="zierlinie"></span>
-            <span class="pname">${esc(name)}</span>
+            <span class="pname">${nameHtml}</span>
             <span class="zierlinie"></span>
           </div>
           <div class="zeile klein">den</div>
           <div class="platz">${esc(platzText(platz))} Platz</div>
           <div class="zeile klein belegt">belegt.</div>
+        </div>
+        <div class="fuss">
           <div class="signaturen">
             <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Verein</div></div>
             <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Turnierleitung</div></div>
@@ -2656,24 +2663,29 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   .toolbar{ position:sticky; top:0; z-index:10; background:#fff; padding:10px; display:flex; gap:8px; justify-content:center; border-bottom:1px solid #ddd; }
   .toolbar button{ background:var(--rot); color:#fff; border:none; border-radius:8px; padding:9px 16px; font-weight:700; font-size:14px; cursor:pointer; font-family:-apple-system,sans-serif; }
   .toolbar button.sec{ background:var(--schwarz); }
+  /* Eine Urkunde = exakt eine A4-Seite (210×297mm), Vorlage füllt die volle Fläche. */
   .urk{ position:relative; width:210mm; height:297mm; margin:12px auto; background:#fff; overflow:hidden; box-shadow:0 2px 12px rgba(0,0,0,.15); }
-  .urk .bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
-  .inhalt{ position:absolute; z-index:1; left:0; right:0; top:40%; transform:translateY(-42%); display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 26mm; }
-  .zeile{ margin:2mm 0; }
-  .klein{ font-size:15pt; color:var(--grau); }
-  .hat{ font-size:16pt; color:var(--schwarz); margin-top:4mm; }
-  .turnier{ font-size:26pt; font-weight:bold; color:var(--rot); margin:2mm 0; letter-spacing:.5px; }
+  .urk .bg{ position:absolute; top:0; left:0; width:210mm; height:297mm; object-fit:cover; display:block; z-index:0; }
+  /* Textblock: zwei Zeilen Abstand unter dem URKUNDE-Titel. */
+  .inhalt{ position:absolute; z-index:1; left:0; right:0; top:130mm; display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 24mm; }
+  .zeile{ margin:1.5mm 0; }
+  .klein{ font-size:14pt; color:var(--grau); }
+  .hat{ font-size:15pt; color:var(--schwarz); margin-top:3mm; }
+  .turnier{ font-size:23pt; font-weight:bold; color:var(--rot); margin:1.5mm 0; line-height:1.15; }
   .konk{ font-weight:bold; color:var(--schwarz); }
-  .ziername{ display:flex; align-items:center; gap:6mm; margin:5mm 0 3mm; width:100%; justify-content:center; }
-  .zierlinie{ height:1.5px; background:var(--rot); flex:1; max-width:28mm; }
-  .pname{ font-size:30pt; font-weight:bold; color:var(--schwarz); white-space:nowrap; }
-  .platz{ font-size:24pt; font-weight:bold; color:var(--rot); margin:1mm 0; }
+  .ziername{ display:flex; align-items:center; gap:6mm; margin:4mm 0 2.5mm; width:100%; justify-content:center; }
+  .zierlinie{ height:1.5px; background:var(--rot); flex:1; max-width:26mm; }
+  /* Name: immer zwei Zeilen Höhe reserviert; Doppel/Mixed steht dadurch zweizeilig. */
+  .pname{ font-size:26pt; font-weight:bold; color:var(--schwarz); line-height:1.15; min-height:2.3em; display:flex; flex-direction:column; justify-content:center; }
+  .platz{ font-size:22pt; font-weight:bold; color:var(--rot); margin:1mm 0; }
   .belegt{ margin-top:0; }
-  .signaturen{ display:flex; gap:20mm; margin-top:22mm; width:100%; justify-content:center; }
-  .sig{ width:58mm; text-align:center; }
+  /* Fuß absolut, links (neben dem Wappen unten rechts), zwei Zeilen tiefer. */
+  .fuss{ position:absolute; z-index:1; left:22mm; top:262mm; width:120mm; }
+  .signaturen{ display:flex; gap:16mm; }
+  .sig{ width:52mm; }
   .sigline{ height:1px; background:#333; margin-bottom:2mm; }
-  .siglabel{ font-size:11pt; color:var(--grau); }
-  .ortdatum{ font-size:12pt; color:var(--schwarz); margin-top:10mm; }
+  .siglabel{ font-size:10.5pt; color:var(--grau); text-align:center; }
+  .ortdatum{ font-size:12pt; color:var(--schwarz); margin-top:9mm; text-align:left; }
   @media print{
     body{ background:#fff; }
     .toolbar{ display:none !important; }
