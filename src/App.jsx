@@ -1,4 +1,4 @@
-// === TTC-App · Version 366 · erstellt 18.08.2026 ===
+// === TTC-App · Version 367 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "366";
+const APP_VERSION = "367";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1385,7 +1385,13 @@ function turnierVonFirestore(t){
 function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }){
   const [turniere,setTurniere]=useState([]);
   const [laedt,setLaedt]=useState(true);
-  const [selId,setSelId]=useState(null);       // geöffnetes Turnier
+  const [selId,setSelId]=useState(()=>{
+    // Geöffnetes Turnier über einen Reload hinweg merken (siehe activeTab-Persistenz):
+    // Auf Mobilgeräten kann der Browser die Seite beim Öffnen eines heruntergeladenen
+    // PDF entladen; danach soll wieder dasselbe Turnier offen sein.
+    try{ return sessionStorage.getItem("ttc_selTurnier")||null; }catch(e){ return null; }
+  });
+  useEffect(()=>{ try{ if(selId) sessionStorage.setItem("ttc_selTurnier",selId); else sessionStorage.removeItem("ttc_selTurnier"); }catch(e){} },[selId]);
   const [formOffen,setFormOffen]=useState(false);
   const [editTurnier,setEditTurnier]=useState(null); // Turnier im Formular (neu/bearbeiten)
   const [ttr,setTtr]=useState({stichtage:[],personen:[]});
@@ -2792,18 +2798,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,80);
       const dateiname=`${safe(t.name)}_${safe(k.name)}.pdf`;
-      // Download über einen temporären Blob-Link auslösen. Bewusst NICHT pdf.save()
-      // oder window.open() verwenden – diese können in manchen Browsern eine
-      // Navigation auslösen, wodurch die App die Turnier-Detailansicht verlassen würde.
+      // Download über einen temporären Blob-Link. target=_blank sorgt dafür, dass die
+      // App-Seite NICHT ersetzt wird – wichtig auf Mobilgeräten, wo ein Öffnen im selben
+      // Tab die App verdrängen und beim Zurückkehren neu starten würde (Sprung zu „Training").
       const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = dateiname;
-      a.rel = "noopener";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
       document.body.appendChild(a);
       a.click();
-      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+      setTimeout(()=>{ try{ document.body.removeChild(a); }catch(e){} URL.revokeObjectURL(url); }, 4000);
       return;
     }catch(err){
       // Fallback: HTML-Fenster (mit Browser-Druck) öffnen, falls jsPDF nicht lädt.
@@ -5609,7 +5616,14 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     if(t.nonSuperAdminOnly && isSuperAdmin) return false;
     return true;
   });
-  const [activeTab,setActiveTab]=useState("training");
+  const [activeTab,setActiveTab]=useState(()=>{
+    // Aktiven Reiter über einen Reload hinweg merken. Auf Mobilgeräten kann der Browser
+    // die Seite beim Wechsel zu einem heruntergeladenen PDF entladen und danach neu
+    // starten – ohne diese Persistenz landete man sonst wieder auf „Training".
+    try{ const v=sessionStorage.getItem("ttc_activeTab"); if(v) return v; }catch(e){}
+    return "training";
+  });
+  useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
   // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
   // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
   const [verwaltungJumpId,setVerwaltungJumpId]=useState(null);
