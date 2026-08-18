@@ -1,4 +1,4 @@
-// === TTC-App · Version 368 · erstellt 18.08.2026 ===
+// === TTC-App · Version 369 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "368";
+const APP_VERSION = "369";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -16544,7 +16544,6 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const dObj=new Date(parseInt(dp[2].substring(0,4)),parseInt(dp[1])-1,parseInt(dp[0]));
       const tag=isNaN(dObj.getTime())?"":TAGE[dObj.getDay()];
       const art=saisonCol.toLowerCase().includes("pokal")?"Pokal":"Runde";
-      let mannschaft="",ort="",gegner="";
       const heimAlk=(cols[idx("HeimMannschaftAltersklasse")]||"").trim();
       const gastAlk=(cols[idx("GastMannschaftAltersklasse")]||"").trim();
       const heimNr=(cols[idx("HeimMannschaftNr")]||"").trim();
@@ -16558,6 +16557,9 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         if(a.includes("mädchen")||a.includes("maedchen")||a.includes("mdchen")){
           const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Mädchen ${nr}`:"Mädchen";
         }
+        if(a.includes("jungen")){
+          const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Jungen ${nr}`:"Jungen";
+        }
         if(a.includes("jugend")){
           const nr=(alk.match(/\d{1,2}/)||[])[0]; return nr?`Jugend ${nr}`:"Jugend";
         }
@@ -16567,17 +16569,30 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         const num=(!isNaN(nrNum)&&nrNum>0)?nrNum:herrenNummer(mannBez);
         return `Herren ${num}`;
       }
-      if(istUnsVerein(heimVerein)){
-        mannschaft=resolveMann(heimMann, heimAlk, heimNr);
-        ort="Heim"; gegner=gastMann||gastVerein;
-      } else if(istUnsVerein(gastVerein)){
-        mannschaft=resolveMann(gastMann, gastAlk, gastNr);
-        ort="Auswärts"; gegner=heimMann||heimVerein;
-      } else continue;
       // Ergebnis als CSV-Wert (SpieleHeim:SpieleGast), 0:0 gilt als noch nicht gespielt
       const ergebnis=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?
         `${spieleH}:${spieleG}`:"";
-      spiele.push({datum,tag,uhrzeit,mannschaft,art,ort,gegner,liga,ergebnis});
+      // Sonderfall: BEIDE Mannschaften sind Niederzeuzheimer (vereinsinternes Spiel).
+      // Dann das Spiel duplizieren – einmal als Heimspiel (Heim-Mannschaft) und einmal
+      // als Auswärtsspiel (Gast-Mannschaft), damit es bei beiden Mannschaften erscheint.
+      if(istUnsVerein(heimVerein) && istUnsVerein(gastVerein)){
+        const heimM=resolveMann(heimMann, heimAlk, heimNr);
+        const gastM=resolveMann(gastMann, gastAlk, gastNr);
+        spiele.push({datum,tag,uhrzeit,mannschaft:heimM,art,ort:"Heim",   gegner:gastM,liga,ergebnis});
+        // Ergebnis für die Auswärts-Sicht spiegeln (Gast-Perspektive).
+        const ergSpiegel=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?`${spieleG}:${spieleH}`:"";
+        spiele.push({datum,tag,uhrzeit,mannschaft:gastM,art,ort:"Auswärts",gegner:heimM,liga,ergebnis:ergSpiegel});
+        continue;
+      }
+      let mannschaft2="",ort2="",gegner2="";
+      if(istUnsVerein(heimVerein)){
+        mannschaft2=resolveMann(heimMann, heimAlk, heimNr);
+        ort2="Heim"; gegner2=gastMann||gastVerein;
+      } else if(istUnsVerein(gastVerein)){
+        mannschaft2=resolveMann(gastMann, gastAlk, gastNr);
+        ort2="Auswärts"; gegner2=heimMann||heimVerein;
+      } else continue;
+      spiele.push({datum,tag,uhrzeit,mannschaft:mannschaft2,art,ort:ort2,gegner:gegner2,liga,ergebnis});
     }
     return spiele.sort((a,b)=>a.datum.localeCompare(b.datum)||a.mannschaft.localeCompare(b.mannschaft));
   }
