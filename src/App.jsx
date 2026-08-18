@@ -1,4 +1,4 @@
-// === TTC-App · Version 364 · erstellt 18.08.2026 ===
+// === TTC-App · Version 365 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "364";
+const APP_VERSION = "365";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2635,7 +2635,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         <div class="inhalt">
           <div class="zeile klein">${esc(anrede)}</div>
           <div class="turnier">${esc(t.name)}</div>
-          <div class="zeile klein">in der Konkurrenz <span class="konk">${esc(k.name)}</span> ${esc(disziplin)}</div>
+          <div class="zeile klein">in der <span class="konk">${esc(disziplin)}</span> - Konkurrenz der ${esc(k.name)}</div>
           <div class="zeile hat">${hatWort}</div>
           <div class="ziername">
             <span class="zierlinie"></span>
@@ -2739,34 +2739,38 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(idx>0) pdf.addPage();
         if(urkundeBg){ try{ pdf.addImage(urkundeBg, bildTyp, 0, 0, PW, PH); }catch(err){} }
 
-        let y=130;  // Starthöhe des Textblocks (wie top:130mm)
+        let y=148;  // Starthöhe des Textblocks – zwei Zeilen tiefer als zuvor (war 130)
         // „Bei den/Beim"
         setF(14,"normal",GRAU); pdf.text(anrede, mid, y, {align:"center"}); y+=9;
-        // Turniername (rot, fett) – ggf. zweizeilig umbrechen
-        setF(23,"bold",ROT);
-        const tzeilen=pdf.splitTextToSize(t.name, PW-48);
-        tzeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=10; });
+        // Turniername (rot, fett) – zwei Schriftgrößen größer (war 23)
+        setF(27,"bold",ROT);
+        const tzeilen=pdf.splitTextToSize(t.name, PW-40);
+        tzeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=11; });
         y+=1;
-        // „in der Konkurrenz <Name> <Disziplin>"
+        // „in der <Disziplin> - Konkurrenz der <Konkurrenz>"
         setF(14,"normal",GRAU);
-        pdf.text(`in der Konkurrenz ${k.name} ${disziplin}`, mid, y, {align:"center"}); y+=9;
+        pdf.text(`in der ${disziplin} - Konkurrenz der ${k.name}`, mid, y, {align:"center"}); y+=9;
         // „hat/haben"
-        setF(15,"normal",SCHWARZ); pdf.text(hatWort, mid, y, {align:"center"}); y+=11;
-        // Name (zwischen Zierlinien) – Einzel 1 Zeile, Doppel/Mixed 2 Zeilen
-        setF(26,"bold",SCHWARZ);
+        setF(15,"normal",SCHWARZ); pdf.text(hatWort, mid, y, {align:"center"}); y+=12;
+        // Name (zwischen Zierlinien) – Einzel 1 Zeile, Doppel/Mixed 2 Zeilen; zwei Größen größer (war 26)
+        setF(30,"bold",SCHWARZ);
         const nameZeilen=Array.isArray(sp.name)?sp.name:[sp.name];
         const nameStartY=y;
-        nameZeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=10; });
-        // Zierlinien links/rechts auf Höhe der (ersten) Namenszeile
+        const zeilenH=11;
+        nameZeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=zeilenH; });
+        // Zierlinien links/rechts: bei einer Zeile auf deren Höhe, bei zwei Zeilen
+        // GENAU MITTIG zwischen die beiden Namen.
         pdf.setDrawColor(200,16,46); pdf.setLineWidth(0.5);
-        const linY=nameStartY-3;
+        const linY = nameZeilen.length>=2
+          ? (nameStartY - 3 + zeilenH)     // Mitte zwischen Zeile 1 und Zeile 2
+          : (nameStartY - 3);              // auf Höhe der einzigen Zeile
         pdf.line(28, linY, 28+26, linY);          // links
         pdf.line(PW-28-26, linY, PW-28, linY);    // rechts
         y+=2;
         // „den"
         setF(14,"normal",GRAU); pdf.text("den", mid, y, {align:"center"}); y+=10;
-        // „N. Platz" (rot, fett)
-        setF(22,"bold",ROT); pdf.text(`${sp.platz}. Platz`, mid, y, {align:"center"}); y+=9;
+        // „N. Platz" (rot, fett) – zwei Schriftgrößen größer (war 22)
+        setF(26,"bold",ROT); pdf.text(`${sp.platz}. Platz`, mid, y, {align:"center"}); y+=9;
         // „belegt."
         setF(14,"normal",GRAU); pdf.text("belegt.", mid, y, {align:"center"});
 
