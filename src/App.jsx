@@ -1,4 +1,4 @@
-// === TTC-App · Version 365 · erstellt 18.08.2026 ===
+// === TTC-App · Version 366 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "365";
+const APP_VERSION = "366";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2791,7 +2791,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       });
 
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,80);
-      pdf.save(`${safe(t.name)}_${safe(k.name)}.pdf`);
+      const dateiname=`${safe(t.name)}_${safe(k.name)}.pdf`;
+      // Download über einen temporären Blob-Link auslösen. Bewusst NICHT pdf.save()
+      // oder window.open() verwenden – diese können in manchen Browsern eine
+      // Navigation auslösen, wodurch die App die Turnier-Detailansicht verlassen würde.
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = dateiname;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
       return;
     }catch(err){
       // Fallback: HTML-Fenster (mit Browser-Druck) öffnen, falls jsPDF nicht lädt.
@@ -3677,9 +3689,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
               <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
-              <button onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
-              <button onClick={()=>urkundenOeffnen(konk)} style={{padding:"6px 11px",background:"#1a1a1a",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>🏅 Urkunden (alle)</button>
-              <button onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
+              <button type="button" onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
+              <button type="button" onClick={()=>urkundenOeffnen(konk)} style={{padding:"6px 11px",background:"#1a1a1a",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>🏅 Urkunden (alle)</button>
+              <button type="button" onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
             </div>
             {/* Einzeldruck je Teilnehmer/Team */}
             {(()=>{
@@ -3698,7 +3710,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               return <details style={{marginTop:10}}>
                 <summary style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--text2)"}}>Urkunden einzeln drucken ({liste.length})</summary>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-                  {liste.map(e=><button key={e.id} onClick={()=>urkundenOeffnen(konk, e.id)} style={{
+                  {liste.map(e=><button type="button" key={e.id} onClick={()=>urkundenOeffnen(konk, e.id)} style={{
                     padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
                     border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text2)"}}>
                     <span style={{color:"#c8102e",fontWeight:800}}>{e.platz}.</span> {e.label}{istDoppelK?" 📄📄":""}
