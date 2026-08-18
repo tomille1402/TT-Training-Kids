@@ -1,4 +1,4 @@
-// === TTC-App · Version 362 · erstellt 18.08.2026 ===
+// === TTC-App · Version 364 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "362";
+const APP_VERSION = "364";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2595,14 +2595,17 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(pl==null) continue;
         if(nurEinheit && tm.id!==nurEinheit) continue;
         const a=nm(tm.s1), b=nm(tm.s2);
-        einheiten.push({ platz:pl, id:tm.id, namen:[zweiZeilen(a,b), zweiZeilen(b,a)] });
+        einheiten.push({ platz:pl, id:tm.id,
+          namen:[zweiZeilen(a,b), zweiZeilen(b,a)],
+          namenText:[[`${a} &`, b], [`${b} &`, a]] });   // je Variante zweizeilig (PDF)
       }
     } else {
       const seen=new Set();
       for(const [pid,pl] of Object.entries(platzMap)){
         if(seen.has(pid))continue; seen.add(pid);
         if(nurEinheit && pid!==nurEinheit) continue;
-        einheiten.push({ platz:pl, id:pid, namen:[einZeilig(nm(pid))] });
+        const n=nm(pid);
+        einheiten.push({ platz:pl, id:pid, namen:[einZeilig(n)], namenText:[[n]] });
       }
     }
     einheiten.sort((a,b)=>a.platz-b.platz);
@@ -2622,6 +2625,8 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     })();
     const platzText=(pl)=>`${pl}.`;
     const hatWort = istDoppelK ? "haben" : "hat";
+    // Disziplin der Konkurrenz: Mixed / Doppel / Einzel.
+    const disziplin = istMixedKonk(k) ? "Mixed" : (istDoppelK ? "Doppel" : "Einzel");
 
     // Eine einzelne Urkunden-Seite (Entwurf C). nameHtml ist bereits sicheres Markup.
     const seite=(nameHtml, platz)=>`
@@ -2630,7 +2635,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         <div class="inhalt">
           <div class="zeile klein">${esc(anrede)}</div>
           <div class="turnier">${esc(t.name)}</div>
-          <div class="zeile klein">in der Konkurrenz <span class="konk">${esc(k.name)}</span></div>
+          <div class="zeile klein">in der Konkurrenz <span class="konk">${esc(k.name)}</span> ${esc(disziplin)}</div>
           <div class="zeile hat">${hatWort}</div>
           <div class="ziername">
             <span class="zierlinie"></span>
@@ -2655,7 +2660,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Urkunden – ${esc(t.name)} · ${esc(k.name)}</title>
+<title>${esc(t.name)} · ${esc(k.name)}</title>
 <style>
   :root{ --rot:#c8102e; --schwarz:#1a1a1a; --grau:#5b5b5b; }
   *{ box-sizing:border-box; margin:0; padding:0; }
@@ -2680,7 +2685,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   .platz{ font-size:22pt; font-weight:bold; color:var(--rot); margin:1mm 0; }
   .belegt{ margin-top:0; }
   /* Fuß absolut, links (neben dem Wappen unten rechts), zwei Zeilen tiefer. */
-  .fuss{ position:absolute; z-index:1; left:22mm; top:262mm; width:120mm; }
+  .fuss{ position:absolute; z-index:1; left:8mm; top:262mm; width:120mm; }
   .signaturen{ display:flex; gap:16mm; }
   .sig{ width:52mm; }
   .sigline{ height:1px; background:#333; margin-bottom:2mm; }
@@ -2702,9 +2707,94 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   ${seiten}
 </body></html>`;
 
-    const w=window.open("","_blank");
-    if(!w){ alert("Bitte Popups für diese Seite erlauben, um die Urkunden anzuzeigen."); return; }
-    w.document.open(); w.document.write(html); w.document.close();
+    // ── Echte PDF ohne Browser-Fuß-/Kopfzeilen via jsPDF erzeugen ──────────────
+    // Die Positionen entsprechen 1:1 dem bestätigten HTML-Layout (Angaben in mm).
+    async function ladeJsPDF(){
+      if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+      await new Promise((res,rej)=>{
+        const s=document.createElement("script");
+        s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden."));
+        document.head.appendChild(s);
+      });
+      if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
+      return window.jspdf.jsPDF;
+    }
+
+    try{
+      const jsPDF = await ladeJsPDF();
+      const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+      const PW=210, PH=297;
+      const mid=PW/2;
+      // Bildformat für addImage aus Data-URL ableiten (JPEG/PNG).
+      const bildTyp = /^data:image\/png/i.test(urkundeBg) ? "PNG" : "JPEG";
+      // Hilfen: pt→mm (1pt = 0.352777mm). jsPDF-Fontsize ist in pt, Positionen in mm.
+      const setF=(size,style="normal",farbe=[26,26,26])=>{ pdf.setFont("times",style); pdf.setFontSize(size); pdf.setTextColor(farbe[0],farbe[1],farbe[2]); };
+      const ROT=[200,16,46], SCHWARZ=[26,26,26], GRAU=[91,91,91];
+
+      const seiten2=[];
+      for(const e of einheiten){ for(const nm2 of e.namenText){ seiten2.push({ name:nm2, platz:e.platz }); } }
+
+      seiten2.forEach((sp, idx)=>{
+        if(idx>0) pdf.addPage();
+        if(urkundeBg){ try{ pdf.addImage(urkundeBg, bildTyp, 0, 0, PW, PH); }catch(err){} }
+
+        let y=130;  // Starthöhe des Textblocks (wie top:130mm)
+        // „Bei den/Beim"
+        setF(14,"normal",GRAU); pdf.text(anrede, mid, y, {align:"center"}); y+=9;
+        // Turniername (rot, fett) – ggf. zweizeilig umbrechen
+        setF(23,"bold",ROT);
+        const tzeilen=pdf.splitTextToSize(t.name, PW-48);
+        tzeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=10; });
+        y+=1;
+        // „in der Konkurrenz <Name> <Disziplin>"
+        setF(14,"normal",GRAU);
+        pdf.text(`in der Konkurrenz ${k.name} ${disziplin}`, mid, y, {align:"center"}); y+=9;
+        // „hat/haben"
+        setF(15,"normal",SCHWARZ); pdf.text(hatWort, mid, y, {align:"center"}); y+=11;
+        // Name (zwischen Zierlinien) – Einzel 1 Zeile, Doppel/Mixed 2 Zeilen
+        setF(26,"bold",SCHWARZ);
+        const nameZeilen=Array.isArray(sp.name)?sp.name:[sp.name];
+        const nameStartY=y;
+        nameZeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=10; });
+        // Zierlinien links/rechts auf Höhe der (ersten) Namenszeile
+        pdf.setDrawColor(200,16,46); pdf.setLineWidth(0.5);
+        const linY=nameStartY-3;
+        pdf.line(28, linY, 28+26, linY);          // links
+        pdf.line(PW-28-26, linY, PW-28, linY);    // rechts
+        y+=2;
+        // „den"
+        setF(14,"normal",GRAU); pdf.text("den", mid, y, {align:"center"}); y+=10;
+        // „N. Platz" (rot, fett)
+        setF(22,"bold",ROT); pdf.text(`${sp.platz}. Platz`, mid, y, {align:"center"}); y+=9;
+        // „belegt."
+        setF(14,"normal",GRAU); pdf.text("belegt.", mid, y, {align:"center"});
+
+        // Fuß: Unterschriften + Ort/Datum, links (wie left:8mm, top:262mm)
+        const fx=8, fTop=262;
+        const sigW=52, gap=16;
+        pdf.setDrawColor(51,51,51); pdf.setLineWidth(0.3);
+        // zwei getrennte Linien
+        pdf.line(fx, fTop, fx+sigW, fTop);
+        pdf.line(fx+sigW+gap, fTop, fx+sigW+gap+sigW, fTop);
+        // Labels mittig unter der jeweiligen Linie
+        setF(10.5,"normal",GRAU);
+        pdf.text("Unterschrift Verein", fx+sigW/2, fTop+5, {align:"center"});
+        pdf.text("Unterschrift Turnierleitung", fx+sigW+gap+sigW/2, fTop+5, {align:"center"});
+        // Ort/Datum links
+        setF(12,"normal",SCHWARZ);
+        pdf.text(`Niederzeuzheim, den ${datumLang}`, fx, fTop+16);
+      });
+
+      const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,80);
+      pdf.save(`${safe(t.name)}_${safe(k.name)}.pdf`);
+      return;
+    }catch(err){
+      // Fallback: HTML-Fenster (mit Browser-Druck) öffnen, falls jsPDF nicht lädt.
+      const w=window.open("","_blank");
+      if(!w){ alert("Bitte Popups erlauben oder erneut versuchen.\n"+(err&&err.message||"")); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }
   }
 
   function konkurrenzWiederOeffnen(){
@@ -3487,7 +3577,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 
     {/* Start-Button je Konkurrenz: erst nach dem Start gehen die Spiele in die
         (turnierweite) Tischvergabe ein. So können Konkurrenzen nacheinander beginnen. */}
-    {konk && isAdmin && (()=>{
+    {konk && isAdmin && !konk.abgeschlossen && (()=>{
       const bg=begegnungenDerKonk(konk);
       const spielbar=bg.length>0;
       if(konk.gestartet){
