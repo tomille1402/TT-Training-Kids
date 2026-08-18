@@ -1,4 +1,4 @@
-// === TTC-App · Version 367 · erstellt 18.08.2026 ===
+// === TTC-App · Version 368 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "367";
+const APP_VERSION = "368";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2617,9 +2617,19 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     einheiten.sort((a,b)=>a.platz-b.platz);
     if(einheiten.length===0){ alert("Keine Teilnehmer mit Platzierung gefunden."); return; }
 
-    // Vorlage + Wappen aus clubConfig laden.
-    let urkundeBg="", wappen="";
-    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()){ const d=snap.data(); urkundeBg=d.urkunde||""; wappen=d.logo||""; } }catch(e){}
+    // Vorlage + Wappen + aktive Faksimile-Unterschriften aus clubConfig laden.
+    let urkundeBg="", wappen="", faksVerein="", faksTL="";
+    try{
+      const snap=await getDoc(doc(db,"config","clubConfig"));
+      if(snap.exists()){
+        const d=snap.data();
+        urkundeBg=d.urkunde||""; wappen=d.logo||"";
+        // Faksimile: bis zu 3 je Rolle, die als aktiv markierte wird verwendet.
+        const av=(d.faksimileVereinAktiv??0), at=(d.faksimileTLAktiv??0);
+        faksVerein=(Array.isArray(d.faksimileVerein)?d.faksimileVerein[av]:"")||"";
+        faksTL=(Array.isArray(d.faksimileTL)?d.faksimileTL[at]:"")||"";
+      }
+    }catch(e){}
 
     const anrede = t.urkundeAnrede || "Bei den";
     const datumLang = (()=>{ // „17. August 2026"
@@ -2745,54 +2755,52 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(idx>0) pdf.addPage();
         if(urkundeBg){ try{ pdf.addImage(urkundeBg, bildTyp, 0, 0, PW, PH); }catch(err){} }
 
-        let y=148;  // Starthöhe des Textblocks – zwei Zeilen tiefer als zuvor (war 130)
-        // „Bei den/Beim"
+        let y=148;  // Starthöhe des Textblocks
+        // „Bei den/Beim" (grau)
         setF(14,"normal",GRAU); pdf.text(anrede, mid, y, {align:"center"}); y+=9;
-        // Turniername (rot, fett) – zwei Schriftgrößen größer (war 23)
+        // Turniername (rot, fett). Abstand oberhalb (9, s.o.) = Abstand unterhalb (9) → symmetrisch.
         setF(27,"bold",ROT);
         const tzeilen=pdf.splitTextToSize(t.name, PW-40);
-        tzeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=11; });
-        y+=1;
-        // „in der <Disziplin> - Konkurrenz der <Konkurrenz>"
+        tzeilen.forEach((z,i)=>{ pdf.text(z, mid, y, {align:"center"}); y+= (i<tzeilen.length-1?11:9); });
+        // „in der <Disziplin> Konkurrenz <Konkurrenz>" (ohne „-" und ohne „der"), grau
         setF(14,"normal",GRAU);
-        pdf.text(`in der ${disziplin} - Konkurrenz der ${k.name}`, mid, y, {align:"center"}); y+=9;
-        // „hat/haben"
-        setF(15,"normal",SCHWARZ); pdf.text(hatWort, mid, y, {align:"center"}); y+=12;
-        // Name (zwischen Zierlinien) – Einzel 1 Zeile, Doppel/Mixed 2 Zeilen; zwei Größen größer (war 26)
+        pdf.text(`in der ${disziplin} Konkurrenz ${k.name}`, mid, y, {align:"center"}); y+=12;
+        // „hat/haben" (grau, wie die übrigen kleinen Wörter)
+        setF(14,"normal",GRAU); pdf.text(hatWort, mid, y, {align:"center"}); y+=12;
+        // Name (zwischen Zierlinien) – Einzel 1 Zeile, Doppel/Mixed 2 Zeilen
         setF(30,"bold",SCHWARZ);
         const nameZeilen=Array.isArray(sp.name)?sp.name:[sp.name];
         const nameStartY=y;
         const zeilenH=11;
         nameZeilen.forEach(z=>{ pdf.text(z, mid, y, {align:"center"}); y+=zeilenH; });
-        // Zierlinien links/rechts: bei einer Zeile auf deren Höhe, bei zwei Zeilen
-        // GENAU MITTIG zwischen die beiden Namen.
+        // Zierlinien links/rechts: bei zwei Zeilen genau mittig zwischen die Namen.
         pdf.setDrawColor(200,16,46); pdf.setLineWidth(0.5);
-        const linY = nameZeilen.length>=2
-          ? (nameStartY - 3 + zeilenH)     // Mitte zwischen Zeile 1 und Zeile 2
-          : (nameStartY - 3);              // auf Höhe der einzigen Zeile
-        pdf.line(28, linY, 28+26, linY);          // links
-        pdf.line(PW-28-26, linY, PW-28, linY);    // rechts
+        const linY = nameZeilen.length>=2 ? (nameStartY - 3 + zeilenH) : (nameStartY - 3);
+        pdf.line(28, linY, 28+26, linY);
+        pdf.line(PW-28-26, linY, PW-28, linY);
         y+=2;
-        // „den"
+        // „den" (grau)
         setF(14,"normal",GRAU); pdf.text("den", mid, y, {align:"center"}); y+=10;
-        // „N. Platz" (rot, fett) – zwei Schriftgrößen größer (war 22)
+        // „N. Platz" (rot, fett)
         setF(26,"bold",ROT); pdf.text(`${sp.platz}. Platz`, mid, y, {align:"center"}); y+=9;
-        // „belegt."
+        // „belegt." (grau)
         setF(14,"normal",GRAU); pdf.text("belegt.", mid, y, {align:"center"});
 
-        // Fuß: Unterschriften + Ort/Datum, links (wie left:8mm, top:262mm)
+        // Fuß: Unterschriften + Ort/Datum, links.
         const fx=8, fTop=262;
         const sigW=52, gap=16;
+        // Faksimile-Unterschriften (falls hinterlegt) knapp ÜBER der jeweiligen Linie.
+        if(faksVerein){ try{ pdf.addImage(faksVerein, /^data:image\/png/i.test(faksVerein)?"PNG":"JPEG", fx+6, fTop-15, sigW-12, 14); }catch(e){} }
+        if(faksTL){ try{ pdf.addImage(faksTL, /^data:image\/png/i.test(faksTL)?"PNG":"JPEG", fx+sigW+gap+6, fTop-15, sigW-12, 14); }catch(e){} }
         pdf.setDrawColor(51,51,51); pdf.setLineWidth(0.3);
-        // zwei getrennte Linien
         pdf.line(fx, fTop, fx+sigW, fTop);
         pdf.line(fx+sigW+gap, fTop, fx+sigW+gap+sigW, fTop);
-        // Labels mittig unter der jeweiligen Linie
+        // Labels mittig unter der jeweiligen Linie (grau)
         setF(10.5,"normal",GRAU);
         pdf.text("Unterschrift Verein", fx+sigW/2, fTop+5, {align:"center"});
         pdf.text("Unterschrift Turnierleitung", fx+sigW+gap+sigW/2, fTop+5, {align:"center"});
-        // Ort/Datum links
-        setF(12,"normal",SCHWARZ);
+        // Ort/Datum links – grau (wie die Unterschriftsbeschriftung)
+        setF(12,"normal",GRAU);
         pdf.text(`Niederzeuzheim, den ${datumLang}`, fx, fTop+16);
       });
 
@@ -6587,6 +6595,105 @@ function komprimiereBild(file, opts={}){
   });
 }
 
+// ─── FAKSIMILE EDITOR (Unterschriften für Urkunden) ───────────────────────────
+// Je Rolle (Verein, Turnierleitung) bis zu 3 Faksimile-Bilder; eines ist als aktiv
+// markiert und wird auf den Urkunden über die jeweilige Unterschriftslinie gedruckt.
+// Speicherung in config/clubConfig via merge:true (Wappen/Urkunde bleiben erhalten).
+function FaksimileEditor({showToast}) {
+  const [verein,setVerein]     = useState(["","",""]);
+  const [tl,setTl]             = useState(["","",""]);
+  const [vereinAktiv,setVereinAktiv] = useState(0);
+  const [tlAktiv,setTlAktiv]   = useState(0);
+  const [busy,setBusy]         = useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const snap=await getDoc(doc(db,"config","clubConfig"));
+        if(snap.exists()){
+          const d=snap.data();
+          const fv=Array.isArray(d.faksimileVerein)?d.faksimileVerein:[];
+          const ft=Array.isArray(d.faksimileTL)?d.faksimileTL:[];
+          setVerein([fv[0]||"",fv[1]||"",fv[2]||""]);
+          setTl([ft[0]||"",ft[1]||"",ft[2]||""]);
+          setVereinAktiv(d.faksimileVereinAktiv??0);
+          setTlAktiv(d.faksimileTLAktiv??0);
+        }
+      }catch(e){}
+    })();
+  },[]);
+
+  async function speichere(feld, wert){
+    try{ await setDoc(doc(db,"config","clubConfig"),{[feld]:wert},{merge:true}); }
+    catch(e){ window.alert("Fehler beim Speichern:\n"+(e.message||e)); }
+  }
+
+  async function upload(rolle, idx, file){
+    if(!file) return;
+    const key=`${rolle}_${idx}`; setBusy(key);
+    try{
+      // Faksimile: schmales, breites Bild – auf Unterschriftsgröße herunterrechnen.
+      const dataUrl = await komprimiereBild(file, { maxBreite:600, maxHoehe:220, maxLen:200000 });
+      if(rolle==="verein"){
+        const neu=[...verein]; neu[idx]=dataUrl; setVerein(neu); await speichere("faksimileVerein",neu);
+      } else {
+        const neu=[...tl]; neu[idx]=dataUrl; setTl(neu); await speichere("faksimileTL",neu);
+      }
+      showToast("Faksimile gespeichert ✍️","✍️");
+    }catch(err){ window.alert(err&&err.message?err.message:"Bild konnte nicht verarbeitet werden."); }
+    setBusy("");
+  }
+
+  async function entferne(rolle, idx){
+    if(rolle==="verein"){ const neu=[...verein]; neu[idx]=""; setVerein(neu); await speichere("faksimileVerein",neu); }
+    else { const neu=[...tl]; neu[idx]=""; setTl(neu); await speichere("faksimileTL",neu); }
+    showToast("Faksimile entfernt","✅");
+  }
+
+  async function setzeAktiv(rolle, idx){
+    if(rolle==="verein"){ setVereinAktiv(idx); await speichere("faksimileVereinAktiv",idx); }
+    else { setTlAktiv(idx); await speichere("faksimileTLAktiv",idx); }
+    showToast("Aktive Unterschrift gesetzt ✓","✓");
+  }
+
+  const spalte=(rolle, bilder, aktiv)=>(
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:8}}>
+        {rolle==="verein"?"Unterschrift Verein":"Unterschrift Turnierleitung"}
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {[0,1,2].map(idx=>{
+          const bild=bilder[idx]; const istAktiv=aktiv===idx; const key=`${rolle}_${idx}`;
+          return <div key={idx} style={{flex:"1 1 100px",minWidth:100,border:`2px solid ${istAktiv?"#10b981":"var(--border2)"}`,borderRadius:10,padding:8,background:istAktiv?"#10b98111":"var(--bg3)"}}>
+            <div style={{height:46,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,marginBottom:6,overflow:"hidden"}}>
+              {bild? <img src={bild} alt="" style={{maxWidth:"100%",maxHeight:44,objectFit:"contain"}}/> : <span style={{fontSize:20,color:"#bbb"}}>✍️</span>}
+            </div>
+            <label style={{display:"block",padding:"5px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,textAlign:"center",cursor:busy===key?"not-allowed":"pointer",fontSize:10,color:"var(--text3)",marginBottom:5}}>
+              {busy===key?"⏳":(bild?"Ersetzen":"Hochladen")}
+              <input type="file" accept="image/*" style={{display:"none"}} disabled={busy===key} onChange={e=>upload(rolle,idx,e.target.files?.[0])}/>
+            </label>
+            <div style={{display:"flex",gap:4}}>
+              <button type="button" onClick={()=>setzeAktiv(rolle,idx)} disabled={!bild} style={{flex:1,padding:"4px",borderRadius:6,fontSize:10,fontWeight:700,cursor:bild?"pointer":"not-allowed",
+                border:`1px solid ${istAktiv?"#10b981":"var(--border2)"}`,background:istAktiv?"#10b981":"transparent",color:istAktiv?"#fff":"var(--text3)"}}>
+                {istAktiv?"✓ aktiv":"aktiv setzen"}
+              </button>
+              {bild&&<button type="button" onClick={()=>entferne(rolle,idx)} style={{padding:"4px 7px",borderRadius:6,fontSize:10,border:"1px solid #ef444466",background:"#ef444422",color:"#ef4444",cursor:"pointer"}}>✕</button>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+  );
+
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Hinterlege je Rolle bis zu drei Unterschriften (Faksimile). Die als <b>aktiv</b> markierte wird auf den Urkunden über die jeweilige Unterschriftslinie gedruckt. Am besten ein Bild mit transparentem oder weißem Hintergrund.
+    </div>
+    {spalte("verein", verein, vereinAktiv)}
+    {spalte("tl", tl, tlAktiv)}
+  </div>;
+}
+
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
 function BrandingEditor({showToast}) {
   const [name,     setName]     = useState("");
@@ -6617,7 +6724,7 @@ function BrandingEditor({showToast}) {
   async function saveText() {
     setSaving(true);
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde},{merge:true});
       showToast("Gespeichert ✅","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -6631,7 +6738,7 @@ function BrandingEditor({showToast}) {
     try{
       const dataUrl = await komprimiereBild(file, { maxBreite:512, maxHoehe:512, maxLen:400000 });
       setLogo(dataUrl);
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:true});
       showToast("Wappen gespeichert 🖼️","🖼️");
     }catch(err){
       window.alert(err && err.message ? err.message : "Das Wappen konnte nicht verarbeitet werden.");
@@ -6642,7 +6749,7 @@ function BrandingEditor({showToast}) {
   async function deleteLogo() {
     setLogo("");
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:"",urkunde},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:"",urkunde},{merge:true});
       showToast("Wappen entfernt","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -6655,7 +6762,7 @@ function BrandingEditor({showToast}) {
     try{
       const dataUrl = await komprimiereBild(file, { maxBreite:1240, maxHoehe:1754, maxLen:900000 });
       setUrkunde(dataUrl);
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:true});
       showToast("Urkunden-Vorlage gespeichert 📜","📜");
     }catch(err){
       window.alert(err && err.message ? err.message : "Die Vorlage konnte nicht verarbeitet werden.");
@@ -6666,7 +6773,7 @@ function BrandingEditor({showToast}) {
   async function deleteUrkunde() {
     setUrkunde("");
     try {
-      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:""},{merge:false});
+      await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:""},{merge:true});
       showToast("Urkunden-Vorlage entfernt","✅");
     } catch(e) {
       window.alert("Fehler:\n"+e.code+"\n"+e.message);
@@ -7877,6 +7984,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showT,setShowT]=useState(false);
   const [showEhr,setShowEhr]=useState(false);
   const [showAppDesign,setShowAppDesign]=useState(false);
+  const [showFaksimile,setShowFaksimile]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
 
@@ -8877,6 +8985,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>}
         {/* Whitelabel Branding */}
         <BrandingEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Unterschriften (Faksimile) — eigener Bereich, standardmäßig zugeklappt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowFaksimile(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>✍️ Unterschriften (Faksimile)</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showFaksimile?"▲":"▼"}</span>
+      </div>
+      {showFaksimile&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <FaksimileEditor showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
