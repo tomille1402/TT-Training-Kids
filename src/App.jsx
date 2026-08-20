@@ -1,4 +1,4 @@
-// === TTC-App · Version 370 · erstellt 18.08.2026 ===
+// === TTC-App · Version 371 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "370";
+const APP_VERSION = "371";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8043,7 +8043,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [editPlayer,setEditPlayer]=useState(null);
 
   // ── Übungs-Urkunde als PDF (Muster-Hintergrund + Name + Datum) ───────────────
-  // Name: dekorative Schrift (Grand Hotel ≈ Curlz MT), Datum: handschriftlich
+  // Name: rote Handschrift (Pacifico ≈ Curlz MT Fett), Datum: handschriftlich
   // (Kalam ≈ Chalkboard). Fonts + jsPDF werden per CDN geladen und eingebettet.
   async function ladeJsPDF_V(){
     if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
@@ -8063,11 +8063,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   async function registriereFonts(pdf){
     try{
       if(!VerwaltungTab._fontName){
-        // Grand Hotel (≈ Curlz MT) als TTF direkt aus dem Google-Fonts-Repo.
-        VerwaltungTab._fontName = await fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/grandhotel/GrandHotel-Regular.ttf");
+        // Pacifico (kräftige, fett wirkende Handschrift ≈ Curlz MT Fett) als TTF.
+        VerwaltungTab._fontName = await fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/pacifico/Pacifico-Regular.ttf");
       }
-      pdf.addFileToVFS("GrandHotel.ttf", VerwaltungTab._fontName);
-      pdf.addFont("GrandHotel.ttf","GrandHotel","normal");
+      pdf.addFileToVFS("Pacifico.ttf", VerwaltungTab._fontName);
+      pdf.addFont("Pacifico.ttf","Pacifico","normal");
     }catch(e){}
     try{
       if(!VerwaltungTab._fontDate){
@@ -8092,21 +8092,24 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const PW=210, PH=297, mid=PW/2;
       const bildTyp=/^data:image\/png/i.test(muster)?"PNG":"JPEG";
       try{ pdf.addImage(muster,bildTyp,0,0,PW,PH); }catch(e){}
-      // Name: Vorname (Zeile 1) + Nachname (Zeile 2), Grand Hotel, groß, unter dem Stern.
+      // Name: Vorname (Zeile 1) + Nachname (Zeile 2), rote Handschrift (Pacifico), unter dem Stern.
       const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
-      try{ pdf.setFont("GrandHotel","normal"); }catch(e){ pdf.setFont("times","bold"); }
-      pdf.setTextColor(20,20,20);
-      pdf.setFontSize(48);
+      try{ pdf.setFont("Pacifico","normal"); }catch(e){ pdf.setFont("times","bold"); }
+      pdf.setTextColor(200,16,46);   // TTC-Rot
+      // Schriftgröße so wählen, dass auch längere Namen auf die Seite passen (max ~180mm).
+      const maxBreite=180;
+      const fitSize=(txt,start)=>{ let s=start; pdf.setFontSize(s);
+        while(s>22 && pdf.getTextWidth(txt)>maxBreite){ s-=2; pdf.setFontSize(s); } return s; };
       // Positionen aus dem Muster (A4): Stern endet ~161mm, Text ab ~230mm.
       let ny=192;
-      if(vor){ pdf.text(vor, mid, ny, {align:"center"}); ny+=18; }
-      if(nach){ pdf.text(nach, mid, ny, {align:"center"}); }
-      // Datum hinter „Niederzeuzheim, den " (links unten), Kalam, klein.
+      if(vor){ fitSize(vor,46); pdf.text(vor, mid, ny, {align:"center"}); ny+=18; }
+      if(nach){ fitSize(nach,46); pdf.text(nach, mid, ny, {align:"center"}); }
+      // Datum hinter „Niederzeuzheim, den " (links unten), Kalam, etwas größer.
       if(datumIso){
         const [y,m,d]=String(datumIso).split("-");
         const datumTxt=`${d}.${m}.${y}`;
         try{ pdf.setFont("Kalam","normal"); }catch(e){ pdf.setFont("times","normal"); }
-        pdf.setFontSize(12); pdf.setTextColor(20,20,20);
+        pdf.setFontSize(16); pdf.setTextColor(20,20,20);
         // „Niederzeuzheim, den " endet im Muster bei ~63mm; Datum knapp dahinter,
         // Grundlinie auf Höhe der Zeile (~283mm).
         pdf.text(datumTxt, 67, 283.5);
