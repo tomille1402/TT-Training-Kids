@@ -1,4 +1,4 @@
-// === TTC-App · Version 376 · erstellt 20.08.2026 ===
+// === TTC-App · Version 378 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "376";
+const APP_VERSION = "378";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5672,7 +5672,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   },[externalPlayer?.id]);
   const [toast,setToast]=useState(null);
   const [saving,setSaving]=useState(false);
-  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true,Gast:true,Trainer:true});
+  const [groupFilters,setGroupFilters]=useState({Profis:true,Fortgeschrittene:true,Anfänger:true});
   // Wenn RSW adminGroupFilters gesetzt, diese verwenden
   const effectiveGroupFilters = groupFiltersExt && Object.keys(groupFiltersExt).some(Boolean)
     ? {Profis:groupFiltersExt["Profis"]||false, Fortgeschrittene:groupFiltersExt["Fortgeschrittene"]||false,
@@ -5700,7 +5700,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       const g = p.group||"Anfänger";
       if (g==="Erwachsene") return false; // Erwachsene immer separat in RoleSwitchWrapper
       if (g==="Gast" && !isSuperAdmin) return false; // Gäste nur für Admins sichtbar
-      return effectiveGroupFilters[g] !== false;
+      return effectiveGroupFilters[g] === true;      // nur aktiv gewählte Gruppen anzeigen
     })
     .sort((a,b)=>{
       const fa=(a.firstName||a.name||"").toLowerCase();
@@ -17387,7 +17387,9 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   // Person, falls myPlayer beim ersten Render noch nicht geladen war).
   useEffect(()=>{ if(myPlayer?.id && viewAsPlayer==null) setViewAsPlayer(myPlayer.id); },[myPlayer?.id]);
   const [groupFilter,setGroupFilter] = useState("all");
-  const [adminGroupFilters,setAdminGroupFilters] = useState({});
+  // Admin-/Trainer-Ansicht: Profis, Fortgeschrittene und Anfänger sind standardmäßig
+  // vorausgewählt (die übrigen Gruppen wie Gast/Trainer/Erwachsene bleiben zunächst aus).
+  const [adminGroupFilters,setAdminGroupFilters] = useState({Profis:true,Fortgeschrittene:true,Anfänger:true});
   const [showOnlyPresent,setShowOnlyPresent] = useState(false);
 
   const VIEW_CONFIG = {
@@ -18014,6 +18016,21 @@ export default function App() {
         successMessage={loginSuccess}
         clubConfig={clubConfig}
       />
+    );
+  }
+
+  // Warten, bis die Rollen-/Admin-Prüfung abgeschlossen ist. Ohne dieses Gate würde die
+  // App direkt nach dem Login kurz mit isAdmin=false rendern (→ Trainer-Ansicht) und erst
+  // nach dem asynchronen Admin-Check auf die Admin-Ansicht springen. Das Gate verhindert
+  // dieses „Aufblitzen" des Trainerbereichs.
+  if (authUser && !adminReady) {
+    return (
+      <div style={{minHeight:"100vh",background:"var(--bg,#0d1117)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{textAlign:"center",color:"#6b7280"}}>
+          <div style={{fontSize:32,marginBottom:12}}>🏓</div>
+          <div style={{fontSize:12}}>Anmeldung wird geladen...</div>
+        </div>
+      </div>
     );
   }
 
