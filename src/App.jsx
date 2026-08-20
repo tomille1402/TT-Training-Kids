@@ -1,4 +1,4 @@
-// === TTC-App · Version 374 · erstellt 20.08.2026 ===
+// === TTC-App · Version 375 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "374";
+const APP_VERSION = "375";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8117,20 +8117,27 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       // Positionen aus dem Muster (A4): Stern endet ~161mm, Text ab ~230mm.
       // Grundgröße 30 % größer als zuvor (52 → 68); Zeilenabstand entsprechend größer.
       let ny=190;
-      if(vor){ fitSize(vor,68); fettText(vor, mid, ny); ny+=23; }
-      if(nach){ fitSize(nach,68); fettText(nach, mid, ny); }
+      if(vor){ fitSize(vor,64); fettText(vor, mid, ny); ny+=23; }
+      if(nach){ fitSize(nach,64); fettText(nach, mid, ny); }
       // Datum hinter „Niederzeuzheim, den " (links unten). Robust: nutzt Kalam falls
       // vorhanden, sonst die Standardschrift – wird IMMER gezeichnet, wenn ein Datum da ist.
       if(datumIso){
         const teile=String(datumIso).split("-");
         const datumTxt = teile.length===3 ? `${teile[2]}.${teile[1]}.${teile[0]}` : String(datumIso);
-        let dateFont="times";
-        try{ const fl=pdf.getFontList(); if(fl && fl.Kalam) dateFont="Kalam"; }catch(e){}
-        pdf.setFont(dateFont,"normal");
+        let dateFont="times", dateBold=true;
+        try{ const fl=pdf.getFontList(); if(fl && fl.Kalam){ dateFont="Kalam"; dateBold=false; } }catch(e){}
+        pdf.setFont(dateFont, dateBold?"bold":"normal");
         pdf.setFontSize(16); pdf.setTextColor(20,20,20);
         // „Niederzeuzheim, den " endet im Muster bei ~63mm; Datum knapp dahinter,
-        // Grundlinie auf Höhe der Zeile (~283mm).
-        pdf.text(datumTxt, 67, 283.5);
+        // Grundlinie auf Höhe der Zeile (284,5mm – 1 mm tiefer als zuvor).
+        const dx=67, dyy=284.5;
+        if(dateBold){
+          pdf.text(datumTxt, dx, dyy);   // times bold = echtes Fett
+        } else {
+          // Kalam hat nur einen Schnitt → Fett per minimalem Mehrfachversatz simulieren.
+          const d=0.15;
+          [[0,0],[d,0],[-d,0],[0,d],[0,-d]].forEach(([ox,oy])=>pdf.text(datumTxt, dx+ox, dyy+oy));
+        }
       }
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
       const blob=pdf.output("blob");
