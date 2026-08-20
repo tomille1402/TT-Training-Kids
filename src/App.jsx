@@ -1,4 +1,4 @@
-// === TTC-App · Version 369 · erstellt 18.08.2026 ===
+// === TTC-App · Version 370 · erstellt 18.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "369";
+const APP_VERSION = "370";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6694,6 +6694,100 @@ function FaksimileEditor({showToast}) {
   </div>;
 }
 
+// ─── MUSTER ÜBUNGS-URKUNDEN ───────────────────────────────────────────────────
+// 10 Urkundenmuster (Anfänger + Fortgeschrittene, je Bronze/Silber/Gold/Platin/
+// Diamant) als JPEG-Hintergrund. Gespeichert in config/clubConfig.uebungsUrkunden
+// als Objekt { [key]: dataUrl }. Merge:true bewahrt Branding/Faksimile.
+const UEBUNGS_URKUNDEN_TYPEN = [
+  {key:"anf_bronze",  gruppe:"Anfänger",        stufe:"Bronze"},
+  {key:"anf_silber",  gruppe:"Anfänger",        stufe:"Silber"},
+  {key:"anf_gold",    gruppe:"Anfänger",        stufe:"Gold"},
+  {key:"anf_platin",  gruppe:"Anfänger",        stufe:"Platin"},
+  {key:"anf_diamant", gruppe:"Anfänger",        stufe:"Diamant"},
+  {key:"fort_bronze", gruppe:"Fortgeschrittene",stufe:"Bronze"},
+  {key:"fort_silber", gruppe:"Fortgeschrittene",stufe:"Silber"},
+  {key:"fort_gold",   gruppe:"Fortgeschrittene",stufe:"Gold"},
+  {key:"fort_platin", gruppe:"Fortgeschrittene",stufe:"Platin"},
+  {key:"fort_diamant",gruppe:"Fortgeschrittene",stufe:"Diamant"},
+];
+const STUFE_FARBE = { Bronze:"#a97142", Silber:"#8a8f98", Gold:"#c9a227", Platin:"#5f9ea0", Diamant:"#6f7bd6" };
+
+// Ordnet ein Award-Label (z. B. „Bronze Anfänger", „Gold Fortgeschrittene") dem
+// Muster-Key der Übungs-Urkunden zu (anf_bronze … fort_diamant).
+function uebungsUrkundeKeyVon(label){
+  const l=(label||"").toLowerCase();
+  const gruppe = l.includes("fortgeschritten") ? "fort" : "anf";
+  let stufe="";
+  if(l.includes("bronze")) stufe="bronze";
+  else if(l.includes("silber")) stufe="silber";
+  else if(l.includes("gold")) stufe="gold";
+  else if(l.includes("platin")) stufe="platin";
+  else if(l.includes("diamant")) stufe="diamant";
+  return stufe ? `${gruppe}_${stufe}` : "";
+}
+
+function UebungsUrkundenEditor({showToast}) {
+  const [muster,setMuster] = useState({});
+  const [busy,setBusy]     = useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const snap=await getDoc(doc(db,"config","clubConfig"));
+        if(snap.exists()){ const d=snap.data(); setMuster(d.uebungsUrkunden||{}); }
+      }catch(e){}
+    })();
+  },[]);
+
+  async function upload(key, file){
+    if(!file) return;
+    setBusy(key);
+    try{
+      const dataUrl = await komprimiereBild(file, { maxBreite:1240, maxHoehe:1754, maxLen:900000 });
+      const neu = {...muster, [key]:dataUrl};
+      setMuster(neu);
+      await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true});
+      showToast("Muster gespeichert 🏅","🏅");
+    }catch(err){ window.alert(err&&err.message?err.message:"Bild konnte nicht verarbeitet werden."); }
+    setBusy("");
+  }
+
+  async function entferne(key){
+    const neu={...muster}; delete neu[key];
+    setMuster(neu);
+    try{ await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true}); showToast("Muster entfernt","✅"); }
+    catch(e){ window.alert("Fehler:\n"+(e.message||e)); }
+  }
+
+  const gruppen=["Anfänger","Fortgeschrittene"];
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Lade je Stufe das Urkundenmuster als JPEG hoch (A4 hochkant). Beim Erzeugen einer Urkunde werden nur Name und Datum auf das Muster gesetzt.
+    </div>
+    {gruppen.map(gr=>(
+      <div key={gr} style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:8}}>{gr}</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {UEBUNGS_URKUNDEN_TYPEN.filter(t=>t.gruppe===gr).map(t=>{
+            const bild=muster[t.key]; const key=t.key;
+            return <div key={key} style={{flex:"1 1 90px",minWidth:90,border:`2px solid ${bild?STUFE_FARBE[t.stufe]:"var(--border2)"}`,borderRadius:10,padding:8,background:"var(--bg3)"}}>
+              <div style={{fontSize:11,fontWeight:800,color:STUFE_FARBE[t.stufe],marginBottom:5,textAlign:"center"}}>{t.stufe}</div>
+              <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,marginBottom:6,overflow:"hidden"}}>
+                {bild? <img src={bild} alt="" style={{maxWidth:"100%",maxHeight:58,objectFit:"contain"}}/> : <span style={{fontSize:22}}>🏅</span>}
+              </div>
+              <label style={{display:"block",padding:"5px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,textAlign:"center",cursor:busy===key?"not-allowed":"pointer",fontSize:10,color:"var(--text3)",marginBottom:bild?5:0}}>
+                {busy===key?"⏳":(bild?"Ersetzen":"Hochladen")}
+                <input type="file" accept="image/*" style={{display:"none"}} disabled={busy===key} onChange={e=>upload(key,e.target.files?.[0])}/>
+              </label>
+              {bild&&<button type="button" onClick={()=>entferne(key)} style={{width:"100%",padding:"4px",borderRadius:6,fontSize:10,border:"1px solid #ef444466",background:"#ef444422",color:"#ef4444",cursor:"pointer"}}>✕ entfernen</button>}
+            </div>;
+          })}
+        </div>
+      </div>
+    ))}
+  </div>;
+}
+
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
 function BrandingEditor({showToast}) {
   const [name,     setName]     = useState("");
@@ -7947,6 +8041,87 @@ function TtrUpload({ showToast }){
 
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
+
+  // ── Übungs-Urkunde als PDF (Muster-Hintergrund + Name + Datum) ───────────────
+  // Name: dekorative Schrift (Grand Hotel ≈ Curlz MT), Datum: handschriftlich
+  // (Kalam ≈ Chalkboard). Fonts + jsPDF werden per CDN geladen und eingebettet.
+  async function ladeJsPDF_V(){
+    if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    await new Promise((res,rej)=>{ const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden.")); document.head.appendChild(s); });
+    if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
+    return window.jspdf.jsPDF;
+  }
+  async function fontBase64(url){
+    const r=await fetch(url); if(!r.ok) throw new Error("Font-Download fehlgeschlagen");
+    const buf=await r.arrayBuffer(); let bin=""; const bytes=new Uint8Array(buf);
+    for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  // Fonts einmalig registrieren (im Modul-Cache halten).
+  async function registriereFonts(pdf){
+    try{
+      if(!VerwaltungTab._fontName){
+        // Grand Hotel (≈ Curlz MT) als TTF direkt aus dem Google-Fonts-Repo.
+        VerwaltungTab._fontName = await fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/grandhotel/GrandHotel-Regular.ttf");
+      }
+      pdf.addFileToVFS("GrandHotel.ttf", VerwaltungTab._fontName);
+      pdf.addFont("GrandHotel.ttf","GrandHotel","normal");
+    }catch(e){}
+    try{
+      if(!VerwaltungTab._fontDate){
+        // Kalam (≈ Chalkboard) als TTF direkt aus dem Google-Fonts-Repo.
+        VerwaltungTab._fontDate = await fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf");
+      }
+      pdf.addFileToVFS("Kalam.ttf", VerwaltungTab._fontDate);
+      pdf.addFont("Kalam.ttf","Kalam","normal");
+    }catch(e){}
+  }
+
+  async function uebungsUrkundePdf(player, label, musterKey, datumIso){
+    if(!musterKey){ window.alert("Für diese Urkunde ist kein Muster-Typ zugeordnet."); return; }
+    // Muster aus clubConfig laden.
+    let muster="";
+    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()){ const d=snap.data(); muster=(d.uebungsUrkunden||{})[musterKey]||""; } }catch(e){}
+    if(!muster){ window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
+    try{
+      const jsPDF=await ladeJsPDF_V();
+      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      await registriereFonts(pdf);
+      const PW=210, PH=297, mid=PW/2;
+      const bildTyp=/^data:image\/png/i.test(muster)?"PNG":"JPEG";
+      try{ pdf.addImage(muster,bildTyp,0,0,PW,PH); }catch(e){}
+      // Name: Vorname (Zeile 1) + Nachname (Zeile 2), Grand Hotel, groß, unter dem Stern.
+      const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
+      try{ pdf.setFont("GrandHotel","normal"); }catch(e){ pdf.setFont("times","bold"); }
+      pdf.setTextColor(20,20,20);
+      pdf.setFontSize(48);
+      // Positionen aus dem Muster (A4): Stern endet ~161mm, Text ab ~230mm.
+      let ny=192;
+      if(vor){ pdf.text(vor, mid, ny, {align:"center"}); ny+=18; }
+      if(nach){ pdf.text(nach, mid, ny, {align:"center"}); }
+      // Datum hinter „Niederzeuzheim, den " (links unten), Kalam, klein.
+      if(datumIso){
+        const [y,m,d]=String(datumIso).split("-");
+        const datumTxt=`${d}.${m}.${y}`;
+        try{ pdf.setFont("Kalam","normal"); }catch(e){ pdf.setFont("times","normal"); }
+        pdf.setFontSize(12); pdf.setTextColor(20,20,20);
+        // „Niederzeuzheim, den " endet im Muster bei ~63mm; Datum knapp dahinter,
+        // Grundlinie auf Höhe der Zeile (~283mm).
+        pdf.text(datumTxt, 67, 283.5);
+      }
+      const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
+      const blob=pdf.output("blob");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`Urkunde_${safe(label)}_${safe(vor+"_"+nach)}.pdf`;
+      a.target="_blank"; a.rel="noopener noreferrer";
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },4000);
+    }catch(err){ window.alert("Die Urkunde konnte nicht erzeugt werden.\n"+(err&&err.message||"")); }
+  }
+
   // TTR-Liste (für Vorbelegung/Anzeige des aktuellen QTTR-Werts je Spieler).
   const [ttrDaten,setTtrDaten]=useState({stichtage:[],personen:[]});
   useEffect(()=>{
@@ -7985,6 +8160,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showEhr,setShowEhr]=useState(false);
   const [showAppDesign,setShowAppDesign]=useState(false);
   const [showFaksimile,setShowFaksimile]=useState(false);
+  const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
 
@@ -8999,6 +9175,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div></ErrorBoundary>}
     </div>
 
+    {/* Muster Übungs-Urkunden — eigener Bereich, standardmäßig zugeklappt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowUebungsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🏅 Muster Übungs-Urkunden</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showUebungsUrkunden?"▲":"▼"}</span>
+      </div>
+      {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <UebungsUrkundenEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
     {/* Trainingszeitraum — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9581,13 +9768,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🏅 Urkunden-Vergabedaten</div>
                   {allEarned.map(a=>{
                     const key=`awardDate_${a.label.replace(/\s/g,"_")}`;
+                    const musterKey=uebungsUrkundeKeyVon(a.label);
                     return <div key={key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                       <span style={{fontSize:16}}>{a.emoji}</span>
                       <div style={{flex:1,fontSize:11,color:"var(--text2)"}}>{a.label}</div>
                       <input type="date" value={editPlayer[key]||""}
                         onChange={e=>setEditPlayer(prev=>({...prev,[key]:e.target.value}))}
                         style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
-                      {editPlayer[key]&&<button onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
+                      {editPlayer[key]&&<button type="button" onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
+                      <button type="button" title="Urkunde als PDF erzeugen"
+                        onClick={()=>uebungsUrkundePdf(editPlayer, a.label, musterKey, editPlayer[key])}
+                        style={{padding:"4px 9px",background:"#c8102e",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
                     </div>;
                   })}
                   <div style={{marginTop:8,borderTop:"1px solid var(--border2)",paddingTop:8}}>
