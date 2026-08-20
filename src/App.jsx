@@ -1,4 +1,4 @@
-// === TTC-App · Version 373 · erstellt 20.08.2026 ===
+// === TTC-App · Version 374 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "373";
+const APP_VERSION = "374";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8103,19 +8103,30 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       // Parisienne ist fest eingebettet; nur falls das Registrieren scheitert, Fallback.
       pdf.setFont(nameOk?"Parisienne":"times", nameOk?"normal":"bold");
       pdf.setTextColor(200,16,46);   // TTC-Rot
-      // Schriftgröße so wählen, dass auch längere Namen auf die Seite passen (max ~180mm).
-      const maxBreite=180;
+      // Schriftgröße so wählen, dass auch längere Namen auf die Seite passen (max ~186mm).
+      const maxBreite=186;
       const fitSize=(txt,start)=>{ let s=start; pdf.setFontSize(s);
-        while(s>22 && pdf.getTextWidth(txt)>maxBreite){ s-=2; pdf.setFontSize(s); } return s; };
+        while(s>26 && pdf.getTextWidth(txt)>maxBreite){ s-=2; pdf.setFontSize(s); } return s; };
+      // „Fett“ simulieren: Text mehrfach minimal versetzt zeichnen (Parisienne hat nur
+      // einen Schnitt, daher kein echtes Bold – dieser Versatz verdickt die Striche sichtbar).
+      const fettText=(txt,x,yy)=>{
+        const d=0.18;
+        const offs=[[0,0],[d,0],[-d,0],[0,d],[0,-d],[d,d],[-d,-d]];
+        offs.forEach(([ox,oy])=>pdf.text(txt, x+ox, yy+oy, {align:"center"}));
+      };
       // Positionen aus dem Muster (A4): Stern endet ~161mm, Text ab ~230mm.
-      let ny=192;
-      if(vor){ fitSize(vor,52); pdf.text(vor, mid, ny, {align:"center"}); ny+=18; }
-      if(nach){ fitSize(nach,52); pdf.text(nach, mid, ny, {align:"center"}); }
-      // Datum hinter „Niederzeuzheim, den " (links unten), Kalam, etwas größer.
+      // Grundgröße 30 % größer als zuvor (52 → 68); Zeilenabstand entsprechend größer.
+      let ny=190;
+      if(vor){ fitSize(vor,68); fettText(vor, mid, ny); ny+=23; }
+      if(nach){ fitSize(nach,68); fettText(nach, mid, ny); }
+      // Datum hinter „Niederzeuzheim, den " (links unten). Robust: nutzt Kalam falls
+      // vorhanden, sonst die Standardschrift – wird IMMER gezeichnet, wenn ein Datum da ist.
       if(datumIso){
-        const [y,m,d]=String(datumIso).split("-");
-        const datumTxt=`${d}.${m}.${y}`;
-        try{ pdf.setFont("Kalam","normal"); }catch(e){ pdf.setFont("times","normal"); }
+        const teile=String(datumIso).split("-");
+        const datumTxt = teile.length===3 ? `${teile[2]}.${teile[1]}.${teile[0]}` : String(datumIso);
+        let dateFont="times";
+        try{ const fl=pdf.getFontList(); if(fl && fl.Kalam) dateFont="Kalam"; }catch(e){}
+        pdf.setFont(dateFont,"normal");
         pdf.setFontSize(16); pdf.setTextColor(20,20,20);
         // „Niederzeuzheim, den " endet im Muster bei ~63mm; Datum knapp dahinter,
         // Grundlinie auf Höhe der Zeile (~283mm).
