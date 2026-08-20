@@ -1,4 +1,4 @@
-// === TTC-App · Version 375 · erstellt 20.08.2026 ===
+// === TTC-App · Version 376 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "375";
+const APP_VERSION = "376";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -17372,6 +17372,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   globalTheme,onSetGlobalTheme,onPlayerAdded,isDark,onSetUserTheme,userTheme,onSignOut,lockedPlayer=false,parentBar=null}) {
 
   const [activeView,setActiveView] = useState(availableViews[0]||"player");
+  // Falls sich die verfügbaren Ansichten nach dem ersten Render ändern (z. B. weil die
+  // Admin-Rolle erst nach dem Laden der Daten feststeht), sicherstellen, dass der aktive
+  // Reiter gültig bleibt. Ist er nicht mehr verfügbar, auf die erste verfügbare Ansicht
+  // zurückfallen – so landet ein Admin nicht faelschlich dauerhaft im Trainerbereich.
+  useEffect(()=>{
+    if(availableViews.length && !availableViews.includes(activeView)){
+      setActiveView(availableViews[0]);
+    }
+  },[availableViews.join("|")]);
   const [viewAsPlayer,setViewAsPlayer] = useState(myPlayer?.id||null);
   // Sobald die eingeloggte Person feststeht und noch nichts ausgewählt wurde, die
   // Auswahl auf die EIGENE Person setzen (verhindert einen Fallback auf eine fremde
@@ -18178,7 +18187,11 @@ export default function App() {
   //   - isAdmin → nur als Fallback, wenn die Person gar kein Profil/keine Rolle hat.
   const playerRoles = myPlayer?.roles || {};
   const hasTrainerRole = playerRoles.trainer === true;              // strikt: nur zugeordnete Funktion
-  const hasAdminRole   = isSuperAdmin || playerRoles.admin === true; // Admin-Ansicht
+  // Admin-Ansicht: Super-Admin, per Profil zugeordnete Admin-Rolle ODER Eintrag in der
+  // Admin-E-Mail-Liste (isAdmin). Letzteres ist wichtig, damit ein Admin sofort die
+  // Admin-Ansicht sieht – auch bevor die players-Collection geladen ist (sonst würde
+  // er anfangs faelschlich nur den Trainerbereich sehen).
+  const hasAdminRole   = isSuperAdmin || isAdmin || playerRoles.admin === true;
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
   // Zu einer Spielergruppe gehören = ist Spieler (auch wenn zusätzlich Trainer).
