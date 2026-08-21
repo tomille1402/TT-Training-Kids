@@ -1,4 +1,4 @@
-// === TTC-App · Version 378 · erstellt 20.08.2026 ===
+// === TTC-App · Version 380 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "378";
+const APP_VERSION = "380";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1884,8 +1884,246 @@ function Feld({label,children,klein}){
 const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"};
 
 // ─── Turnier-Detail: Teilnehmer, Gruppen (Drag&Drop), Tabelle, Spiele ───────
+// ─── BEAMER-/PRÄSENTATIONSMODUS ───────────────────────────────────────────────
+// Vollbild-Ansicht für die Projektion (Beamer). Zeigt je Konkurrenz wahlweise
+// KO-Tableau, Gruppentabellen oder Platzierungen – oder turnierweit alle laufenden
+// Spiele. Feste Ansicht ODER automatischer Durchlauf alle X Sekunden.
+function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
+  const konkurrenzen = turnier?.konkurrenzen || [];
+  const nameVon=(id)=>{ const p=(players||[]).find(x=>x.id===id); return p?`${p.firstName||""} ${p.lastName||""}`.trim():"?"; };
+  const teamName=(k,tm)=>{
+    if(!tm) return "?";
+    const a=nameVon(tm.s1), b=nameVon(tm.s2);
+    return `${a} / ${b}`;
+  };
+  // Einheit-Name (Einzel: Person; Doppel/Mixed: Team) über die ID auflösen.
+  const einheitName=(k,id)=>{
+    if(istDoppelKonk(k)){
+      const tm=(k.doppelTeams||[]).find(t=>t.id===id||t.s1===id||t.s2===id);
+      return tm?teamName(k,tm):nameVon(id);
+    }
+    return nameVon(id);
+  };
+
+  // Anzeige-Einträge (Folien) zusammenstellen: je Konkurrenz eine Folie „auto“
+  // (Tableau, wenn KO vorhanden, sonst Gruppen), plus eine turnierweite „Laufende Spiele“.
+  const folien = [];
+  konkurrenzen.forEach((k,ki)=>{
+    const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
+    const hatGruppen = Array.isArray(k.gruppen) && k.gruppen.length>0;
+    if(hatKO)      folien.push({typ:"tableau",    ki, label:`${k.name} · Tableau`});
+    if(hatGruppen) folien.push({typ:"gruppen",    ki, label:`${k.name} · Tabelle`});
+    if(k.abgeschlossen) folien.push({typ:"platz",  ki, label:`${k.name} · Platzierungen`});
+    if(!hatKO && !hatGruppen && !k.abgeschlossen) folien.push({typ:"gruppen", ki, label:`${k.name}`});
+  });
+  folien.push({typ:"laufende", ki:-1, label:"Alle laufenden Spiele"});
+
+  const [selIdx,setSelIdx]   = useState(0);           // aktuelle Folie
+  const [rotieren,setRotieren]= useState(false);
+  const [intervall,setIntervall]= useState(15);       // Sekunden
+  const [ctrlOffen,setCtrlOffen]= useState(true);
+  const wrapRef = useRef(null);
+
+  // Auto-Durchlauf
+  useEffect(()=>{
+    if(!rotieren || folien.length<=1) return;
+    const t=setInterval(()=>{ setSelIdx(i=>(i+1)%folien.length); }, Math.max(3,intervall)*1000);
+    return ()=>clearInterval(t);
+  },[rotieren,intervall,folien.length]);
+
+  // Sicherstellen, dass selIdx gültig bleibt
+  useEffect(()=>{ if(selIdx>=folien.length) setSelIdx(0); },[folien.length]);
+
+  function vollbild(){
+    const el=wrapRef.current; if(!el) return;
+    if(!document.fullscreenElement){ el.requestFullscreen?.(); }
+    else { document.exitFullscreen?.(); }
+  }
+
+  const folie = folien[selIdx] || folien[0];
+  const k = folie && folie.ki>=0 ? konkurrenzen[folie.ki] : null;
+
+  // ―― Renderer für die einzelnen Folientypen ――
+  function renderGruppen(k){
+    const gruppen=k.gruppen||[];
+    return <div style={{display:"grid",gridTemplateColumns:gruppen.length>1?"1fr 1fr":"1fr",gap:28,width:"100%"}}>
+      {gruppen.map((ids,gi)=>{
+        const tab=berechneGruppenTabelle(ids,(k.spiele||[]).filter(s=>s.gi===gi));
+        const rowById={}; tab.forEach(r=>rowById[r.id]=r);
+        const zeilen=ids.map(id=>({id,r:rowById[id]||{},q:qttrVon((players||[]).find(p=>p.id===id))}))
+          .sort((a,b)=>(a.r.platz||999)-(b.r.platz||999));
+        return <div key={gi} style={{background:"#111827",border:"2px solid #374151",borderRadius:16,padding:"18px 22px"}}>
+          <div style={{fontSize:"2.2vw",fontWeight:900,color:"#f59e0b",marginBottom:12}}>Gruppe {gi+1}</div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"1.8vw"}}>
+            <thead><tr style={{color:"#9ca3af",fontSize:"1.4vw"}}>
+              <th style={{textAlign:"center",padding:"6px 8px"}}>#</th>
+              <th style={{textAlign:"left",padding:"6px 8px"}}>Name</th>
+              <th style={{textAlign:"center",padding:"6px 8px"}}>Sätze</th>
+              <th style={{textAlign:"center",padding:"6px 8px"}}>Spiele</th>
+              <th style={{textAlign:"center",padding:"6px 8px"}}>Platz</th>
+            </tr></thead>
+            <tbody>
+              {zeilen.map((z,i)=>(
+                <tr key={z.id} style={{borderTop:"1px solid #374151"}}>
+                  <td style={{textAlign:"center",padding:"8px",color:"#6b7280",fontWeight:700}}>{i+1}</td>
+                  <td style={{textAlign:"left",padding:"8px",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{einheitName(k,z.id)}</td>
+                  <td style={{textAlign:"center",padding:"8px",color:"#d1d5db"}}>{z.r.satzGew||0}:{z.r.satzVerl||0}</td>
+                  <td style={{textAlign:"center",padding:"8px",color:"#d1d5db"}}>{z.r.spSieg||0}:{z.r.spNied||0}</td>
+                  <td style={{textAlign:"center",padding:"8px",color:"#f59e0b",fontWeight:900}}>{z.r.platz||"–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>;
+      })}
+    </div>;
+  }
+
+  function renderTableau(k){
+    const runden=ko_baueRunden(k.koSlots, k.koSpiele||{}, k.gewinnsaetze??3);
+    const rundenName=(idx)=>{
+      const restVon={1:"Finale",2:"Halbfinale",4:"Viertelfinale",8:"Achtelfinale"};
+      return restVon[runden[idx].length] || `Runde ${idx+1}`;
+    };
+    return <div style={{display:"flex",gap:24,alignItems:"stretch",justifyContent:"center",width:"100%",overflowX:"auto"}}>
+      {runden.map((spiele,ri)=>(
+        <div key={ri} style={{display:"flex",flexDirection:"column",justifyContent:"space-around",gap:14,minWidth:"18vw"}}>
+          <div style={{fontSize:"1.5vw",fontWeight:800,color:"#8b5cf6",textAlign:"center",marginBottom:6}}>{rundenName(ri)}</div>
+          {spiele.map((s,i)=>{
+            const sg=ko_sieger(s.saetze,k.gewinnsaetze??3);
+            const aName=s.a?einheitName(k,s.a):"—", bName=s.b?einheitName(k,s.b):"—";
+            const aWin=sg==="a", bWin=sg==="b";
+            return <div key={i} style={{background:"#111827",border:"2px solid #374151",borderRadius:12,overflow:"hidden"}}>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",fontSize:"1.5vw",
+                background:aWin?"#065f46":"transparent",color:aWin?"#fff":"#d1d5db",fontWeight:aWin?900:600}}>
+                <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{aName}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",fontSize:"1.5vw",borderTop:"1px solid #374151",
+                background:bWin?"#065f46":"transparent",color:bWin?"#fff":"#d1d5db",fontWeight:bWin?900:600}}>
+                <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bName}</span>
+              </div>
+            </div>;
+          })}
+        </div>
+      ))}
+    </div>;
+  }
+
+  function renderPlatz(k){
+    const pl=endplatzierungenKonk(k, koHelpers);   // id → Platz
+    const eintraege=Object.entries(pl).map(([id,platz])=>({id,platz}))
+      .filter((e,i,arr)=>arr.findIndex(x=>x.id===e.id)===i)
+      .sort((a,b)=>a.platz-b.platz);
+    const medal=(p)=>p===1?"🥇":p===2?"🥈":p===3?"🥉":`${p}.`;
+    return <div style={{width:"100%",maxWidth:"70vw",margin:"0 auto"}}>
+      {eintraege.map((e,i)=>(
+        <div key={e.id} style={{display:"flex",alignItems:"center",gap:20,padding:"14px 22px",
+          background:i%2?"#0b1220":"#111827",borderRadius:12,marginBottom:8}}>
+          <span style={{fontSize:"2.6vw",width:"3.5vw",textAlign:"center"}}>{medal(e.platz)}</span>
+          <span style={{fontSize:"2.4vw",fontWeight:800,color:"#fff"}}>{einheitName(k,e.id)}</span>
+        </div>
+      ))}
+    </div>;
+  }
+
+  function renderLaufende(){
+    // Turnierweit: alle KO- und Gruppenspiele ohne Endergebnis (laufend/offen), mit Konkurrenz-Label.
+    const items=[];
+    konkurrenzen.forEach(k=>{
+      const g=k.gewinnsaetze??3;
+      // Gruppenspiele
+      (k.spiele||[]).forEach(s=>{
+        if(!s.a||!s.b) return;
+        const fertig=ko_sieger(s.saetze,g)!=null && s.fixiert;
+        if(!fertig) items.push({konk:k.name, a:einheitName(k,s.a), b:einheitName(k,s.b), tisch:s.tisch});
+      });
+      // KO-Spiele
+      const runden=(Array.isArray(k.koSlots)&&k.koSlots.some(Boolean))?ko_baueRunden(k.koSlots,k.koSpiele||{},g):[];
+      runden.forEach(r=>r.forEach(s=>{
+        if(!s.a||!s.b) return;
+        const fertig=ko_sieger(s.saetze,g)!=null && s.fixiert;
+        if(!fertig) items.push({konk:k.name, a:einheitName(k,s.a), b:einheitName(k,s.b), tisch:(k.koSpiele?.[s.key]||{}).tisch});
+      }));
+    });
+    return <div style={{width:"100%",maxWidth:"80vw",margin:"0 auto"}}>
+      {items.length===0 && <div style={{textAlign:"center",fontSize:"2.4vw",color:"#9ca3af"}}>Aktuell keine laufenden Spiele</div>}
+      {items.map((it,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",
+          background:i%2?"#0b1220":"#111827",borderRadius:12,marginBottom:8}}>
+          {it.tisch!=null && it.tisch!=="" && <span style={{fontSize:"1.6vw",fontWeight:900,color:"#10b981",minWidth:"5vw"}}>Tisch {it.tisch}</span>}
+          <span style={{fontSize:"1.9vw",fontWeight:800,color:"#fff",flex:1,textAlign:"right"}}>{it.a}</span>
+          <span style={{fontSize:"1.6vw",color:"#6b7280"}}>vs</span>
+          <span style={{fontSize:"1.9vw",fontWeight:800,color:"#fff",flex:1}}>{it.b}</span>
+          <span style={{fontSize:"1.3vw",color:"#8b5cf6",fontWeight:700,minWidth:"12vw",textAlign:"right"}}>{it.konk}</span>
+        </div>
+      ))}
+    </div>;
+  }
+
+  let inhalt=null, titel="";
+  if(!folie){ inhalt=<div style={{color:"#9ca3af",fontSize:"2vw"}}>Keine Konkurrenzen vorhanden.</div>; }
+  else if(folie.typ==="gruppen"){ titel=`${k.name} – Tabelle`; inhalt=renderGruppen(k); }
+  else if(folie.typ==="tableau"){ titel=`${k.name} – KO-Tableau`; inhalt=renderTableau(k); }
+  else if(folie.typ==="platz"){ titel=`${k.name} – Platzierungen`; inhalt=renderPlatz(k); }
+  else if(folie.typ==="laufende"){ titel="Laufende Spiele"; inhalt=renderLaufende(); }
+
+  return <div ref={wrapRef} style={{position:"fixed",inset:0,zIndex:9999,background:"#0d1117",
+    display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Kopf */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 28px",borderBottom:"2px solid #1f2937"}}>
+      <div>
+        <div style={{fontSize:"1.4vw",color:"#8b5cf6",fontWeight:700}}>{turnier?.name}</div>
+        <div style={{fontSize:"2.6vw",fontWeight:900,color:"#fff",lineHeight:1.1}}>{titel}</div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {rotieren && <span style={{fontSize:"1.1vw",color:"#10b981",fontWeight:700}}>⟳ {intervall}s</span>}
+        <button onClick={()=>setCtrlOffen(o=>!o)} style={beamerBtn("#374151")}>{ctrlOffen?"Steuerung ausblenden":"Steuerung"}</button>
+      </div>
+    </div>
+
+    {/* Inhalt */}
+    <div style={{flex:1,overflow:"auto",padding:"3vh 3vw",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+      {inhalt}
+    </div>
+
+    {/* Steuerleiste */}
+    {ctrlOffen && <div style={{borderTop:"2px solid #1f2937",padding:"14px 20px",display:"flex",flexWrap:"wrap",
+      alignItems:"center",gap:10,background:"#0b1220"}}>
+      {/* Folien-Auswahl */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",flex:1,overflowX:"auto"}}>
+        {folien.map((f,i)=>(
+          <button key={i} onClick={()=>{setSelIdx(i);}} style={{
+            padding:"7px 12px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",
+            border:`2px solid ${i===selIdx?"#8b5cf6":"#374151"}`,
+            background:i===selIdx?"#8b5cf622":"transparent",color:i===selIdx?"#a78bfa":"#9ca3af"}}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      {/* Rotation */}
+      <button onClick={()=>setRotieren(r=>!r)} style={beamerBtn(rotieren?"#10b981":"#374151",true)}>
+        {rotieren?"⏸ Auto-Durchlauf":"▶ Auto-Durchlauf"}
+      </button>
+      <div style={{display:"flex",alignItems:"center",gap:5,color:"#9ca3af",fontSize:13}}>
+        <span>alle</span>
+        <input type="number" min={3} max={120} value={intervall}
+          onChange={e=>setIntervall(Math.max(3,Math.min(120,Number(e.target.value)||15)))}
+          style={{width:56,padding:"6px",borderRadius:7,border:"1px solid #374151",background:"#111827",color:"#fff",textAlign:"center",fontSize:13}}/>
+        <span>Sek.</span>
+      </div>
+      <button onClick={vollbild} style={beamerBtn("#374151")}>⛶ Vollbild</button>
+      <button onClick={onClose} style={beamerBtn("#ef4444",true)}>✕ Schließen</button>
+    </div>}
+  </div>;
+}
+function beamerBtn(farbe,filled){
+  return {padding:"8px 14px",borderRadius:9,fontSize:13,fontWeight:800,cursor:"pointer",
+    border:`2px solid ${farbe}`, background:filled?farbe:"transparent", color:filled?"#fff":farbe==="#374151"?"#d1d5db":farbe};
+}
+
 function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrainer, myPlayer, onBack, onEdit, onSpeichern }){
   const [t,setT]=useState(turnier);
+  const [beamerOffen,setBeamerOffen]=useState(false);   // Beamer-/Präsentationsmodus
   const [aktiveKonk,setAktiveKonk]=useState(
     [...(turnier.konkurrenzen||[])].sort((a,b)=>(a.name||"").localeCompare(b.name||"",undefined,{numeric:true}))[0]?.key||null
   );
@@ -3375,9 +3613,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {autoStatus==="speichert" && <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>speichert…</span>}
         {autoStatus==="gespeichert" && <span style={{fontSize:11,color:"#10b981",fontWeight:700}}>✓ gespeichert</span>}
+        {(isAdmin||isTrainer) && <button onClick={()=>setBeamerOffen(true)} style={miniBtn("#0ea5e9")}>🖥️ Beamer</button>}
         {onEdit && <button onClick={onEdit} style={miniBtn("#8b5cf6")}>⚙️ Parameter</button>}
       </div>
     </div>
+    {beamerOffen && <BeamerModus turnier={t} players={players} qttrVon={qttrVon} koHelpers={koHelpers} onClose={()=>setBeamerOffen(false)}/>}
     <div style={{fontSize:17,fontWeight:800}}>{t.name}</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>{deDatumT(t.datum)}</div>
 
