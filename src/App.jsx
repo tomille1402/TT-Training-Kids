@@ -1,4 +1,4 @@
-// === TTC-App · Version 382 · erstellt 22.08.2026 ===
+// === TTC-App · Version 383 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "382";
+const APP_VERSION = "383";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8794,6 +8794,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         mfClickTT:     editPlayer.mfClickTT||[],
         mannschaftsfuehrerTeam: editPlayer.mannschaftsfuehrerTeam||"",
         ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
+        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true) ? {betreuerNachwuchs:editPlayer.betreuerNachwuchs||"Nein"} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -9911,6 +9912,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
                   <option value="Stammspieler">Stammspieler</option>
                   <option value="Ersatzspieler">Ersatzspieler</option>
+                </select>
+              </div>}
+
+              {/* Betreuer Nachwuchs — für Personen mit Funktion Erwachsene oder Trainer */}
+              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true)&&<div style={{marginBottom:14}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Betreuer Nachwuchs</label>
+                <select value={editPlayer.betreuerNachwuchs||"Nein"} onChange={e=>setEditPlayer(prev=>({...prev,betreuerNachwuchs:e.target.value}))}
+                  style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
+                  <option value="Ja">Ja</option>
+                  <option value="Nein">Nein</option>
                 </select>
               </div>}
 
