@@ -1,4 +1,4 @@
-// === TTC-App · Version 385 · erstellt 22.08.2026 ===
+// === TTC-App · Version 386 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "385";
+const APP_VERSION = "386";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -7466,6 +7466,41 @@ function PersonenUebersicht({players}) {
   },[offen, pushMap]);
   const pushStatus=(id)=> (pushMap && pushMap[id]) ? pushMap[id] : "offen";
 
+  // Betreuungs-Zählung: Anzahl der Nachwuchsspiele der AKTUELLEN Saison, bei denen die
+  // Person als Betreuer (1 oder 2) eingetragen ist. Quelle ist das öffentliche
+  // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,f}}}),
+  // das nur für Nachwuchsspiele Einträge enthält.
+  const AKTUELLE_SAISON = "spielplan_2026_2027";
+  const [betreuerDaten,setBetreuerDaten]=useState(null);
+  useEffect(()=>{
+    if(!offen || betreuerDaten!==null) return;
+    let ab=false;
+    (async()=>{
+      try{
+        const snap=await getDoc(doc(db,"config",`betreuerFahrer_${AKTUELLE_SAISON}`));
+        if(!ab) setBetreuerDaten(snap.exists()?(snap.data().data||{}):{});
+      }catch(e){ if(!ab) setBetreuerDaten({}); }
+    })();
+    return ()=>{ ab=true; };
+  },[offen, betreuerDaten]);
+  const betreuungCount = useMemo(()=>{
+    const cnt={};
+    const norm=(s)=>(s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");
+    const bf=betreuerDaten||{};
+    for(const k in bf){
+      const e=bf[k]||{};
+      for(const nm of [e.b1,e.b2]){
+        const n=norm(nm);
+        if(n) cnt[n]=(cnt[n]||0)+1;
+      }
+    }
+    return cnt;
+  },[betreuerDaten]);
+  const betreuungVon=(p)=>{
+    const n=(`${p.firstName||""} ${p.lastName||""}`).toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");
+    return betreuungCount[n]||0;
+  };
+
   const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"]];
   const rollenKurz=(p)=>{
     const r=p.roles||{};
@@ -7525,6 +7560,7 @@ function PersonenUebersicht({players}) {
     datenschutz:dsText(p),
     dsSort:p.datenschutzAccepted||"",
     push:pushStatus(p.id),
+    betreuung:betreuungVon(p),
   }));
   const filtered=rows.filter(r=>{
     if(nameFilter&&!r.name.toLowerCase().includes(nameFilter.toLowerCase())) return false;
@@ -7546,6 +7582,7 @@ function PersonenUebersicht({players}) {
   const sorted=[...filtered].sort((a,b)=>{
     let av,bv;
     if(sortKey==="datenschutz"){av=a.dsSort;bv=b.dsSort;}
+    else if(sortKey==="betreuung"){av=a.betreuung||0;bv=b.betreuung||0; return sortDir==="asc"?av-bv:bv-av;}
     else {av=String(a[sortKey]||"").toLowerCase();bv=String(b[sortKey]||"").toLowerCase();}
     if(av<bv) return sortDir==="asc"?-1:1;
     if(av>bv) return sortDir==="asc"?1:-1;
@@ -7609,6 +7646,7 @@ function PersonenUebersicht({players}) {
               <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
               <th style={th} onClick={()=>toggleSort("datenschutz")}>DS{arrow("datenschutz")}</th>
               <th style={th} onClick={()=>toggleSort("push")}>Push{arrow("push")}</th>
+              <th style={th} onClick={()=>toggleSort("betreuung")}># Betreuung{arrow("betreuung")}</th>
             </tr>
           </thead>
           <tbody>
@@ -7623,9 +7661,10 @@ function PersonenUebersicht({players}) {
                   color:r.push==="erteilt"?"#10b981":r.push==="abgelehnt"?"#ef4444":"#f59e0b"}}>
                   {r.push==="erteilt"?"✅":r.push==="abgelehnt"?"🚫":"⏳"} {r.push}
                 </td>
+                <td style={{...td,textAlign:"center",fontWeight:700,color:r.betreuung>0?"var(--text)":"var(--text4)"}}>{r.betreuung}</td>
               </tr>
             ))}
-            {sorted.length===0&&<tr><td colSpan={6} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+            {sorted.length===0&&<tr><td colSpan={7} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
           </tbody>
         </table>
       </div>
