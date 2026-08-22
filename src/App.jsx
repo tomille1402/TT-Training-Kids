@@ -1,4 +1,4 @@
-// === TTC-App · Version 380 · erstellt 20.08.2026 ===
+// === TTC-App · Version 381 · erstellt 20.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "380";
+const APP_VERSION = "381";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2069,55 +2069,69 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
 
   return <div ref={wrapRef} style={{position:"fixed",inset:0,zIndex:9999,background:"#0d1117",
     display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Kopf */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 28px",borderBottom:"2px solid #1f2937"}}>
-      <div>
-        <div style={{fontSize:"1.4vw",color:"#8b5cf6",fontWeight:700}}>{turnier?.name}</div>
-        <div style={{fontSize:"2.6vw",fontWeight:900,color:"#fff",lineHeight:1.1}}>{titel}</div>
+    {/* Kopfzeile: Titel + Steuerung-ein/aus + Auto-Durchlauf darunter */}
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"14px 24px",borderBottom:"2px solid #1f2937",flexShrink:0}}>
+      <div style={{minWidth:0,flex:1}}>
+        <div style={{fontSize:15,color:"#8b5cf6",fontWeight:700}}>{turnier?.name}</div>
+        <div style={{fontSize:26,fontWeight:900,color:"#fff",lineHeight:1.15}}>{titel}</div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        {rotieren && <span style={{fontSize:"1.1vw",color:"#10b981",fontWeight:700}}>⟳ {intervall}s</span>}
-        <button onClick={()=>setCtrlOffen(o=>!o)} style={beamerBtn("#374151")}>{ctrlOffen?"Steuerung ausblenden":"Steuerung"}</button>
+      <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <button onClick={()=>setCtrlOffen(o=>!o)} style={beamerBtn("#374151")}>{ctrlOffen?"Steuerung ausblenden":"Steuerung einblenden"}</button>
+        <button onClick={()=>setRotieren(r=>!r)} style={beamerBtn(rotieren?"#10b981":"#374151",rotieren)}>
+          {rotieren?`⏸ Auto-Durchlauf (${intervall}s)`:"▶ Auto-Durchlauf"}
+        </button>
       </div>
     </div>
 
-    {/* Inhalt */}
-    <div style={{flex:1,overflow:"auto",padding:"3vh 3vw",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+    {/* Oberer Bereich: Anzeige-Inhalt – nimmt die obere Hälfte ein, scrollbar */}
+    <div style={{flex:ctrlOffen?"1 1 50%":"1 1 100%",overflow:"auto",padding:"20px 24px",
+      display:"flex",alignItems:"flex-start",justifyContent:"center",minHeight:0}}>
       {inhalt}
     </div>
 
-    {/* Steuerleiste */}
-    {ctrlOffen && <div style={{borderTop:"2px solid #1f2937",padding:"14px 20px",display:"flex",flexWrap:"wrap",
-      alignItems:"center",gap:10,background:"#0b1220"}}>
-      {/* Folien-Auswahl */}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",flex:1,overflowX:"auto"}}>
+    {/* Untere Hälfte: Steuerung – eigener, scrollbarer Bereich */}
+    {ctrlOffen && <div style={{flex:"1 1 50%",minHeight:0,overflow:"auto",borderTop:"2px solid #1f2937",
+      background:"#0b1220",padding:"16px 24px"}}>
+
+      {/* Auto-Durchlauf-Einstellung */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <span style={{fontSize:14,fontWeight:800,color:"#e5e7eb"}}>Auto-Durchlauf:</span>
+        <div style={{display:"flex",alignItems:"center",gap:6,color:"#9ca3af",fontSize:14}}>
+          <span>alle</span>
+          <input type="number" min={3} max={120} value={intervall}
+            onChange={e=>setIntervall(Math.max(3,Math.min(120,Number(e.target.value)||15)))}
+            style={{width:64,padding:"7px",borderRadius:7,border:"1px solid #374151",background:"#111827",color:"#fff",textAlign:"center",fontSize:14,fontWeight:700}}/>
+          <span>Sekunden</span>
+        </div>
+        <span style={{fontSize:12,color:rotieren?"#10b981":"#6b7280",fontWeight:700}}>
+          {rotieren?"● läuft":"○ aus"}
+        </span>
+      </div>
+
+      {/* Konkurrenz-/Ansichts-Auswahl: kompakt, mehrspaltig */}
+      <div style={{fontSize:13,fontWeight:800,color:"#9ca3af",marginBottom:8}}>Ansicht wählen:</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:6,marginBottom:16}}>
         {folien.map((f,i)=>(
-          <button key={i} onClick={()=>{setSelIdx(i);}} style={{
-            padding:"7px 12px",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",
-            border:`2px solid ${i===selIdx?"#8b5cf6":"#374151"}`,
-            background:i===selIdx?"#8b5cf622":"transparent",color:i===selIdx?"#a78bfa":"#9ca3af"}}>
-            {f.label}
+          <button key={i} onClick={()=>setSelIdx(i)} style={{
+            padding:"8px 10px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+            textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+            border:`1.5px solid ${i===selIdx?"#8b5cf6":"#2d3748"}`,
+            background:i===selIdx?"#8b5cf622":"#111827",color:i===selIdx?"#a78bfa":"#9ca3af"}}>
+            {i===selIdx?"▶ ":""}{f.label}
           </button>
         ))}
       </div>
-      {/* Rotation */}
-      <button onClick={()=>setRotieren(r=>!r)} style={beamerBtn(rotieren?"#10b981":"#374151",true)}>
-        {rotieren?"⏸ Auto-Durchlauf":"▶ Auto-Durchlauf"}
-      </button>
-      <div style={{display:"flex",alignItems:"center",gap:5,color:"#9ca3af",fontSize:13}}>
-        <span>alle</span>
-        <input type="number" min={3} max={120} value={intervall}
-          onChange={e=>setIntervall(Math.max(3,Math.min(120,Number(e.target.value)||15)))}
-          style={{width:56,padding:"6px",borderRadius:7,border:"1px solid #374151",background:"#111827",color:"#fff",textAlign:"center",fontSize:13}}/>
-        <span>Sek.</span>
+
+      {/* Aktionen */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <button onClick={vollbild} style={beamerBtn("#374151")}>⛶ Vollbild</button>
+        <button onClick={onClose} style={beamerBtn("#ef4444",true)}>✕ Beamer schließen</button>
       </div>
-      <button onClick={vollbild} style={beamerBtn("#374151")}>⛶ Vollbild</button>
-      <button onClick={onClose} style={beamerBtn("#ef4444",true)}>✕ Schließen</button>
     </div>}
   </div>;
 }
 function beamerBtn(farbe,filled){
-  return {padding:"8px 14px",borderRadius:9,fontSize:13,fontWeight:800,cursor:"pointer",
+  return {padding:"9px 15px",borderRadius:9,fontSize:14,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",
     border:`2px solid ${farbe}`, background:filled?farbe:"transparent", color:filled?"#fff":farbe==="#374151"?"#d1d5db":farbe};
 }
 
