@@ -1,4 +1,4 @@
-// === TTC-App · Version 384 · erstellt 22.08.2026 ===
+// === TTC-App · Version 385 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "384";
+const APP_VERSION = "385";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -7663,6 +7663,8 @@ const PUSH_SPIEL_EMPFAENGER = [
   {key:"zusage",          label:"Spieler mit Zusage"},
   {key:"trainer",         label:"Trainer"},
   {key:"admin",           label:"Admin"},
+  {key:"betreuer",        label:"Betreuer", nurNachwuchs:true},
+  {key:"fahrer",          label:"Fahrer",   nurNachwuchs:true},
 ];
 // Voreingestellte Nachwuchs-Mannschaften (vom Admin per Häkchen änderbar).
 const PUSH_NACHWUCHS_DEFAULT = ["Mädchen 11","Mädchen 13","Mädchen 15","Jugend 11"];
@@ -7814,7 +7816,7 @@ function PushRegelnVerwaltung({showToast}){
             return <tr key={k}>
               <td style={{...td,fontWeight:700}}>{label}</td>
               <td style={td}><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                {PUSH_SPIEL_EMPFAENGER.map(f=>{
+                {PUSH_SPIEL_EMPFAENGER.filter(f=>!f.nurNachwuchs || k==="nachwuchs").map(f=>{
                   const an=empf.includes(f.key);
                   return <button key={f.key} onClick={()=>aendern(x=>{
                     const cur=x.spiele[k].empfaenger||["stammPlusZusage"];
