@@ -1,4 +1,4 @@
-// === TTC-App · Version 383 · erstellt 22.08.2026 ===
+// === TTC-App · Version 384 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "383";
+const APP_VERSION = "384";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14478,6 +14478,8 @@ function betreuerKandidaten(selTeam, players, aufSpieler){
     const istTrainer = p.roles?.trainer===true;
     const istErwachsene = p.roles?.erwachsene===true || (p.group==="Erwachsene");
     if(!istTrainer && !istErwachsene) continue;
+    // Nur Personen, die in der Verwaltung als Betreuer Nachwuchs = „Ja" markiert sind.
+    if(p.betreuerNachwuchs!=="Ja") continue;
     // Trainer, die selbst in dieser Mannschaft aufgestellt sind, ausschließen
     if(istTrainer && teamsOfPlayer(p, aufSpieler).includes(selTeam)) continue;
     const vn=(p.firstName||"").trim(), nn=(p.lastName||"").trim();
@@ -14867,6 +14869,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const past = spiel.datum < heuteStr;
       const counts={ja:0,nein:0,vielleicht:0,verletzt:0};
       spielberechtigt.forEach(p=>{ const st=entries[p.id]?.status; if(st&&counts[st]!=null) counts[st]++; });
+      // Anzahl fest aufgestellter (nominierter) Spieler für dieses Spiel.
+      const nominierteAnzahl=(entries._nominiert||[]).filter(id=>spielberechtigt.some(p=>p.id===id)).length;
+      // Eingetragene Betreuer/Fahrer (für die kompakte Kopfanzeige, auch eingeklappt).
+      const eiKopf=einsaetze[sk]||{};
+      const betreuerKopf=[eiKopf._betreuer1,eiKopf._betreuer2].filter(Boolean);
+      const fahrerKopf=(spiel.ort!=="Heim" && eiKopf._fahrer)?eiKopf._fahrer:"";
       const tag=wochentagKurz(spiel.datum);
       // Welche Spieler-Zeilen werden gezeigt?
       // Admin/Trainer/MF (viewerCanEditAll): alle spielberechtigten.
@@ -14897,10 +14905,17 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   {spiel.art==="Pokal" && <span title="Pokalspiel" style={{flexShrink:0}}>🏆</span>}
                   <span>{spiel.ort} vs. {spiel.gegner}</span>
                 </div>
+                {/* Betreuer/Fahrer kompakt – auch im eingeklappten Zustand sichtbar (Admin/MF) */}
+                {viewerCanEditAll&&selTeamIstNachwuchs&&(betreuerKopf.length>0||fahrerKopf)&&
+                  <div style={{fontSize:11,color:"var(--text3)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:2}}>
+                    {betreuerKopf.length>0&&<span>🧑‍🏫 {betreuerKopf.join(", ")}</span>}
+                    {fahrerKopf&&<span>🚗 {fahrerKopf}</span>}
+                  </div>}
               </div>
             </div>
             {/* Voll-Sicht: Zählung. Self-View: die 4 Buttons direkt im Kopf. */}
-            {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0}}>
+            {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0,alignItems:"center"}}>
+              <span style={{color:"#f59e0b"}} title="fest aufgestellte Spieler">⭐{nominierteAnzahl}</span>
               <span style={{color:"#10b981"}}>✅{counts.ja}</span>
               <span style={{color:"#ef4444"}}>❌{counts.nein}</span>
               <span style={{color:"#f59e0b"}}>❓{counts.vielleicht}</span>
