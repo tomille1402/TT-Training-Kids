@@ -1,4 +1,4 @@
-// === TTC-App · Version 381 · erstellt 20.08.2026 ===
+// === TTC-App · Version 382 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "381";
+const APP_VERSION = "382";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1922,7 +1922,16 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
   const [rotieren,setRotieren]= useState(false);
   const [intervall,setIntervall]= useState(15);       // Sekunden
   const [ctrlOffen,setCtrlOffen]= useState(true);
+  const [verhaeltnis,setVerhaeltnis]= useState("16:9");   // "16:9" | "4:3"
+  const [istVollbild,setIstVollbild]= useState(false);
   const wrapRef = useRef(null);
+
+  // Vollbild-Status verfolgen (Button-Beschriftung + Verhalten).
+  useEffect(()=>{
+    const h=()=>setIstVollbild(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange",h);
+    return ()=>document.removeEventListener("fullscreenchange",h);
+  },[]);
 
   // Auto-Durchlauf
   useEffect(()=>{
@@ -1935,41 +1944,55 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
   useEffect(()=>{ if(selIdx>=folien.length) setSelIdx(0); },[folien.length]);
 
   function vollbild(){
-    const el=wrapRef.current; if(!el) return;
-    if(!document.fullscreenElement){ el.requestFullscreen?.(); }
-    else { document.exitFullscreen?.(); }
+    const el=wrapRef.current;
+    const doc=document;
+    const drin = doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement;
+    try{
+      if(!drin){
+        if(el){
+          const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+          if(req){ const p=req.call(el); if(p&&p.catch) p.catch(()=>{}); }
+          else { setIstVollbild(v=>!v); }   // Fallback: „unechtes" Vollbild über Layout (Overlay ist ohnehin fixed)
+        }
+      } else {
+        const exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+        if(exit){ const p=exit.call(doc); if(p&&p.catch) p.catch(()=>{}); }
+      }
+    }catch(e){ /* Vollbild vom Browser verweigert – Overlay bleibt trotzdem bildschirmfüllend */ }
   }
 
   const folie = folien[selIdx] || folien[0];
   const k = folie && folie.ki>=0 ? konkurrenzen[folie.ki] : null;
 
   // ―― Renderer für die einzelnen Folientypen ――
+  // Gruppentabelle: exakt wie im Turnier (Spalten #, Name, QTTR, Sätze, Spiele, Platz).
   function renderGruppen(k){
     const gruppen=k.gruppen||[];
-    return <div style={{display:"grid",gridTemplateColumns:gruppen.length>1?"1fr 1fr":"1fr",gap:28,width:"100%"}}>
+    const spielerVon=(id)=>(players||[]).find(p=>p.id===id);
+    return <div style={{display:"grid",gridTemplateColumns:gruppen.length>1?"1fr 1fr":"1fr",gap:20,width:"100%",alignItems:"start"}}>
       {gruppen.map((ids,gi)=>{
         const tab=berechneGruppenTabelle(ids,(k.spiele||[]).filter(s=>s.gi===gi));
-        const rowById={}; tab.forEach(r=>rowById[r.id]=r);
-        const zeilen=ids.map(id=>({id,r:rowById[id]||{},q:qttrVon((players||[]).find(p=>p.id===id))}))
+        const platzVon={}; tab.forEach(r=>platzVon[r.id]=r);
+        const zeilen=ids.map((id,idx)=>({id,origNr:idx+1,r:platzVon[id]||{},q:qttrVon(spielerVon(id)),name:einheitName(k,id)}))
           .sort((a,b)=>(a.r.platz||999)-(b.r.platz||999));
-        return <div key={gi} style={{background:"#111827",border:"2px solid #374151",borderRadius:16,padding:"18px 22px"}}>
-          <div style={{fontSize:"2.2vw",fontWeight:900,color:"#f59e0b",marginBottom:12}}>Gruppe {gi+1}</div>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"1.8vw"}}>
-            <thead><tr style={{color:"#9ca3af",fontSize:"1.4vw"}}>
-              <th style={{textAlign:"center",padding:"6px 8px"}}>#</th>
-              <th style={{textAlign:"left",padding:"6px 8px"}}>Name</th>
-              <th style={{textAlign:"center",padding:"6px 8px"}}>Sätze</th>
-              <th style={{textAlign:"center",padding:"6px 8px"}}>Spiele</th>
-              <th style={{textAlign:"center",padding:"6px 8px"}}>Platz</th>
+        return <div key={gi} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:16}}>
+          <div style={{fontSize:18,fontWeight:800,color:"var(--text)",marginBottom:10}}>Gruppe {gi+1}</div>
+          <table style={{borderCollapse:"collapse",width:"100%",fontSize:16}}>
+            <thead><tr>
+              {[["nr","#"],["name","Name"],["qttr","QTTR"],["saetze","Sätze"],["spiele","Spiele"],["platz","Platz"]].map(([key,label])=>(
+                <th key={key} style={{textAlign:key==="name"?"left":"center",padding:"7px 8px",borderBottom:"2px solid var(--border2)",
+                  color:"var(--text)",fontWeight:800,whiteSpace:"nowrap"}}>{label}</th>
+              ))}
             </tr></thead>
             <tbody>
               {zeilen.map((z,i)=>(
-                <tr key={z.id} style={{borderTop:"1px solid #374151"}}>
-                  <td style={{textAlign:"center",padding:"8px",color:"#6b7280",fontWeight:700}}>{i+1}</td>
-                  <td style={{textAlign:"left",padding:"8px",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{einheitName(k,z.id)}</td>
-                  <td style={{textAlign:"center",padding:"8px",color:"#d1d5db"}}>{z.r.satzGew||0}:{z.r.satzVerl||0}</td>
-                  <td style={{textAlign:"center",padding:"8px",color:"#d1d5db"}}>{z.r.spSieg||0}:{z.r.spNied||0}</td>
-                  <td style={{textAlign:"center",padding:"8px",color:"#f59e0b",fontWeight:900}}>{z.r.platz||"–"}</td>
+                <tr key={z.id}>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text3)",fontWeight:700}}>{i+1}</td>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",color:"var(--text)",fontWeight:600,whiteSpace:"nowrap"}}>{z.name}</td>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{z.q!=null?z.q:"–"}</td>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{z.r.satzGew||0}:{z.r.satzVerl||0}</td>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",textAlign:"center",color:"var(--text2)"}}>{z.r.spSieg||0}:{z.r.spNied||0}</td>
+                  <td style={{padding:"7px 8px",borderBottom:"1px solid var(--border)",textAlign:"center",fontWeight:800,color:"var(--text)"}}>{z.r.platz||"–"}</td>
                 </tr>
               ))}
             </tbody>
@@ -1979,48 +2002,33 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
     </div>;
   }
 
+  // KO-Tableau: exakt die echte Turnier-Komponente wiederverwenden (nur Ansicht, read-only).
   function renderTableau(k){
-    const runden=ko_baueRunden(k.koSlots, k.koSpiele||{}, k.gewinnsaetze??3);
-    const rundenName=(idx)=>{
-      const restVon={1:"Finale",2:"Halbfinale",4:"Viertelfinale",8:"Achtelfinale"};
-      return restVon[runden[idx].length] || `Runde ${idx+1}`;
-    };
-    return <div style={{display:"flex",gap:24,alignItems:"stretch",justifyContent:"center",width:"100%",overflowX:"auto"}}>
-      {runden.map((spiele,ri)=>(
-        <div key={ri} style={{display:"flex",flexDirection:"column",justifyContent:"space-around",gap:14,minWidth:"18vw"}}>
-          <div style={{fontSize:"1.5vw",fontWeight:800,color:"#8b5cf6",textAlign:"center",marginBottom:6}}>{rundenName(ri)}</div>
-          {spiele.map((s,i)=>{
-            const sg=ko_sieger(s.saetze,k.gewinnsaetze??3);
-            const aName=s.a?einheitName(k,s.a):"—", bName=s.b?einheitName(k,s.b):"—";
-            const aWin=sg==="a", bWin=sg==="b";
-            return <div key={i} style={{background:"#111827",border:"2px solid #374151",borderRadius:12,overflow:"hidden"}}>
-              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",fontSize:"1.5vw",
-                background:aWin?"#065f46":"transparent",color:aWin?"#fff":"#d1d5db",fontWeight:aWin?900:600}}>
-                <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{aName}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",fontSize:"1.5vw",borderTop:"1px solid #374151",
-                background:bWin?"#065f46":"transparent",color:bWin?"#fff":"#d1d5db",fontWeight:bWin?900:600}}>
-                <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bName}</span>
-              </div>
-            </div>;
-          })}
-        </div>
-      ))}
+    return <div style={{width:"100%"}}>
+      <KoTableau konk={k} players={players} qttrVon={qttrVon} isAdmin={false} isTrainer={false} myPlayer={null} updKonk={()=>{}} tischMap={{}}/>
     </div>;
   }
 
   function renderPlatz(k){
     const pl=endplatzierungenKonk(k, koHelpers);   // id → Platz
-    const eintraege=Object.entries(pl).map(([id,platz])=>({id,platz}))
-      .filter((e,i,arr)=>arr.findIndex(x=>x.id===e.id)===i)
-      .sort((a,b)=>a.platz-b.platz);
+    const doppel=istDoppelKonk(k);
+    // Bei Doppel/Mixed jede Einheit nur EINMAL: nach Team-ID (statt Spieler-ID) zusammenfassen.
+    const seen=new Set();
+    const eintraege=[];
+    Object.entries(pl).forEach(([id,platz])=>{
+      let key=id;
+      if(doppel){ const tm=(k.doppelTeams||[]).find(t=>t.id===id||t.s1===id||t.s2===id); key=tm?tm.id:id; }
+      if(seen.has(key)) return; seen.add(key);
+      eintraege.push({id,platz});
+    });
+    eintraege.sort((a,b)=>a.platz-b.platz);
     const medal=(p)=>p===1?"🥇":p===2?"🥈":p===3?"🥉":`${p}.`;
-    return <div style={{width:"100%",maxWidth:"70vw",margin:"0 auto"}}>
+    return <div style={{width:"100%",maxWidth:820,margin:"0 auto"}}>
       {eintraege.map((e,i)=>(
-        <div key={e.id} style={{display:"flex",alignItems:"center",gap:20,padding:"14px 22px",
-          background:i%2?"#0b1220":"#111827",borderRadius:12,marginBottom:8}}>
-          <span style={{fontSize:"2.6vw",width:"3.5vw",textAlign:"center"}}>{medal(e.platz)}</span>
-          <span style={{fontSize:"2.4vw",fontWeight:800,color:"#fff"}}>{einheitName(k,e.id)}</span>
+        <div key={e.id} style={{display:"flex",alignItems:"center",gap:18,padding:"12px 20px",
+          background:i%2?"var(--bg2)":"var(--bg3)",borderRadius:12,marginBottom:8,border:"1px solid var(--border2)"}}>
+          <span style={{fontSize:30,width:52,textAlign:"center"}}>{medal(e.platz)}</span>
+          <span style={{fontSize:24,fontWeight:800,color:"var(--text)"}}>{einheitName(k,e.id)}</span>
         </div>
       ))}
     </div>;
@@ -2045,35 +2053,39 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
         if(!fertig) items.push({konk:k.name, a:einheitName(k,s.a), b:einheitName(k,s.b), tisch:(k.koSpiele?.[s.key]||{}).tisch});
       }));
     });
-    return <div style={{width:"100%",maxWidth:"80vw",margin:"0 auto"}}>
-      {items.length===0 && <div style={{textAlign:"center",fontSize:"2.4vw",color:"#9ca3af"}}>Aktuell keine laufenden Spiele</div>}
+    return <div style={{width:"100%",maxWidth:900,margin:"0 auto"}}>
+      {items.length===0 && <div style={{textAlign:"center",fontSize:22,color:"var(--text3)",padding:40}}>Aktuell keine laufenden Spiele</div>}
       {items.map((it,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",
-          background:i%2?"#0b1220":"#111827",borderRadius:12,marginBottom:8}}>
-          {it.tisch!=null && it.tisch!=="" && <span style={{fontSize:"1.6vw",fontWeight:900,color:"#10b981",minWidth:"5vw"}}>Tisch {it.tisch}</span>}
-          <span style={{fontSize:"1.9vw",fontWeight:800,color:"#fff",flex:1,textAlign:"right"}}>{it.a}</span>
-          <span style={{fontSize:"1.6vw",color:"#6b7280"}}>vs</span>
-          <span style={{fontSize:"1.9vw",fontWeight:800,color:"#fff",flex:1}}>{it.b}</span>
-          <span style={{fontSize:"1.3vw",color:"#8b5cf6",fontWeight:700,minWidth:"12vw",textAlign:"right"}}>{it.konk}</span>
+        <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 18px",
+          background:i%2?"var(--bg2)":"var(--bg3)",borderRadius:10,marginBottom:8,border:"1px solid var(--border2)"}}>
+          {it.tisch!=null && it.tisch!=="" && <span style={{fontSize:15,fontWeight:900,color:"#10b981",minWidth:70}}>Tisch {it.tisch}</span>}
+          <span style={{fontSize:18,fontWeight:700,color:"var(--text)",flex:1,textAlign:"right"}}>{it.a}</span>
+          <span style={{fontSize:14,color:"var(--text3)"}}>vs</span>
+          <span style={{fontSize:18,fontWeight:700,color:"var(--text)",flex:1}}>{it.b}</span>
+          <span style={{fontSize:13,color:"#8b5cf6",fontWeight:700,minWidth:130,textAlign:"right"}}>{it.konk}</span>
         </div>
       ))}
     </div>;
   }
 
-  let inhalt=null, titel="";
-  if(!folie){ inhalt=<div style={{color:"#9ca3af",fontSize:"2vw"}}>Keine Konkurrenzen vorhanden.</div>; }
-  else if(folie.typ==="gruppen"){ titel=`${k.name} – Tabelle`; inhalt=renderGruppen(k); }
-  else if(folie.typ==="tableau"){ titel=`${k.name} – KO-Tableau`; inhalt=renderTableau(k); }
-  else if(folie.typ==="platz"){ titel=`${k.name} – Platzierungen`; inhalt=renderPlatz(k); }
-  else if(folie.typ==="laufende"){ titel="Laufende Spiele"; inhalt=renderLaufende(); }
+  let inhalt=null;
+  const untertitelVon=(f)=>{
+    if(!f) return "";
+    return f.typ==="gruppen"?"Tabelle":f.typ==="tableau"?"KO-Tableau":f.typ==="platz"?"Platzierungen":f.typ==="laufende"?"Alle laufenden Spiele":"";
+  };
+  if(!folie){ inhalt=<div style={{color:"var(--text3)",fontSize:20}}>Keine Konkurrenzen vorhanden.</div>; }
+  else if(folie.typ==="gruppen"){ inhalt=renderGruppen(k); }
+  else if(folie.typ==="tableau"){ inhalt=renderTableau(k); }
+  else if(folie.typ==="platz"){ inhalt=renderPlatz(k); }
+  else if(folie.typ==="laufende"){ inhalt=renderLaufende(); }
 
   return <div ref={wrapRef} style={{position:"fixed",inset:0,zIndex:9999,background:"#0d1117",
     display:"flex",flexDirection:"column",overflow:"hidden"}}>
     {/* Kopfzeile: Titel + Steuerung-ein/aus + Auto-Durchlauf darunter */}
     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",padding:"14px 24px",borderBottom:"2px solid #1f2937",flexShrink:0}}>
       <div style={{minWidth:0,flex:1}}>
-        <div style={{fontSize:15,color:"#8b5cf6",fontWeight:700}}>{turnier?.name}</div>
-        <div style={{fontSize:26,fontWeight:900,color:"#fff",lineHeight:1.15}}>{titel}</div>
+        <div style={{fontSize:15,color:"#8b5cf6",fontWeight:700}}>🖥️ Beamer-Modus</div>
+        <div style={{fontSize:22,fontWeight:900,color:"#fff",lineHeight:1.15,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{turnier?.name}</div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <button onClick={()=>setCtrlOffen(o=>!o)} style={beamerBtn("#374151")}>{ctrlOffen?"Steuerung ausblenden":"Steuerung einblenden"}</button>
@@ -2083,10 +2095,23 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
       </div>
     </div>
 
-    {/* Oberer Bereich: Anzeige-Inhalt – nimmt die obere Hälfte ein, scrollbar */}
-    <div style={{flex:ctrlOffen?"1 1 50%":"1 1 100%",overflow:"auto",padding:"20px 24px",
-      display:"flex",alignItems:"flex-start",justifyContent:"center",minHeight:0}}>
-      {inhalt}
+    {/* Oberer Bereich: gerahmter Anzeige-Inhalt im gewählten Seitenverhältnis (Querformat). */}
+    <div style={{flex:ctrlOffen?"1 1 50%":"1 1 100%",overflow:"hidden",padding:"18px",
+      display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,background:"#0d1117"}}>
+      <div style={{aspectRatio:verhaeltnis==="16:9"?"16 / 9":"4 / 3",
+        maxWidth:"100%",maxHeight:"100%",width:"auto",height:"100%",
+        background:"var(--bg)",border:"3px solid var(--border2)",borderRadius:16,
+        boxShadow:"0 8px 40px rgba(0,0,0,0.4)",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
+        {/* Konkurrenz-Bezeichnung links oben im Rahmen */}
+        <div style={{display:"flex",alignItems:"baseline",gap:12,padding:"14px 20px 10px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          <span style={{fontSize:22,fontWeight:900,color:"var(--text)"}}>{k?k.name:(folie?.typ==="laufende"?"Turnier":"")}</span>
+          <span style={{fontSize:15,fontWeight:700,color:"#8b5cf6"}}>{untertitelVon(folie)}</span>
+        </div>
+        {/* Inhalt im Rahmen (scrollbar, falls größer) */}
+        <div style={{flex:1,overflow:"auto",padding:"18px 20px",minHeight:0}}>
+          {inhalt}
+        </div>
+      </div>
     </div>
 
     {/* Untere Hälfte: Steuerung – eigener, scrollbarer Bereich */}
@@ -2123,8 +2148,14 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
       </div>
 
       {/* Aktionen */}
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        <button onClick={vollbild} style={beamerBtn("#374151")}>⛶ Vollbild</button>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        {/* Seitenverhältnis-Umschalter (Querformat) */}
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#9ca3af"}}>Rahmen:</span>
+          <button onClick={()=>setVerhaeltnis("16:9")} style={beamerBtn(verhaeltnis==="16:9"?"#8b5cf6":"#374151",verhaeltnis==="16:9")}>16:9</button>
+          <button onClick={()=>setVerhaeltnis("4:3")} style={beamerBtn(verhaeltnis==="4:3"?"#8b5cf6":"#374151",verhaeltnis==="4:3")}>4:3</button>
+        </div>
+        <button onClick={vollbild} style={beamerBtn("#374151")}>{istVollbild?"⛶ Vollbild beenden":"⛶ Vollbild"}</button>
         <button onClick={onClose} style={beamerBtn("#ef4444",true)}>✕ Beamer schließen</button>
       </div>
     </div>}
