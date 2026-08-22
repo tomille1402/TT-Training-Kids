@@ -173,15 +173,66 @@ function nominierteIds(spielKey, einsaetzeData){
   const e = einsaetzeData[spielKey] || {};
   return Array.isArray(e._nominiert) ? e._nominiert.filter(Boolean) : null;
 }
+// Findet die Spieler-ID zu einem als "Vorname Nachname" gespeicherten Namen
+// (für Betreuer). Vergleich normalisiert über Vor-/Nachname in beiden Reihenfolgen.
+function personIdVonName(name, players){
+  const ziel = normName(name);
+  if(!ziel) return null;
+  const p = players.find(pl =>
+    normName((pl.firstName||"")+(pl.lastName||""))===ziel ||
+    normName((pl.lastName||"")+(pl.firstName||""))===ziel);
+  return p ? p.id : null;
+}
+// Betreuer-IDs: die unter _betreuer1/_betreuer2 eingetragenen Personen.
+function betreuerIds(spielKey, einsaetzeData, players){
+  const e = einsaetzeData[spielKey] || {};
+  const ids = [];
+  for(const feld of ["_betreuer1","_betreuer2"]){
+    const nm = e[feld];
+    if(!nm) continue;
+    const id = personIdVonName(nm, players);
+    if(id) ids.push(id);
+  }
+  return ids;
+}
+// Fahrer: der unter _fahrer eingetragene Name ist i.d.R. ein Elternteil OHNE eigenen
+// Account. Die Nachricht geht daher an den Account des zugehörigen KINDES, in dessen
+// Elternfeldern dieser Name steht. Rückgabe: Spieler-IDs der betroffenen Kinder.
+function fahrerKindIds(spielKey, einsaetzeData, players){
+  const e = einsaetzeData[spielKey] || {};
+  const nm = e._fahrer;
+  if(!nm) return [];
+  const ziel = normName(nm);
+  const ids = [];
+  for(const kind of players){
+    const paare = [
+      [kind.elternVorname1, kind.elternNachname1],
+      [kind.elternVorname2, kind.elternNachname2],
+    ];
+    const treffer = paare.some(([vn,nn])=>{
+      const v=(vn||"").trim(), n=(nn||"").trim();
+      if(!v && !n) return false;
+      return normName(v+n)===ziel || normName(n+v)===ziel;
+    });
+    if(treffer) ids.push(kind.id);
+  }
+  return ids;
+}
 function spielEmpfaenger(opts, mannschaft, spielKey, aufSpieler, einsaetzeData, players){
   // Anf.3: Sobald der MF eine finale Aufstellung nominiert hat, erhalten AUSSCHLIESSLICH
   // die nominierten Spieler die Punktspiel-Benachrichtigung – unabhängig von Stamm/Zusage.
+  // Betreuer und Fahrer sind davon ausgenommen: sie werden immer zusätzlich benachrichtigt,
+  // wenn die jeweilige Option aktiv ist.
+  const wollen = opts && opts.length ? opts : ["stammPlusZusage"];
+  const zusatz = new Set();
+  if(wollen.includes("betreuer")) betreuerIds(spielKey,einsaetzeData,players).forEach(id=>zusatz.add(id));
+  if(wollen.includes("fahrer"))   fahrerKindIds(spielKey,einsaetzeData,players).forEach(id=>zusatz.add(id));
+
   const nominiert = nominierteIds(spielKey, einsaetzeData);
   if(nominiert && nominiert.length>0){
-    return [...new Set(nominiert)];
+    return [...new Set([...nominiert, ...zusatz])];
   }
-  const set = new Set();
-  const wollen = opts && opts.length ? opts : ["stammPlusZusage"];
+  const set = new Set(zusatz);
   if(wollen.includes("stammPlusZusage")){
     stammspielerIds(mannschaft,aufSpieler,players).forEach(id=>set.add(id));
     zusageIds(spielKey,einsaetzeData).forEach(id=>set.add(id));
