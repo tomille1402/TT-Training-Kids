@@ -1,4 +1,4 @@
-// === TTC-App · Version 386 · erstellt 22.08.2026 ===
+// === TTC-App · Version 387 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "386";
+const APP_VERSION = "387";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -11037,6 +11037,19 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     notify(!b.geldeingang?"Geldeingang bestätigt ✅":"Geldeingang zurückgenommen","💶");
   }
 
+  // Übergabe-Status je Artikel (3 Zustände): 0 = leer, 1 = vorhanden (grauer Haken),
+  // 2 = übergeben (grüner Haken). Der nächste Klick springt jeweils zum nächsten
+  // Zustand und nach 2 wieder auf 0. Gespeichert im Bestell-Dokument unter
+  // uebergabe:{[artikelId]:status}.
+  async function toggleUebergabe(b, artikelId){
+    if(!isAdmin || !b || !artikelId) return;
+    const cur = Number((b.uebergabe||{})[artikelId])||0;
+    const next = (cur+1)%3;
+    const neu = {...(b.uebergabe||{})};
+    if(next===0) delete neu[artikelId]; else neu[artikelId]=next;
+    await setDoc(doc(db,"bestellungen",b.id),{uebergabe:neu},{merge:true}).catch(()=>{});
+  }
+
   // Excel-Export: eine Zeile pro bestelltem Artikel, Person je Zeile wiederholt (Pivot-tauglich).
   async function exportExcel(){
     setExporting(true);
@@ -11176,10 +11189,12 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     const grp = pl.group||"";
     const it0 = b?.items||{};
     const art = b ? bestellArtikelForGroup(grp, pl.gender).filter(a=>anzahlForArtikel(a,it0)>0) : [];
+    const uebergabeMap = (b && b.uebergabe) || {};
     const artikelZeilen = art.map(a=>{
       const anz=anzahlForArtikel(a,it0);
       const it=it0[a.id]||{};
-      return {artikel:a.name, anzahl:anz, groesse:it.groesse||"—",
+      return {artikelId:a.id, artikel:a.name, anzahl:anz, groesse:it.groesse||"—",
+        uebergabe: Number(uebergabeMap[a.id])||0,
         preisKatalog:a.preisKatalog, preisSpin:a.preisSpin, preisSpinGesamt:anz*a.preisSpin,
         preisTTC:a.preisTTC, preisTTCGesamt:anz*a.preisTTC};
     });
@@ -11277,6 +11292,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     {key:"artikel",label:"Artikel",align:"left",filter:"text"},
     {key:"anzahl",label:"Anzahl",align:"center",filter:"text"},
     {key:"groesse",label:"Größe",align:"center",filter:"text"},
+    {key:"uebergabe",label:"Übergabe",align:"center"},
     {key:"preisKatalog",label:"Preis Katalog",align:"right",filter:"text"},
     {key:"preisSpin",label:"Preis Spin & Speed",align:"right",filter:"text"},
     {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right",filter:"text"},
@@ -11377,6 +11393,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                   <td style={{...td,color:"var(--text4)",fontStyle:"italic"}}>keine Bestellung</td>
                   <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
                   <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
+                  <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
                   <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
                   <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
                   <td style={{...td,textAlign:"right",color:"var(--text4)"}}>—</td>
@@ -11395,6 +11412,22 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                   <td style={td}>{az.artikel}</td>
                   <td style={{...td,textAlign:"center"}}>{az.anzahl}</td>
                   <td style={{...td,textAlign:"center"}}>{az.groesse}</td>
+                  <td style={{...td,textAlign:"center"}}>
+                    {(() => {
+                      const zustand=az.uebergabe||0;
+                      const sym=zustand===2?"✔":zustand===1?"✔":"";
+                      const farbe=zustand===2?"#10b981":zustand===1?"#9ca3af":"transparent";
+                      const rand=zustand===0?"var(--border2)":farbe;
+                      const titel=zustand===2?"übergeben (grün) – Klick zum Leeren":zustand===1?"vorhanden (grau) – Klick für übergeben":"leer – Klick für vorhanden";
+                      return isAdmin
+                        ? <button type="button" onClick={()=>toggleUebergabe(z.bestellDoc, az.artikelId)} title={titel}
+                            style={{width:22,height:22,borderRadius:5,border:`2px solid ${rand}`,background:zustand===0?"transparent":farbe,
+                              color:"#fff",fontSize:13,fontWeight:900,lineHeight:1,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center",padding:0}}>
+                            {sym}
+                          </button>
+                        : <span style={{color:farbe,fontWeight:900}}>{zustand?"✔":"—"}</span>;
+                    })()}
+                  </td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(az.preisKatalog)}</td>
                   <td style={{...td,textAlign:"right",color:"var(--text3)",whiteSpace:"nowrap"}}>{eur(az.preisSpin)}</td>
                   <td style={{...td,textAlign:"right",fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{eur(az.preisSpinGesamt)}</td>
@@ -11412,7 +11445,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             })}
           </tbody>
           <tfoot><tr>
-            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={7}>Gesamtsumme</td>
+            <td style={{...td,fontWeight:800,borderTop:"2px solid var(--border2)"}} colSpan={8}>Gesamtsumme</td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtSpinAlle)}</td>
             <td style={{...td,borderTop:"2px solid var(--border2)"}}></td>
             <td style={{...td,fontWeight:800,textAlign:"right",borderTop:"2px solid var(--border2)",whiteSpace:"nowrap"}}>{eur(gesamtTTC)}</td>
