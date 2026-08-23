@@ -582,18 +582,37 @@ Viel Erfolg 🏓`;
       }
     }
 
+    // Namensauflösung Person-ID → "Vorname Nachname" (für den Trockenlauf-Bericht).
+    const nameVonId = (pid) => {
+      const p = players.find(pl => pl.id===pid);
+      if(!p) return pid;
+      const n = `${p.firstName||""} ${p.lastName||""}`.trim();
+      return n || pid;
+    };
     const bericht = {
       datum: heute, dryRun,
       jobs: zuSenden.length,
       gesendet, uebersprungen, fehler,
-      details: zuSenden.map(j=>({
-        sendeId:j.sendeId,
-        empfaenger:j.empfaengerIds.length,
-        // Wie viele der vorgesehenen Empfänger haben tatsächlich ein aktives Push-Abo
-        // (also erreichbare Geräte)? 0 bedeutet: niemand hat Push aktiviert.
-        erreichbareGeraete: j.empfaengerIds.reduce((s,pid)=> s + ((aboMap[pid]||[]).length), 0),
-        titel:j.titel
-      }))
+      details: zuSenden.map(j=>{
+        const d = {
+          sendeId:j.sendeId,
+          empfaenger:j.empfaengerIds.length,
+          // Wie viele der vorgesehenen Empfänger haben tatsächlich ein aktives Push-Abo
+          // (also erreichbare Geräte)? 0 bedeutet: niemand hat Push aktiviert.
+          erreichbareGeraete: j.empfaengerIds.reduce((s,pid)=> s + ((aboMap[pid]||[]).length), 0),
+          titel:j.titel
+        };
+        // Beim Trockenlauf zusätzlich: WER würde die Nachricht erhalten (mit Hinweis, ob
+        // erreichbar) und der VOLLSTÄNDIGE Nachrichtentext.
+        if(dryRun){
+          d.empfaengerNamen = j.empfaengerIds.map(pid=>{
+            const erreichbar = (aboMap[pid]||[]).length > 0;
+            return `${nameVonId(pid)}${erreichbar?"":" (kein aktives Push-Abo)"}`;
+          });
+          d.nachricht = j.text;
+        }
+        return d;
+      })
     };
     // Gesamtzahl aller registrierten Push-Abos (über alle Personen) – schnelle Kontrolle,
     // ob überhaupt jemand Benachrichtigungen aktiviert hat.
