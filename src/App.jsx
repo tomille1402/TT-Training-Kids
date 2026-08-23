@@ -1,4 +1,4 @@
-// === TTC-App · Version 387 · erstellt 22.08.2026 ===
+// === TTC-App · Version 389 · erstellt 22.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "387";
+const APP_VERSION = "389";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14943,6 +14943,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const past = spiel.datum < heuteStr;
       const counts={ja:0,nein:0,vielleicht:0,verletzt:0};
       spielberechtigt.forEach(p=>{ const st=entries[p.id]?.status; if(st&&counts[st]!=null) counts[st]++; });
+      // Nur Zusagen zählen: Der Bedarf gilt als gedeckt, wenn genug Spieler zugesagt haben.
+      const rueckmeldungen=counts.ja;
+      // Mindestbedarf: Nachwuchs 3, Erwachsene 4. Bei zu wenigen Zusagen fehlt
+      // mindestens ein Spieler → roter Rahmen um das (eingeklappte) Feld.
+      const minBedarf = selTeamIstNachwuchs ? 3 : 4;
+      const unterbesetzt = !past && rueckmeldungen < minBedarf;
       // Anzahl fest aufgestellter (nominierter) Spieler für dieses Spiel.
       const nominierteAnzahl=(entries._nominiert||[]).filter(id=>spielberechtigt.some(p=>p.id===id)).length;
       // Eingetragene Betreuer/Fahrer (für die kompakte Kopfanzeige, auch eingeklappt).
@@ -14963,7 +14969,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       const selfPlayer = !viewerCanEditAll ? rows[0] : null;
       const selfEntry = selfPlayer ? (entries[selfPlayer.id]||{}) : null;
       const selfEditable = selfPlayer ? canEdit(selfPlayer.id) : false;
-      return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
+      return <div key={sk} style={{background:"var(--bg2)",borderRadius:12,
+        border:unterbesetzt?"2px solid #ef4444":"1px solid var(--border)",
+        marginBottom:12,overflow:"hidden",opacity:past?0.7:1}}>
         <div onClick={viewerCanEditAll?()=>setExpandedGames(g=>({...g,[sk]:!g[sk]})):undefined}
           style={{padding:"10px 12px",borderBottom:(viewerCanEditAll&&showRows&&rows.length)?"1px solid var(--border)":"none",
             background:"var(--bg3)",cursor:viewerCanEditAll?"pointer":"default"}}>
