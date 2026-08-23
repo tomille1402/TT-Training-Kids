@@ -139,6 +139,24 @@ function deDatum(iso){
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
   return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso||"");
 }
+// Deutscher Wochentag zu einem ISO-Datum (JJJJ-MM-TT).
+function deWochentag(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
+  if(!m) return "";
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  return ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][d.getUTCDay()];
+}
+// Uhrzeit "HH:MM" um die angegebene Zahl Stunden verschieben (hier: 1 Stunde früher).
+// Gibt "HH:MM" zurück; bei ungültiger Eingabe leeren String.
+function uhrzeitMinusStunden(uhr, stunden){
+  const m = /^(\d{1,2}):(\d{2})/.exec((uhr||"").trim());
+  if(!m) return "";
+  let min = (+m[1])*60 + (+m[2]) - stunden*60;
+  min = ((min % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(min/60)).padStart(2,"0");
+  const mm = String(min%60).padStart(2,"0");
+  return `${hh}:${mm}`;
+}
 
 module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue };
 
@@ -325,6 +343,59 @@ module.exports.handler = async (event) => {
       const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
       const gegen = s.gegner ? ` gegen ${s.gegner}` : "";
       const ort = /heim/i.test(s.ort||"") ? " (Heim)" : (/ausw/i.test(s.ort||"") ? " (Auswärts)" : "");
+
+      // Für Nachwuchsspiele: ausführliche, nach Heim/Auswärts differenzierte Nachricht
+      // inkl. Treffpunkt (1 Std. vor Beginn), Betreuer und – auswärts – Fahrer.
+      if(nachwuchs){
+        const ei = einsaetzeData[sk] || {};
+        const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean);
+        const fahrer = ei._fahrer || "";
+        const wtag = deWochentag(s.datum);
+        const dat = deDatum(s.datum);
+        const beginn = (s.uhrzeit||"").trim();
+        const treff = uhrzeitMinusStunden(beginn, 1);
+        const istHeim = /heim/i.test(s.ort||"");
+        const gegner = s.gegner || "unseren Gegner";
+        // Betreuer-Satz je nach Anzahl.
+        const betreuerSatz = betreuer.length>=2
+          ? `Betreuer sind ${betreuer[0]} und ${betreuer[1]}.`
+          : betreuer.length===1
+            ? `Betreuer ist ${betreuer[0]}.`
+            : "Ein Betreuer wird noch gesucht.";
+        let text;
+        if(istHeim){
+          text =
+`🏓 Guten Morgen,
+
+am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in Niederzeuzheim und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
+${betreuerSatz}
+
+Viel Erfolg 🏓`;
+        } else {
+          // Bei Auswärtsspielen ist der Spielort der Ort des Gegners (im Gegnernamen enthalten).
+          const spielort = s.gegner || "beim Gegner";
+          const fahrerSatz = fahrer
+            ? `Euer Fahrer ist ${fahrer}`
+            : "Ein Fahrer wird noch gesucht. Wer von den Eltern kann fahren?";
+          text =
+`🏓 Guten Morgen,
+
+am ${wtag}, den ${dat} habt ihr euer nächstes Spiel gegen ${gegner}. Das Spiel ist in ${spielort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam nach ${spielort} zu fahren.
+${fahrerSatz}
+${betreuerSatz}
+
+Viel Erfolg 🏓`;
+        }
+        zuSenden.push({
+          sendeId: `spiel_${sk}_d${diff}`,
+          empfaengerIds: ids,
+          titel: `🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`,
+          text,
+          url: "/"
+        });
+        continue;
+      }
+
       zuSenden.push({
         sendeId: `spiel_${sk}_d${diff}`,
         empfaengerIds: ids,
