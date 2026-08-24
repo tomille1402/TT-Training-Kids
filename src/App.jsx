@@ -1,4 +1,4 @@
-// === TTC-App · Version 393 · erstellt 23.08.2026 ===
+// === TTC-App · Version 394 · erstellt 23.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "393";
+const APP_VERSION = "394";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -13606,7 +13606,6 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     const neu=[...new Set([...autoGezeigt, ...offeneNachrichten.map(n=>n.id)])].slice(-300);
     setAutoGezeigt(neu);
     try { localStorage.setItem("ttc_nachr_auto_gezeigt",JSON.stringify(neu)); } catch(_){}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[nachrichten,nachrGelesen]);
 
   function nachrichtWegklicken(id){
