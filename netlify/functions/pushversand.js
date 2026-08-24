@@ -391,6 +391,7 @@ Viel Erfolg 🏓`;
           empfaengerIds: ids,
           titel: `🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`,
           text,
+          kategorie: "nachwuchs_spiele",
           url: "/"
         });
         continue;
@@ -401,6 +402,7 @@ Viel Erfolg 🏓`;
         empfaengerIds: ids,
         titel: `🏓 ${s.mannschaft} – Spiel ${wann}`,
         text: `${deDatum(s.datum)}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""}${gegen}${ort}`,
+        kategorie: "mannschaft",
         url: "/"
       });
     }
@@ -429,6 +431,7 @@ Viel Erfolg 🏓`;
         empfaengerIds: ids,
         titel: `📌 ${t.veranstaltung||t.titel||"Vereinstermin"} ${wann}`,
         text: `${deDatum(datum)}${uhr}${ort}`,
+        kategorie: "verein",
         url: "/"
       });
     }
@@ -503,6 +506,7 @@ Viel Erfolg 🏓`;
             empfaengerIds: empfMitAlter,
             titel: `🎂 ${name} hat ${wann} Geburtstag`,
             text: `${gebDatum} — wird ${alter} Jahre`,
+            kategorie: "geburtstag",
             url: "/"
           });
         }
@@ -512,6 +516,7 @@ Viel Erfolg 🏓`;
             empfaengerIds: empfOhneAlter,
             titel: `🎂 ${name} hat ${wann} Geburtstag`,
             text: `${gebDatum}`,
+            kategorie: "geburtstag",
             url: "/"
           });
         }
@@ -522,6 +527,7 @@ Viel Erfolg 🏓`;
             empfaengerIds: [p.id],
             titel: `🎉 Alles Gute zum Geburtstag, ${p.firstName||name}!`,
             text: `Der ganze TTC 1979 Niederzeuzheim wünscht dir einen wunderschönen Tag! 🥳🏓`,
+            kategorie: "geburtstag",
             url: "/"
           });
         }
@@ -576,6 +582,7 @@ Viel Erfolg 🏓`;
           await patchDoc("appNachrichten/"+job.sendeId, {
             titel: job.titel, text: job.text,
             empfaenger: job.empfaengerIds,
+            ...(job.kategorie ? { kategorie: job.kategorie } : {}),
             erstellt: heute, ts: Date.now()
           });
         }catch(e){ /* Anzeige ist Zusatz – Fehler hier nicht kritisch */ }

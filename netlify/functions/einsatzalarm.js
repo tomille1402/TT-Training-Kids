@@ -149,9 +149,19 @@ exports.handler = async (event) => {
     }
 
     // In-App-Nachricht ablegen (auch für Empfänger ohne aktives Abo sichtbar).
+    // Kategorie: Bei Nachwuchsmannschaften „nachwuchs_einsaetze", damit die Meldung
+    // in der App im eigenen Bereich erscheint. Die Nachwuchs-Liste steht in den
+    // Push-Regeln (config/pushRegeln.nachwuchsMannschaften).
+    let istNachwuchs = false;
+    try{
+      const regelnDoc = await getDocData("config/pushRegeln");
+      const nwListe = (regelnDoc && regelnDoc.nachwuchsMannschaften) || [];
+      istNachwuchs = nwListe.includes(mannschaft);
+    }catch(e){ /* im Zweifel keine Nachwuchs-Kategorie */ }
     try{
       await patchDoc("appNachrichten/"+sendeId, {
         titel, text, empfaenger: ids,
+        ...(istNachwuchs ? { kategorie: "nachwuchs_einsaetze" } : { kategorie: "einsaetze" }),
         erstellt: (datum || new Date().toISOString().slice(0,10)),
         ts: Date.now()
       });
