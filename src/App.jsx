@@ -1,4 +1,4 @@
-// === TTC-App · Version 390 · erstellt 22.08.2026 ===
+// === TTC-App · Version 393 · erstellt 23.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "390";
+const APP_VERSION = "393";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -13590,6 +13590,25 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
 
   const offeneNachrichten = nachrichten.filter(n=>!nachrGelesen.includes(n.id));
 
+  // ── Auto-Popup: Beim Öffnen der App direkt die neuen Benachrichtigungen zeigen ──
+  // Es öffnet sich EINMALIG, sobald ungelesene Nachrichten vorliegen, die noch nicht
+  // automatisch angezeigt wurden. Bereits (auto-)gezeigte oder gelesene Nachrichten
+  // lösen kein erneutes Popup aus. Merkliste in localStorage, damit es geräteweise wirkt.
+  const [autoGezeigt,setAutoGezeigt] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("ttc_nachr_auto_gezeigt")||"[]"); } catch(_) { return []; }
+  });
+  useEffect(()=>{
+    if(!offeneNachrichten.length) return;
+    const neueUngezeigte = offeneNachrichten.filter(n=>!autoGezeigt.includes(n.id));
+    if(neueUngezeigte.length===0) return;
+    // Popup öffnen und alle aktuell offenen Nachrichten als „automatisch gezeigt" merken.
+    setShowPopup(true);
+    const neu=[...new Set([...autoGezeigt, ...offeneNachrichten.map(n=>n.id)])].slice(-300);
+    setAutoGezeigt(neu);
+    try { localStorage.setItem("ttc_nachr_auto_gezeigt",JSON.stringify(neu)); } catch(_){}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[nachrichten,nachrGelesen]);
+
   function nachrichtWegklicken(id){
     const neu=[...new Set([...nachrGelesen,id])].slice(-300);
     setNachrGelesen(neu);
@@ -13621,10 +13640,18 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     const tx=`${n?.text||""}`;
     const s=(tt+" "+tx);
     if(n?.kategorie) {
-      // Falls künftig serverseitig gesetzt, hat das Vorrang.
+      // Serverseitig gesetzte Kategorie hat Vorrang.
       const k=String(n.kategorie);
-      if(["turniere","mannschaft","verein","geburtstag"].includes(k)) return k;
+      if(["turniere","mannschaft","verein","geburtstag","nachwuchs_spiele","nachwuchs_einsaetze","einsaetze"].includes(k)) return k;
     }
+    // Rückwirkende Erkennung für bestehende Nachrichten ohne Kategorie-Feld:
+    // Nachwuchs-Mannschaftsnamen (Mädchen/Jungen/Jugend + Zahl) in Titel oder Text.
+    const istNachwuchsName=/M(ä|ae)dchen\s*\d+|Jungen\s*\d+|Jugend\s*\d+|Nachwuchs/i.test(s);
+    // Einsatz-/Verhinderungsmeldungen: „⚠️ … ist jetzt verhindert/…“.
+    const istEinsatz=tt.includes("⚠️")||/ist jetzt (verhindert|verfügbar|vielleicht|verletzt|ohne Angabe)/i.test(s)||/Status von/i.test(tx);
+    if(istEinsatz) return istNachwuchsName ? "nachwuchs_einsaetze" : "einsaetze";
+    // Nachwuchs-Spielankündigungen (Heim-/Auswärtsspiel einer Nachwuchsmannschaft).
+    if(istNachwuchsName && (/Heimspiel|Auswärtsspiel|Guten Morgen|Spielbeginn/i.test(s)||tt.includes("🏓"))) return "nachwuchs_spiele";
     if(tt.includes("🎂")||tt.includes("🎉")||/Geburtstag/i.test(s)) return "geburtstag";
     if(tt.includes("📌")||/Vereinstermin|Vereins-Termin|Termin/i.test(tt)) return "verein";
     if(/–\s*Spiel|Mannschaft|Punktspiel|Verbandsrunde/i.test(s)) return "mannschaft";
@@ -13632,8 +13659,11 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     return "sonstiges";
   }
   const KAT_META=[
+    ["nachwuchs_spiele","🏓 Nachwuchs-Spiele"],
+    ["nachwuchs_einsaetze","⚠️ Nachwuchs-Einsätze"],
     ["turniere","🏓 Turniere"],
     ["mannschaft","🏓 Mannschafts-Spiele"],
+    ["einsaetze","⚠️ Einsätze"],
     ["verein","📌 Vereins-Termine"],
     ["geburtstag","🎂 Geburtstage"],
     ["sonstiges","🔔 Sonstiges"],
