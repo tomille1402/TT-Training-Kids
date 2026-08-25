@@ -1,4 +1,4 @@
-// === TTC-App · Version 394 · erstellt 23.08.2026 ===
+// === TTC-App · Version 395 · erstellt 23.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "394";
+const APP_VERSION = "395";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -11046,7 +11046,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     const cur = Number((b.uebergabe||{})[artikelId])||0;
     const next = (cur+1)%3;
     const neu = {...(b.uebergabe||{})};
-    if(next===0) delete neu[artikelId]; else neu[artikelId]=next;
+    // Wichtig: Bei {merge:true} entfernt Firestore ein Feld NICHT, wenn es im Objekt
+    // fehlt. Deshalb den Wert explizit auf 0 setzen (statt zu löschen), damit der
+    // dritte Klick das Kästchen wieder wirklich leert.
+    neu[artikelId] = next;
     await setDoc(doc(db,"bestellungen",b.id),{uebergabe:neu},{merge:true}).catch(()=>{});
   }
 
@@ -11218,7 +11221,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   // filtern innerhalb der Person: es bleiben nur passende Artikelzeilen übrig;
   // hat eine Person danach keine passende Zeile mehr, entfällt sie ganz.
   const txt = (v)=>String(v??"").toLowerCase();
-  const artikelSpalten = ["artikel","anzahl","groesse","preisKatalog","preisSpin","preisSpinGesamt","preisTTC","preisTTCGesamt"];
+  const artikelSpalten = ["artikel","anzahl","groesse","uebergabe","preisKatalog","preisSpin","preisSpinGesamt","preisTTC","preisTTCGesamt"];
   const jaNeinPasst = (wert, f)=> f===""||f===undefined ? true : (f==="ja" ? !!wert : !wert);
   const gefilterteZeilen = personenZeilen.map(z=>{
     // Personen-Ebene
@@ -11240,6 +11243,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       if(filter.artikel && !txt(a.artikel).includes(txt(filter.artikel))) return false;
       if(filter.anzahl!==undefined && filter.anzahl!=="" && String(a.anzahl)!==String(filter.anzahl)) return false;
       if(filter.groesse && !txt(a.groesse).includes(txt(filter.groesse))) return false;
+      if(filter.uebergabe!==undefined && filter.uebergabe!=="" && String(Number(a.uebergabe)||0)!==String(filter.uebergabe)) return false;
       for(const k of ["preisKatalog","preisSpin","preisSpinGesamt","preisTTC","preisTTCGesamt"]){
         if(filter[k]!==undefined && filter[k]!==""){
           const soll=parseFloat(String(filter[k]).replace(",","."));
@@ -11292,7 +11296,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     {key:"artikel",label:"Artikel",align:"left",filter:"text"},
     {key:"anzahl",label:"Anzahl",align:"center",filter:"text"},
     {key:"groesse",label:"Größe",align:"center",filter:"text"},
-    {key:"uebergabe",label:"Übergabe",align:"center"},
+    {key:"uebergabe",label:"Übergabe",align:"center",filter:"uebergabe"},
     {key:"preisKatalog",label:"Preis Katalog",align:"right",filter:"text"},
     {key:"preisSpin",label:"Preis Spin & Speed",align:"right",filter:"text"},
     {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right",filter:"text"},
@@ -11370,6 +11374,13 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                     ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
                         <option value="">alle</option>
                         {gruppenWerte.map(g=><option key={g} value={g}>{g}</option>)}
+                      </select>
+                    : sp.filter==="uebergabe"
+                    ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
+                        <option value="">alle</option>
+                        <option value="0">⬜ leer</option>
+                        <option value="1">✔ vorhanden (grau)</option>
+                        <option value="2">✔ übergeben (grün)</option>
                       </select>
                     : sp.filter==="janein"
                     ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
@@ -18228,6 +18239,7 @@ export default function App() {
   const [verknuepfLaeuft, setVerknuepfLaeuft] = useState(false);
   const [verknuepfFehler, setVerknuepfFehler] = useState("");
   const [players,      setPlayers]      = useState([]);
+  const [playersReady, setPlayersReady] = useState(false);
   const [attendance,   setAttendance]   = useState({});
   const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:""});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
@@ -18361,8 +18373,8 @@ export default function App() {
   useEffect(()=>{
     if (!authUser) return;
     const u1 = onSnapshot(collection(db,"players"),
-      snap => setPlayers(snap.docs.map(d=>d.data())),
-      () => {}
+      snap => { setPlayers(snap.docs.map(d=>d.data())); setPlayersReady(true); },
+      () => { setPlayersReady(true); }
     );
     const u2 = onSnapshot(collection(db,"attendance"),
       snap => {
@@ -18396,7 +18408,7 @@ export default function App() {
   async function handleSignOut() {
     // Erst state löschen, dann ausloggen
     // adminReady NICHT auf false setzen — onAuthStateChanged(null) setzt es korrekt auf true
-    setPlayers([]); setAttendance({}); setRackets([]); setIsAdmin(false); setLoginSuccess("");
+    setPlayers([]); setPlayersReady(false); setAttendance({}); setRackets([]); setIsAdmin(false); setLoginSuccess("");
     try { await signOut(auth); } catch(e) {}
   }
 
@@ -18445,7 +18457,7 @@ export default function App() {
   // App direkt nach dem Login kurz mit isAdmin=false rendern (→ Trainer-Ansicht) und erst
   // nach dem asynchronen Admin-Check auf die Admin-Ansicht springen. Das Gate verhindert
   // dieses „Aufblitzen" des Trainerbereichs.
-  if (authUser && !adminReady) {
+  if (authUser && (!adminReady || !playersReady)) {
     return (
       <div style={{minHeight:"100vh",background:"var(--bg,#0d1117)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{textAlign:"center",color:"#6b7280"}}>
@@ -18626,11 +18638,18 @@ export default function App() {
   //   - isAdmin → nur als Fallback, wenn die Person gar kein Profil/keine Rolle hat.
   const playerRoles = myPlayer?.roles || {};
   const hasTrainerRole = playerRoles.trainer === true;              // strikt: nur zugeordnete Funktion
-  // Admin-Ansicht: Super-Admin, per Profil zugeordnete Admin-Rolle ODER Eintrag in der
-  // Admin-E-Mail-Liste (isAdmin). Letzteres ist wichtig, damit ein Admin sofort die
-  // Admin-Ansicht sieht – auch bevor die players-Collection geladen ist (sonst würde
-  // er anfangs faelschlich nur den Trainerbereich sehen).
-  const hasAdminRole   = isSuperAdmin || isAdmin || playerRoles.admin === true;
+  // Admin-Ansicht: Super-Admin ODER die im Profil ZUGEORDNETE Admin-Rolle.
+  //
+  // WICHTIG (Sicherheitskorrektur): Der Eintrag in der Admin-E-Mail-Liste (isAdmin)
+  // darf NICHT allein Admin-Rechte geben. Sonst erhielte JEDE Person, die sich denselben
+  // E-Mail-Account teilt (z.B. Kinder mit der Eltern-Adresse, die als Trainer-/Admin-Mail
+  // hinterlegt ist), fälschlich Admin-Rechte – unabhängig von ihrem eigenen Profil.
+  // Deshalb wirkt der E-Mail-Fallback (isAdmin) nur noch, wenn (noch) KEIN konkretes
+  // Profil geladen ist – dann sieht ein echter Admin sofort die Admin-Ansicht, ohne dass
+  // ein fremdes Profil fälschlich Rechte erbt. Sobald ein Profil zugeordnet ist, zählt
+  // ausschließlich dessen roles.admin (plus der eindeutige Super-Admin).
+  const adminEmailFallback = isAdmin && !myPlayer;   // nur ohne eigenes Profil
+  const hasAdminRole   = isSuperAdmin || playerRoles.admin === true || adminEmailFallback;
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
   // Zu einer Spielergruppe gehören = ist Spieler (auch wenn zusätzlich Trainer).
@@ -18651,8 +18670,10 @@ export default function App() {
   if (hasPlayerRole && myPlayer)    availableViews.push("player");
   if (hasErwachseneRole)            availableViews.push("erwachsene");
   if (hasMFRole)                    availableViews.push("mannschaftsfuehrer");
-  // Fallback: Person ohne jede zugeordnete Rolle, aber in Admin-E-Mail-Liste → Admin/Trainer-Zugang
-  if (availableViews.length === 0 && (isSuperAdmin || isAdmin)) availableViews.push(isSuperAdmin?"admin":"trainer");
+  // Fallback: Person OHNE eigenes Profil, aber in Admin-E-Mail-Liste → Admin/Trainer-Zugang.
+  // (adminEmailFallback = isAdmin && !myPlayer). Verhindert, dass ein geteiltes Konto
+  // einem fremden Profil ungewollt Admin-/Trainer-Ansichten gibt.
+  if (availableViews.length === 0 && (isSuperAdmin || adminEmailFallback)) availableViews.push(isSuperAdmin?"admin":"trainer");
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
   if (!myPlayer && !isAdmin) return (
