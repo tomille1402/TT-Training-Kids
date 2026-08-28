@@ -1,4 +1,4 @@
-// === TTC-App · Version 397 · erstellt 23.08.2026 ===
+// === TTC-App · Version 398 · erstellt 28.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "397";
+const APP_VERSION = "398";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -16546,6 +16546,9 @@ function TermineView() {
 // Sentinel-Wert im Mannschaftsfilter für "betreute Spiele" (Spiele, für die der
 // eingeloggte Nutzer als Betreuer bestimmt ist).
 const SENTINEL_BETREUT="__betreut__";
+const SENTINEL_NACHWUCHS="__alle_nachwuchs__";
+const SENTINEL_HERREN="__alle_herren__";
+const SENTINEL_LEER="__leer__";
 
 function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const [spiele,setSpiele]=useState([]);
@@ -16751,6 +16754,23 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   },[selSeason]);
 
   const nachwuchsMannschaften=["Mädchen 13","Mädchen 15","Mädchen 11","Jugend 11","Mädchen 17","Jugend 13","Jugend 15"];
+  const istNachwuchsTeam=(m)=>nachwuchsMannschaften.some(nm=>m===nm||String(m||"").startsWith(nm));
+  // Herren-/Erwachsenenmannschaft = alles, was kein Nachwuchs und kein Termin ist.
+  const istHerrenTeam=(m)=>!!m && !istNachwuchsTeam(m);
+  // spielKey wie in der EinsätzeView berechnen (für Betreuer/Fahrer-Zuordnung).
+  const spielKeyVon=(s)=>`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+  // Betreuer-Text eines Spiels (nur Nachwuchs sinnvoll); leerer String, wenn keiner.
+  const betreuerVon=(s)=>{
+    if(!istNachwuchsTeam(s.mannschaft)) return "";
+    const ei=einsaetzeData[spielKeyVon(s)]||{};
+    return [ei._betreuer1,ei._betreuer2].filter(Boolean).join(", ");
+  };
+  // Fahrer-Text eines Spiels (nur Nachwuchs-Auswärtsspiele sinnvoll); leerer String, wenn keiner.
+  const fahrerVon=(s)=>{
+    if(!istNachwuchsTeam(s.mannschaft) || s.ort==="Heim") return "";
+    const ei=einsaetzeData[spielKeyVon(s)]||{};
+    return ei._fahrer||"";
+  };
   const filtered = spiele.filter(s=>{
     if(String(s.gegner||"").toLowerCase().includes("spielfrei")||String(s.mannschaft||"").toLowerCase().includes("spielfrei")) return false;
     if(nurNachwuchs && !nachwuchsMannschaften.some(nm=>s.mannschaft===nm||s.mannschaft.startsWith(nm))) return false;
@@ -16758,24 +16778,43 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     // Ist dieses Spiel eines, für das der eingeloggte Nutzer als Betreuer bestimmt ist?
     const istBetreut = vorauswahlPlayer ? personIstBetreuer(vorauswahlPlayer, s, einsaetzeData) : false;
     const betreutFilterAktiv = selManns.includes(SENTINEL_BETREUT);
-    // Punkt 2: Ist NUR "betreute Spiele" gewählt (ohne echte Mannschaften), zeige
-    // ausschließlich betreute Spiele.
-    const echteManns = selManns.filter(m=>m!==SENTINEL_BETREUT);
-    if(betreutFilterAktiv && echteManns.length===0){
+    // Sammel-Sentinels: alle Nachwuchs- bzw. alle Herrenmannschaften.
+    const nachwuchsSammel = selManns.includes(SENTINEL_NACHWUCHS);
+    const herrenSammel     = selManns.includes(SENTINEL_HERREN);
+    // Ein Spiel gilt als "durch die Mannschaftsauswahl abgedeckt", wenn es explizit
+    // gewählt wurde ODER via Sammel-Sentinel zu Nachwuchs/Herren passt.
+    const passtSammel = (nachwuchsSammel && istNachwuchsTeam(s.mannschaft))
+                      || (herrenSammel && istHerrenTeam(s.mannschaft));
+    // Echte (namentliche) Mannschaftsauswahl ohne Sentinels.
+    const echteManns = selManns.filter(m=>m!==SENTINEL_BETREUT&&m!==SENTINEL_NACHWUCHS&&m!==SENTINEL_HERREN);
+    const mannAuswahlAktiv = echteManns.length>0 || nachwuchsSammel || herrenSammel;
+    if(betreutFilterAktiv && !mannAuswahlAktiv){
       if(!istBetreut) return false;
-      // die übrigen Detailfilter (Ort/Gegner/Tag/Art) trotzdem anwenden
-    } else if(echteManns.length>0){
+      // die übrigen Detailfilter (Ort/Gegner/Tag/Art/Betreuer/Fahrer) trotzdem anwenden
+    } else if(mannAuswahlAktiv){
       // Punkt 1: betreute Spiele werden IMMER zusätzlich gezeigt, egal welcher
       // Mannschaftsfilter gesetzt ist. Nicht-betreute Spiele müssen zur Auswahl passen.
-      if(!echteManns.includes(s.mannschaft) && !istBetreut) return false;
+      if(!echteManns.includes(s.mannschaft) && !passtSammel && !istBetreut) return false;
     }
     // Betreute Spiele umgehen auch die Detailfilter, damit sie – wie gefordert –
     // immer sichtbar bleiben (Punkt 1). Ausnahme: der reine Betreut-Filter oben.
-    if(istBetreut && echteManns.length>0) return true;
+    if(istBetreut && mannAuswahlAktiv) return true;
     if(filters.ort && s.ort!==filters.ort) return false;
     if(filters.gegner && !String(s.gegner||"").toLowerCase().includes(filters.gegner.toLowerCase())) return false;
     if(filters.tag && s.tag!==filters.tag) return false;
     if(filters.art && (s.art||"Runde")!==filters.art) return false;
+    // Betreuer-Filter: konkreter Name (Teilstring) oder "(leer)" für Spiele ohne Betreuer.
+    if(filters.betreuer){
+      const b=betreuerVon(s);
+      if(filters.betreuer===SENTINEL_LEER){ if(b.trim()!=="") return false; }
+      else if(!b.toLowerCase().includes(filters.betreuer.toLowerCase())) return false;
+    }
+    // Fahrer-Filter: konkreter Name (Teilstring) oder "(leer)" für Spiele ohne Fahrer.
+    if(filters.fahrer){
+      const f=fahrerVon(s);
+      if(filters.fahrer===SENTINEL_LEER){ if(f.trim()!=="") return false; }
+      else if(!f.toLowerCase().includes(filters.fahrer.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -16785,9 +16824,22 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     const y=p[2].length===2?`20${p[2]}`:p[2];
     return `${y}${p[1].padStart(2,"0")}${p[0].padStart(2,"0")}`;
   }
+  // Wert für die Sortierung: Betreuer/Fahrer aus den Einsätzen ableiten, sonst Feld.
+  const sortWert=(row,key)=>{
+    if(key==="betreuer") return betreuerVon(row);
+    if(key==="fahrer")   return fahrerVon(row);
+    return row[key]||"";
+  };
   const sorted0 = [...filtered].sort((a,b)=>{
-    let va=a[sortKey]||""; let vb=b[sortKey]||"";
+    let va=sortWert(a,sortKey); let vb=sortWert(b,sortKey);
     if(sortKey==="datum"){va=datumSort(va); vb=datumSort(vb);}
+    // Leere Werte (kein Betreuer/Fahrer) immer ans Ende, unabhängig von der Richtung.
+    if(sortKey==="betreuer"||sortKey==="fahrer"){
+      const ea=va.trim()==="", eb=vb.trim()==="";
+      if(ea&&!eb) return 1;
+      if(!ea&&eb) return -1;
+      va=va.toLowerCase(); vb=vb.toLowerCase();
+    }
     return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
   });
 
@@ -16850,6 +16902,11 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     {(()=>{
       const MANNS=[...new Set(spiele.map(s=>s.mannschaft).filter(Boolean))].sort();
       const selManns=filters.mannschaften||[];
+      // Vorhandene Betreuer-/Fahrer-Namen aus den Einsätzen sammeln (nur relevante Spiele).
+      const betreuerNamen=[...new Set(spiele.flatMap(s=>{
+        const b=betreuerVon(s); return b?b.split(", "):[];
+      }).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
+      const fahrerNamen=[...new Set(spiele.map(s=>fahrerVon(s)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
       return <div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
         {/* Saison */}
         <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
@@ -16863,6 +16920,8 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
           }}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
           <option value="">Mannschaft{selManns.length>0?` (${selManns.length})`:""}</option>
+          <option value={SENTINEL_NACHWUCHS}>{selManns.includes(SENTINEL_NACHWUCHS)?"☑ ":"☐ "}▸ alle Nachwuchsmannschaften</option>
+          <option value={SENTINEL_HERREN}>{selManns.includes(SENTINEL_HERREN)?"☑ ":"☐ "}▸ alle Herrenmannschaften</option>
           {MANNS.map(m=><option key={m} value={m}>{selManns.includes(m)?"☑ ":"☐ "}{m}</option>)}
           {vorauswahlPlayer&&<option value={SENTINEL_BETREUT}>{selManns.includes(SENTINEL_BETREUT)?"☑ ":"☐ "}betreute Spiele</option>}
         </select>
@@ -16885,6 +16944,20 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
           <option value="">Ort</option>
           <option value="Heim">Heim</option>
           <option value="Auswärts">Auswärts</option>
+        </select>
+        {/* Betreuer */}
+        <select value={filters.betreuer||""} onChange={e=>setFilters(p=>({...p,_userSet:true,betreuer:e.target.value}))}
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Betreuer</option>
+          <option value={SENTINEL_LEER}>(leer)</option>
+          {betreuerNamen.map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+        {/* Fahrer */}
+        <select value={filters.fahrer||""} onChange={e=>setFilters(p=>({...p,_userSet:true,fahrer:e.target.value}))}
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Fahrer</option>
+          <option value={SENTINEL_LEER}>(leer)</option>
+          {fahrerNamen.map(n=><option key={n} value={n}>{n}</option>)}
         </select>
         {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,_userSet:true,gegner:e.target.value}))}
@@ -16916,17 +16989,22 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         }} style={{flex:"0 0 auto",padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
-        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||(filters.rubriken&&filters.rubriken.length>0))&&
+        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||(filters.rubriken&&filters.rubriken.length>0))&&
           <button onClick={()=>setFilters({rubriken:[],_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
     {/* Ausgewählte Mannschaften als Chips */}
     {(filters.mannschaften||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-      {(filters.mannschaften||[]).map(m=>
-        <span key={m} onClick={()=>setFilters(p=>({...p,_userSet:true,mannschaften:(p.mannschaften||[]).filter(x=>x!==m)}))}
+      {(filters.mannschaften||[]).map(m=>{
+        const label = m===SENTINEL_NACHWUCHS ? "alle Nachwuchsmannschaften"
+                    : m===SENTINEL_HERREN     ? "alle Herrenmannschaften"
+                    : m===SENTINEL_BETREUT    ? "betreute Spiele"
+                    : m;
+        return <span key={m} onClick={()=>setFilters(p=>({...p,_userSet:true,mannschaften:(p.mannschaften||[]).filter(x=>x!==m)}))}
           style={{background:"#10b98122",color:"#10b981",borderRadius:5,padding:"2px 7px",fontSize:10,cursor:"pointer",fontWeight:600}}>
-          {m} ✕
-        </span>)}
+          {label} ✕
+        </span>;
+      })}
     </div>}
     <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Spiele{nurNachwuchs?" (Nachwuchs)":""} · T=Terminänderung, V=Verlegung</div>
     {/* Table */}
@@ -16977,17 +17055,14 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
                 // Betreuer/Fahrer nur für Nachwuchsspiele relevant. Bei Herrenmannschaften
                 // beide ausgegraut. Fahrer zusätzlich bei Heimspielen ausgegraut.
                 // Werte kommen aus den Einsätzen (einsaetzeData[spielKey]).
-                const istNachwuchs = nachwuchsMannschaften.some(nm=>s.mannschaft===nm||String(s.mannschaft||"").startsWith(nm));
+                const istNachwuchs = istNachwuchsTeam(s.mannschaft);
                 const istHeim = s.ort==="Heim";
                 const grau = {padding:"5px 6px",fontSize:10,color:"var(--text4)",background:"var(--bg3)",opacity:0.5,whiteSpace:"nowrap"};
                 const aktiv = {padding:"5px 6px",fontSize:10,color:"var(--text2)"};
                 const betreuerAus = !istNachwuchs;           // bei Herren ausgegraut
                 const fahrerAus    = !istNachwuchs || istHeim; // bei Herren ODER Heimspiel ausgegraut
-                // spielKey identisch zur EinsätzeView berechnen
-                const sk = `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
-                const ei = einsaetzeData[sk]||{};
-                const betreuer = [ei._betreuer1,ei._betreuer2].filter(Boolean).join(", ");
-                const fahrer = ei._fahrer||"";
+                const betreuer = betreuerVon(s);
+                const fahrer = fahrerVon(s);
                 return <>
                   <td style={betreuerAus?grau:aktiv}>{betreuerAus?"—":(betreuer||<span style={{color:"var(--text4)"}}>—</span>)}</td>
                   <td style={fahrerAus?grau:aktiv}>{fahrerAus?"—":(fahrer||<span style={{color:"var(--text4)"}}>—</span>)}</td>
