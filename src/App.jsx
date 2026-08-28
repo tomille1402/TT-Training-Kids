@@ -1,4 +1,4 @@
-// === TTC-App · Version 395 · erstellt 23.08.2026 ===
+// === TTC-App · Version 396 · erstellt 23.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "395";
+const APP_VERSION = "396";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -13608,12 +13608,26 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
   const [autoGezeigt,setAutoGezeigt] = useState(()=>{
     try { return JSON.parse(localStorage.getItem("ttc_nachr_auto_gezeigt")||"[]"); } catch(_) { return []; }
   });
+  // IDs der aktuell als „neu" markierten Nachrichten (seit dem letzten Öffnen des Popups
+  // dazugekommen). Wird beim Auto-Öffnen gesetzt und beim Schließen des Popups geleert –
+  // „gesehen = nicht mehr neu".
+  const [neueIds,setNeueIds] = useState([]);
+  // Welche Gruppen sind aufgeklappt? Standard: alle eingeklappt. (Hier oben definiert,
+  // damit der Auto-Popup-Effekt die relevanten Gruppen aufklappen kann.)
+  const [offeneGruppen,setOffeneGruppen]=useState({});
+  const toggleGruppe=(k)=>setOffeneGruppen(p=>({...p,[k]:!p[k]}));
   useEffect(()=>{
     if(!offeneNachrichten.length) return;
     const neueUngezeigte = offeneNachrichten.filter(n=>!autoGezeigt.includes(n.id));
     if(neueUngezeigte.length===0) return;
-    // Popup öffnen und alle aktuell offenen Nachrichten als „automatisch gezeigt" merken.
+    // Popup öffnen, neue Nachrichten markieren und ihre Kategorien aufklappen.
     setShowPopup(true);
+    const neuIdListe = neueUngezeigte.map(n=>n.id);
+    setNeueIds(prev=>[...new Set([...prev, ...neuIdListe])]);
+    // Relevante Abschnitte (mit neuen Nachrichten) automatisch aufklappen.
+    const katsMitNeuen = new Set(neueUngezeigte.map(n=>kategorieVon(n)));
+    setOffeneGruppen(prev=>{ const next={...prev}; for(const k of katsMitNeuen) next[k]=true; return next; });
+    // Alle aktuell offenen Nachrichten als „automatisch gezeigt" merken.
     const neu=[...new Set([...autoGezeigt, ...offeneNachrichten.map(n=>n.id)])].slice(-300);
     setAutoGezeigt(neu);
     try { localStorage.setItem("ttc_nachr_auto_gezeigt",JSON.stringify(neu)); } catch(_){}
@@ -13682,9 +13696,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
   const gruppen={}; for(const [k] of KAT_META) gruppen[k]=[];
   for(const n of offeneNachrichten){ const k=kategorieVon(n); (gruppen[k]||gruppen.sonstiges).push(n); }
 
-  // Welche Gruppen sind aufgeklappt? Standard: alle eingeklappt.
-  const [offeneGruppen,setOffeneGruppen]=useState({});
-  const toggleGruppe=(k)=>setOffeneGruppen(p=>({...p,[k]:!p[k]}));
+  // (offeneGruppen/toggleGruppe sind oben definiert, damit der Auto-Popup-Effekt sie nutzen kann.)
 
   // Zähler + Sichtbarkeit basieren jetzt allein auf den Benachrichtigungen
   // (Geburtstage sind darin als normale Nachrichten enthalten).
@@ -13710,7 +13722,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
         padding:"16px 18px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
         <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>🔔 Benachrichtigungen</div>
-        <button onClick={()=>setShowPopup(false)} title="Schließen" style={{
+        <button onClick={()=>{ setShowPopup(false); setNeueIds([]); }} title="Schließen" style={{
           background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,
           color:"var(--text2)",fontSize:18,padding:"4px 12px",cursor:"pointer",lineHeight:1,flexShrink:0}}>✕</button>
       </div>
@@ -13725,13 +13737,15 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
           if(items.length===0) return null;
           const auf=!!offeneGruppen[k];
           const ids=items.map(n=>n.id);
-          return <div key={k} style={{marginBottom:12,border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+          const neuInGruppe=items.filter(n=>neueIds.includes(n.id)).length;
+          return <div key={k} style={{marginBottom:12,border:neuInGruppe>0?"1px solid #3b82f655":"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
             {/* Gruppen-Kopf */}
             <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg2)",padding:"10px 14px"}}>
               <div onClick={()=>toggleGruppe(k)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:1,userSelect:"none"}}>
                 <span style={{fontSize:12,color:"var(--text3)",transition:"transform .15s",transform:auf?"rotate(90deg)":"none"}}>▶</span>
                 <span style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{label}</span>
                 <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#3b82f6",borderRadius:10,padding:"1px 8px"}}>{items.length}</span>
+                {neuInGruppe>0 && <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#f59e0b",borderRadius:6,padding:"1px 6px",letterSpacing:0.4}}>{neuInGruppe} NEU</span>}
               </div>
               {/* Ganze Gruppe ausblenden (eigener Nutzer) */}
               <button onClick={()=>nachrichtenWegklicken(ids)} title="Ganze Gruppe ausblenden" style={{
@@ -13745,10 +13759,16 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
             </div>
             {/* Gruppen-Inhalt */}
             {auf && <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
-              {items.map(n=>(
-                <div key={n.id} style={{background:"var(--bg2)",borderRadius:10,padding:"11px 14px",display:"flex",alignItems:"flex-start",gap:10}}>
+              {items.map(n=>{
+                const istNeu = neueIds.includes(n.id);
+                return (
+                <div key={n.id} style={{background:"var(--bg2)",borderRadius:10,padding:"11px 14px",display:"flex",alignItems:"flex-start",gap:10,
+                  borderLeft:istNeu?"4px solid #3b82f6":"4px solid transparent"}}>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:3}}>{n.titel}</div>
+                    <div style={{fontWeight:700,color:"var(--text)",fontSize:14,marginBottom:3,display:"flex",alignItems:"center",gap:7}}>
+                      {istNeu && <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#3b82f6",borderRadius:6,padding:"1px 6px",letterSpacing:0.4,flexShrink:0}}>NEU</span>}
+                      <span>{n.titel}</span>
+                    </div>
                     <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
                     {(()=>{
                       // Zeitstempel der Meldung: bevorzugt ts (ms), sonst erstellt (Datum).
@@ -13775,7 +13795,8 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                     background:"#ef444422",border:"1px solid #ef444444",borderRadius:8,
                     color:"#ef4444",fontSize:15,padding:"5px 10px",cursor:"pointer",flexShrink:0,fontWeight:700}}>🗑</button>}
                 </div>
-              ))}
+                );
+              })}
             </div>}
           </div>;
         })}
