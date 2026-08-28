@@ -146,6 +146,29 @@ function deWochentag(iso){
   const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
   return ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][d.getUTCDay()];
 }
+// Aus einem Gegner-/Vereinsnamen den reinen Ort ableiten, z.B. "TTC Hausen 1975 II" -> "Hausen".
+// Entfernt führende Vereinskürzel, Gründungsjahre, "e.V.", römische/arabische
+// Mannschaftsnummern sowie Klammer-/Kommazusätze. Fällt bei leerem Ergebnis auf den
+// Originalnamen zurück.
+function ortAusGegner(name){
+  let s = String(name||"").trim();
+  if(!s) return "";
+  s = s.replace(/^\s*\d+\.\s*/,"");                 // "1. FC ..." -> "FC ..."
+  // Vereinskürzel (auch mehrfach hintereinander, z.B. "SV Blau-Weiß Elz").
+  const praefix = /^(TTC|TTV|TTF|TTG|TSV|TSG|TuS|TV|TG|SV|SG|SGK|SC|SSV|DJK|FC|FSV|VfL|VfB|VfR|MTV|MTG|Post\s?SV|RSV|ASV|BSC|Eintracht|Spvgg|SpVgg)\b\.?\s+/i;
+  // Farb-/Namenszusätze, die nach dem Kürzel und vor dem Ort stehen können.
+  const farbe = /^(Blau-Weiß|Blau-Weiss|Rot-Weiß|Rot-Weiss|Grün-Weiß|Grün-Weiss|Schwarz-Weiß|Schwarz-Weiss|Blau|Rot|Grün|Gelb|Schwarz)\.?\s+/i;
+  let vorher;
+  do {
+    vorher=s;
+    s=s.replace(praefix,"");
+    s=s.replace(farbe,"");
+  } while(s!==vorher && s);
+  const suffix = /\s+(e\.?\s?V\.?|(18|19|20)\d{2}|[IVX]{1,4}|\d{1,2})\s*$/i;
+  do { vorher=s; s=s.replace(suffix,"").trim(); } while(s!==vorher && s);
+  s = s.replace(/\s*[\(,].*$/,"").trim();
+  return s || String(name||"").trim();
+}
 // Uhrzeit "HH:MM" um die angegebene Zahl Stunden verschieben (hier: 1 Stunde früher).
 // Gibt "HH:MM" zurück; bei ungültiger Eingabe leeren String.
 function uhrzeitMinusStunden(uhr, stunden){
@@ -372,10 +395,11 @@ ${betreuerSatz}
 
 Viel Erfolg 🏓`;
         } else {
-          // Bei Auswärtsspielen ist der Spielort der Ort des Gegners (im Gegnernamen enthalten).
-          const spielort = s.gegner || "beim Gegner";
+          // Bei Auswärtsspielen ist der Spielort der ORT des Gegners (aus dem Vereinsnamen
+          // abgeleitet, ohne Kürzel/Gründungsjahr/Mannschaftsnummer).
+          const spielort = ortAusGegner(s.gegner) || "beim Gegner";
           const fahrerSatz = fahrer
-            ? `Euer Fahrer ist ${fahrer}`
+            ? `Euer Fahrer ist ${String(fahrer).trim().replace(/\.+$/,"")}.`
             : "Ein Fahrer wird noch gesucht. Wer von den Eltern kann fahren?";
           text =
 `🏓 Guten Morgen,
