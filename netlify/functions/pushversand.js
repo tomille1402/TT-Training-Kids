@@ -320,6 +320,11 @@ module.exports.handler = async (event) => {
     // Optional: Testlauf ohne echten Versand (?dry=1) und Datum überschreiben (?datum=YYYY-MM-DD)
     const q = (event && event.queryStringParameters) || {};
     const dryRun = q.dry==="1";
+    // force=1: ignoriert die "heute schon gesendet"-Historie für diesen Lauf. Nötig, um
+    // Jobs erneut zu versenden, die durch einen früheren Fehler fälschlich als erledigt
+    // markiert wurden. Der eigentliche Versand-Schutz (kein Doppelversand) greift danach
+    // wieder normal, da die Historie nur bei vollständiger Zustellung gesetzt wird.
+    const force = q.force==="1";
     const heute = q.datum || heuteISO(0);
 
     const regelnDoc = await getDocData("config/pushRegeln");
@@ -562,6 +567,7 @@ Viel Erfolg 🏓`;
     let gesendet=0, uebersprungen=0, fehler=0;
     const neuHistorie = {};
     const sendeDiagnose = [];  // pro Gerät: Endpunkt-Typ + HTTP-Status (für Fehlersuche)
+    const jobZustellung = [];  // pro Job: erreichbare Empfänger vs. tatsächlich zugestellt
     const dienstVon = (ep)=>{
       if(/fcm\.googleapis\.com|android\.googleapis\.com/.test(ep)) return "Android/FCM";
       if(/\.push\.apple\.com/.test(ep)) return "Apple";
@@ -570,25 +576,45 @@ Viel Erfolg 🏓`;
       return "andere";
     };
     for(const job of zuSenden){
-      if(historie[job.sendeId]===heute){ uebersprungen++; continue; }
-      let irgendwasGesendet = false;
-      for(const pid of job.empfaengerIds){
-        const geraete = aboMap[pid];
-        if(!geraete) continue;
+      if(!force && historie[job.sendeId]===heute){ uebersprungen++; continue; }
+      // Erreichbare Empfänger = solche mit mindestens einem Push-Abo. Nur sie können
+      // überhaupt einen Push bekommen; Empfänger ohne Abo dürfen NICHT dazu führen,
+      // dass der Job als "erledigt" gilt (sonst wird er nie erneut versucht).
+      const erreichbareEmpf = job.empfaengerIds.filter(pid => (aboMap[pid]||[]).length>0);
+      let empfMitErfolg = 0;   // Empfänger, bei denen mind. 1 Gerät erfolgreich war
+      for(const pid of erreichbareEmpf){
+        const geraete = aboMap[pid] || [];
+        let pidErfolg = false;
         for(const g of geraete){
-          if(dryRun){ irgendwasGesendet=true; continue; }
+          if(dryRun){ pidErfolg=true; continue; }
           try{
             const r = await sendePush(
               { endpoint:g.endpoint, p256dh:g.p256dh, auth:g.auth },
               { titel:job.titel, text:job.text, url:job.url, tag:job.sendeId },
               vapid
             );
-            if(r.ok){ gesendet++; irgendwasGesendet=true; }
-            else { fehler++; sendeDiagnose.push({ dienst:dienstVon(g.endpoint||""), status:r.status, playerId:pid }); }
-          }catch(e){ fehler++; sendeDiagnose.push({ dienst:dienstVon(g.endpoint||""), status:"Ausnahme", fehler:(e&&e.message)||String(e), playerId:pid }); }
+            if(r.ok){ gesendet++; pidErfolg=true; }
+            else { fehler++; sendeDiagnose.push({ sendeId:job.sendeId, dienst:dienstVon(g.endpoint||""), status:r.status, playerId:pid }); }
+          }catch(e){ fehler++; sendeDiagnose.push({ sendeId:job.sendeId, dienst:dienstVon(g.endpoint||""), status:"Ausnahme", fehler:(e&&e.message)||String(e), playerId:pid }); }
         }
+        if(pidErfolg) empfMitErfolg++;
       }
-      if(irgendwasGesendet) neuHistorie[job.sendeId]=heute;
+      // Der Job gilt nur dann als erledigt (Historie), wenn ALLE erreichbaren
+      // Empfänger mindestens ein erfolgreich zugestelltes Gerät hatten. Schlägt die
+      // Zustellung bei einem erreichbaren Empfänger fehl, bleibt der Job offen und
+      // wird beim nächsten Lauf erneut versucht – statt fälschlich als "gesendet"
+      // markiert zu werden (Ursache dafür, dass Nachwuchs-Pushes ausblieben).
+      const vollstaendig = erreichbareEmpf.length>0 && empfMitErfolg===erreichbareEmpf.length;
+      if(vollstaendig) neuHistorie[job.sendeId]=heute;
+      // Pro-Job-Zustellbilanz für den Bericht (auch im echten Lauf sichtbar).
+      jobZustellung.push({
+        sendeId: job.sendeId,
+        titel: job.titel,
+        empfaenger: job.empfaengerIds.length,
+        erreichbareEmpfaenger: erreichbareEmpf.length,
+        empfaengerMitZustellung: empfMitErfolg,
+        alsErledigtMarkiert: vollstaendig
+      });
     }
 
     if(!dryRun && Object.keys(neuHistorie).length){
@@ -656,6 +682,9 @@ Viel Erfolg 🏓`;
     // Fehlgeschlagene Zustellungen immer zeigen (auch beim echten Lauf), damit
     // Android/FCM-Probleme sichtbar werden. Leere Liste = alle erfolgreich.
     if(sendeDiagnose.length) bericht.zustellFehler = sendeDiagnose;
+    // Pro-Job-Zustellbilanz immer zeigen: macht sofort sichtbar, ob ein Job wegen
+    // fehlender Abos (erreichbareEmpfaenger 0) oder wegen Zustellfehlern offen blieb.
+    if(jobZustellung.length) bericht.jobZustellung = jobZustellung;
     return { statusCode:200, headers:{"Content-Type":"application/json; charset=utf-8"}, body: JSON.stringify(bericht,null,2) };
 
   }catch(e){
