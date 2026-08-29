@@ -1,4 +1,4 @@
-// === TTC-App · Version 400 · erstellt 29.08.2026 ===
+// === TTC-App · Version 401 · erstellt 29.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "400";
+const APP_VERSION = "401";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -17725,6 +17725,8 @@ function EhrungenView({player}) {
 
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
 // ─── Vereinsfarben (Rot/Weiß/Schwarz) für die Kachel-Startseite ──────────────
+// myTischtennis.de-Logo (klein, als Data-URL) für den Spielplan-Link auf der Startseite.
+const MYTT_LOGO = "data:image/jpeg;base64,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";
 const TTC_ROT = "#c8102e";
 const TTC_ROT_DUNKEL = "#9c0c24";
 
@@ -17741,10 +17743,8 @@ const EW_HOME_GRUPPEN = [
     { key:"ttr",          label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
   ]},
   { titel:"Mein Bereich", items:[
-    { key:"beobachtungen",label:"Beobachtungen",icon:"🔍", sub:"Notizen" },
     { key:"erfolge",      label:"Erfolge",      icon:"🏅", sub:"Meine Erfolge" },
     { key:"ehrungen",     label:"Ehrungen",     icon:"🌟", sub:"Auszeichnungen" },
-    { key:"bestellungen", label:"Bestellungen", icon:"🛒", sub:"Vereinsartikel" },
     { key:"meineverwaltung",label:"Verwaltung", icon:"🗂️", sub:"Meine Daten" },
   ]},
   { titel:"Verein", items:[
@@ -17757,8 +17757,42 @@ const EW_HOME_GRUPPEN = [
 // Kachel-Startseite der Erwachsene-Ansicht. Lädt schlanke Live-Infos (nächstes
 // Spiel des Vereins) und rendert die Bereiche als thematisch gruppierte Kacheln
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
-function ErwachseneHome({ myPlayer, onOpen, isMF=false }) {
+function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const [naechstes, setNaechstes] = useState(null);
+  const [aufSpieler, setAufSpieler] = useState([]);
+  const [spielcodes, setSpielcodes] = useState({});
+  const [spielpins, setSpielpins] = useState({});
+
+  // Aufstellung laden (bestimmt die Mannschaft der Person).
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db,"config","aufstellung_2026_2027_V"), snap=>{
+      const d = snap.exists() ? (snap.data().spieler||[]) : [];
+      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    }, ()=> setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    return unsub;
+  }, []);
+  // Spielcodes + PINs laden (für Spielbericht-Link und PIN in der Hero-Karte).
+  useEffect(() => {
+    const u1 = onSnapshot(doc(db,"config","spielcodes"), snap=> setSpielcodes(snap.exists()?snap.data():{}), ()=>{});
+    const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
+    return ()=>{ u1&&u1(); u2&&u2(); };
+  }, []);
+
+  // Mannschaft der betrachteten Person (Aufstellungsname, z.B. "Erwachsene III").
+  const meinAufName = useMemo(
+    ()=> myPlayer ? stammMannschaftVorauswahl(myPlayer, aufSpieler) : "",
+    [myPlayer, aufSpieler]
+  );
+  // Spielplan-Name der Person (z.B. "Herren 3").
+  const meinSpielplanName = AUFSTELLUNG_TO_SPIELPLAN[normAufName(meinAufName)] || "";
+  // Team-Objekt (für myTischtennis-Link) über den Aufstellungsnamen.
+  const meinTeam = useMemo(
+    ()=> (SEASONS.find(s=>s.current)||SEASONS[0]).teams.find(t=>normAufName(t.name)===normAufName(meinAufName)) || null,
+    [meinAufName]
+  );
+
+  // Nächstes Spiel: bevorzugt das der eigenen Mannschaft; sonst das nächste
+  // beliebige Vereinsspiel (Fallback, falls keine Mannschaft zugeordnet ist).
   useEffect(() => {
     let ab = false;
     (async () => {
@@ -17768,17 +17802,47 @@ function ErwachseneHome({ myPlayer, onOpen, isMF=false }) {
         const heute = new Date().toLocaleDateString("sv");
         const kommend = spiele
           .filter(s => s && s.datum && s.datum >= heute)
-          .sort((a,b)=> (a.datum+ (a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-        if(!ab) setNaechstes(kommend[0] || null);
+          .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
+        const eigenes = meinSpielplanName
+          ? kommend.find(s => s.mannschaft===meinSpielplanName)
+          : null;
+        if(!ab) setNaechstes(eigenes || kommend[0] || null);
       } catch(e){ if(!ab) setNaechstes(null); }
     })();
     return () => { ab = true; };
-  }, []);
+  }, [meinSpielplanName]);
 
   const gruppen = EW_HOME_GRUPPEN.map(g => ({
     ...g,
     items: g.items.filter(it => it.key!=="bestelluebersicht" || isMF),
   }));
+
+  // Klick auf Kachel/Link: erst an den Seitenanfang scrollen, dann Reiter öffnen (Punkt 2).
+  const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
+
+  // Spielcode / PIN des Spiels finden — robust wie im Vereinsspielplan:
+  // Config-Slug kann "2026_27" ODER "2026_2027" lauten; die Mannschaft ist dort
+  // unter dem Aufstellungsnamen ("Erwachsene III") abgelegt, nicht "Herren 3".
+  const saisonKeys = ["2026_27", "2026_2027"];
+  const namensKandidaten = (s) => {
+    const out = [s.mannschaft];
+    const hm = String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
+    if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) out.push(`Erwachsene ${r}`); }
+    return out;
+  };
+  const feldVonSpiel = (s, quelle, feld) => {
+    if(!s) return "";
+    for(const sk of saisonKeys){
+      const proSaison = quelle?.[sk]; if(!proSaison) continue;
+      for(const nm of namensKandidaten(s)){
+        const e = proSaison?.[nm]?.[s.datum];
+        if(e && e[feld]) return e[feld];
+      }
+    }
+    return "";
+  };
+  const codeVonSpiel = (s) => feldVonSpiel(s, spielcodes, "code");
+  const pinVonSpiel  = (s) => feldVonSpiel(s, spielpins,  "pin");
 
   const heroDatum = (() => {
     if(!naechstes) return "";
@@ -17788,19 +17852,49 @@ function ErwachseneHome({ myPlayer, onOpen, isMF=false }) {
     return `${d}${naechstes.uhrzeit?` ${naechstes.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
   })();
 
+  const istHeim = naechstes ? /heim/i.test(naechstes.ort||"") : false;
+  const code = codeVonSpiel(naechstes);
+  const pin = pinVonSpiel(naechstes);
+  const berichtUrl = code
+    ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`
+    : "";
+  const mannschaftSpielplanUrl = meinTeam
+    ? teamLinks(meinTeam, (SEASONS.find(s=>s.current)||SEASONS[0]).code).spielplan
+    : "";
+
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
-    {/* Hero: wichtigste aktuelle Info (nächstes Spiel) */}
-    <div onClick={()=>onOpen("spielplan")} style={{
-      background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:18, cursor:"pointer",
-      boxShadow:"0 4px 14px #c8102e33",
-    }}>
+    {/* Hero: nächstes Spiel der eigenen Mannschaft */}
+    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:18, boxShadow:"0 4px 14px #c8102e33"}}>
       {naechstes ? <>
-        <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>Nächstes Spiel · {heroDatum}</div>
+        <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>
+          {meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel"} · {heroDatum}
+        </div>
         <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
           {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
         </div>
-        <div style={{fontSize:12, color:"#ffd7dd", marginTop:6, display:"flex", alignItems:"center", gap:5}}>
-          zum Spielplan <span style={{fontSize:14}}>→</span>
+        {/* Spiel-PIN */}
+        {pin && <div style={{fontSize:13, color:"#fff", marginTop:8, fontVariantNumeric:"tabular-nums"}}>
+          🔑 Spiel-PIN: <span style={{fontWeight:700, letterSpacing:".05em"}}>{pin}</span>
+        </div>}
+        {/* Aktionslinks: Spielbericht + myTischtennis-Mannschaftsspielplan */}
+        <div style={{display:"flex", flexWrap:"wrap", gap:8, marginTop:12}}>
+          {istHeim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
+            style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT,
+              fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>
+            📝 Spielbericht
+          </a>}
+          {istHeim && !berichtUrl && <span
+            style={{display:"inline-flex", alignItems:"center", gap:5, background:"#ffffff33", color:"#fff",
+              fontSize:12, fontWeight:600, padding:"7px 11px", borderRadius:9}}>
+            📝 Spielbericht folgt
+          </span>}
+          {mannschaftSpielplanUrl && <a href={mannschaftSpielplanUrl} target="_blank" rel="noopener noreferrer"
+            title="Mannschaftsspielplan auf myTischtennis.de öffnen"
+            style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a",
+              fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
+            <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/>
+            Spielplan
+          </a>}
         </div>
       </> : <>
         <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
@@ -17810,23 +17904,21 @@ function ErwachseneHome({ myPlayer, onOpen, isMF=false }) {
 
     {/* Thematisch gruppierte Kacheln */}
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
-      <div style={{
-        display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px",
-      }}>
+      <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
         <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
       </div>
       <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
-        {g.items.map(it => <button key={it.key} onClick={()=>onOpen(it.key)} style={{
+        {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
           textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
           borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
-          flexDirection:"column", gap:2, borderLeft:`3px solid ${TTC_ROT}`,
+          flexDirection:"column", gap:3, borderLeft:`3px solid ${TTC_ROT}`,
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
-            <span style={{fontSize:20}}>{it.icon}</span>
+            <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
           </div>
-          <span style={{fontSize:11, color:"var(--text3)", marginLeft:28}}>{it.sub}</span>
+          <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
       </div>
     </div>)}
@@ -17858,7 +17950,6 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
-    {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
@@ -17900,14 +17991,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:44}}/>
-    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} isMF={isMF} onOpen={(key)=>setActiveTab(key)}/>}
+    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key)=>setActiveTab(key)}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
-    {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
-    {activeTab==="beobachtungen"&&myPlayer&&
-      <BeobachtungenAdminTab players={[myPlayer]} selectedPlayer={myPlayer} user={user} showToast={showToast}/>}
-    {activeTab==="beobachtungen"&&!myPlayer&&
-      <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
     {activeTab==="erfolge"&&!myPlayer&&
       <div style={{padding:30,textAlign:"center",color:"var(--text3)"}}>Kein Profil verknüpft.</div>}
