@@ -1,4 +1,4 @@
-// === TTC-App · Version 399 · erstellt 29.08.2026 ===
+// === TTC-App · Version 400 · erstellt 29.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "399";
+const APP_VERSION = "400";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -17724,8 +17724,117 @@ function EhrungenView({player}) {
 }
 
 // ─── ERWACHSENE VIEW ──────────────────────────────────────────────────────────
+// ─── Vereinsfarben (Rot/Weiß/Schwarz) für die Kachel-Startseite ──────────────
+const TTC_ROT = "#c8102e";
+const TTC_ROT_DUNKEL = "#9c0c24";
+
+// Thematische Gruppierung der Erwachsene-Bereiche für die Kachel-Startseite.
+// Reihenfolge/Untertitel sind bewusst knapp; die Kacheln springen in die
+// bestehenden Reiter (Unterseiten bleiben unverändert).
+const EW_HOME_GRUPPEN = [
+  { titel:"Wettkampf", items:[
+    { key:"spielplan",    label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
+    { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
+    { key:"einsaetze",    label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"turniere",     label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
+    { key:"ttr",          label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
+  ]},
+  { titel:"Mein Bereich", items:[
+    { key:"beobachtungen",label:"Beobachtungen",icon:"🔍", sub:"Notizen" },
+    { key:"erfolge",      label:"Erfolge",      icon:"🏅", sub:"Meine Erfolge" },
+    { key:"ehrungen",     label:"Ehrungen",     icon:"🌟", sub:"Auszeichnungen" },
+    { key:"bestellungen", label:"Bestellungen", icon:"🛒", sub:"Vereinsartikel" },
+    { key:"meineverwaltung",label:"Verwaltung", icon:"🗂️", sub:"Meine Daten" },
+  ]},
+  { titel:"Verein", items:[
+    { key:"termine",      label:"Termine",      icon:"📌", sub:"Vereinstermine" },
+    { key:"kalender",     label:"Kalender",     icon:"📅", sub:"Abo & Export" },
+    { key:"geburtstage",  label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
+  ]},
+];
+
+// Kachel-Startseite der Erwachsene-Ansicht. Lädt schlanke Live-Infos (nächstes
+// Spiel des Vereins) und rendert die Bereiche als thematisch gruppierte Kacheln
+// in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
+function ErwachseneHome({ myPlayer, onOpen, isMF=false }) {
+  const [naechstes, setNaechstes] = useState(null);
+  useEffect(() => {
+    let ab = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "config", "spielplan_2026_2027"));
+        const spiele = (snap.exists() && snap.data().spiele) || [];
+        const heute = new Date().toLocaleDateString("sv");
+        const kommend = spiele
+          .filter(s => s && s.datum && s.datum >= heute)
+          .sort((a,b)=> (a.datum+ (a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
+        if(!ab) setNaechstes(kommend[0] || null);
+      } catch(e){ if(!ab) setNaechstes(null); }
+    })();
+    return () => { ab = true; };
+  }, []);
+
+  const gruppen = EW_HOME_GRUPPEN.map(g => ({
+    ...g,
+    items: g.items.filter(it => it.key!=="bestelluebersicht" || isMF),
+  }));
+
+  const heroDatum = (() => {
+    if(!naechstes) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(naechstes.datum||"");
+    const d = m ? `${m[3]}.${m[2]}.` : (naechstes.datum||"");
+    const heim = /heim/i.test(naechstes.ort||"");
+    return `${d}${naechstes.uhrzeit?` ${naechstes.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+  })();
+
+  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+    {/* Hero: wichtigste aktuelle Info (nächstes Spiel) */}
+    <div onClick={()=>onOpen("spielplan")} style={{
+      background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:18, cursor:"pointer",
+      boxShadow:"0 4px 14px #c8102e33",
+    }}>
+      {naechstes ? <>
+        <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>Nächstes Spiel · {heroDatum}</div>
+        <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
+          {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
+        </div>
+        <div style={{fontSize:12, color:"#ffd7dd", marginTop:6, display:"flex", alignItems:"center", gap:5}}>
+          zum Spielplan <span style={{fontSize:14}}>→</span>
+        </div>
+      </> : <>
+        <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
+        <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
+      </>}
+    </div>
+
+    {/* Thematisch gruppierte Kacheln */}
+    {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
+      <div style={{
+        display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px",
+      }}>
+        <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
+        <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+        {g.items.map(it => <button key={it.key} onClick={()=>onOpen(it.key)} style={{
+          textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
+          borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
+          flexDirection:"column", gap:2, borderLeft:`3px solid ${TTC_ROT}`,
+        }}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontSize:20}}>{it.icon}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+          </div>
+          <span style={{fontSize:11, color:"var(--text3)", marginLeft:28}}>{it.sub}</span>
+        </button>)}
+      </div>
+    </div>)}
+  </div>;
+}
+
 function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
-  const [activeTab,setActiveTab]=useState("spielbetrieb");
+  const [activeTab,setActiveTab]=useState("home");
   // Maßgeblich ist IMMER die eingeloggte Person. forcePlayer (Funktionswechsel/Admin-
   // Betrachtung) hat Vorrang; sonst die Login-Person case-insensitiv auflösen.
   // (Früher wurde hier p.email===user.email case-SENSITIV verglichen – das konnte bei
@@ -17740,6 +17849,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   const [toast,setToast]=useState(null);
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
+    {key:"home",label:"Start",icon:"🏠"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
@@ -17770,12 +17880,15 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
-          {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
+          {TABS.map(t=>{
+            const aktivFarbe = t.key==="home" ? TTC_ROT : "#ec4899";
+            return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
             flexShrink:0,padding:"9px 8px",background:"transparent",border:"none",
-            borderBottom:`2px solid ${activeTab===t.key?"#ec4899":"transparent"}`,
-            color:activeTab===t.key?"#ec4899":"var(--text3)",
+            borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
+            color:activeTab===t.key?aktivFarbe:"var(--text3)",
             fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
-          }}>{t.icon} {t.label}</button>)}
+          }}>{t.icon} {t.label}</button>;
+          })}
         </div>
         {!inRSW&&<BirthdayBtn players={players} attendance={{}} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>}
         {!inRSW&&<ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>}
@@ -17787,6 +17900,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:44}}/>
+    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} isMF={isMF} onOpen={(key)=>setActiveTab(key)}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {/* Beobachtungen: Erwachsene können selbst Einträge erstellen/bearbeiten/löschen */}
