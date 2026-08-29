@@ -1,4 +1,4 @@
-// === TTC-App · Version 401 · erstellt 29.08.2026 ===
+// === TTC-App · Version 402 · erstellt 29.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "401";
+const APP_VERSION = "402";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -17758,10 +17758,11 @@ const EW_HOME_GRUPPEN = [
 // Spiel des Vereins) und rendert die Bereiche als thematisch gruppierte Kacheln
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
-  const [naechstes, setNaechstes] = useState(null);
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
+  const [einsaetze, setEinsaetze] = useState({});
+  const [alleSpiele, setAlleSpiele] = useState([]);
 
   // Aufstellung laden (bestimmt die Mannschaft der Person).
   useEffect(() => {
@@ -17777,6 +17778,12 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
     return ()=>{ u1&&u1(); u2&&u2(); };
   }, []);
+  // Einsätze (Betreuer/Fahrer je Spiel) laden — für die Betreuungs-Kachel.
+  useEffect(() => {
+    const u = onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+      snap=> setEinsaetze(snap.exists()?(snap.data().data||{}):{}), ()=> setEinsaetze({}));
+    return u;
+  }, []);
 
   // Mannschaft der betrachteten Person (Aufstellungsname, z.B. "Erwachsene III").
   const meinAufName = useMemo(
@@ -17785,11 +17792,6 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   );
   // Spielplan-Name der Person (z.B. "Herren 3").
   const meinSpielplanName = AUFSTELLUNG_TO_SPIELPLAN[normAufName(meinAufName)] || "";
-  // Team-Objekt (für myTischtennis-Link) über den Aufstellungsnamen.
-  const meinTeam = useMemo(
-    ()=> (SEASONS.find(s=>s.current)||SEASONS[0]).teams.find(t=>normAufName(t.name)===normAufName(meinAufName)) || null,
-    [meinAufName]
-  );
 
   // Nächstes Spiel: bevorzugt das der eigenen Mannschaft; sonst das nächste
   // beliebige Vereinsspiel (Fallback, falls keine Mannschaft zugeordnet ist).
@@ -17799,18 +17801,30 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
       try {
         const snap = await getDoc(doc(db, "config", "spielplan_2026_2027"));
         const spiele = (snap.exists() && snap.data().spiele) || [];
-        const heute = new Date().toLocaleDateString("sv");
-        const kommend = spiele
-          .filter(s => s && s.datum && s.datum >= heute)
-          .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-        const eigenes = meinSpielplanName
-          ? kommend.find(s => s.mannschaft===meinSpielplanName)
-          : null;
-        if(!ab) setNaechstes(eigenes || kommend[0] || null);
-      } catch(e){ if(!ab) setNaechstes(null); }
+        if(!ab) setAlleSpiele(spiele);
+      } catch(e){ if(!ab) setAlleSpiele([]); }
     })();
     return () => { ab = true; };
-  }, [meinSpielplanName]);
+  }, []);
+
+  const heute = new Date().toLocaleDateString("sv");
+  const kommend = useMemo(()=> (alleSpiele||[])
+    .filter(s => s && s.datum && s.datum >= heute)
+    .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
+    [alleSpiele, heute]);
+
+  // Eigenes nächstes Spiel (Mannschaft der Person; sonst nächstes Vereinsspiel).
+  const naechstes = useMemo(()=>{
+    if(kommend.length===0) return null;
+    const eigenes = meinSpielplanName ? kommend.find(s=>s.mannschaft===meinSpielplanName) : null;
+    return eigenes || kommend[0] || null;
+  }, [kommend, meinSpielplanName]);
+
+  // Nächstes Spiel, bei dem die Person als Betreuer eines Nachwuchsspiels eingetragen ist.
+  const naechsteBetreuung = useMemo(()=>{
+    if(kommend.length===0 || !myPlayer) return null;
+    return kommend.find(s => personIstBetreuer(myPlayer, s, einsaetze)) || null;
+  }, [kommend, myPlayer, einsaetze]);
 
   const gruppen = EW_HOME_GRUPPEN.map(g => ({
     ...g,
@@ -17844,65 +17858,90 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const codeVonSpiel = (s) => feldVonSpiel(s, spielcodes, "code");
   const pinVonSpiel  = (s) => feldVonSpiel(s, spielpins,  "pin");
 
-  const heroDatum = (() => {
-    if(!naechstes) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(naechstes.datum||"");
-    const d = m ? `${m[3]}.${m[2]}.` : (naechstes.datum||"");
-    const heim = /heim/i.test(naechstes.ort||"");
-    return `${d}${naechstes.uhrzeit?` ${naechstes.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
-  })();
+  // Datum/Ort-Zeile für die Kopfzeile einer Spielkarte.
+  const spielMeta = (s) => {
+    if(!s) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
+    const d = m ? `${m[3]}.${m[2]}.` : (s.datum||"");
+    const heim = /heim/i.test(s.ort||"");
+    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+  };
 
-  const istHeim = naechstes ? /heim/i.test(naechstes.ort||"") : false;
-  const code = codeVonSpiel(naechstes);
-  const pin = pinVonSpiel(naechstes);
-  const berichtUrl = code
-    ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`
-    : "";
-  const mannschaftSpielplanUrl = meinTeam
-    ? teamLinks(meinTeam, (SEASONS.find(s=>s.current)||SEASONS[0]).code).spielplan
-    : "";
+  // Team-Objekt (myTischtennis-Link) zu einem beliebigen Spiel über den Spielplan-Namen.
+  const teamZuSpiel = (s) => {
+    if(!s) return null;
+    const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft] || s.mannschaft;
+    return (SEASONS.find(x=>x.current)||SEASONS[0]).teams.find(t=>normAufName(t.name)===normAufName(aufName)) || null;
+  };
+
+  // Rendert eine Spielkarte (eigenes Spiel bzw. Betreuung). variante steuert die Farben.
+  // Reihenfolge der Aktionsleiste: Spielbericht → myTischtennis-Spielplan → Spiel-PIN.
+  const spielKarte = (s, { titelText, variante }) => {
+    const rot = variante==="rot";
+    const bg = rot ? TTC_ROT : "var(--bg3)";
+    const rahmen = rot ? "none" : "1px solid var(--border2)";
+    const schatten = rot ? "0 4px 14px #c8102e33" : "none";
+    const labelFarbe = rot ? "#ffd7dd" : "var(--text3)";
+    const titelFarbe = rot ? "#fff" : "var(--text)";
+    const chipBg = rot ? "#fff" : "var(--bg2)";
+    const berichtCol = rot ? TTC_ROT : "var(--text)";
+    const heim = s ? /heim/i.test(s.ort||"") : false;
+    const code = codeVonSpiel(s);
+    const pin = pinVonSpiel(s);
+    const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
+    const team = teamZuSpiel(s);
+    const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
+    const pinChipStyle = rot
+      ? {background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55"}
+      : {background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"};
+
+    return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>
+      <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}</div>
+      <div style={{fontSize:17, color:titelFarbe, fontWeight:700, lineHeight:1.25}}>
+        {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}
+      </div>
+      <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
+        {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
+          style={{display:"inline-flex", alignItems:"center", gap:5, background:chipBg, color:berichtCol,
+            fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>
+          📝 Spielbericht
+        </a>}
+        {heim && !berichtUrl && <span
+          style={{display:"inline-flex", alignItems:"center", gap:5, background:rot?"#ffffff33":"var(--bg2)", color:rot?"#fff":"var(--text3)",
+            fontSize:12, fontWeight:600, padding:"7px 11px", borderRadius:9}}>
+          📝 Spielbericht folgt
+        </span>}
+        {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer"
+          title="Mannschaftsspielplan auf myTischtennis.de öffnen"
+          style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a",
+            fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
+          <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/>
+          Spielplan
+        </a>}
+        {/* Spiel-PIN – hinter dem myTischtennis-Link */}
+        {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700,
+          padding:"7px 10px", borderRadius:9, fontVariantNumeric:"tabular-nums", ...pinChipStyle}}>
+          🔑 PIN {pin}
+        </span>}
+      </div>
+    </div>;
+  };
 
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
-    {/* Hero: nächstes Spiel der eigenen Mannschaft */}
-    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:18, boxShadow:"0 4px 14px #c8102e33"}}>
-      {naechstes ? <>
-        <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>
-          {meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel"} · {heroDatum}
-        </div>
-        <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
-          {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
-        </div>
-        {/* Spiel-PIN */}
-        {pin && <div style={{fontSize:13, color:"#fff", marginTop:8, fontVariantNumeric:"tabular-nums"}}>
-          🔑 Spiel-PIN: <span style={{fontWeight:700, letterSpacing:".05em"}}>{pin}</span>
+    {/* Kachel 1: eigenes nächstes Spiel (rot) */}
+    {naechstes
+      ? spielKarte(naechstes, { titelText: meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel", variante:"rot" })
+      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:"0 4px 14px #c8102e33"}}>
+          <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
+          <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
         </div>}
-        {/* Aktionslinks: Spielbericht + myTischtennis-Mannschaftsspielplan */}
-        <div style={{display:"flex", flexWrap:"wrap", gap:8, marginTop:12}}>
-          {istHeim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
-            style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT,
-              fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>
-            📝 Spielbericht
-          </a>}
-          {istHeim && !berichtUrl && <span
-            style={{display:"inline-flex", alignItems:"center", gap:5, background:"#ffffff33", color:"#fff",
-              fontSize:12, fontWeight:600, padding:"7px 11px", borderRadius:9}}>
-            📝 Spielbericht folgt
-          </span>}
-          {mannschaftSpielplanUrl && <a href={mannschaftSpielplanUrl} target="_blank" rel="noopener noreferrer"
-            title="Mannschaftsspielplan auf myTischtennis.de öffnen"
-            style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a",
-              fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
-            <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/>
-            Spielplan
-          </a>}
-        </div>
-      </> : <>
-        <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
-        <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
-      </>}
-    </div>
+
+    {/* Kachel 2: nächste Betreuung eines Nachwuchsspiels (grau/schwarz) */}
+    {naechsteBetreuung &&
+      spielKarte(naechsteBetreuung, { titelText:"Deine nächste Betreuung", variante:"grau" })}
 
     {/* Thematisch gruppierte Kacheln */}
+    <div style={{height:6}}/>
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
       <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
