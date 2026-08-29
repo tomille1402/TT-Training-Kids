@@ -1,4 +1,4 @@
-// === TTC-App · Version 402 · erstellt 29.08.2026 ===
+// === TTC-App · Version 403 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "402";
+const APP_VERSION = "403";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6636,10 +6636,12 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
 
 // AufstellungView — zeigt Aufstellungstabelle
-function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) {
+function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, scrollToTeam=""}) {
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
+  const teamRefs=useRef({});           // {mannschaftsname: DOM-Knoten} für gezieltes Scrollen
+  const scrollDone=useRef(false);      // nur einmal automatisch scrollen
 
   useEffect(()=>{
     // Alle möglichen Aufstellungs-Keys (neueste Saisons zuerst)
@@ -6699,6 +6701,20 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
   },[]);
 
 
+
+  // Nach dem Laden einmalig zur gewünschten Mannschaft scrollen (Punkt: Aufstellung-Kachel).
+  useEffect(()=>{
+    if(loading || scrollDone.current || !scrollToTeam) return;
+    const ziel=normAufName(scrollToTeam);
+    // passenden Ref-Key finden (Namen können "Erwachsene"/"Erwachsene I" variieren)
+    const key=Object.keys(teamRefs.current).find(k=>normAufName(k)===ziel);
+    const node=key?teamRefs.current[key]:null;
+    if(node){
+      scrollDone.current=true;
+      // kurze Verzögerung, damit das Layout steht
+      setTimeout(()=>{ try{ node.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){} }, 60);
+    }
+  },[loading,scrollToTeam,selId]);
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
   if(aufstellungen.length===0) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
@@ -6807,7 +6823,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false}) 
       Keine Spieler in dieser Aufstellung. Bitte in Verwaltung ergänzen.
     </div>:mannschaften.map(mann=>{
       const ms=enriched.filter(s=>s.mannschaft===mann);
-      return <div key={mann} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
+      return <div key={mann} ref={el=>{ if(el) teamRefs.current[mann]=el; }} style={{marginBottom:16,background:"var(--bg2)",borderRadius:12,overflow:"hidden",border:"1px solid var(--border)",scrollMarginTop:100}}>
         {(()=>{ const mfs=mfName(mann); const mehr=mfs.includes(","); return (
           <div style={{padding:"8px 12px",background:"var(--bg3)",borderBottom:"1px solid var(--border)",fontWeight:700,fontSize:13}}>{mannLabel(mann)} ({mehr?"MF":"MF"}: {mfs})</div>
         ); })()}
@@ -12089,6 +12105,158 @@ function GeburtstageTab({players,showToast}) {
 
 
 // ─── PLAYER VIEW ──────────────────────────────────────────────────────────────
+// Thematische Gruppierung der Spieler-Bereiche für die Kachel-Startseite.
+// Es werden nur Kacheln gezeigt, deren Reiter für die Gruppe der Person verfügbar ist.
+const SP_HOME_GRUPPEN = [
+  { titel:"Mein Training", items:[
+    { key:"stats",     label:"Meine Stats", icon:"⭐", sub:"Sterne & Awards" },
+    { key:"training",  label:"Training",    icon:"📅", sub:"Nächste Einheiten" },
+    { key:"teilnahme", label:"Teilnahme",   icon:"📊", sub:"Meine Anwesenheit" },
+    { key:"ranking",   label:"Rangliste",   icon:"🏆", sub:"In meiner Gruppe" },
+    { key:"erfolge",   label:"Erfolge",     icon:"🏅", sub:"Meine Erfolge" },
+  ]},
+  { titel:"Wettkampf", items:[
+    { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
+    { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
+    { key:"ttr",         label:"TTR",         icon:"📊", sub:"Ranglistenwerte" },
+  ]},
+  { titel:"Verein & mehr", items:[
+    { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
+    { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
+    { key:"bestellungen",   label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
+    { key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
+  ]},
+];
+
+// Kachel-Startseite der Spieler-Ansicht — analog zu ErwachseneHome, aber mit den
+// für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
+function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
+  const [aufSpieler, setAufSpieler] = useState([]);
+  const [spielcodes, setSpielcodes] = useState({});
+  const [spielpins, setSpielpins] = useState({});
+  const [alleSpiele, setAlleSpiele] = useState([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db,"config","aufstellung_2026_2027_V"), snap=>{
+      const d = snap.exists() ? (snap.data().spieler||[]) : [];
+      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    }, ()=> setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    return unsub;
+  }, []);
+  useEffect(() => {
+    const u1 = onSnapshot(doc(db,"config","spielcodes"), snap=> setSpielcodes(snap.exists()?snap.data():{}), ()=>{});
+    const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
+    return ()=>{ u1&&u1(); u2&&u2(); };
+  }, []);
+  useEffect(() => {
+    let ab=false;
+    (async()=>{ try{
+      const snap = await getDoc(doc(db,"config","spielplan_2026_2027"));
+      const spiele = (snap.exists() && snap.data().spiele) || [];
+      if(!ab) setAlleSpiele(spiele);
+    }catch(e){ if(!ab) setAlleSpiele([]); } })();
+    return ()=>{ ab=true; };
+  }, []);
+
+  // Mannschaft der Person (Nachwuchs: z.B. "Mädchen 13" – im Spielplan gleich benannt).
+  const meinAufName = useMemo(()=> myPlayer ? stammMannschaftVorauswahl(myPlayer, aufSpieler) : "", [myPlayer, aufSpieler]);
+  const meinSpielplanName = AUFSTELLUNG_TO_SPIELPLAN[normAufName(meinAufName)] || meinAufName || "";
+
+  const heute = new Date().toLocaleDateString("sv");
+  const kommend = useMemo(()=> (alleSpiele||[])
+    .filter(s => s && s.datum && s.datum >= heute)
+    .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
+    [alleSpiele, heute]);
+  const naechstes = useMemo(()=>{
+    if(kommend.length===0) return null;
+    const eigenes = meinSpielplanName ? kommend.find(s=>s.mannschaft===meinSpielplanName || String(s.mannschaft||"").startsWith(meinSpielplanName)) : null;
+    return eigenes || null; // Spieler: nur eigenes Spiel zeigen (kein Fallback auf fremde Mannschaft)
+  }, [kommend, meinSpielplanName]);
+
+  const saisonKeys = ["2026_27","2026_2027"];
+  const feldVonSpiel = (s, quelle, feld) => {
+    if(!s) return "";
+    for(const sk of saisonKeys){
+      const proSaison = quelle?.[sk]; if(!proSaison) continue;
+      const e = proSaison?.[s.mannschaft]?.[s.datum];
+      if(e && e[feld]) return e[feld];
+    }
+    return "";
+  };
+  const teamZuSpiel = (s) => {
+    if(!s) return null;
+    const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft] || s.mannschaft;
+    return (SEASONS.find(x=>x.current)||SEASONS[0]).teams.find(t=>normAufName(t.name)===normAufName(aufName)) || null;
+  };
+  const spielMeta = (s) => {
+    if(!s) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
+    const d = m ? `${m[3]}.${m[2]}.` : (s.datum||"");
+    const heim = /heim/i.test(s.ort||"");
+    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+  };
+
+  const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
+
+  const heim = naechstes ? /heim/i.test(naechstes.ort||"") : false;
+  const code = feldVonSpiel(naechstes, spielcodes, "code");
+  const pin  = feldVonSpiel(naechstes, spielpins, "pin");
+  const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
+  const team = teamZuSpiel(naechstes);
+  const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
+
+  // Gruppen auf die tatsächlich verfügbaren Reiter filtern; leere Gruppen weglassen.
+  const gruppen = SP_HOME_GRUPPEN
+    .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
+    .filter(g => g.items.length>0);
+
+  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+    {/* Hero: nächstes eigenes Spiel (falls vorhanden) */}
+    {naechstes
+      ? <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
+          <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>Dein nächstes Spiel · {spielMeta(naechstes)}</div>
+          <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
+            {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
+          </div>
+          <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
+            {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
+              style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT, fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Spielbericht</a>}
+            {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer" title="Mannschaftsspielplan auf myTischtennis.de öffnen"
+              style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a", fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
+              <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
+            {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55", fontVariantNumeric:"tabular-nums"}}>🔑 PIN {pin}</span>}
+          </div>
+        </div>
+      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
+          <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{myPlayer?.firstName?` ${myPlayer.firstName}`:""}!</div>
+          <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell steht kein eigenes Spiel an.</div>
+        </div>}
+
+    {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
+        <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
+        <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+        {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
+          textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
+          borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
+          flexDirection:"column", gap:3, borderLeft:`3px solid ${TTC_ROT}`,
+        }}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+          </div>
+          <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
+        </button>)}
+      </div>
+    </div>)}
+  </div>;
+}
+
 function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onSignOut,hideHeader,forcePlayer,clubConfig={}}) {
   // Maßgeblich ist die eingeloggte Person (forcePlayer hat Vorrang). Login-Auflösung
   // case-insensitiv über findLoginPlayer – ein früherer case-sensitiver Vergleich
@@ -12099,7 +12267,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // Anfänger/Fortgeschrittener nur den Nachwuchs-Artikel, auch wenn ein Trainer
   // oder Elternteil die Ansicht geöffnet hat.
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
-  const [activeTab,setActiveTab]=useState("stats");
+  const [activeTab,setActiveTab]=useState("home");
   const [expandedEx,setExpandedEx]=useState(null);
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [uebungsvideos,setUebungsvideos]=useState({});
@@ -12134,6 +12302,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     : [];
   const sortedRanking=[...groupPeers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const ALL_TABS=[
+    {key:"home",label:"Start",icon:"🏠"},
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
     {key:"teilnahme",label:"Teilnahme",icon:"📊"},
@@ -12238,11 +12407,15 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       top:hideHeader?"var(--rsw-height)":"70px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
-      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,color:activeTab===t.key?"#10b981":"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>)}
+      {TABS.map(t=>{
+        const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,color:activeTab===t.key?aktivFarbe:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>;
+      })}
     </div>
 
     {/* ── STATS ── */}
     <div style={{height:hideHeader?40:114}}/>
+    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -16771,7 +16944,20 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
     const ei=einsaetzeData[spielKeyVon(s)]||{};
     return ei._fahrer||"";
   };
+  // Zeitraum-Filter: "alle" (Default-Fallback), "alt" (gestern und älter),
+  // "neu" (ab heute). Datum liegt als ISO YYYY-MM-DD vor; Vergleich per String.
+  const heuteISO_SP = new Date().toLocaleDateString("sv");
+  const zeitraum = filters.zeitraum || "neu";
+  const imZeitraum = (isoDatum) => {
+    if(zeitraum==="alle") return true;
+    const d = String(isoDatum||"");
+    if(!d) return zeitraum!=="alt"; // datumslose Einträge nur bei "neu"/"alle" zeigen
+    if(zeitraum==="alt") return d < heuteISO_SP;   // Vergangenheit: vor heute (ab gestern und älter)
+    return d >= heuteISO_SP;                        // "neu": ab heute
+  };
+
   const filtered = spiele.filter(s=>{
+    if(!imZeitraum(s.datum)) return false;
     if(String(s.gegner||"").toLowerCase().includes("spielfrei")||String(s.mannschaft||"").toLowerCase().includes("spielfrei")) return false;
     if(nurNachwuchs && !nachwuchsMannschaften.some(nm=>s.mannschaft===nm||s.mannschaft.startsWith(nm))) return false;
     const selManns=filters.mannschaften||[];
@@ -16853,6 +17039,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
   const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
   const terminRows = (nurNachwuchs||detailFilterAktiv) ? [] : vereinstermine
     .filter(t=>{
+      if(!imZeitraum(t.datumStart)) return false;
       // Rubrik-Filter: wenn gesetzt, nur passende Rubriken (Termin ohne Rubrik = "Alle")
       if(Array.isArray(rubrikenSel) && rubrikenSel.length>0 && !rubrikenSel.includes(t.rubrik||"Alle")) return false;
       if(Array.isArray(rubrikenSel) && rubrikenSel.length===0) return false; // nichts gewählt → keine Termine
@@ -16912,6 +17099,14 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         <select value={selSeason} onChange={e=>setSelSeason(e.target.value)}
           style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
           {seasons.map(s=><option key={s.id} value={s.id}>{s.saison}</option>)}
+        </select>
+        {/* Zeitraum: alle / alt (Vergangenheit) / neu (ab heute) — Default "neu" */}
+        <select value={filters.zeitraum||"neu"} onChange={e=>setFilters(p=>({...p,_userSet:true,zeitraum:e.target.value}))}
+          title="Zeitraum filtern"
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",borderRadius:7,fontSize:11,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+          <option value="alle">Zeitraum: alle</option>
+          <option value="alt">alt (Vergangenheit)</option>
+          <option value="neu">neu (ab heute)</option>
         </select>
         {/* Mannschaft Multi-Select als natives Dropdown */}
         <select value="" onChange={e=>{
@@ -16989,8 +17184,8 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
         }} style={{flex:"0 0 auto",padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
-        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||(filters.rubriken&&filters.rubriken.length>0))&&
-          <button onClick={()=>setFilters({rubriken:[],_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||(filters.zeitraum&&filters.zeitraum!=="neu")||(filters.rubriken&&filters.rubriken.length>0))&&
+          <button onClick={()=>setFilters({rubriken:[],zeitraum:"neu",_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
     {/* Ausgewählte Mannschaften als Chips */}
@@ -17832,7 +18027,13 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   }));
 
   // Klick auf Kachel/Link: erst an den Seitenanfang scrollen, dann Reiter öffnen (Punkt 2).
-  const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
+  // Bei der Aufstellung-Kachel wird zusätzlich die Mannschaft der Person mitgegeben,
+  // damit direkt dorthin gesprungen wird.
+  const oeffne = (key) => {
+    try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){}
+    if(key==="aufstellung") onOpen(key, meinAufName);
+    else onOpen(key);
+  };
 
   // Spielcode / PIN des Spiels finden — robust wie im Vereinsspielplan:
   // Config-Slug kann "2026_27" ODER "2026_2027" lauten; die Mannschaft ist dort
@@ -17966,6 +18167,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
 
 function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,forcePlayer,inRSW=false,isMF=false}) {
   const [activeTab,setActiveTab]=useState("home");
+  // Zielmannschaft für die Aufstellung-Ansicht (gesetzt beim Klick auf die Home-Kachel).
+  const [aufstellungTeam,setAufstellungTeam]=useState("");
   // Maßgeblich ist IMMER die eingeloggte Person. forcePlayer (Funktionswechsel/Admin-
   // Betrachtung) hat Vorrang; sonst die Login-Person case-insensitiv auflösen.
   // (Früher wurde hier p.email===user.email case-SENSITIV verglichen – das konnte bei
@@ -18030,7 +18233,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:44}}/>
-    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key)=>setActiveTab(key)}/>}
+    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key,team)=>{ if(key==="aufstellung") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
@@ -18062,7 +18265,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       isAdmin={false}
       roles={isMF?{...((forcePlayer&&forcePlayer.roles)||{}),mannschaftsfuehrer:true}:((forcePlayer&&forcePlayer.roles)||{erwachsene:true})}
       viewerCanEditAll={!!isMF}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
   </div>;
 }
