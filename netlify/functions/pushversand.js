@@ -158,11 +158,15 @@ function ortAusGegner(name){
   const praefix = /^(TTC|TTV|TTF|TTG|TSV|TSG|TuS|TV|TG|SV|SG|SGK|SC|SSV|DJK|FC|FSV|VfL|VfB|VfR|MTV|MTG|Post\s?SV|RSV|ASV|BSC|Eintracht|Spvgg|SpVgg)\b\.?\s+/i;
   // Farb-/Namenszusätze, die nach dem Kürzel und vor dem Ort stehen können.
   const farbe = /^(Blau-Weiß|Blau-Weiss|Rot-Weiß|Rot-Weiss|Grün-Weiß|Grün-Weiss|Schwarz-Weiß|Schwarz-Weiss|Blau|Rot|Grün|Gelb|Schwarz)\.?\s+/i;
+  // Gründungsjahr oder führende Vereinsnummer zwischen Kürzel und Ort,
+  // z.B. "TTC 1968 Oberbrechen" -> Ort "Oberbrechen" (nicht "1968 Oberbrechen").
+  const jahr = /^((18|19|20)\d{2}|\d{1,4})\s+(?=\p{L})/u;
   let vorher;
   do {
     vorher=s;
     s=s.replace(praefix,"");
     s=s.replace(farbe,"");
+    s=s.replace(jahr,"");
   } while(s!==vorher && s);
   const suffix = /\s+(e\.?\s?V\.?|(18|19|20)\d{2}|[IVX]{1,4}|\d{1,2})\s*$/i;
   do { vorher=s; s=s.replace(suffix,"").trim(); } while(s!==vorher && s);
