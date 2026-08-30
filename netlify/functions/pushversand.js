@@ -348,6 +348,11 @@ module.exports.handler = async (event) => {
     const aufSpieler = (aufDoc && aufDoc.spieler) || [];
     const einsaetzeDoc = await getDocData("einsaetze/"+SAISON);
     const einsaetzeData = (einsaetzeDoc && einsaetzeDoc.data) || {};
+    // Verlegungen: Spiele mit Status "geplant" erhalten KEINE Benachrichtigung,
+    // bis sie auf "erfolgt" wechseln (config/verlegungen -> { data: { key: {status} } }).
+    const verlegDoc = await getDocData("config/verlegungen");
+    const verlegungen = (verlegDoc && verlegDoc.data) || {};
+    const verlegtGeplant = (s)=>{ const e=verlegungen[spielKeyOf(s)]; return !!(e && e.status==="geplant"); };
     const players = await getCollection("players");
     const abos = await getCollection("pushAbos");
 
@@ -367,6 +372,8 @@ module.exports.handler = async (event) => {
     // 1) Spiele
     for(const s of spiele){
       if(!s.datum) continue;
+      // Verlegung geplant → keine Benachrichtigung, bis auf "erfolgt" gewechselt wird.
+      if(verlegtGeplant(s)) continue;
       const nachwuchs = istNachwuchsMannschaft(s.mannschaft, regeln.nachwuchsMannschaften);
       const regel = nachwuchs ? regeln.spiele.nachwuchs : regeln.spiele.erwachsene;
       if(!regel || !regel.aktiv) continue;
