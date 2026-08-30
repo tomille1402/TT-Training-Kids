@@ -1,4 +1,4 @@
-// === TTC-App · Version 414 · erstellt 30.08.2026 ===
+// === TTC-App · Version 415 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "414";
+const APP_VERSION = "415";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -17665,6 +17665,9 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
       if(filters.fahrer===SENTINEL_LEER){ if(f.trim()!=="") return false; }
       else if(!f.toLowerCase().includes(filters.fahrer.toLowerCase())) return false;
     }
+    if(filters.verlegung){
+      if(verlegStatus(s)!==filters.verlegung) return false;
+    }
     return true;
   });
 
@@ -17678,6 +17681,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   const sortWert=(row,key)=>{
     if(key==="betreuer") return betreuerVon(row);
     if(key==="fahrer")   return fahrerVon(row);
+    if(key==="verlegung"){ const st=verlegStatus(row); return st==="geplant"?"0_geplant":st==="erfolgt"?"1_erfolgt":"2_-"; }
     return row[key]||"";
   };
   const sorted0 = [...filtered].sort((a,b)=>{
@@ -17698,7 +17702,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   // Nur Ort-/Gegner-/Tag-/Art-Filter blenden Termine aus (für Termine sinnlos),
   // der Mannschaftsfilter jedoch NICHT — Termine sollen neben der eigenen
   // Mannschaft sichtbar bleiben. In der reinen Nachwuchs-Ansicht ausgeblendet.
-  const detailFilterAktiv = !!(filters.ort || filters.gegner || filters.tag || filters.art);
+  const detailFilterAktiv = !!(filters.ort || filters.gegner || filters.tag || filters.art || filters.verlegung);
   const rubrikenSel = filters.rubriken; // undefined = alle anzeigen
   const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
   const terminRows = (nurNachwuchs||detailFilterAktiv) ? [] : vereinstermine
@@ -17818,6 +17822,14 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
           <option value={SENTINEL_LEER}>(leer)</option>
           {fahrerNamen.map(n=><option key={n} value={n}>{n}</option>)}
         </select>
+        {/* Verlegung */}
+        <select value={filters.verlegung||""} onChange={e=>setFilters(p=>({...p,_userSet:true,verlegung:e.target.value}))}
+          style={{flex:"0 0 auto",width:"auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+          <option value="">Verlegung</option>
+          <option value="geplant">geplant</option>
+          <option value="erfolgt">erfolgt</option>
+          <option value="-">-</option>
+        </select>
         {/* Gegner */}
         <input placeholder="Gegner" value={filters.gegner||""} onChange={e=>setFilters(p=>({...p,_userSet:true,gegner:e.target.value}))}
           style={{flex:"0 0 auto",width:80,padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
@@ -17848,7 +17860,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
         }} style={{flex:"0 0 auto",padding:"5px 8px",borderRadius:7,fontSize:11,background:"#3b82f622",
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
-        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||(filters.zeitraum&&filters.zeitraum!=="neu")||(filters.rubriken&&filters.rubriken.length>0))&&
+        {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||filters.verlegung||(filters.zeitraum&&filters.zeitraum!=="neu")||(filters.rubriken&&filters.rubriken.length>0))&&
           <button onClick={()=>setFilters({rubriken:[],zeitraum:"neu",_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
