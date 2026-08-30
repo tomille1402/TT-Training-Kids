@@ -54,12 +54,15 @@ function buildICS(opts){
   const echteTeams=teams.filter(t=>t!==SENTINEL_BETREUT);
   const betreutAktiv=teams.includes(SENTINEL_BETREUT);
   const teamSet=echteTeams.length>0?new Set(echteTeams):(betreutAktiv?new Set():null);
-  const eigenBetreuer=normName(betreuerName||"");
+  // Mehrere Betreuer-Namen möglich (komma-getrennt). Ein Spiel zählt als betreut,
+  // wenn b1 oder b2 mit IRGENDEINEM der gewählten Namen übereinstimmt.
+  const betreuerNamen=String(betreuerName||"").split(",").map(n=>normName(n)).filter(Boolean);
   function istBetreutesSpiel(s){
-    if(!betreutAktiv||!eigenBetreuer) return false;
+    if(!betreutAktiv||betreuerNamen.length===0) return false;
     const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
     const ei=einsaetzeData[sk]||{};
-    return normName(ei.b1||"")===eigenBetreuer || normName(ei.b2||"")===eigenBetreuer;
+    const b1=normName(ei.b1||""), b2=normName(ei.b2||"");
+    return betreuerNamen.some(n=> n===b1 || n===b2);
   }
   const teamPasst=s=>(teamSet===null)?true:(teamSet.has(s.mannschaft)||istBetreutesSpiel(s));
   const L=[];
