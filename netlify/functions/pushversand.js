@@ -263,6 +263,11 @@ function fahrerKindIds(spielKey, einsaetzeData, players){
   }
   return ids;
 }
+// Alle aktiven Admins – sie erhalten laut Vereinsbeschluss GRUNDSÄTZLICH jede
+// Push-Nachricht, unabhängig von der jeweiligen Empfänger-Regel.
+function adminIds(players){
+  return (players||[]).filter(p=>p && p.roles && p.roles.admin===true).map(p=>p.id);
+}
 function spielEmpfaenger(opts, mannschaft, spielKey, aufSpieler, einsaetzeData, players){
   // Anf.3: Sobald der MF eine finale Aufstellung nominiert hat, erhalten AUSSCHLIESSLICH
   // die nominierten Spieler die Punktspiel-Benachrichtigung – unabhängig von Stamm/Zusage.
@@ -567,6 +572,13 @@ Viel Erfolg 🏓`;
       }
     }
 
+    // Vereinsbeschluss: Admins erhalten GRUNDSÄTZLICH jede Push-Nachricht. Daher zu
+    // jedem Job die Admin-IDs ergänzen (regelunabhängig, für alle Kategorien).
+    const alleAdminIds = adminIds(players);
+    for(const job of zuSenden){
+      job.empfaengerIds = [...new Set([...(job.empfaengerIds||[]), ...alleAdminIds])];
+    }
+
     // Versand ausführen
     let gesendet=0, uebersprungen=0, fehler=0;
     const neuHistorie = {};
@@ -666,9 +678,11 @@ Viel Erfolg 🏓`;
         // Beim Trockenlauf zusätzlich: WER würde die Nachricht erhalten (mit Hinweis, ob
         // erreichbar) und der VOLLSTÄNDIGE Nachrichtentext.
         if(dryRun){
+          const adminSet = new Set(alleAdminIds);
           d.empfaengerNamen = j.empfaengerIds.map(pid=>{
             const erreichbar = (aboMap[pid]||[]).length > 0;
-            return `${nameVonId(pid)}${erreichbar?"":" (kein aktives Push-Abo)"}`;
+            const adminTag = adminSet.has(pid) ? " [Admin – erhält alle]" : "";
+            return `${nameVonId(pid)}${adminTag}${erreichbar?"":" (kein aktives Push-Abo)"}`;
           });
           d.nachricht = j.text;
         }
