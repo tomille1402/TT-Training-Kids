@@ -1,4 +1,4 @@
-// === TTC-App · Version 412 · erstellt 30.08.2026 ===
+// === TTC-App · Version 414 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "412";
+const APP_VERSION = "414";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6413,7 +6413,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} selectedPlayer={curPlayer} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} istAdmin={isSuperAdmin} myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
@@ -12270,6 +12270,7 @@ const SP_HOME_GRUPPEN = [
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
 function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
@@ -12371,6 +12372,9 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
           <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
             {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
           </div>
+          {verlegStatusVon(naechstes)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:"#fff",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
+            ⚠️ wird verlegt
+          </div>}
           {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"#ffd7dd", marginTop:6, lineHeight:1.4}}>
             {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
             {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
@@ -12803,7 +12807,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
@@ -14572,8 +14576,25 @@ function speichereHalleninfoGelesen(ids){
 
 // Liefert die Anzahl neuer (ungelesener) Halleninfos für den Kachel-Badge.
 // Reagiert auf neue Infos (Firestore) und auf das Als-gelesen-Markieren (Event).
-function useHalleninfoNeuCount(){
-  const [ids,setIds] = useState([]);           // vorhandene Info-IDs
+// Verlegungsstatus je Spiel (aus config/verlegungen). Liefert statusVon(spiel).
+// Ein verlegtes Spiel mit Status "geplant" wird an mehreren Stellen hervorgehoben
+// und von Benachrichtigungen ausgenommen, bis es auf "erfolgt" wechselt.
+function verlegKeyVon(s){
+  return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+}
+function useVerlegungen(){
+  const [map,setMap]=useState({});
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","verlegungen"),snap=>{
+      setMap(snap.exists()?(snap.data().data||{}):{});
+    },()=>setMap({}));
+    return u;
+  },[]);
+  const statusVon=(s)=>{ if(!s) return "-"; const e=map[verlegKeyVon(s)]; return (e&&e.status)||"-"; };
+  return { verlegungen:map, statusVon };
+}
+
+function useHalleninfoNeuCount(){  const [ids,setIds] = useState([]);           // vorhandene Info-IDs
   const [gelesen,setGelesen] = useState(ladeHalleninfoGelesen);
   useEffect(()=>{
     const u = onSnapshot(collection(db,"halleninfos"), snap=>{
@@ -15324,6 +15345,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const [selSeasonId,setSelSeasonId] = useState("spielplan_2026_2027");
   const [selTeam,setSelTeam] = useState("");
   const [expandedGames,setExpandedGames] = useState({}); // {spielKey: true} — aufgeklappte Spieltage
+  const { statusVon:verlegStatusVon } = useVerlegungen();
 
   const SEASON_OPTS = [
     {id:"spielplan_2026_2027", label:"2026/27", auf:"aufstellung_2026_2027_V"},
@@ -15736,6 +15758,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                 <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
                   {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
                   {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
+                  {verlegStatusVon(spiel)==="geplant" && <span style={{marginLeft:6,background:"#f59e0b22",color:"#b45309",fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:6,whiteSpace:"nowrap"}}>⚠️ wird verlegt</span>}
                 </div>
                 <div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
                   {spiel.art==="Pokal" && <span title="Pokalspiel" style={{flexShrink:0}}>🏆</span>}
@@ -17015,6 +17038,7 @@ const SPIELPLAN_COLS = [
   {key:"datum",     label:"Datum",       w:"80px"},
   {key:"tag",       label:"Tag",         w:"36px"},
   {key:"uhrzeit",   label:"Uhrzeit",     w:"56px"},
+  {key:"verlegung", label:"Verlegung",   w:"92px"},
   {key:"mannschaft",label:"Mannschaft",  w:"100px"},
   {key:"betreuer",  label:"Betreuer",    w:"90px"},
   {key:"fahrer",    label:"Fahrer",      w:"90px"},
@@ -17322,10 +17346,11 @@ const SENTINEL_NACHWUCHS="__alle_nachwuchs__";
 const SENTINEL_HERREN="__alle_herren__";
 const SENTINEL_LEER="__leer__";
 
-function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
+function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=false, myPlayer=null}) {
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
   const [einsaetzeData,setEinsaetzeData]=useState({}); // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
+  const [verlegungen,setVerlegungen]=useState({});     // {spielKey: {status, mannschaft, gegner, datum, uhrzeit, ort}}
   const [loading,setLoading]=useState(true);
   const [sortKey,setSortKey]=useState("datum");
   const [sortAsc,setSortAsc]=useState(true);
@@ -17343,7 +17368,47 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
       setSpielcodes(snap.exists()?snap.data():{});
     },()=>{});
     return unsub;
-  },[]);
+  }, []);
+  // Verlegungen laden: config/verlegungen -> { data: { spielKey: {status,...} } }.
+  useEffect(()=>{
+    const unsub=onSnapshot(doc(db,"config","verlegungen"),snap=>{
+      setVerlegungen(snap.exists()?(snap.data().data||{}):{});
+    },()=>setVerlegungen({}));
+    return unsub;
+  }, []);
+  // Spielkey (identisch zur Push-/Einsatz-Logik).
+  const verlegKey=(s)=>`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
+  // Aktueller Verlegungsstatus eines Spiels ("-" wenn nicht gesetzt).
+  const verlegStatus=(s)=>{ const e=verlegungen[verlegKey(s)]; return (e&&e.status)||"-"; };
+  // Darf die aktuelle Person die Verlegung dieses Spiels bearbeiten?
+  // Admin: alle Mannschaften. Mannschaftsführer: nur die eigene(n) Mannschaft(en).
+  const mfTeams = (()=>{
+    if(!myPlayer?.roles?.mannschaftsfuehrer) return [];
+    const raw = myPlayer.mannschaftsfuehrerTeam || myPlayer.mannschaftsfuehrerTeams || [];
+    const arr = Array.isArray(raw)?raw:[raw];
+    return arr.filter(Boolean);
+  })();
+  const darfVerlegen=(s)=>{
+    if(istAdmin) return true;
+    if(mfTeams.length===0) return false;
+    // Mannschaftsname kann Suffixe haben; Vergleich über Aufstellungsname beidseitig.
+    const ziel=normAufName(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft);
+    return mfTeams.some(t=>normAufName(t)===ziel || normAufName(SPIELPLAN_TO_AUFSTELLUNG[t]||t)===ziel);
+  };
+  // Verlegungsstatus setzen (schreibt das Spiegeldokument config/verlegungen).
+  const setzeVerlegung=async(s,status)=>{
+    const key=verlegKey(s);
+    try{
+      if(status==="-"){
+        await setDoc(doc(db,"config","verlegungen"),{data:{[key]:deleteField()}},{merge:true});
+        setVerlegungen(p=>{const n={...p};delete n[key];return n;});
+      }else{
+        const eintrag={status, mannschaft:s.mannschaft, gegner:s.gegner||"", datum:s.datum||"", uhrzeit:s.uhrzeit||"", ort:s.ort||""};
+        await setDoc(doc(db,"config","verlegungen"),{data:{[key]:eintrag}},{merge:true});
+        setVerlegungen(p=>({...p,[key]:eintrag}));
+      }
+    }catch(e){ /* still */ }
+  };
   // Liefert den Spielcode für ein Spiel (Heimspiel) über Saison-Slug + Mannschaft + Datum.
   const spielcodeVon=(s)=>{
     if(!s || s.ort!=="Heim" || !s.datum) return "";
@@ -17827,6 +17892,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
                 <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{s.datum?s.datum.split("-").reverse().join("."):""}</td>
                 <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{s.tag}</td>
                 <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{s.uhrzeit}</td>
+                <td style={{padding:"5px 6px"}}></td>
                 <td style={{padding:"5px 6px"}}>
                   <span style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>📌 Termin</span>
                 </td>
@@ -17838,10 +17904,30 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
             const mc=MANN_COLORS[s.mannschaft]||"#6b7280";
             const hasResult=s.ergebnis&&s.ergebnis.trim()!=="";
-            return <tr key={i} style={{background:isChange?"#f59e0b09":i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
+            const vStatus=verlegStatus(s);
+            const zeilenBg = vStatus==="geplant" ? "#f59e0b1f" : (isChange?"#f59e0b09":i%2===0?"var(--bg2)":"var(--bg)");
+            return <tr key={i} style={{background:zeilenBg,borderBottom:"1px solid var(--border)"}}>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontSize:10}}>{s.datum?(s.datum.split("-").reverse().join(".")):""}</td>
               <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{s.tag}</td>
               <td style={{padding:"5px 6px",whiteSpace:"nowrap",fontWeight:600,fontSize:11}}>{s.uhrzeit}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap"}}>
+                {(()=>{
+                  const st=verlegStatus(s);
+                  const farbe = st==="geplant" ? "#d97706" : (st==="erfolgt" ? "#059669" : "var(--text4)");
+                  if(darfVerlegen(s)){
+                    return <select value={st} onChange={e=>setzeVerlegung(s,e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      style={{fontSize:10,padding:"2px 4px",borderRadius:5,border:"1px solid var(--border2)",
+                        background:"var(--bg)",color:farbe,fontWeight:700,cursor:"pointer"}}>
+                      <option value="-">-</option>
+                      <option value="geplant">geplant</option>
+                      <option value="erfolgt">erfolgt</option>
+                    </select>;
+                  }
+                  return st==="-" ? <span style={{color:"var(--text4)",fontSize:10}}>–</span>
+                    : <span style={{fontSize:9,fontWeight:800,color:"#fff",background:farbe,borderRadius:5,padding:"2px 6px"}}>{st}</span>;
+                })()}
+              </td>
               <td style={{padding:"5px 6px"}}>
                 <span style={{background:mc+"22",color:mc,borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{s.mannschaft}</span>
               </td>
@@ -17908,7 +17994,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null}) {
               </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={13} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={14} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -18172,6 +18258,36 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
             const key=`spielplan_${saison.replace("/","_")}`;
             const spiele=parseSpielplanCSV(text);
             if(spiele.length===0){showToast("Keine Spiele gefunden — CSV-Format prüfen","❌");setUploading(false);return;}
+            // Verlegungs-Abgleich: Für "geplant"-Spiele prüfen, ob sich Datum, Uhrzeit
+            // oder Ort geändert hat. Wenn ja → automatisch auf "erfolgt" setzen (danach
+            // sind Benachrichtigungen wieder erlaubt). Abgleich über Mannschaft+Gegner,
+            // da sich das Datum (und damit der Schlüssel) bei einer Verlegung ändern kann.
+            try{
+              const vSnap=await getDoc(doc(db,"config","verlegungen"));
+              const vData=(vSnap.exists()&&vSnap.data().data)||{};
+              const normG=(x)=>String(x||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");
+              const keyOf=(m,g,d)=>`${d}_${m}_${normG(g)}`.replace(/[.#$/\[\]]/g,"_");
+              const patch={}; let umgestellt=0;
+              for(const [k,eintrag] of Object.entries(vData)){
+                if(!eintrag||eintrag.status!=="geplant") continue;
+                // passendes Spiel im neuen Import über Mannschaft+Gegner finden
+                const treffer=spiele.find(s=>s.mannschaft===eintrag.mannschaft && normG(s.gegner)===normG(eintrag.gegner));
+                if(!treffer) continue;
+                const geaendert = (treffer.datum||"")!==(eintrag.datum||"")
+                               || (treffer.uhrzeit||"")!==(eintrag.uhrzeit||"")
+                               || (treffer.ort||"")!==(eintrag.ort||"");
+                if(!geaendert) continue;
+                const neuerEintrag={status:"erfolgt", mannschaft:treffer.mannschaft, gegner:treffer.gegner||"", datum:treffer.datum||"", uhrzeit:treffer.uhrzeit||"", ort:treffer.ort||""};
+                const neuerKey=keyOf(treffer.mannschaft, treffer.gegner, treffer.datum);
+                if(neuerKey!==k){ patch[k]=deleteField(); patch[neuerKey]=neuerEintrag; }
+                else { patch[k]=neuerEintrag; }
+                umgestellt++;
+              }
+              if(Object.keys(patch).length){
+                await setDoc(doc(db,"config","verlegungen"),{data:patch},{merge:true});
+              }
+              if(umgestellt>0) showToast(`${umgestellt} Verlegung(en) als „erfolgt" markiert`,"✅");
+            }catch(e){ /* Abgleich ist optional; Upload läuft weiter */ }
             await setDoc(doc(db,"config",key),{spiele,saison,lastUpdated:ts});
             showToast(`${saison}: ${spiele.length} Spiele importiert`,"📅");
             reloadSpielpläne();
@@ -18554,6 +18670,7 @@ const EW_HOME_GRUPPEN = [
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
@@ -18702,6 +18819,9 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
       <div style={{fontSize:17, color:titelFarbe, fontWeight:700, lineHeight:1.25}}>
         {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}
       </div>
+      {verlegStatusVon(s)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
+        ⚠️ wird verlegt
+      </div>}
       <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
         {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
           style={{display:"inline-flex", alignItems:"center", gap:5, background:chipBg, color:berichtCol,
@@ -18861,7 +18981,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
