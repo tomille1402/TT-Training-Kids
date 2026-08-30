@@ -1,4 +1,4 @@
-// === TTC-App · Version 403 · erstellt 30.08.2026 ===
+// === TTC-App · Version 405 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "403";
+const APP_VERSION = "405";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -9633,6 +9633,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             </div>}
           </div>}
         </div>
+        {/* Mannschaftsfotos (saisonabhängig, mit automatischer Verkleinerung) */}
+        <MannschaftsfotosUpload showToast={showToast}/>
       </div>}
     </div>
 
@@ -12137,6 +12139,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
+  const [einsaetze, setEinsaetze] = useState({});
   const [alleSpiele, setAlleSpiele] = useState([]);
 
   useEffect(() => {
@@ -12150,6 +12153,11 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
     const u1 = onSnapshot(doc(db,"config","spielcodes"), snap=> setSpielcodes(snap.exists()?snap.data():{}), ()=>{});
     const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
     return ()=>{ u1&&u1(); u2&&u2(); };
+  }, []);
+  useEffect(() => {
+    const u = onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+      snap=> setEinsaetze(snap.exists()?(snap.data().data||{}):{}), ()=> setEinsaetze({}));
+    return u;
   }, []);
   useEffect(() => {
     let ab=false;
@@ -12199,11 +12207,19 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
     return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
   };
 
-  const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
+  const oeffne = (key) => {
+    try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){}
+    if(key==="aufstellung" || key==="spielbetrieb") onOpen(key, meinAufName);
+    else onOpen(key);
+  };
 
   const heim = naechstes ? /heim/i.test(naechstes.ort||"") : false;
   const code = feldVonSpiel(naechstes, spielcodes, "code");
   const pin  = feldVonSpiel(naechstes, spielpins, "pin");
+  // Betreuer/Fahrer des nächsten Spiels aus den Einsätzen (Fahrer nur bei Auswärtsspielen).
+  const einsatz = naechstes ? (einsaetze[spielKeyFromSpiel(naechstes)]||{}) : {};
+  const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
+  const fahrerText = (!heim ? (einsatz._fahrer||"") : "");
   const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
   const team = teamZuSpiel(naechstes);
   const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
@@ -12221,6 +12237,10 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
           <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
             {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
           </div>
+          {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"#ffd7dd", marginTop:6, lineHeight:1.4}}>
+            {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
+            {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
+          </div>}
           <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
             {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
               style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT, fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Spielbericht</a>}
@@ -12268,6 +12288,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // oder Elternteil die Ansicht geöffnet hat.
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("home");
+  const [aufstellungTeam,setAufstellungTeam]=useState(""); // Zielmannschaft für Aufstellung-Sprung
   const [expandedEx,setExpandedEx]=useState(null);
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [uebungsvideos,setUebungsvideos]=useState({});
@@ -12415,7 +12436,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── STATS ── */}
     <div style={{height:hideHeader?40:114}}/>
-    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)}/>}
+    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -12642,9 +12663,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── BEOBACHTUNGEN ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenPlayerTab player={myPlayer}/>}
-    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
@@ -12670,6 +12691,44 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 // ─── ERFOLGE TAB (Spielerbereich) ─────────────────────────────────────────────
 function ErfolgeTab({player, hideTraining=false}) {
   const {beginnerStars,totalStars}=getAward(player);
+
+  // Turniere laden (für die Sichtbarkeitsprüfung vereinsinterner Erfolge).
+  const [turniereAlle,setTurniereAlle]=useState([]);
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"turniere"), snap=>{
+      setTurniereAlle(snap.docs.map(d=>({id:d.id,...d.data()})));
+    }, ()=>setTurniereAlle([]));
+    return unsub;
+  },[]);
+
+  // Funktion(en) der Person bestimmen — analog zur Turnier-Sichtbarkeitslogik.
+  const meineRollen = player?.roles || {};
+  const myGrp = player?.group || "";
+  const inSpielerGruppe = myGrp==="Profis" || myGrp==="Fortgeschrittene" || myGrp==="Anfänger" || myGrp==="Gast";
+  const istSpieler = meineRollen.player===true || inSpielerGruppe ||
+    (!!player && meineRollen.erwachsene!==true && meineRollen.mannschaftsfuehrer!==true && meineRollen.trainer!==true && meineRollen.admin!==true);
+  const meineRollenEff = {
+    ...meineRollen,
+    player: istSpieler || meineRollen.player===true,
+  };
+  // Turnier-ID aus der herkunft-Kennung eines Erfolgs ("auto:<turnierId>:<konkKey>").
+  const turnierIdVonErfolg = (t)=>{
+    const h=String(t?.herkunft||"");
+    const m=h.match(/^auto:(.+):[^:]+$/);
+    return m?m[1]:"";
+  };
+  // Ist der vereinsinterne Erfolg für die Funktion der Person freigegeben?
+  // Ein Erfolg ohne auffindbares Turnier (z.B. manuell erfasst) bleibt sichtbar,
+  // damit bestehende Einträge nicht verschwinden.
+  const erfolgSichtbar = (erfolg)=>{
+    const tid=turnierIdVonErfolg(erfolg);
+    if(!tid) return true;                                  // manuell erfasst → sichtbar
+    const turnier=turniereAlle.find(x=>x.id===tid || x.name===tid);
+    if(!turnier) return true;                              // Turnier nicht (mehr) auffindbar → sichtbar
+    const fuer=turnier.sichtbarFuer||[];
+    if(fuer.length===0) return false;                      // für niemanden freigegeben
+    return fuer.some(rk=>meineRollenEff[rk]===true);       // passende Funktion?
+  };
 
   // Ribbon-Badge Komponente (Option C)
   function RibbonBadge({emoji,label,color,date,earned}) {
@@ -12707,7 +12766,9 @@ function ErfolgeTab({player, hideTraining=false}) {
 
   // Turniere sortiert absteigend nach Datum
   const allTournaments=[...(player.tournaments||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-  const vereinsTurniere = allTournaments.filter(t=>t.type==="vereinsintern");
+  // Vereinsinterne Erfolge: nur anzeigen, wenn das zugehörige Turnier für die
+  // Funktion der Person sichtbar geschaltet ist (Punkt: Sichtbarkeit je Funktion).
+  const vereinsTurniere = allTournaments.filter(t=>t.type==="vereinsintern" && erfolgSichtbar(t));
   const externKreis = allTournaments.filter(t=>t.type==="extern_kreis");
   const externBezirk = allTournaments.filter(t=>t.type==="extern_bezirk");
   const externVerband = allTournaments.filter(t=>t.type==="extern_verband");
@@ -14346,6 +14407,95 @@ function parseSpielpinZeilen(zeilen){
   return ergebnis;
 }
 
+// ─── MANNSCHAFTSFOTOS-UPLOAD (Verwaltung → Uploads, saisonabhängig) ──────────
+// Fotos werden pro Saison und Team unter config/teamPhotos gespeichert; der Key ist
+// "{saisonSlug}_{teamId}" (saisonSlug = Saison-Key mit "/"→"_"). Alt-Fotos ohne
+// Saison-Präfix (nur "{teamId}") werden weiter als Fallback angezeigt.
+// Max. Kantenlänge 900 px, Ziel-Dateigröße klein (Vorschaubild) – automatische
+// Verkleinerung/Komprimierung über komprimiereBild().
+const FOTO_MAX_KANTE = 900;      // Pixel – größere Fotos werden proportional verkleinert
+const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
+function MannschaftsfotosUpload({showToast}) {
+  const [teamPhotos,setTeamPhotos] = useState({});
+  const [uploading,setUploading] = useState({});
+  const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
+  const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
+  const seasonSlug = selSeasonKey.replace("/","_");
+
+  useEffect(()=>{
+    const u = onSnapshot(doc(db,"config","teamPhotos"), snap=>{
+      if(snap.exists()) setTeamPhotos(snap.data());
+    },()=>{});
+    return u;
+  },[]);
+
+  // Foto eines Teams für die aktuell gewählte Saison (mit Fallback auf altes Format).
+  const fotoVon = (teamId) => teamPhotos[`${seasonSlug}_${teamId}`] || teamPhotos[teamId] || null;
+
+  async function handleUpload(teamId, file){
+    if(!file) return;
+    if(!file.type.startsWith("image/")){ showToast&&showToast("Bitte eine Bilddatei wählen","❌"); return; }
+    setUploading(p=>({...p,[teamId]:true}));
+    try{
+      // Automatisch verkleinern & komprimieren (Größe wird hier definiert).
+      const dataUrl = await komprimiereBild(file, {maxBreite:FOTO_MAX_KANTE, maxHoehe:FOTO_MAX_KANTE, maxLen:FOTO_MAX_LEN});
+      const key = `${seasonSlug}_${teamId}`;
+      await setDoc(doc(db,"config","teamPhotos"), {[key]:dataUrl}, {merge:true});
+      setTeamPhotos(p=>({...p,[key]:dataUrl}));
+      showToast&&showToast("Foto gespeichert","✅");
+    }catch(e){
+      showToast&&showToast((e&&e.message)||"Foto konnte nicht verarbeitet werden","❌");
+    }finally{
+      setUploading(p=>({...p,[teamId]:false}));
+    }
+  }
+
+  async function handleDelete(teamId){
+    const key = `${seasonSlug}_${teamId}`;
+    try{
+      await setDoc(doc(db,"config","teamPhotos"), {[key]:null}, {merge:true});
+      setTeamPhotos(p=>{ const n={...p}; delete n[key]; return n; });
+      showToast&&showToast("Foto entfernt","🗑️");
+    }catch(e){ showToast&&showToast("Konnte Foto nicht entfernen","❌"); }
+  }
+
+  return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
+    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📸 Mannschaftsfotos</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+      Fotos werden je Saison gespeichert und im Spielbetrieb angezeigt. Große Bilder werden
+      automatisch auf max. {FOTO_MAX_KANTE} px verkleinert und komprimiert.
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      <span style={{fontSize:11,color:"var(--text3)"}}>Saison:</span>
+      <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
+        style={{padding:"5px 8px",borderRadius:7,fontSize:12,fontWeight:700,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+        {SEASONS.map(s=><option key={s.key} value={s.key}>{s.key}{s.current?" (aktuell)":""}</option>)}
+      </select>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+      {season.teams.map(t=>{
+        const foto = fotoVon(t.id);
+        const busy = uploading[t.id];
+        return <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:10,padding:"8px 10px"}}>
+          <div style={{width:48,height:48,flexShrink:0,borderRadius:8,overflow:"hidden",background:"var(--bg3)",display:"flex",alignItems:"center",justifyContent:"center",borderLeft:`3px solid ${t.color}`}}>
+            {foto ? <img src={foto} alt={t.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:20}}>🏓</span>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{t.name}</div>
+            <div style={{fontSize:10,color:"var(--text4)"}}>{foto?"Foto vorhanden":"kein Foto"}</div>
+          </div>
+          <label style={{flexShrink:0,padding:"6px 10px",background:"var(--bg3)",border:"1px dashed var(--border2)",borderRadius:8,cursor:busy?"not-allowed":"pointer",fontSize:11,color:busy?"#6b7280":"var(--text2)",fontWeight:600}}>
+            {busy?"⏳":"📎 Upload"}
+            <input type="file" accept="image/*" style={{display:"none"}} disabled={busy}
+              onChange={e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=""; handleUpload(t.id,f); }}/>
+          </label>
+          {foto&&<button onClick={()=>handleDelete(t.id)} style={{flexShrink:0,padding:"6px 8px",background:"#ef444422",border:"none",borderRadius:8,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
 function MannschaftenVerwaltung({showToast}) {
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
@@ -15315,14 +15465,17 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   </div>;
 }
 
-function SpielbetrieblTab({isSuperAdmin}) {
+function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   const [teamPhotos,setTeamPhotos] = useState({});
   const [teamFiles,setTeamFiles] = useState({});
-  const [uploadingFor,setUploadingFor] = useState(null);
+  const teamRefs=useRef({});          // {teamName: DOM-Knoten} für gezieltes Scrollen
+  const scrollDone=useRef(false);
   // Saison-Auswahl: standardmäßig die aktuelle Saison
   const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
   const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
   const seasonTeams = season.teams;
+  const seasonSlugSB = selSeasonKey.replace("/","_");
+  const fotoVonSB = (teamId) => teamPhotos[`${seasonSlugSB}_${teamId}`] || teamPhotos[teamId] || null;
 
   useEffect(()=>{
     const u1 = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
@@ -15334,19 +15487,17 @@ function SpielbetrieblTab({isSuperAdmin}) {
     return ()=>{u1();u2();};
   },[]);
 
-  async function handlePhotoUpload(teamId, file) {
-    if (!file) return;
-    setUploadingFor(teamId);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target.result;
-      const updated = {...teamPhotos, [teamId]: dataUrl};
-      await setDoc(doc(db,"config","teamPhotos"), updated, {merge:true}).catch(()=>{});
-      setTeamPhotos(updated);
-      setUploadingFor(null);
-    };
-    reader.readAsDataURL(file);
-  }
+  // Nach dem Aufbau einmalig zur gewünschten Mannschaft scrollen (Spielbetrieb-Kachel).
+  useEffect(()=>{
+    if(scrollDone.current || !scrollToTeam) return;
+    const ziel=normAufName(scrollToTeam);
+    const key=Object.keys(teamRefs.current).find(k=>normAufName(k)===ziel);
+    const node=key?teamRefs.current[key]:null;
+    if(node){
+      scrollDone.current=true;
+      setTimeout(()=>{ try{ node.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){} }, 80);
+    }
+  },[scrollToTeam,selSeasonKey,teamPhotos]);
 
   const LinkBtn = ({href,label,icon}) => (
     <a href={href} target="_blank" rel="noopener noreferrer" style={{
@@ -15379,13 +15530,14 @@ function SpielbetrieblTab({isSuperAdmin}) {
     <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12}}>
       {seasonTeams.map(t=>{
         const links = teamLinks(t, season.code);
-        const photo = teamPhotos[t.id];
+        const photo = fotoVonSB(t.id);
         const hasStandings = season.showStandings && t.rang!=null;
         const showLinks = season.showLinks && t.gruppe;
-        return <div key={t.id} style={{
+        return <div key={t.id} ref={el=>{ if(el) teamRefs.current[t.name]=el; }} style={{
           background:"var(--bg2)",borderRadius:14,overflow:"hidden",
           border:`1px solid var(--border)`,
           borderLeft:`4px solid ${t.color}`,
+          scrollMarginTop:100,
         }}>
           {/* Team header */}
           <div style={{display:"flex",alignItems:"stretch",minHeight:80}}>
@@ -15399,16 +15551,13 @@ function SpielbetrieblTab({isSuperAdmin}) {
                 ? <img src={photo} alt={t.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                 : <span style={{fontSize:28}}>🏓</span>
               }
-              {isSuperAdmin&&<label style={{
+              {isSuperAdmin&&<div style={{
                 position:"absolute",bottom:0,left:0,right:0,
                 background:"rgba(0,0,0,0.55)",color:"#fff",
-                fontSize:9,textAlign:"center",padding:"3px 0",cursor:"pointer",
+                fontSize:8,textAlign:"center",padding:"3px 2px",lineHeight:1.2,
               }}>
-                {uploadingFor===t.id?"⏳":photo?"📷 ändern":"📷 Foto"}
-                <input type="file" accept="image/*" style={{display:"none"}}
-                  onChange={e=>handlePhotoUpload(t.id, e.target.files?.[0])}
-                  disabled={uploadingFor===t.id}/>
-              </label>}
+                📷 in Verwaltung
+              </div>}
             </div>
 
             {/* Team info */}
@@ -16641,6 +16790,7 @@ function TermineView() {
   const [sortAsc,setSortAsc]=useState(true);
   const [fVeranst,setFVeranst]=useState("");
   const [fOrt,setFOrt]=useState("");
+  const [fZeitraum,setFZeitraum]=useState("neu"); // alle / alt / neu — Default: neu
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
@@ -16653,7 +16803,17 @@ function TermineView() {
 
   const enriched=termine.map(t=>({...t, tagStart:terminTag(t.datumStart), tagEnde:terminTag(t.datumEnde)}));
   const orte=[...new Set(termine.map(t=>t.ort).filter(Boolean))];
+  // Zeitraum: "alle" = alles, "alt" = vor heute (Vergangenheit), "neu" = ab heute.
+  const heuteISO_T = new Date().toLocaleDateString("sv");
+  const imZeitraumT = (iso)=>{
+    if(fZeitraum==="alle") return true;
+    const d=String(iso||"");
+    if(!d) return fZeitraum!=="alt";
+    if(fZeitraum==="alt") return d < heuteISO_T;
+    return d >= heuteISO_T;
+  };
   const filtered=enriched.filter(t=>{
+    if(!imZeitraumT(t.datumStart)) return false;
     if(fVeranst&&!String(t.veranstaltung||"").toLowerCase().includes(fVeranst.toLowerCase())) return false;
     if(fOrt&&t.ort!==fOrt) return false;
     return true;
@@ -16669,12 +16829,18 @@ function TermineView() {
     <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
       <input placeholder="Veranstaltung suchen" value={fVeranst} onChange={e=>setFVeranst(e.target.value)}
         style={{flex:"0 0 auto",width:170,padding:"5px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+      <select value={fZeitraum} onChange={e=>setFZeitraum(e.target.value)}
+        style={{flex:"0 0 auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
+        <option value="alle">Zeitraum: alle</option>
+        <option value="alt">alt (Vergangenheit)</option>
+        <option value="neu">neu (ab heute)</option>
+      </select>
       <select value={fOrt} onChange={e=>setFOrt(e.target.value)}
         style={{flex:"0 0 auto",padding:"5px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11}}>
         <option value="">Alle Orte</option>
         {orte.map(o=><option key={o} value={o}>{o}</option>)}
       </select>
-      {(fVeranst||fOrt)&&<button onClick={()=>{setFVeranst("");setFOrt("");}} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+      {(fVeranst||fOrt||fZeitraum!=="neu")&&<button onClick={()=>{setFVeranst("");setFOrt("");setFZeitraum("neu");}} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
     </div>
     <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} Termin(e)</div>
     {/* Tabelle */}
@@ -18031,7 +18197,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   // damit direkt dorthin gesprungen wird.
   const oeffne = (key) => {
     try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){}
-    if(key==="aufstellung") onOpen(key, meinAufName);
+    if(key==="aufstellung" || key==="spielbetrieb") onOpen(key, meinAufName);
     else onOpen(key);
   };
 
@@ -18233,8 +18399,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:44}}/>
-    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key,team)=>{ if(key==="aufstellung") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
-    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false}/>}
+    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
+    {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
     {activeTab==="erfolge"&&!myPlayer&&
