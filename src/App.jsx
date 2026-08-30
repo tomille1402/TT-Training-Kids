@@ -1,4 +1,4 @@
-// === TTC-App · Version 406 · erstellt 30.08.2026 ===
+// === TTC-App · Version 408 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -9,7 +9,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore, doc, setDoc, collection, addDoc,
-  onSnapshot, deleteDoc, updateDoc, getDoc, getDocs
+  onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, deleteField
 } from "firebase/firestore";
 import {
   getStorage, ref as storageRef, uploadBytes,
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "406";
+const APP_VERSION = "408";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5882,8 +5882,96 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
   </div>;
 }
 
+// Thematische Gruppierung der Trainer-Bereiche für die Kachel-Startseite.
+// Es werden nur Kacheln gezeigt, deren Reiter für die Person verfügbar ist.
+const TR_HOME_GRUPPEN = [
+  { titel:"Training", items:[
+    { key:"training",     label:"Training",      icon:"📅", sub:"Trainingstage" },
+    { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Anwesenheit" },
+    { key:"einheiten",    label:"Einheiten",     icon:"📝", sub:"Trainingsinhalte" },
+    { key:"uebungen",     label:"Übungen",       icon:"🏋️", sub:"Übungskatalog" },
+    { key:"beobachtungen",label:"Beobachtungen", icon:"🔍", sub:"Spielernotizen" },
+    { key:"urkunden",     label:"Urkunden",      icon:"📜", sub:"Auszeichnungen" },
+  ]},
+  { titel:"Spieler & Gruppe", items:[
+    { key:"eltern",      label:"Eltern",       icon:"👨‍👩‍👧", sub:"Kontakte" },
+    { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
+    { key:"geburtstage", label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
+    { key:"schlaeger",   label:"Schläger",     icon:"🏓", sub:"Material" },
+  ]},
+  { titel:"Wettkampf", items:[
+    { key:"spielplan",   label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
+    { key:"aufstellung", label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"turniere",    label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
+    { key:"ttr",         label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
+  ]},
+  { titel:"Verein & Verwaltung", items:[
+    { key:"termine",          label:"Termine",     icon:"📌", sub:"Vereinstermine" },
+    { key:"kalender",         label:"Kalender",    icon:"📅", sub:"Abo & Export" },
+    { key:"halleninfo",       label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
+    { key:"bestellungen",     label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
+    { key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", sub:"Alle Bestellungen" },
+    { key:"meineverwaltung",  label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
+    { key:"verwaltung",       label:"Verwaltung",  icon:"⚙️", sub:"App-Verwaltung" },
+  ]},
+];
+
+// Kachel-Startseite der Trainer-Ansicht — stark am Spieler-Design orientiert.
+// verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
+function TrainerHome({ user, players, onOpen, verfuegbar }) {
+  const meinName = (()=>{
+    const p = findLoginPlayer(players, user?.email, false);
+    return p?.firstName ? ` ${p.firstName}` : "";
+  })();
+  const heuteText = (()=>{
+    try{
+      const d=new Date();
+      const TAGE=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+      const p=n=>String(n).padStart(2,"0");
+      return `${TAGE[d.getDay()]}, ${p(d.getDate())}.${p(d.getMonth()+1)}.${d.getFullYear()}`;
+    }catch(e){ return ""; }
+  })();
+
+  const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
+
+  const gruppen = TR_HOME_GRUPPEN
+    .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
+    .filter(g => g.items.length>0);
+
+  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+    {/* Hero: Begrüßung (Trainer haben kein eigenes „nächstes Spiel") */}
+    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
+      <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{meinName}!</div>
+      {heuteText && <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>{heuteText}</div>}
+    </div>
+
+    {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
+        <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
+        <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+        {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
+          textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
+          borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
+          flexDirection:"column", gap:3, borderLeft:`3px solid ${TTC_ROT}`,
+        }}>
+          <div style={{display:"flex", alignItems:"center", gap:8}}>
+            <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+          </div>
+          <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
+        </button>)}
+      </div>
+    </div>)}
+  </div>;
+}
+
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
+    {key:"home",         label:"Start",         icon:"🏠"},
     {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
@@ -5906,6 +5994,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", superAdminOnly:true},
     {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
+    {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
   const TABS = ALL_TABS.filter(t=>{
@@ -5918,7 +6007,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     // die Seite beim Wechsel zu einem heruntergeladenen PDF entladen und danach neu
     // starten – ohne diese Persistenz landete man sonst wieder auf „Training".
     try{ const v=sessionStorage.getItem("ttc_activeTab"); if(v) return v; }catch(e){}
-    return "training";
+    return "home";
   });
   useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
   // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
@@ -6137,17 +6226,20 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       top:hideHeader?"var(--rsw-height)":"62px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
-      {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
+      {TABS.map(t=>{
+        const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
-        borderBottom:`2px solid ${activeTab===t.key?"#10b981":"transparent"}`,
-        color:activeTab===t.key?"#10b981":"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
-        display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>)}
+        borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
+        color:activeTab===t.key?aktivFarbe:"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
+        display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>;
+      })}
     </div>
     {/* Spacer: standalone = header(62) + gemessene Tab-Höhe; im RSW-Modus nur die
         gemessene Tab-Höhe (die fixierte Leiste sitzt bereits bei var(--rsw-height)). */}
     <div style={{height:hideHeader?tabBarH:(62+tabBarH)}}/>
 
-
+    {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)}/>}
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
@@ -6311,6 +6403,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
+    {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="bestellungen"&&<BestellungenView me={findLoginPlayer(players, user?.email, true)} isAdmin={isSuperAdmin} showToast={showToast}/>}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={findLoginPlayer(players, user?.email, true)} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
 
@@ -8559,6 +8652,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     onJumpHandled && onJumpHandled();
   },[jumpToId]);
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
+  const [showHalleninfo,setShowHalleninfo]=useState(false); // Halleninfos section
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
@@ -9635,6 +9729,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>
         {/* Mannschaftsfotos (saisonabhängig, mit automatischer Verkleinerung) */}
         <MannschaftsfotosUpload showToast={showToast}/>
+      </div>}
+    </div>
+
+    {/* Halleninfos Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowHalleninfo(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📣 Halleninfos</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showHalleninfo?"▲":"▼"}</span>
+      </div>
+      {showHalleninfo&&<div style={{padding:"0 14px 14px"}}>
+        <HalleninfoVerwaltung showToast={showToast}/>
       </div>}
     </div>
 
@@ -12129,6 +12234,7 @@ const SP_HOME_GRUPPEN = [
   { titel:"Verein & mehr", items:[
     { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
     { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
+    { key:"halleninfo",     label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"bestellungen",   label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
     { key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
   ]},
@@ -12341,6 +12447,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
+    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
   ];
   // Punkt 6: Anfänger/Gast sehen die Wettkampf-Reiter noch nicht; Gast zusätzlich
   // keine Termine/Bestellungen. Erst ab höherer Gruppe werden sie eingeblendet.
@@ -12679,6 +12786,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
+    {activeTab==="halleninfo"&&<HalleninfoView/>}
 
     <style>{`
       *{box-sizing:border-box}
@@ -14416,32 +14524,217 @@ function parseSpielpinZeilen(zeilen){
 // Verkleinerung/Komprimierung über komprimiereBild().
 const FOTO_MAX_KANTE = 900;      // Pixel – größere Fotos werden proportional verkleinert
 const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
+
+// ─── HALLENINFO ───────────────────────────────────────────────────────────────
+// Infos, die die Aktiven auf Dinge in der Halle aufmerksam machen (Titel, Text,
+// Fotos). Jede Info ist ein eigenes Dokument in der Sammlung "halleninfos"
+// (umgeht das 1-MiB-Limit eines Sammeldokuments). Fotos werden beim Upload
+// automatisch verkleinert/komprimiert (max. 900 px, ~300 KB je Bild).
+const HALLENINFO_MAX_FOTOS = 6;
+
+// Anzeige-Reiter für alle Funktionen: zeigt die Halleninfos (neueste zuerst).
+function HalleninfoView() {
+  const [infos,setInfos] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [lightbox,setLightbox] = useState(null); // {dataUrl} für Vollbild-Foto
+
+  useEffect(()=>{
+    const u = onSnapshot(collection(db,"halleninfos"), snap=>{
+      const arr = snap.docs.map(d=>({id:d.id,...d.data()}));
+      arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+      setInfos(arr); setLoading(false);
+    }, ()=>{ setInfos([]); setLoading(false); });
+    return u;
+  },[]);
+
+  const fmtDatum = (ts)=>{
+    if(!ts) return "";
+    try{ const d=new Date(ts); const p=n=>String(n).padStart(2,"0");
+      return `${p(d.getDate())}.${p(d.getMonth()+1)}.${d.getFullYear()}`;
+    }catch(e){ return ""; }
+  };
+
+  if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
+
+  return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      <span style={{fontSize:20}}>📣</span>
+      <span style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>Halleninfo</span>
+    </div>
+    {infos.length===0
+      ? <div style={{padding:"30px 16px",textAlign:"center",color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12}}>
+          Aktuell gibt es keine Halleninfos.
+        </div>
+      : <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {infos.map(info=>{
+            const fotos = Array.isArray(info.fotos) ? info.fotos : [];
+            return <div key={info.id} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${TTC_ROT}`}}>
+              <div style={{padding:"13px 14px"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</div>
+                {info.ts&&<div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>{fmtDatum(info.ts)}</div>}
+                {info.text&&<div style={{fontSize:13,color:"var(--text2)",marginTop:8,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{info.text}</div>}
+              </div>
+              {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 14px 14px"}}>
+                {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={()=>setLightbox(f)}
+                  style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"pointer",border:"1px solid var(--border)"}}/>)}
+              </div>}
+            </div>;
+          })}
+        </div>}
+    {lightbox&&<div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,cursor:"zoom-out"}}>
+      <img src={lightbox} alt="" style={{maxWidth:"100%",maxHeight:"100%",borderRadius:10}}/>
+    </div>}
+  </div>;
+}
+
+// Verwaltungs-Abschnitt: Halleninfos erfassen, bearbeiten, löschen (mit Fotos).
+function HalleninfoVerwaltung({showToast}) {
+  const [infos,setInfos] = useState([]);
+  const [editId,setEditId] = useState(null);     // id der gerade bearbeiteten Info oder "neu"
+  const [titel,setTitel] = useState("");
+  const [text,setText] = useState("");
+  const [fotos,setFotos] = useState([]);         // Data-URLs
+  const [busy,setBusy] = useState(false);
+
+  useEffect(()=>{
+    const u = onSnapshot(collection(db,"halleninfos"), snap=>{
+      const arr = snap.docs.map(d=>({id:d.id,...d.data()}));
+      arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+      setInfos(arr);
+    }, ()=>setInfos([]));
+    return u;
+  },[]);
+
+  const reset = ()=>{ setEditId(null); setTitel(""); setText(""); setFotos([]); };
+  const starteNeu = ()=>{ setEditId("neu"); setTitel(""); setText(""); setFotos([]); };
+  const starteBearbeiten = (info)=>{
+    setEditId(info.id); setTitel(info.titel||""); setText(info.text||"");
+    setFotos(Array.isArray(info.fotos)?info.fotos:[]);
+  };
+
+  async function fotoHinzufuegen(file){
+    if(!file) return;
+    if(!file.type.startsWith("image/")){ showToast&&showToast("Bitte eine Bilddatei wählen","❌"); return; }
+    if(fotos.length>=HALLENINFO_MAX_FOTOS){ showToast&&showToast(`Maximal ${HALLENINFO_MAX_FOTOS} Fotos`,"❌"); return; }
+    try{
+      const dataUrl = await komprimiereBild(file, {maxBreite:FOTO_MAX_KANTE, maxHoehe:FOTO_MAX_KANTE, maxLen:FOTO_MAX_LEN});
+      setFotos(p=>[...p,dataUrl]);
+    }catch(e){ showToast&&showToast((e&&e.message)||"Foto konnte nicht verarbeitet werden","❌"); }
+  }
+  const fotoEntfernen = (idx)=> setFotos(p=>p.filter((_,i)=>i!==idx));
+
+  async function speichern(){
+    if(!titel.trim()){ showToast&&showToast("Bitte einen Titel angeben","❌"); return; }
+    setBusy(true);
+    try{
+      const daten = { titel:titel.trim(), text:text.trim(), fotos, ts:Date.now() };
+      if(editId==="neu"){
+        await addDoc(collection(db,"halleninfos"), daten);
+        showToast&&showToast("Halleninfo angelegt","✅");
+      }else{
+        // ts der ursprünglichen Info beibehalten, damit die Reihenfolge stabil bleibt.
+        const orig = infos.find(x=>x.id===editId);
+        await setDoc(doc(db,"halleninfos",editId), {...daten, ts: orig?.ts || daten.ts});
+        showToast&&showToast("Halleninfo gespeichert","✅");
+      }
+      reset();
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    finally{ setBusy(false); }
+  }
+
+  async function loeschen(id){
+    try{ await deleteDoc(doc(db,"halleninfos",id)); showToast&&showToast("Halleninfo gelöscht","🗑️"); if(editId===id) reset(); }
+    catch(e){ showToast&&showToast("Konnte nicht löschen","❌"); }
+  }
+
+  const fmtDatum = (ts)=>{ if(!ts) return ""; try{ const d=new Date(ts); const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}.${p(d.getMonth()+1)}.${d.getFullYear()}`;}catch(e){return "";} };
+
+  return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
+    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📣 Halleninfos</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+      Infos für die Aktiven (z. B. Hinweise in der Halle). Titel und Detailtext verfassen und
+      optional Fotos hochladen. Fotos werden automatisch verkleinert (max. {FOTO_MAX_KANTE} px).
+    </div>
+
+    {editId===null
+      ? <button onClick={starteNeu} style={{padding:"9px 12px",background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:12}}>+ Neue Halleninfo</button>
+      : <div style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:12,padding:12,marginBottom:12}}>
+          <input value={titel} onChange={e=>setTitel(e.target.value)} placeholder="Überschrift des Themas"
+            style={{width:"100%",boxSizing:"border-box",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text)",fontSize:13,fontWeight:600,marginBottom:8}}/>
+          <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Detail-Text …" rows={4}
+            style={{width:"100%",boxSizing:"border-box",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text)",fontSize:13,lineHeight:1.5,marginBottom:8,resize:"vertical"}}/>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+            {fotos.map((f,i)=><div key={i} style={{position:"relative"}}>
+              <img src={f} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+              <button onClick={()=>fotoEntfernen(i)} style={{position:"absolute",top:-6,right:-6,width:20,height:20,borderRadius:"50%",background:"#ef4444",color:"#fff",border:"none",fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
+            </div>)}
+            {fotos.length<HALLENINFO_MAX_FOTOS&&<label style={{width:72,height:72,borderRadius:8,border:"1px dashed var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:11,color:"var(--text3)",flexDirection:"column",gap:2}}>
+              <span style={{fontSize:18}}>📎</span>Foto
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files&&e.target.files[0]; e.target.value=""; fotoHinzufuegen(f);}}/>
+            </label>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={speichern} disabled={busy} style={{flex:1,padding:"9px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,cursor:busy?"not-allowed":"pointer"}}>{busy?"⏳ Speichern…":"Speichern"}</button>
+            <button onClick={reset} style={{padding:"9px 14px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
+          </div>
+        </div>}
+
+    {infos.length>0&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {infos.map(info=>{
+        const fotos2 = Array.isArray(info.fotos)?info.fotos:[];
+        return <div key={info.id} style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:10,padding:"9px 11px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</div>
+              <div style={{fontSize:10,color:"var(--text4)"}}>{fmtDatum(info.ts)}{fotos2.length>0?` · ${fotos2.length} Foto${fotos2.length>1?"s":""}`:""}</div>
+            </div>
+            <button onClick={()=>starteBearbeiten(info)} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️</button>
+            <button onClick={()=>loeschen(info.id)} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:8,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>
+          </div>
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
 function MannschaftsfotosUpload({showToast}) {
-  const [teamPhotos,setTeamPhotos] = useState({});
+  const [teamPhotos,setTeamPhotos] = useState({});   // {key: dataUrl} aus der Collection
+  const [legacyPhotos,setLegacyPhotos] = useState({}); // altes Sammeldokument config/teamPhotos
   const [uploading,setUploading] = useState({});
   const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
   const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
   const seasonSlug = selSeasonKey.replace("/","_");
 
   useEffect(()=>{
-    const u = onSnapshot(doc(db,"config","teamPhotos"), snap=>{
-      if(snap.exists()) setTeamPhotos(snap.data());
+    // Neue Struktur: je Foto ein Dokument in der Collection "teamPhotos" (umgeht die
+    // 1-MiB-Grenze eines einzelnen Sammeldokuments).
+    const u1 = onSnapshot(collection(db,"teamPhotos"), snap=>{
+      const m={}; snap.forEach(d=>{ const v=d.data(); if(v && v.dataUrl) m[d.id]=v.dataUrl; });
+      setTeamPhotos(m);
     },()=>{});
-    return u;
+    // Altbestand aus dem früheren Sammeldokument (nur lesend, als Fallback/Anzeige).
+    const u2 = onSnapshot(doc(db,"config","teamPhotos"), snap=>{
+      setLegacyPhotos(snap.exists()?snap.data():{});
+    },()=>{});
+    return ()=>{ u1&&u1(); u2&&u2(); };
   },[]);
 
-  // Foto eines Teams für die aktuell gewählte Saison (mit Fallback auf altes Format).
-  const fotoVon = (teamId) => teamPhotos[`${seasonSlug}_${teamId}`] || teamPhotos[teamId] || null;
+  // Foto eines Teams: neue Collection zuerst, dann altes Sammeldokument (saison- und
+  // saisonlos), damit bereits vorhandene Fotos weiter angezeigt werden.
+  const fotoVon = (teamId) => {
+    const k = `${seasonSlug}_${teamId}`;
+    return teamPhotos[k] || legacyPhotos[k] || legacyPhotos[teamId] || null;
+  };
 
   async function handleUpload(teamId, file){
     if(!file) return;
     if(!file.type.startsWith("image/")){ showToast&&showToast("Bitte eine Bilddatei wählen","❌"); return; }
     setUploading(p=>({...p,[teamId]:true}));
     try{
-      // Automatisch verkleinern & komprimieren (Größe wird hier definiert).
       const dataUrl = await komprimiereBild(file, {maxBreite:FOTO_MAX_KANTE, maxHoehe:FOTO_MAX_KANTE, maxLen:FOTO_MAX_LEN});
       const key = `${seasonSlug}_${teamId}`;
-      await setDoc(doc(db,"config","teamPhotos"), {[key]:dataUrl}, {merge:true});
+      // Jedes Foto in ein EIGENES Dokument → kein gemeinsames Größenlimit mehr.
+      await setDoc(doc(db,"teamPhotos",key), {dataUrl, team:teamId, saison:selSeasonKey, ts:Date.now()});
       setTeamPhotos(p=>({...p,[key]:dataUrl}));
       showToast&&showToast("Foto gespeichert","✅");
     }catch(e){
@@ -14454,8 +14747,15 @@ function MannschaftsfotosUpload({showToast}) {
   async function handleDelete(teamId){
     const key = `${seasonSlug}_${teamId}`;
     try{
-      await setDoc(doc(db,"config","teamPhotos"), {[key]:null}, {merge:true});
+      // Neues Dokument löschen …
+      await deleteDoc(doc(db,"teamPhotos",key)).catch(()=>{});
+      // … und einen etwaigen Altbestand im Sammeldokument mit entfernen (Feld auf löschen).
+      const patch={};
+      if(legacyPhotos[key]!==undefined) patch[key]=deleteField();
+      if(legacyPhotos[teamId]!==undefined) patch[teamId]=deleteField();
+      if(Object.keys(patch).length) await setDoc(doc(db,"config","teamPhotos"), patch, {merge:true}).catch(()=>{});
       setTeamPhotos(p=>{ const n={...p}; delete n[key]; return n; });
+      setLegacyPhotos(p=>{ const n={...p}; delete n[key]; delete n[teamId]; return n; });
       showToast&&showToast("Foto entfernt","🗑️");
     }catch(e){ showToast&&showToast("Konnte Foto nicht entfernen","❌"); }
   }
@@ -15467,7 +15767,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 }
 
 function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
-  const [teamPhotos,setTeamPhotos] = useState({});
+  const [teamPhotos,setTeamPhotos] = useState({});     // aus Collection teamPhotos
+  const [legacyPhotos,setLegacyPhotos] = useState({}); // altes Sammeldokument
   const [teamFiles,setTeamFiles] = useState({});
   const teamRefs=useRef({});          // {teamName: DOM-Knoten} für gezieltes Scrollen
   const scrollDone=useRef(false);
@@ -15476,16 +15777,23 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
   const seasonTeams = season.teams;
   const seasonSlugSB = selSeasonKey.replace("/","_");
-  const fotoVonSB = (teamId) => teamPhotos[`${seasonSlugSB}_${teamId}`] || teamPhotos[teamId] || null;
+  const fotoVonSB = (teamId) => {
+    const k = `${seasonSlugSB}_${teamId}`;
+    return teamPhotos[k] || legacyPhotos[k] || legacyPhotos[teamId] || null;
+  };
 
   useEffect(()=>{
-    const u1 = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
-      if(snap.exists()) setTeamPhotos(snap.data());
+    const u1 = onSnapshot(collection(db,"teamPhotos"),snap=>{
+      const m={}; snap.forEach(d=>{ const v=d.data(); if(v && v.dataUrl) m[d.id]=v.dataUrl; });
+      setTeamPhotos(m);
+    },()=>{});
+    const u1b = onSnapshot(doc(db,"config","teamPhotos"),snap=>{
+      setLegacyPhotos(snap.exists()?snap.data():{});
     },()=>{});
     const u2 = onSnapshot(doc(db,"config","teamFiles"),snap=>{
       if(snap.exists()) setTeamFiles(snap.data());
     },()=>{});
-    return ()=>{u1();u2();};
+    return ()=>{u1();u1b();u2();};
   },[]);
 
   // Nach dem Aufbau einmalig zur gewünschten Mannschaft scrollen (Spielbetrieb-Kachel).
@@ -18113,6 +18421,7 @@ const EW_HOME_GRUPPEN = [
     { key:"termine",      label:"Termine",      icon:"📌", sub:"Vereinstermine" },
     { key:"kalender",     label:"Kalender",     icon:"📅", sub:"Abo & Export" },
     { key:"geburtstage",  label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
+    { key:"halleninfo",   label:"Halleninfo",   icon:"📣", sub:"Infos aus der Halle" },
   ]},
 ];
 
@@ -18365,6 +18674,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     ...(isMF?[{key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
+    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
@@ -18424,6 +18734,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         damit die Mannschaft dieses MF gilt — nicht die eingeloggte Person. */}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
+    {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
