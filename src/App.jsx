@@ -1,4 +1,4 @@
-// === TTC-App · Version 409 · erstellt 30.08.2026 ===
+// === TTC-App · Version 410 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "409";
+const APP_VERSION = "410";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6415,7 +6415,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false}/>}
     {activeTab==="termine"&&<TermineView/>}
-    {activeTab==="kalender"&&<KalenderExport/>}
+    {activeTab==="kalender"&&<KalenderExport players={players}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={isSuperAdmin}
@@ -12805,7 +12805,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
-    {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
+    {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={false}
@@ -16565,7 +16565,25 @@ function foldIcsLine(line){
 // weil Redirects unter /.netlify/functions/ nicht zuverlaessig angewendet werden.
 const KALENDER_FEED_BASE = "/kalender.ics";
 
-function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
+function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=false}){
+  // Person, deren betreute Spiele aufgenommen werden. Standard: die betrachtete
+  // Person selbst; kann aber auf eine beliebige andere Person umgestellt werden
+  // (z.B. Ehepartner, die sehen wollen, wann der Partner sonst in der Halle ist).
+  const [betreutPersonId,setBetreutPersonId]=useState(vorauswahlPlayer?.id||"");
+  // Personen alphabetisch für die Auswahl-Liste.
+  const personenSortiert = [...(players||[])]
+    .filter(p=>p && (p.firstName||p.lastName))
+    .sort((a,b)=>personAnzeigeName(a).localeCompare(personAnzeigeName(b)));
+  const betreutPerson = (players||[]).find(p=>p.id===betreutPersonId) || null;
+  const betreutUserSetRef = useRef(false);
+  useEffect(()=>{
+    // Solange der Nutzer die Person nicht selbst geändert hat, der betrachteten
+    // Person folgen (z.B. wenn der Admin zu jemandem springt).
+    if(betreutUserSetRef.current) return;
+    if(vorauswahlPlayer?.id && betreutPersonId!==vorauswahlPlayer.id){
+      setBetreutPersonId(vorauswahlPlayer.id);
+    }
+  },[vorauswahlPlayer,betreutPersonId]);
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
   const SAISON_OPTS=[
     {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
@@ -16713,7 +16731,7 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
   const icsOptions=()=>({
     teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
     puffer, spiele, vereinstermine:gefilterteTermine, einsaetzeData,
-    betreutPlayer:vorauswahlPlayer,
+    betreutPlayer:betreutPerson,
   });
 
   function download(){
@@ -16731,9 +16749,9 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
     params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
     // Wenn "betreute Spiele" gewählt sind, den Betreuer-Namen mitgeben, damit der
-    // Abo-Feed (Function) die betreuten Spiele derselben Person filtern kann.
-    if(selTeams.includes(SENTINEL_BETREUT) && vorauswahlPlayer){
-      params.set("betreuer", personAnzeigeName(vorauswahlPlayer));
+    // Abo-Feed (Function) die betreuten Spiele der gewählten Person filtern kann.
+    if(selTeams.includes(SENTINEL_BETREUT) && betreutPerson){
+      params.set("betreuer", personAnzeigeName(betreutPerson));
     }
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
@@ -16804,11 +16822,28 @@ function KalenderExport({vorauswahlPlayer=null, istErwachseneView=false}){
           </label>
         ))}
         {alleMannschaften.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Keine Mannschaften in dieser Saison.</div>}
-        {/* Punkt 3: betreute Spiele als eigene Ausprägung unterhalb der Mannschaften */}
-        {vorauswahlPlayer&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",borderTop:"1px solid var(--border2)",marginTop:4,paddingTop:8}}>
-          <input type="checkbox" checked={selTeams.includes(SENTINEL_BETREUT)} onChange={()=>toggleTeam(SENTINEL_BETREUT)}/>
-          betreute Spiele<span style={{fontSize:10,color:"var(--text4)"}}> (Spiele, für die du als Betreuer bestimmt bist)</span>
-        </label>}
+        {/* Betreute Spiele — für eine wählbare Person (Standard: die betrachtete
+            Person selbst; z.B. Ehepartner können die betreuten Spiele des Partners
+            aufnehmen). Für alle Funktionen inkl. Admin verfügbar. */}
+        <div style={{borderTop:"1px solid var(--border2)",marginTop:4,paddingTop:8,display:"flex",flexDirection:"column",gap:6}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer"}}>
+            <input type="checkbox" checked={selTeams.includes(SENTINEL_BETREUT)} onChange={()=>toggleTeam(SENTINEL_BETREUT)}/>
+            betreute Spiele einer Person
+          </label>
+          {selTeams.includes(SENTINEL_BETREUT)&&<div style={{marginLeft:26}}>
+            <select value={betreutPersonId}
+              onChange={e=>{ betreutUserSetRef.current=true; setBetreutPersonId(e.target.value); }}
+              style={{width:"100%",maxWidth:320,padding:"7px 8px",borderRadius:8,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+              <option value="">– Person wählen –</option>
+              {personenSortiert.map(p=><option key={p.id} value={p.id}>{personAnzeigeName(p)}{p.id===vorauswahlPlayer?.id?" (ich)":""}</option>)}
+            </select>
+            <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
+              {betreutPerson
+                ? `Es werden die Spiele aufgenommen, für die ${personAnzeigeName(betreutPerson)} als Betreuer bestimmt ist.`
+                : "Bitte eine Person auswählen, deren betreute Spiele aufgenommen werden sollen."}
+            </div>
+          </div>}
+        </div>
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
@@ -18818,7 +18853,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer}/>}
     {activeTab==="termine"&&<TermineView/>}
-    {activeTab==="kalender"&&<KalenderExport vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
+    {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={forcePlayer||null}
       isAdmin={false}
