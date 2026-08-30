@@ -1,4 +1,4 @@
-// === TTC-App · Version 405 · erstellt 30.08.2026 ===
+// === TTC-App · Version 406 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "405";
+const APP_VERSION = "406";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -12111,11 +12111,12 @@ function GeburtstageTab({players,showToast}) {
 // Es werden nur Kacheln gezeigt, deren Reiter für die Gruppe der Person verfügbar ist.
 const SP_HOME_GRUPPEN = [
   { titel:"Mein Training", items:[
-    { key:"stats",     label:"Meine Stats", icon:"⭐", sub:"Sterne & Awards" },
-    { key:"training",  label:"Training",    icon:"📅", sub:"Nächste Einheiten" },
-    { key:"teilnahme", label:"Teilnahme",   icon:"📊", sub:"Meine Anwesenheit" },
-    { key:"ranking",   label:"Rangliste",   icon:"🏆", sub:"In meiner Gruppe" },
-    { key:"erfolge",   label:"Erfolge",     icon:"🏅", sub:"Meine Erfolge" },
+    { key:"stats",        label:"Meine Stats",   icon:"⭐", sub:"Übungen & Sterne" },
+    { key:"ranking",      label:"Rangliste",     icon:"🏆", sub:"In meiner Gruppe" },
+    { key:"training",     label:"Training",      icon:"📅", sub:"Meine Trainingstage" },
+    { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Trainingsbeteiligung" },
+    { key:"beobachtungen",label:"Beobachtungen", icon:"🔍", sub:"Für das Training" },
+    { key:"erfolge",      label:"Erfolge",       icon:"🏅", sub:"Meine Erfolge" },
   ]},
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
