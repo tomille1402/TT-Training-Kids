@@ -1,4 +1,4 @@
-// === TTC-App · Version 408 · erstellt 30.08.2026 ===
+// === TTC-App · Version 409 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "408";
+const APP_VERSION = "409";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5890,7 +5890,7 @@ const TR_HOME_GRUPPEN = [
     { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Anwesenheit" },
     { key:"einheiten",    label:"Einheiten",     icon:"📝", sub:"Trainingsinhalte" },
     { key:"uebungen",     label:"Übungen",       icon:"🏋️", sub:"Übungskatalog" },
-    { key:"beobachtungen",label:"Beobachtungen", icon:"🔍", sub:"Spielernotizen" },
+    { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Spielernotizen" },
     { key:"urkunden",     label:"Urkunden",      icon:"📜", sub:"Auszeichnungen" },
   ]},
   { titel:"Spieler & Gruppe", items:[
@@ -5921,6 +5921,7 @@ const TR_HOME_GRUPPEN = [
 // Kachel-Startseite der Trainer-Ansicht — stark am Spieler-Design orientiert.
 // verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
 function TrainerHome({ user, players, onOpen, verfuegbar }) {
+  const halleninfoNeu = useHalleninfoNeuCount();
   const meinName = (()=>{
     const p = findLoginPlayer(players, user?.email, false);
     return p?.firstName ? ` ${p.firstName}` : "";
@@ -5961,6 +5962,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
@@ -5979,7 +5981,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"urkunden",     label:"Urkunden",      icon:"📜"},
-    {key:"beobachtungen",label:"Beobachtungen", icon:"🔍"},
+    {key:"beobachtungen",label:"Analyse", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
@@ -6729,6 +6731,26 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
 // ─── VERWALTUNG TAB ───────────────────────────────────────────────────────────
 
 // AufstellungView — zeigt Aufstellungstabelle
+// Ermittelt die Höhe der fixierten Kopf-/Tableiste(n) am oberen Bildschirmrand,
+// damit beim Scrollen zu einem Element genügend Platz gelassen wird und die
+// Überschrift (z.B. Mannschaftsname) nicht unter der Leiste verschwindet.
+function fixedHeaderOffset(){
+  try{
+    let maxBottom = 0;
+    const nodes = document.querySelectorAll("div");
+    nodes.forEach(el=>{
+      const st = window.getComputedStyle(el);
+      if(st.position!=="fixed") return;
+      const r = el.getBoundingClientRect();
+      // Nur oben angedockte, sichtbare Leisten (nicht Overlays/Modals/Toasts).
+      if(r.top<=2 && r.height>0 && r.height<220 && r.width>200 && r.bottom>maxBottom){
+        maxBottom = r.bottom;
+      }
+    });
+    return maxBottom || 120;
+  }catch(e){ return 120; }
+}
+
 function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, scrollToTeam=""}) {
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
@@ -6804,8 +6826,12 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
     const node=key?teamRefs.current[key]:null;
     if(node){
       scrollDone.current=true;
-      // kurze Verzögerung, damit das Layout steht
-      setTimeout(()=>{ try{ node.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){} }, 60);
+      // Manuell scrollen mit Offset für die fixierte Kopf-/Tableiste, damit der
+      // Mannschaftsname oben sichtbar ist (scrollIntoView würde ihn darunter schieben).
+      setTimeout(()=>{ try{
+        const y = node.getBoundingClientRect().top + window.pageYOffset - fixedHeaderOffset() - 8;
+        window.scrollTo({top: Math.max(0,y), behavior:"smooth"});
+      }catch(e){} }, 80);
     }
   },[loading,scrollToTeam,selId]);
 
@@ -12220,7 +12246,7 @@ const SP_HOME_GRUPPEN = [
     { key:"ranking",      label:"Rangliste",     icon:"🏆", sub:"In meiner Gruppe" },
     { key:"training",     label:"Training",      icon:"📅", sub:"Meine Trainingstage" },
     { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Trainingsbeteiligung" },
-    { key:"beobachtungen",label:"Beobachtungen", icon:"🔍", sub:"Für das Training" },
+    { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Für das Training" },
     { key:"erfolge",      label:"Erfolge",       icon:"🏅", sub:"Meine Erfolge" },
   ]},
   { titel:"Wettkampf", items:[
@@ -12243,6 +12269,7 @@ const SP_HOME_GRUPPEN = [
 // Kachel-Startseite der Spieler-Ansicht — analog zu ErwachseneHome, aber mit den
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
 function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
+  const halleninfoNeu = useHalleninfoNeuCount();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
@@ -12376,6 +12403,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
@@ -12436,7 +12464,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"teilnahme",label:"Teilnahme",icon:"📊"},
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
-    {key:"beobachtungen",label:"Beobachtungen",icon:"🔍"},
+    {key:"beobachtungen",label:"Analyse",icon:"🔍"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
@@ -13032,7 +13060,7 @@ function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
   const CONTEXT_COLORS = {Training:"#3b82f6",Punktspiel:"#f59e0b",Turnier:"#10b981"};
 
   return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:12}}>🔍 Beobachtungen</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:12}}>🔍 Analyse</div>
 
     {selPlayer&&<>
       {/* Header mit Spieler-Info und Neu-Button */}
@@ -13092,7 +13120,7 @@ function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
       {/* Liste */}
       {loading&&<div style={{textAlign:"center",color:"var(--text3)",padding:20}}>Lädt…</div>}
       {!loading&&observations.length===0&&!showForm&&<div style={{textAlign:"center",color:"var(--text3)",padding:30,fontSize:13}}>
-        Noch keine Beobachtungen für {selPlayer.firstName}.<br/>
+        Noch keine Analyse-Einträge für {selPlayer.firstName}.<br/>
         <span style={{fontSize:11}}>Klicke auf „+ Neue Beobachtung" um zu starten.</span>
       </div>}
       {observations.map(obs=>{
@@ -13197,7 +13225,7 @@ function BeobachtungenPlayerTab({player}) {
   const newestFocus = observations.find(o=>o.focus)?.focus;
 
   return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🔍 Beobachtungen</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🔍 Analyse</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Rückmeldungen deines Trainers aus Training, Spielen und Turnieren.</div>
 
     {/* Aktueller Fokus — prominent oben */}
@@ -13209,7 +13237,7 @@ function BeobachtungenPlayerTab({player}) {
     {loading&&<div style={{textAlign:"center",color:"var(--text3)",padding:20}}>Lädt…</div>}
     {!loading&&observations.length===0&&<div style={{textAlign:"center",padding:40}}>
       <div style={{fontSize:32,marginBottom:8}}>🔍</div>
-      <div style={{fontSize:14,color:"var(--text2)",fontWeight:600}}>Noch keine Beobachtungen</div>
+      <div style={{fontSize:14,color:"var(--text2)",fontWeight:600}}>Noch keine Analyse-Einträge</div>
       <div style={{fontSize:12,color:"var(--text3)",marginTop:4}}>Dein Trainer hat noch keine Einträge hinterlegt.</div>
     </div>}
 
@@ -14532,11 +14560,39 @@ const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
 // automatisch verkleinert/komprimiert (max. 900 px, ~300 KB je Bild).
 const HALLENINFO_MAX_FOTOS = 6;
 
+// Gelesene Halleninfo-IDs (geräteweise in localStorage). Eine Info gilt als „neu",
+// bis die Person sie im Reiter angeklickt (aufgeklappt) hat.
+function ladeHalleninfoGelesen(){
+  try{ return JSON.parse(localStorage.getItem("ttc_halleninfo_gelesen")||"[]"); }catch(_){ return []; }
+}
+function speichereHalleninfoGelesen(ids){
+  try{ localStorage.setItem("ttc_halleninfo_gelesen", JSON.stringify(ids)); }catch(_){}
+  try{ window.dispatchEvent(new Event("halleninfo-gelesen-changed")); }catch(_){}
+}
+
+// Liefert die Anzahl neuer (ungelesener) Halleninfos für den Kachel-Badge.
+// Reagiert auf neue Infos (Firestore) und auf das Als-gelesen-Markieren (Event).
+function useHalleninfoNeuCount(){
+  const [ids,setIds] = useState([]);           // vorhandene Info-IDs
+  const [gelesen,setGelesen] = useState(ladeHalleninfoGelesen);
+  useEffect(()=>{
+    const u = onSnapshot(collection(db,"halleninfos"), snap=>{
+      setIds(snap.docs.map(d=>d.id));
+    }, ()=>setIds([]));
+    const onChange = ()=> setGelesen(ladeHalleninfoGelesen());
+    window.addEventListener("halleninfo-gelesen-changed", onChange);
+    window.addEventListener("storage", onChange);
+    return ()=>{ u&&u(); window.removeEventListener("halleninfo-gelesen-changed", onChange); window.removeEventListener("storage", onChange); };
+  },[]);
+  return ids.filter(id=>!gelesen.includes(id)).length;
+}
+
 // Anzeige-Reiter für alle Funktionen: zeigt die Halleninfos (neueste zuerst).
 function HalleninfoView() {
   const [infos,setInfos] = useState([]);
   const [loading,setLoading] = useState(true);
-  const [lightbox,setLightbox] = useState(null); // {dataUrl} für Vollbild-Foto
+  const [lightbox,setLightbox] = useState(null); // Foto für Vollbild
+  const [gelesen,setGelesen] = useState(ladeHalleninfoGelesen);
 
   useEffect(()=>{
     const u = onSnapshot(collection(db,"halleninfos"), snap=>{
@@ -14554,6 +14610,14 @@ function HalleninfoView() {
     }catch(e){ return ""; }
   };
 
+  // Eine Info als gelesen markieren (beim Klick auf die Karte). „Neu" verschwindet dann.
+  const markiereGelesen = (id)=>{
+    if(gelesen.includes(id)) return;
+    const neu=[...gelesen,id];
+    setGelesen(neu);
+    speichereHalleninfoGelesen(neu);
+  };
+
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
 
   return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
@@ -14568,15 +14632,20 @@ function HalleninfoView() {
       : <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {infos.map(info=>{
             const fotos = Array.isArray(info.fotos) ? info.fotos : [];
-            return <div key={info.id} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${TTC_ROT}`}}>
+            const istNeu = !gelesen.includes(info.id);
+            return <div key={info.id} onClick={()=>markiereGelesen(info.id)}
+              style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${TTC_ROT}`,cursor:istNeu?"pointer":"default"}}>
               <div style={{padding:"13px 14px"}}>
-                <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {istNeu&&<span style={{flexShrink:0,fontSize:9,fontWeight:800,color:"#fff",background:TTC_ROT,borderRadius:6,padding:"2px 7px",letterSpacing:".03em"}}>NEU</span>}
+                  <span style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</span>
+                </div>
                 {info.ts&&<div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>{fmtDatum(info.ts)}</div>}
                 {info.text&&<div style={{fontSize:13,color:"var(--text2)",marginTop:8,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{info.text}</div>}
               </div>
               {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 14px 14px"}}>
-                {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={()=>setLightbox(f)}
-                  style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"pointer",border:"1px solid var(--border)"}}/>)}
+                {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); markiereGelesen(info.id); setLightbox(f);}}
+                  style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid var(--border)"}}/>)}
               </div>}
             </div>;
           })}
@@ -15769,6 +15838,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
 function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   const [teamPhotos,setTeamPhotos] = useState({});     // aus Collection teamPhotos
   const [legacyPhotos,setLegacyPhotos] = useState({}); // altes Sammeldokument
+  const [zoomFoto,setZoomFoto] = useState(null);       // Foto für Vollbild-Zoom
   const [teamFiles,setTeamFiles] = useState({});
   const teamRefs=useRef({});          // {teamName: DOM-Knoten} für gezieltes Scrollen
   const scrollDone=useRef(false);
@@ -15804,7 +15874,10 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     const node=key?teamRefs.current[key]:null;
     if(node){
       scrollDone.current=true;
-      setTimeout(()=>{ try{ node.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){} }, 80);
+      setTimeout(()=>{ try{
+        const y = node.getBoundingClientRect().top + window.pageYOffset - fixedHeaderOffset() - 8;
+        window.scrollTo({top: Math.max(0,y), behavior:"smooth"});
+      }catch(e){} }, 100);
     }
   },[scrollToTeam,selSeasonKey,teamPhotos]);
 
@@ -15857,7 +15930,8 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
               position:"relative",overflow:"hidden",
             }}>
               {photo
-                ? <img src={photo} alt={t.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                ? <img src={photo} alt={t.name} onClick={()=>setZoomFoto(photo)}
+                    style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/>
                 : <span style={{fontSize:28}}>🏓</span>
               }
               {isSuperAdmin&&<div style={{
@@ -15936,6 +16010,11 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
       style={{display:"block",marginTop:16,textAlign:"center",fontSize:12,color:"#3b82f6",textDecoration:"none"}}>
       🌐 Alle Mannschaften auf myTischtennis.de →
     </a>
+
+    {/* Vollbild-Zoom eines Mannschaftsfotos */}
+    {zoomFoto&&<div onClick={()=>setZoomFoto(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,cursor:"zoom-out"}}>
+      <img src={zoomFoto} alt="" style={{maxWidth:"100%",maxHeight:"100%",borderRadius:10}}/>
+    </div>}
   </div>;
 }
 
@@ -18429,6 +18508,7 @@ const EW_HOME_GRUPPEN = [
 // Spiel des Vereins) und rendert die Bereiche als thematisch gruppierte Kacheln
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
+  const halleninfoNeu = useHalleninfoNeuCount();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
   const [spielpins, setSpielpins] = useState({});
@@ -18633,6 +18713,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
