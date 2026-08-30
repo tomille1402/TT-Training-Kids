@@ -1,4 +1,4 @@
-// === TTC-App · Version 410 · erstellt 30.08.2026 ===
+// === TTC-App · Version 411 · erstellt 30.08.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "410";
+const APP_VERSION = "411";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -16415,15 +16415,17 @@ function buildICS(options){
     heimVor=60, heimNach=30,      // Aufbau vor Heimspiel, Abbau nach Heimspiel
     auswVor=60, auswNach=30,      // Hinfahrt vor Auswärtsspiel, Rückfahrt nach
     einsaetzeData={},             // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
-    betreutPlayer=null,           // Person, deren betreute Spiele zusätzlich aufgenommen werden
+    betreutPlayers=[],            // Personen, deren betreute Spiele zusätzlich aufgenommen werden
   }=options;
   // "betreute Spiele" als Sentinel im teams-Array. Echte Mannschaften separat.
   const echteTeams = teams.filter(t=>t!==SENTINEL_BETREUT);
   const betreutAktiv = teams.includes(SENTINEL_BETREUT);
+  const betreutListe = (betreutPlayers||[]).filter(Boolean);
   const teamSet = echteTeams.length>0 ? new Set(echteTeams) : (betreutAktiv ? new Set() : null);
   // null = alle Mannschaften; leeres Set (nur Betreut gewählt) = keine regulären, nur betreute.
-  const istBetreutesSpiel = s => betreutAktiv && betreutPlayer
-    && personIstBetreuer(betreutPlayer, s, einsaetzeData);
+  // Ein Spiel zählt als betreut, wenn IRGENDEINE der gewählten Personen Betreuer ist.
+  const istBetreutesSpiel = s => betreutAktiv && betreutListe.length>0
+    && betreutListe.some(p=>personIstBetreuer(p, s, einsaetzeData));
   const teamPasst = s => (teamSet===null) ? true : (teamSet.has(s.mannschaft) || istBetreutesSpiel(s));
   const L=[];
   L.push("BEGIN:VCALENDAR");
@@ -16566,24 +16568,28 @@ function foldIcsLine(line){
 const KALENDER_FEED_BASE = "/kalender.ics";
 
 function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=false}){
-  // Person, deren betreute Spiele aufgenommen werden. Standard: die betrachtete
-  // Person selbst; kann aber auf eine beliebige andere Person umgestellt werden
-  // (z.B. Ehepartner, die sehen wollen, wann der Partner sonst in der Halle ist).
-  const [betreutPersonId,setBetreutPersonId]=useState(vorauswahlPlayer?.id||"");
+  // Personen, deren betreute Spiele aufgenommen werden. Standard: die betrachtete
+  // Person selbst; es können aber mehrere beliebige Personen gewählt werden
+  // (z.B. beide Elternteile, damit deren Betreuungs-Spiele gemeinsam im Abo sind).
+  const [betreutPersonIds,setBetreutPersonIds]=useState(vorauswahlPlayer?.id?[vorauswahlPlayer.id]:[]);
   // Personen alphabetisch für die Auswahl-Liste.
   const personenSortiert = [...(players||[])]
     .filter(p=>p && (p.firstName||p.lastName))
     .sort((a,b)=>personAnzeigeName(a).localeCompare(personAnzeigeName(b)));
-  const betreutPerson = (players||[]).find(p=>p.id===betreutPersonId) || null;
+  const betreutPersonen = (players||[]).filter(p=>betreutPersonIds.includes(p.id));
   const betreutUserSetRef = useRef(false);
   useEffect(()=>{
-    // Solange der Nutzer die Person nicht selbst geändert hat, der betrachteten
+    // Solange der Nutzer die Auswahl nicht selbst geändert hat, der betrachteten
     // Person folgen (z.B. wenn der Admin zu jemandem springt).
     if(betreutUserSetRef.current) return;
-    if(vorauswahlPlayer?.id && betreutPersonId!==vorauswahlPlayer.id){
-      setBetreutPersonId(vorauswahlPlayer.id);
+    if(vorauswahlPlayer?.id && !(betreutPersonIds.length===1 && betreutPersonIds[0]===vorauswahlPlayer.id)){
+      setBetreutPersonIds([vorauswahlPlayer.id]);
     }
-  },[vorauswahlPlayer,betreutPersonId]);
+  },[vorauswahlPlayer]);
+  const toggleBetreutPerson = (id)=>{
+    betreutUserSetRef.current=true;
+    setBetreutPersonIds(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  };
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
   const SAISON_OPTS=[
     {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
@@ -16731,7 +16737,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
   const icsOptions=()=>({
     teams:selTeams, vorlaufMin:vorlauf, dauerMin:dauer, includeTermine:mitTermine,
     puffer, spiele, vereinstermine:gefilterteTermine, einsaetzeData,
-    betreutPlayer:betreutPerson,
+    betreutPlayers:betreutPersonen,
   });
 
   function download(){
@@ -16748,10 +16754,10 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
     const params=new URLSearchParams();
     params.set("saison",selSaison);
     if(selTeams.length>0) params.set("teams",selTeams.join(","));
-    // Wenn "betreute Spiele" gewählt sind, den Betreuer-Namen mitgeben, damit der
-    // Abo-Feed (Function) die betreuten Spiele der gewählten Person filtern kann.
-    if(selTeams.includes(SENTINEL_BETREUT) && betreutPerson){
-      params.set("betreuer", personAnzeigeName(betreutPerson));
+    // Wenn "betreute Spiele" gewählt sind, die Betreuer-Namen mitgeben (komma-getrennt),
+    // damit der Abo-Feed die betreuten Spiele ALLER gewählten Personen filtern kann.
+    if(selTeams.includes(SENTINEL_BETREUT) && betreutPersonen.length>0){
+      params.set("betreuer", betreutPersonen.map(p=>personAnzeigeName(p)).join(","));
     }
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
@@ -16831,16 +16837,20 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
             betreute Spiele einer Person
           </label>
           {selTeams.includes(SENTINEL_BETREUT)&&<div style={{marginLeft:26}}>
-            <select value={betreutPersonId}
-              onChange={e=>{ betreutUserSetRef.current=true; setBetreutPersonId(e.target.value); }}
-              style={{width:"100%",maxWidth:320,padding:"7px 8px",borderRadius:8,fontSize:12,background:"var(--bg)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-              <option value="">– Person wählen –</option>
-              {personenSortiert.map(p=><option key={p.id} value={p.id}>{personAnzeigeName(p)}{p.id===vorauswahlPlayer?.id?" (ich)":""}</option>)}
-            </select>
+            <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>Personen wählen (Mehrfachauswahl möglich):</div>
+            <div style={{maxHeight:180,overflowY:"auto",border:"1px solid var(--border2)",borderRadius:8,padding:"4px 8px",background:"var(--bg)"}}>
+              {personenSortiert.map(p=>(
+                <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text)",cursor:"pointer",padding:"3px 0"}}>
+                  <input type="checkbox" checked={betreutPersonIds.includes(p.id)} onChange={()=>toggleBetreutPerson(p.id)}/>
+                  {personAnzeigeName(p)}{p.id===vorauswahlPlayer?.id?<span style={{fontSize:10,color:"var(--text4)"}}> (ich)</span>:null}
+                </label>
+              ))}
+              {personenSortiert.length===0&&<div style={{fontSize:11,color:"var(--text4)",padding:"4px 0"}}>Keine Personen verfügbar.</div>}
+            </div>
             <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
-              {betreutPerson
-                ? `Es werden die Spiele aufgenommen, für die ${personAnzeigeName(betreutPerson)} als Betreuer bestimmt ist.`
-                : "Bitte eine Person auswählen, deren betreute Spiele aufgenommen werden sollen."}
+              {betreutPersonen.length>0
+                ? `Aufgenommen werden die Spiele, für die ${betreutPersonen.map(p=>personAnzeigeName(p)).join(" oder ")} als Betreuer bestimmt ${betreutPersonen.length>1?"sind":"ist"}.`
+                : "Bitte mindestens eine Person auswählen, deren betreute Spiele aufgenommen werden sollen."}
             </div>
           </div>}
         </div>
