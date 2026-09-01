@@ -1,4 +1,4 @@
-// === TTC-App · Version 418 · erstellt 01.09.2026 ===
+// === TTC-App · Version 419 · erstellt 01.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -8,7 +8,9 @@ import {
   sendPasswordResetEmail
 } from "firebase/auth";
 import {
-  getFirestore, doc, setDoc, collection, addDoc,
+  getFirestore, initializeFirestore,
+  persistentLocalCache, persistentMultipleTabManager,
+  doc, setDoc, collection, addDoc,
   onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, deleteField
 } from "firebase/firestore";
 import {
@@ -19,12 +21,23 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "418";
+const APP_VERSION = "419";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
-const db         = getFirestore(app);
+// Firestore mit lokalem Offline-Cache: Beim (Kalt-)Start werden Daten sofort aus dem
+// Cache geliefert und im Hintergrund aktualisiert. Das vermeidet lange Weißbildschirme,
+// weil nicht auf die vollständige Netzwerk-Übertragung gewartet werden muss.
+// Fällt bei nicht unterstützten Browsern automatisch auf den Standard-Cache zurück.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  db = getFirestore(app);
+}
 const storage    = getStorage(app);
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
@@ -19780,6 +19793,10 @@ export default function App() {
   const [verknuepfFehler, setVerknuepfFehler] = useState("");
   const [players,      setPlayers]      = useState([]);
   const [playersReady, setPlayersReady] = useState(false);
+  // Notausstieg gegen langen Weißbildschirm: Wenn die players-Collection beim Start
+  // ungewöhnlich lange lädt, startet die App nach kurzer Zeit trotzdem (Daten kommen
+  // dann per Live-Listener nach). Verhindert 20-Sekunden-Hänger bei langsamer Verbindung.
+  const [startFallback, setStartFallback] = useState(false);
   const [attendance,   setAttendance]   = useState({});
   const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:""});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
@@ -19909,6 +19926,15 @@ export default function App() {
     return unsub;
   },[]);
 
+  // Notausstieg: Nach dem Login höchstens ~6 s auf die players-Collection warten,
+  // danach die App trotzdem starten (verhindert langen Weißbildschirm bei langsamer Verbindung).
+  useEffect(()=>{
+    if(!authUser) { setStartFallback(false); return; }
+    if(playersReady) return;
+    const t = setTimeout(()=> setStartFallback(true), 6000);
+    return ()=> clearTimeout(t);
+  },[authUser, playersReady]);
+
   // ── Echtzeit-Listener für Spieler, Anwesenheit & Schläger ──
   useEffect(()=>{
     if (!authUser) return;
@@ -19997,7 +20023,7 @@ export default function App() {
   // App direkt nach dem Login kurz mit isAdmin=false rendern (→ Trainer-Ansicht) und erst
   // nach dem asynchronen Admin-Check auf die Admin-Ansicht springen. Das Gate verhindert
   // dieses „Aufblitzen" des Trainerbereichs.
-  if (authUser && (!adminReady || !playersReady)) {
+  if (authUser && (!adminReady || (!playersReady && !startFallback))) {
     return (
       <div style={{minHeight:"100vh",background:"var(--bg,#0d1117)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{textAlign:"center",color:"#6b7280"}}>
