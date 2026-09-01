@@ -1,4 +1,4 @@
-// === TTC-App · Version 417 · erstellt 01.09.2026 ===
+// === TTC-App · Version 418 · erstellt 01.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,7 +19,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "417";
+const APP_VERSION = "418";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5977,6 +5977,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"home",         label:"Start",         icon:"🏠"},
     {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
     {key:"training",     label:"Training",      icon:"📅"},
+    {key:"zeiten",       label:"Zeiten",        icon:"🕒"},
     {key:"teilnahme",    label:"Teilnahme",     icon:"📊"},
     {key:"einheiten",    label:"Einheiten",     icon:"📝"},
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
@@ -5998,7 +5999,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
     {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
-    {key:"zeiten",       label:"Zeiten",        icon:"🕒"},
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
   const TABS = ALL_TABS.filter(t=>{
@@ -12481,6 +12481,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"home",label:"Start",icon:"🏠"},
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
+    {key:"zeiten",label:"Zeiten",icon:"🕒"},
     {key:"teilnahme",label:"Teilnahme",icon:"📊"},
     {key:"ranking",label:"Rangliste",icon:"🏆"},
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
@@ -12496,8 +12497,6 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
     {key:"halleninfo",label:"Halleninfo",icon:"📣"},
-    {key:"zeiten",label:"Zeiten",icon:"🕒"},
-    {key:"zeiten",label:"Zeiten",icon:"🕒"},
   ];
   // Punkt 6: Anfänger/Gast sehen die Wettkampf-Reiter noch nicht; Gast zusätzlich
   // keine Termine/Bestellungen. Erst ab höherer Gruppe werden sie eingeblendet.
@@ -14856,45 +14855,31 @@ function TrainingszeitenView({ players=[] }){
       ? <div style={{padding:"30px 16px",textAlign:"center",color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12}}>
           Aktuell sind keine Trainingszeiten hinterlegt.
         </div>
-      : <div style={{overflowX:"auto",border:"1px solid var(--border2)",borderRadius:12}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:460}}>
-            <thead>
-              <tr style={{background:TTC_ROT}}>
-                <th style={{padding:"9px 10px",textAlign:"left",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>Tag</th>
-                <th style={{padding:"9px 10px",textAlign:"left",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>Zeitraum</th>
-                <th style={{padding:"9px 10px",textAlign:"left",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>Gruppe</th>
-                <th style={{padding:"9px 10px",textAlign:"left",color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>Trainer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortiert.map((z,i)=>{
-                const tids=trainerIdsVon(z);
-                const zeitraum=[z.zeitVon,z.zeitBis].filter(Boolean).join("–");
-                return <tr key={i} style={{background:i%2===0?"var(--bg2)":"var(--bg)",borderBottom:"1px solid var(--border)"}}>
-                  <td style={{padding:"8px 10px",fontWeight:600,color:"var(--text)",whiteSpace:"nowrap"}}>{z.tag||"—"}</td>
-                  <td style={{padding:"8px 10px",color:"var(--text2)",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{zeitraum||"—"}</td>
-                  <td style={{padding:"8px 10px"}}>
-                    <span style={{background:TTC_ROT+"18",color:TTC_ROT,borderRadius:5,padding:"2px 8px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{z.gruppe||"—"}</span>
-                  </td>
-                  <td style={{padding:"8px 10px"}}>
-                    {tids.length===0
-                      ? <span style={{color:"var(--text4)",fontSize:12}}>—</span>
-                      : <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                          {tids.map(tid=>{
-                            const nm=trainerName(tid); const foto=fotos[tid];
-                            return <div key={tid} style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"var(--bg3)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border)"}}>
-                                {foto?<img src={foto} alt={nm} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:13}}>🏓</span>}
-                              </div>
-                              <span style={{fontSize:12,color:"var(--text)",whiteSpace:"nowrap"}}>{nm||"—"}</span>
-                            </div>;
-                          })}
-                        </div>}
-                  </td>
-                </tr>;
-              })}
-            </tbody>
-          </table>
+      : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {sortiert.map((z,i)=>{
+            const tids=trainerIdsVon(z);
+            const zeitraum=[z.zeitVon,z.zeitBis].filter(Boolean).join("–");
+            return <div key={i} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,borderLeft:`3px solid ${TTC_ROT}`,padding:"11px 12px"}}>
+              {/* Kopf: Tag + Zeitraum + Gruppe (umbrechbar → passt auf schmale Screens) */}
+              <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,marginBottom:tids.length>0?9:0}}>
+                <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{z.tag||"—"}</span>
+                <span style={{fontSize:13,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>{zeitraum||"—"}</span>
+                <span style={{marginLeft:"auto",background:TTC_ROT+"18",color:TTC_ROT,borderRadius:5,padding:"2px 9px",fontSize:11,fontWeight:700}}>{z.gruppe||"—"}</span>
+              </div>
+              {/* Trainer (mehrere möglich, mit Foto) */}
+              {tids.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px"}}>
+                {tids.map(tid=>{
+                  const nm=trainerName(tid); const foto=fotos[tid];
+                  return <div key={tid} style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"var(--bg3)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border)"}}>
+                      {foto?<img src={foto} alt={nm} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:12}}>🏓</span>}
+                    </div>
+                    <span style={{fontSize:12,color:"var(--text)"}}>{nm||"—"}</span>
+                  </div>;
+                })}
+              </div>}
+            </div>;
+          })}
         </div>}
   </div>;
 }
@@ -14904,10 +14889,11 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
   const { zeiten, fotos } = useTrainingszeiten();
   const [neu,setNeu]=useState({tag:"Montag",zeitVon:"",zeitBis:"",gruppe:"",trainerIds:["","",""]});
   const [busy,setBusy]=useState(false);
+  const [editIdx,setEditIdx]=useState(null); // Index des gerade bearbeiteten Eintrags oder null
   const [fotoUpload,setFotoUpload]=useState({}); // {trainerId:true}
 
   const trainerListe=[...(players||[])]
-    .filter(p=>p && (p.firstName||p.lastName))
+    .filter(p=>p && p.roles?.trainer===true && p.status!=="passiv" && (p.firstName||p.lastName))
     .sort((a,b)=>personAnzeigeName(a).localeCompare(personAnzeigeName(b)));
   const trainerName=(id)=>{ const p=(players||[]).find(x=>x.id===id); return p?personAnzeigeName(p):""; };
   const trainerIdsVon=(z)=> Array.isArray(z.trainerIds) ? z.trainerIds.filter(Boolean)
@@ -14918,7 +14904,7 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
   async function speichereZeiten(liste){
     await setDoc(doc(db,"config","trainingszeiten"),{eintraege:liste},{merge:true});
   }
-  async function hinzufuegen(){
+  async function speichernEintrag(){
     if(!neu.zeitVon||!neu.zeitBis){ showToast&&showToast("Bitte Zeitraum angeben","❌"); return; }
     if(!neu.gruppe.trim()){ showToast&&showToast("Bitte eine Gruppe angeben","❌"); return; }
     setBusy(true);
@@ -14926,14 +14912,33 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
       // Trainer sind optional (Training ohne Trainer möglich → leeres Array).
       const ids=[...new Set((neu.trainerIds||[]).filter(Boolean))];
       const eintrag={tag:neu.tag, zeitVon:neu.zeitVon, zeitBis:neu.zeitBis, gruppe:neu.gruppe.trim(), trainerIds:ids};
-      await speichereZeiten([...zeiten, eintrag]);
+      if(editIdx!==null){
+        // Bestehenden Eintrag aktualisieren.
+        await speichereZeiten(zeiten.map((z,i)=> i===editIdx ? eintrag : z));
+        showToast&&showToast("Zeit aktualisiert","✅");
+      }else{
+        await speichereZeiten([...zeiten, eintrag]);
+        showToast&&showToast("Zeit hinzugefügt","✅");
+      }
       setNeu({tag:neu.tag,zeitVon:"",zeitBis:"",gruppe:neu.gruppe,trainerIds:["","",""]});
-      showToast&&showToast("Zeit hinzugefügt","✅");
+      setEditIdx(null);
     }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
     finally{ setBusy(false); }
   }
+  function bearbeiten(idx){
+    const z=zeiten[idx]; if(!z) return;
+    const ids=Array.isArray(z.trainerIds)?z.trainerIds.filter(Boolean):(z.trainerId?[z.trainerId]:[]);
+    const drei=[ids[0]||"",ids[1]||"",ids[2]||""];
+    setNeu({tag:z.tag||"Montag", zeitVon:z.zeitVon||"", zeitBis:z.zeitBis||"", gruppe:z.gruppe||"", trainerIds:drei});
+    setEditIdx(idx);
+    try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){}
+  }
+  function abbrechenEdit(){
+    setEditIdx(null);
+    setNeu({tag:"Montag",zeitVon:"",zeitBis:"",gruppe:"",trainerIds:["","",""]});
+  }
   async function loeschen(idx){
-    try{ await speichereZeiten(zeiten.filter((_,i)=>i!==idx)); showToast&&showToast("Zeit entfernt","🗑️"); }
+    try{ await speichereZeiten(zeiten.filter((_,i)=>i!==idx)); if(editIdx===idx) abbrechenEdit(); showToast&&showToast("Zeit entfernt","🗑️"); }
     catch(e){ showToast&&showToast("Konnte nicht löschen","❌"); }
   }
   async function trainerFotoUpload(trainerId,file){
@@ -14967,8 +14972,9 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
       oder frei eingegeben werden. Trainerfotos werden automatisch verkleinert (max. {FOTO_MAX_KANTE} px).
     </div>
 
-    {/* Neuer Eintrag */}
-    <div style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:10,padding:10,marginBottom:12}}>
+    {/* Neuer/Bearbeiteter Eintrag */}
+    <div style={{background:"var(--bg)",border:`1px solid ${editIdx!==null?"#3b82f6":"var(--border2)"}`,borderRadius:10,padding:10,marginBottom:12}}>
+      {editIdx!==null&&<div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8}}>✏️ Eintrag bearbeiten</div>}
       <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center",marginBottom:8}}>
         <select value={neu.tag} onChange={e=>setNeu(p=>({...p,tag:e.target.value}))} style={inp}>
           {WOCHENTAGE.map(t=><option key={t} value={t}>{t}</option>)}
@@ -14990,7 +14996,8 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
             {trainerListe.map(p=><option key={p.id} value={p.id}>{personAnzeigeName(p)}</option>)}
           </select>
         ))}
-        <button onClick={hinzufuegen} disabled={busy} style={{padding:"7px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:busy?"not-allowed":"pointer"}}>+ Hinzufügen</button>
+        <button onClick={speichernEintrag} disabled={busy} style={{padding:"7px 12px",background:busy?"#9ca3af":(editIdx!==null?"#3b82f6":"#10b981"),border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:busy?"not-allowed":"pointer"}}>{editIdx!==null?"✓ Aktualisieren":"+ Hinzufügen"}</button>
+        {editIdx!==null&&<button onClick={abbrechenEdit} style={{padding:"7px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>}
       </div>
     </div>
 
@@ -15011,6 +15018,7 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
             <td style={{padding:"6px 8px",color:"var(--text)"}}>{z.gruppe}</td>
             <td style={{padding:"6px 8px",color:"var(--text)"}}>{trainerIdsVon(z).map(id=>trainerName(id)).filter(Boolean).join(", ")||"—"}</td>
             <td style={{padding:"6px 8px",textAlign:"right"}}>
+              <button onClick={()=>bearbeiten(i)} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text2)",fontSize:11,cursor:"pointer",fontWeight:700,marginRight:4}}>✏️</button>
               <button onClick={()=>loeschen(i)} style={{padding:"4px 7px",background:"#ef444422",border:"none",borderRadius:6,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>
             </td>
           </tr>)}
@@ -19174,6 +19182,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"home",label:"Start",icon:"🏠"},
+    {key:"zeiten",label:"Zeiten",icon:"🕒"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
