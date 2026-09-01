@@ -1,4 +1,4 @@
-// === TTC-App · Version 421 · erstellt 01.09.2026 ===
+// === TTC-App · Version 422 · erstellt 01.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "421";
+const APP_VERSION = "422";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5988,6 +5988,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
   const ALL_TABS=[
     {key:"home",         label:"Start",         icon:"🏠"},
+    {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
     {key:"eltern",       label:"Eltern",        icon:"👨‍👩‍👧"},
     {key:"training",     label:"Training",      icon:"📅"},
     {key:"zeiten",       label:"Zeiten",        icon:"🕒"},
@@ -6011,7 +6012,6 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", superAdminOnly:true},
     {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
-    {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
   const TABS = ALL_TABS.filter(t=>{
@@ -12498,6 +12498,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const sortedRanking=[...groupPeers].sort((a,b)=>getAward(b).totalStars-getAward(a).totalStars);
   const ALL_TABS=[
     {key:"home",label:"Start",icon:"🏠"},
+    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
     {key:"stats",label:"Meine Stats",icon:"⭐"},
     {key:"training",label:"Training",icon:"📅"},
     {key:"zeiten",label:"Zeiten",icon:"🕒"},
@@ -12515,7 +12516,6 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
-    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
   ];
   // Punkt 6: Anfänger/Gast sehen die Wettkampf-Reiter noch nicht; Gast zusätzlich
   // keine Termine/Bestellungen. Erst ab höherer Gruppe werden sie eingeblendet.
@@ -19205,6 +19205,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
   const TABS=[
     {key:"home",label:"Start",icon:"🏠"},
+    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
     {key:"zeiten",label:"Zeiten",icon:"🕒"},
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
@@ -19220,7 +19221,6 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
     ...(isMF?[{key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
-    {key:"halleninfo",label:"Halleninfo",icon:"📣"},
   ];
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
