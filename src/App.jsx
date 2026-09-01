@@ -1,4 +1,4 @@
-// === TTC-App · Version 422 · erstellt 01.09.2026 ===
+// === TTC-App · Version 423 · erstellt 01.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "422";
+const APP_VERSION = "423";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14655,11 +14655,17 @@ function HalleninfoView() {
   const [loading,setLoading] = useState(true);
   const [lightbox,setLightbox] = useState(null); // Foto für Vollbild
   const [gelesen,setGelesen] = useState(ladeHalleninfoGelesen);
+  const [offen,setOffen] = useState({}); // {id:true} — aufgeklappte Infos
 
   useEffect(()=>{
     const u = onSnapshot(collection(db,"halleninfos"), snap=>{
       const arr = snap.docs.map(d=>({id:d.id,...d.data()}));
-      arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+      // Fixierte Infos zuerst, danach nach Datum absteigend (aktuellste oben).
+      arr.sort((a,b)=>{
+        const fa=a.fixiert?1:0, fb=b.fixiert?1:0;
+        if(fa!==fb) return fb-fa;
+        return (b.ts||0)-(a.ts||0);
+      });
       setInfos(arr); setLoading(false);
     }, ()=>{ setInfos([]); setLoading(false); });
     return u;
@@ -14672,12 +14678,16 @@ function HalleninfoView() {
     }catch(e){ return ""; }
   };
 
-  // Eine Info als gelesen markieren (beim Klick auf die Karte). „Neu" verschwindet dann.
+  // Eine Info als gelesen markieren (beim Aufklappen). „Neu" verschwindet dann.
   const markiereGelesen = (id)=>{
     if(gelesen.includes(id)) return;
     const neu=[...gelesen,id];
     setGelesen(neu);
     speichereHalleninfoGelesen(neu);
+  };
+  // Auf-/Zuklappen; beim Öffnen gilt die Info als gelesen.
+  const toggleOffen = (id)=>{
+    setOffen(p=>{ const auf=!p[id]; if(auf) markiereGelesen(id); return {...p,[id]:auf}; });
   };
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
@@ -14691,23 +14701,33 @@ function HalleninfoView() {
       ? <div style={{padding:"30px 16px",textAlign:"center",color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12}}>
           Aktuell gibt es keine Halleninfos.
         </div>
-      : <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      : <div style={{display:"flex",flexDirection:"column",gap:9}}>
           {infos.map(info=>{
             const fotos = Array.isArray(info.fotos) ? info.fotos : [];
             const istNeu = !gelesen.includes(info.id);
-            return <div key={info.id} onClick={()=>markiereGelesen(info.id)}
-              style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${TTC_ROT}`,cursor:istNeu?"pointer":"default"}}>
-              <div style={{padding:"13px 14px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  {istNeu&&<span style={{flexShrink:0,fontSize:9,fontWeight:800,color:"#fff",background:TTC_ROT,borderRadius:6,padding:"2px 7px",letterSpacing:".03em"}}>NEU</span>}
-                  <span style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</span>
+            const istOffen = !!offen[info.id];
+            return <div key={info.id}
+              style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${info.fixiert?"#d97706":TTC_ROT}`}}>
+              {/* Kopfzeile: nur Überschrift (+ Datum), aufklappbar */}
+              <div onClick={()=>toggleOffen(info.id)} style={{padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                    {info.fixiert&&<span style={{flexShrink:0,fontSize:11}} title="oben fixiert">📌</span>}
+                    {istNeu&&<span style={{flexShrink:0,fontSize:9,fontWeight:800,color:"#fff",background:TTC_ROT,borderRadius:6,padding:"2px 7px",letterSpacing:".03em"}}>NEU</span>}
+                    <span style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</span>
+                  </div>
+                  {info.ts&&<div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>{fmtDatum(info.ts)}</div>}
                 </div>
-                {info.ts&&<div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>{fmtDatum(info.ts)}</div>}
-                {info.text&&<div style={{fontSize:13,color:"var(--text2)",marginTop:8,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{info.text}</div>}
+                <span style={{flexShrink:0,fontSize:12,color:"var(--text3)"}}>{istOffen?"▲":"▼"}</span>
               </div>
-              {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,padding:"0 14px 14px"}}>
-                {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); markiereGelesen(info.id); setLightbox(f);}}
-                  style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid var(--border)"}}/>)}
+              {/* Details erst nach dem Aufklappen */}
+              {istOffen&&<div style={{padding:"0 14px 13px"}}>
+                {info.text&&<div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{info.text}</div>}
+                {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:info.text?10:0}}>
+                  {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); setLightbox(f);}}
+                    style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid var(--border)"}}/>)}
+                </div>}
+                {!info.text&&fotos.length===0&&<div style={{fontSize:12,color:"var(--text4)"}}>Keine weiteren Angaben.</div>}
               </div>}
             </div>;
           })}
@@ -14725,22 +14745,46 @@ function HalleninfoVerwaltung({showToast}) {
   const [titel,setTitel] = useState("");
   const [text,setText] = useState("");
   const [fotos,setFotos] = useState([]);         // Data-URLs
+  const [datum,setDatum] = useState("");         // YYYY-MM-DD (anzeig- und änderbar)
+  const [fixiert,setFixiert] = useState(false);  // oben fixieren
   const [busy,setBusy] = useState(false);
+
+  // Zeitstempel <-> Datumsfeld (YYYY-MM-DD) umrechnen.
+  const tsZuDatum = (ts)=>{
+    try{ const d=new Date(ts||Date.now()); const p=n=>String(n).padStart(2,"0");
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    }catch(e){ return ""; }
+  };
+  const datumZuTs = (s, altTs)=>{
+    if(!s) return altTs||Date.now();
+    const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if(!m) return altTs||Date.now();
+    // Uhrzeit des Originals beibehalten, damit die Reihenfolge bei gleichem Tag stabil bleibt.
+    const alt=new Date(altTs||Date.now());
+    const d=new Date(+m[1], +m[2]-1, +m[3], alt.getHours(), alt.getMinutes(), alt.getSeconds());
+    return d.getTime();
+  };
 
   useEffect(()=>{
     const u = onSnapshot(collection(db,"halleninfos"), snap=>{
       const arr = snap.docs.map(d=>({id:d.id,...d.data()}));
-      arr.sort((a,b)=> (b.ts||0)-(a.ts||0));
+      arr.sort((a,b)=>{
+        const fa=a.fixiert?1:0, fb=b.fixiert?1:0;
+        if(fa!==fb) return fb-fa;
+        return (b.ts||0)-(a.ts||0);
+      });
       setInfos(arr);
     }, ()=>setInfos([]));
     return u;
   },[]);
 
-  const reset = ()=>{ setEditId(null); setTitel(""); setText(""); setFotos([]); };
-  const starteNeu = ()=>{ setEditId("neu"); setTitel(""); setText(""); setFotos([]); };
+  const reset = ()=>{ setEditId(null); setTitel(""); setText(""); setFotos([]); setDatum(""); setFixiert(false); };
+  const starteNeu = ()=>{ setEditId("neu"); setTitel(""); setText(""); setFotos([]); setDatum(tsZuDatum(Date.now())); setFixiert(false); };
   const starteBearbeiten = (info)=>{
     setEditId(info.id); setTitel(info.titel||""); setText(info.text||"");
     setFotos(Array.isArray(info.fotos)?info.fotos:[]);
+    setDatum(tsZuDatum(info.ts));
+    setFixiert(!!info.fixiert);
   };
 
   async function fotoHinzufuegen(file){
@@ -14758,19 +14802,26 @@ function HalleninfoVerwaltung({showToast}) {
     if(!titel.trim()){ showToast&&showToast("Bitte einen Titel angeben","❌"); return; }
     setBusy(true);
     try{
-      const daten = { titel:titel.trim(), text:text.trim(), fotos, ts:Date.now() };
+      const orig = editId!=="neu" ? infos.find(x=>x.id===editId) : null;
+      const ts = datumZuTs(datum, orig?.ts);
+      const daten = { titel:titel.trim(), text:text.trim(), fotos, ts, fixiert:!!fixiert };
       if(editId==="neu"){
         await addDoc(collection(db,"halleninfos"), daten);
         showToast&&showToast("Halleninfo angelegt","✅");
       }else{
-        // ts der ursprünglichen Info beibehalten, damit die Reihenfolge stabil bleibt.
-        const orig = infos.find(x=>x.id===editId);
-        await setDoc(doc(db,"halleninfos",editId), {...daten, ts: orig?.ts || daten.ts});
+        await setDoc(doc(db,"halleninfos",editId), daten);
         showToast&&showToast("Halleninfo gespeichert","✅");
       }
       reset();
     }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
     finally{ setBusy(false); }
+  }
+  // Fixierung direkt aus der Liste umschalten (ohne den Eintrag zu öffnen).
+  async function toggleFixiert(info){
+    try{
+      await setDoc(doc(db,"halleninfos",info.id), {fixiert: !info.fixiert}, {merge:true});
+      showToast&&showToast(!info.fixiert?"Oben fixiert":"Fixierung aufgehoben","📌");
+    }catch(e){ showToast&&showToast("Konnte nicht ändern","❌"); }
   }
 
   async function loeschen(id){
@@ -14785,6 +14836,8 @@ function HalleninfoVerwaltung({showToast}) {
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
       Infos für die Aktiven (z. B. Hinweise in der Halle). Titel und Detailtext verfassen und
       optional Fotos hochladen. Fotos werden automatisch verkleinert (max. {FOTO_MAX_KANTE} px).
+      Das Datum ist mit dem heutigen Tag vorbelegt und kann geändert werden. Mit 📌 lassen sich
+      Infos oben fixieren; alle übrigen erscheinen nach Datum sortiert (neueste zuerst).
     </div>
 
     {editId===null
@@ -14794,6 +14847,18 @@ function HalleninfoVerwaltung({showToast}) {
             style={{width:"100%",boxSizing:"border-box",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text)",fontSize:13,fontWeight:600,marginBottom:8}}/>
           <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Detail-Text …" rows={4}
             style={{width:"100%",boxSizing:"border-box",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text)",fontSize:13,lineHeight:1.5,marginBottom:8,resize:"vertical"}}/>
+          {/* Datum (vorbelegt mit heute) und Fixierung */}
+          <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:10,marginBottom:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text2)"}}>
+              Datum:
+              <input type="date" value={datum} onChange={e=>setDatum(e.target.value)}
+                style={{padding:"6px 8px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text)",fontSize:12}}/>
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text2)",cursor:"pointer"}}>
+              <input type="checkbox" checked={fixiert} onChange={e=>setFixiert(e.target.checked)}/>
+              📌 oben fixieren
+            </label>
+          </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
             {fotos.map((f,i)=><div key={i} style={{position:"relative"}}>
               <img src={f} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
@@ -14819,6 +14884,7 @@ function HalleninfoVerwaltung({showToast}) {
               <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</div>
               <div style={{fontSize:10,color:"var(--text4)"}}>{fmtDatum(info.ts)}{fotos2.length>0?` · ${fotos2.length} Foto${fotos2.length>1?"s":""}`:""}</div>
             </div>
+            <button onClick={()=>toggleFixiert(info)} title={info.fixiert?"Fixierung aufheben":"Oben fixieren"} style={{padding:"5px 9px",background:info.fixiert?"#f59e0b22":"var(--bg3)",border:`1px solid ${info.fixiert?"#f59e0b55":"var(--border2)"}`,borderRadius:8,color:info.fixiert?"#b45309":"var(--text3)",fontSize:11,fontWeight:700,cursor:"pointer"}}>📌</button>
             <button onClick={()=>starteBearbeiten(info)} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️</button>
             <button onClick={()=>loeschen(info.id)} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:8,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>
           </div>
