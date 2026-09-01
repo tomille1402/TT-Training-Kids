@@ -1,4 +1,4 @@
-// === TTC-App · Version 419 · erstellt 01.09.2026 ===
+// === TTC-App · Version 420 · erstellt 01.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "419";
+const APP_VERSION = "420";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6245,8 +6245,11 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
         const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
+        const istHome = t.key==="home";
         return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
-        flexShrink:0,flex:1,padding:"10px 4px",background:"transparent",border:"none",
+        flexShrink:0,flex:istHome?"0 0 auto":1,padding:"10px 4px",
+        background:istHome?"var(--bg)":"transparent",border:"none",
+        ...(istHome?{position:"sticky",left:0,zIndex:2,minWidth:56,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
         borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
         color:activeTab===t.key?aktivFarbe:"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>{t.icon} {t.label}</button>;
@@ -12600,7 +12603,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
         const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
-        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:"transparent",border:"none",borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,color:activeTab===t.key?aktivFarbe:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>;
+        const istHome = t.key==="home";
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"11px 10px",background:istHome?"var(--bg)":"transparent",border:"none",...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,color:activeTab===t.key?aktivFarbe:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,whiteSpace:"nowrap"}}>{t.icon} {t.label}</button>;
       })}
     </div>
 
@@ -19228,8 +19232,10 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=>{
             const aktivFarbe = t.key==="home" ? TTC_ROT : "#ec4899";
+            const istHome = t.key==="home";
             return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
-            flexShrink:0,padding:"9px 8px",background:"transparent",border:"none",
+            flexShrink:0,padding:"9px 8px",background:istHome?"var(--bg2)":"transparent",border:"none",
+            ...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
             borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
             color:activeTab===t.key?aktivFarbe:"var(--text3)",
             fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
