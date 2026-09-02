@@ -1,4 +1,4 @@
-// === TTC-App · Version 423 · erstellt 01.09.2026 ===
+// === TTC-App · Version 424 · erstellt 02.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "423";
+const APP_VERSION = "424";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14650,6 +14650,43 @@ function useHalleninfoNeuCount(){  const [ids,setIds] = useState([]);           
 }
 
 // Anzeige-Reiter für alle Funktionen: zeigt die Halleninfos (neueste zuerst).
+// Wandelt Freitext in React-Knoten um und macht enthaltene Links anklickbar.
+// Erkannt werden http(s)-Adressen, "www."-Adressen (ohne Schema) sowie E-Mail-Adressen.
+// Satzzeichen am Ende (z.B. "…ovo." oder "(…)") gehören nicht mehr zum Link.
+function textMitLinks(text){
+  const s = String(text||"");
+  if(!s) return null;
+  const muster = /((?:https?:\/\/|www\.)[^\s<>"']+|[^\s<>"'@]+@[^\s<>"'@]+\.[A-Za-z]{2,})/g;
+  const teile = [];
+  let letzte = 0, m;
+  while((m = muster.exec(s)) !== null){
+    if(m.index > letzte) teile.push(s.slice(letzte, m.index));
+    let treffer = m[0];
+    // Abschließende Satzzeichen/Klammern vom Link abtrennen.
+    let anhang = "";
+    const endMatch = treffer.match(/[).,;:!?»"']+$/);
+    if(endMatch){
+      // Schließende Klammer nur abtrennen, wenn keine öffnende im Link steht.
+      const kandidat = endMatch[0];
+      const ohne = treffer.slice(0, treffer.length - kandidat.length);
+      if(!(kandidat.startsWith(")") && ohne.includes("("))){
+        treffer = ohne; anhang = kandidat;
+      }
+    }
+    const istMail = /^[^\s<>"'@]+@[^\s<>"'@]+$/.test(treffer);
+    const href = istMail ? `mailto:${treffer}` : (/^https?:\/\//i.test(treffer) ? treffer : `https://${treffer}`);
+    teile.push(
+      <a key={`l${m.index}`} href={href} target={istMail?undefined:"_blank"} rel="noopener noreferrer"
+         onClick={(e)=>e.stopPropagation()}
+         style={{color:"#3b82f6",textDecoration:"underline",wordBreak:"break-all"}}>{treffer}</a>
+    );
+    if(anhang) teile.push(anhang);
+    letzte = m.index + m[0].length;
+  }
+  if(letzte < s.length) teile.push(s.slice(letzte));
+  return teile;
+}
+
 function HalleninfoView() {
   const [infos,setInfos] = useState([]);
   const [loading,setLoading] = useState(true);
@@ -14722,7 +14759,7 @@ function HalleninfoView() {
               </div>
               {/* Details erst nach dem Aufklappen */}
               {istOffen&&<div style={{padding:"0 14px 13px"}}>
-                {info.text&&<div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{info.text}</div>}
+                {info.text&&<div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{textMitLinks(info.text)}</div>}
                 {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:info.text?10:0}}>
                   {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); setLightbox(f);}}
                     style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid var(--border)"}}/>)}
