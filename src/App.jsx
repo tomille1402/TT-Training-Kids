@@ -1,4 +1,4 @@
-// === TTC-App · Version 424 · erstellt 02.09.2026 ===
+// === TTC-App · Version 425 · erstellt 03.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "424";
+const APP_VERSION = "425";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14759,12 +14759,17 @@ function HalleninfoView() {
               </div>
               {/* Details erst nach dem Aufklappen */}
               {istOffen&&<div style={{padding:"0 14px 13px"}}>
+                {/* Fotos links oben, der Text fließt rechts daneben und darunter weiter */}
+                {fotos.length>0&&fotos.map((f,i)=>(
+                  <img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); setLightbox(f);}}
+                    style={{float:"left",width:96,height:96,objectFit:"cover",borderRadius:8,
+                      cursor:"zoom-in",border:"1px solid var(--border)",
+                      marginRight:10,marginBottom:8}}/>
+                ))}
                 {info.text&&<div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{textMitLinks(info.text)}</div>}
-                {fotos.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:info.text?10:0}}>
-                  {fotos.map((f,i)=><img key={i} src={f} alt="" onClick={(e)=>{e.stopPropagation(); setLightbox(f);}}
-                    style={{width:96,height:96,objectFit:"cover",borderRadius:8,cursor:"zoom-in",border:"1px solid var(--border)"}}/>)}
-                </div>}
                 {!info.text&&fotos.length===0&&<div style={{fontSize:12,color:"var(--text4)"}}>Keine weiteren Angaben.</div>}
+                {/* Umfluss beenden, damit die Karte die Fotos vollständig umschließt */}
+                <div style={{clear:"both"}}/>
               </div>}
             </div>;
           })}
