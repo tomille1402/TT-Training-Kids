@@ -1,4 +1,4 @@
-// === TTC-App · Version 425 · erstellt 03.09.2026 ===
+// === TTC-App · Version 426 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "425";
+const APP_VERSION = "426";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5915,6 +5915,7 @@ const TR_HOME_GRUPPEN = [
   ]},
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
+    { key:"spiellokale", label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
     { key:"aufstellung", label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
     { key:"spielbetrieb",label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
@@ -6003,6 +6004,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"ttr",          label:"TTR",           icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
+    {key:"spiellokale",  label:"Spiellokale",   icon:"🏟️"},
     {key:"termine",      label:"Termine",       icon:"📌"},
     {key:"kalender",     label:"Kalender",      icon:"📅"},
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
@@ -6027,6 +6029,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return "home";
   });
   useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
+  const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
   // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
   const [verwaltungJumpId,setVerwaltungJumpId]=useState(null);
@@ -6427,6 +6430,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
+    {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}
     {activeTab==="bestellungen"&&<BestellungenView me={findLoginPlayer(players, user?.email, true)} isAdmin={isSuperAdmin} showToast={showToast}/>}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={findLoginPlayer(players, user?.email, true)} players={players} isAdmin={isSuperAdmin} isMF={false} showToast={showToast}/>}
@@ -6435,7 +6439,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} selectedPlayer={curPlayer} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} istAdmin={isSuperAdmin} myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} istAdmin={isSuperAdmin} myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
@@ -8702,6 +8706,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showHalleninfo,setShowHalleninfo]=useState(false); // Halleninfos section
   const [showTrainingszeiten,setShowTrainingszeiten]=useState(false); // Trainingszeiten section
+  const [showSpiellokale,setShowSpiellokale]=useState(false); // Spiellokale section
   const [showTermine,setShowTermine]=useState(false);    // Termin-Verwaltung section
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
@@ -9800,6 +9805,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
       {showTrainingszeiten&&<div style={{padding:"0 14px 14px"}}>
         <TrainingszeitenVerwaltung players={players} showToast={showToast}/>
+      </div>}
+    </div>
+
+    {/* Spiellokale Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+      <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🏟️ Spiellokale</div>
+        <span style={{fontSize:11,color:"var(--text4)"}}>{showSpiellokale?"▲":"▼"}</span>
+      </div>
+      {showSpiellokale&&<div style={{padding:"0 14px 14px"}}>
+        <SpiellokaleVerwaltung showToast={showToast}/>
       </div>}
     </div>
 
@@ -12286,6 +12302,7 @@ const SP_HOME_GRUPPEN = [
   ]},
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
+    { key:"spiellokale", label:"Spiellokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
     { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
     { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
     { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
@@ -12305,6 +12322,7 @@ const SP_HOME_GRUPPEN = [
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
 function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
@@ -12410,6 +12428,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
           {verlegStatusVon(naechstes)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:"#fff",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
             ⚠️ wird verlegt
           </div>}
+          <SpiellokalHinweis spiel={naechstes} vereine={spiellokaleListe} aufRot={true}/>
           {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"#ffd7dd", marginTop:6, lineHeight:1.4}}>
             {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
             {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
@@ -12463,6 +12482,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("home");
   const [aufstellungTeam,setAufstellungTeam]=useState(""); // Zielmannschaft für Aufstellung-Sprung
+  const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   const [expandedEx,setExpandedEx]=useState(null);
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [uebungsvideos,setUebungsvideos]=useState({});
@@ -12511,6 +12531,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
@@ -12847,7 +12868,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
@@ -12859,6 +12880,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
+    {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}
 
     <style>{`
@@ -14597,6 +14619,850 @@ function parseSpielpinZeilen(zeilen){
 // Verkleinerung/Komprimierung über komprimiereBild().
 const FOTO_MAX_KANTE = 900;      // Pixel – größere Fotos werden proportional verkleinert
 const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
+
+
+// ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
+// Spielstaetten der Vereine im Kreis Limburg-Weilburg. Die Stammdaten unten sind
+// aus dem Vereinsspielplan vorbelegt und koennen in der Verwaltung gepflegt und
+// ergaenzt werden (bis zu 3 Spiellokale je Verein). Gespeichert wird unter
+// config/spiellokale; ohne gespeicherte Daten gilt die Vorbelegung.
+const SPIELLOKALE_SEED = [
+ {
+  "verein": "DJK SG Blau-Weiß Lahr",
+  "vereinNr": "33040",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Lahr",
+    "strasse": "Ahornweg 3",
+    "plz": "65620",
+    "ort": "Waldbrunn/Lahr"
+   }
+  ]
+ },
+ {
+  "verein": "KSG Aulenhausen",
+  "vereinNr": "33003",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle am Sportplatz",
+    "strasse": "Waldstraße",
+    "plz": "35789",
+    "ort": "Weilmünster-Aulenhausen"
+   }
+  ]
+ },
+ {
+  "verein": "SG 1908 Blessenbach",
+  "vereinNr": "33008",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Zum Grund",
+    "plz": "35796",
+    "ort": "Weinbach-Blessenbach"
+   }
+  ]
+ },
+ {
+  "verein": "SV Odersbach 1960",
+  "vereinNr": "33057",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Odersbach",
+    "strasse": "Albert Schweitzer Str.",
+    "plz": "35781",
+    "ort": "Weilburg- Odersbach"
+   }
+  ]
+ },
+ {
+  "verein": "SV Rot-Weiß Hadamar",
+  "vereinNr": "33028",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle der FJL-Gesamtschule",
+    "strasse": "Freiherr-vom-Stein-Str.",
+    "plz": "65589",
+    "ort": "Hadamar"
+   }
+  ]
+ },
+ {
+  "verein": "TSV 1959 Hofen-Eschenau",
+  "vereinNr": "33036",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus",
+    "strasse": "Eschenauer Straße",
+    "plz": "65594",
+    "ort": "Runkel- Hofen"
+   }
+  ]
+ },
+ {
+  "verein": "TSV Heringen",
+  "vereinNr": "33033",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "TSV Turnhalle",
+    "strasse": "Jahnstr.",
+    "plz": "65597",
+    "ort": "Hünfelden-Heringen"
+   }
+  ]
+ },
+ {
+  "verein": "TSV Hirschhausen 1909",
+  "vereinNr": "33035",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus",
+    "strasse": "Drommershäuser Str.",
+    "plz": "35781",
+    "ort": "Weilburg-Hirschhausen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1950 Eisenbach",
+  "vereinNr": "33017",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Selterser Sporthalle",
+    "strasse": "Goethestraße",
+    "plz": "65618",
+    "ort": "Selters"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1953 Villmar",
+  "vereinNr": "33068",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Christian-Senckenberg-Schule",
+    "strasse": "Ferdinand-Dirichs-Str. 1",
+    "plz": "65606",
+    "ort": "Villmar"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1968 Oberbrechen",
+  "vereinNr": "33054",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Emstalhalle",
+    "strasse": "Kapellenstr. 12",
+    "plz": "65611",
+    "ort": "Brechen-Oberbrechen"
+   },
+   {
+    "nr": "2",
+    "name": "Sport- und Kulturhalle Niederbrechen",
+    "strasse": "Runkeler Straße 4",
+    "plz": "65611",
+    "ort": "Brechen-Niederbrechen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1976 Hintermeilingen",
+  "vereinNr": "33034",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle",
+    "strasse": "Am Spielplatz",
+    "plz": "65620",
+    "ort": "Hintermeilingen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Bad Camberg",
+  "vereinNr": "33005",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Neue Sporthalle (bei Atzelschule)",
+    "strasse": "Pommernstrasse 15 (hinter Großsporthalle)",
+    "plz": "65520",
+    "ort": "Bad Camberg"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Dillhausen/Barig-Selbenhausen",
+  "vereinNr": "33081",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH Barig-Selbenhausen",
+    "strasse": ".",
+    "plz": "35799",
+    "ort": "Merenberg"
+   }
+  ]
+ },
+ {
+  "verein": "TTC G.-W. Staffel 1953",
+  "vereinNr": "33066",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Gemeinschaftshaus Staffel",
+    "strasse": "Friedhofstr. 1",
+    "plz": "65556",
+    "ort": "Limburg-Staffel"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Hausen 1975",
+  "vereinNr": "33031",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Hausen",
+    "strasse": "Langstraße",
+    "plz": "65620",
+    "ort": "Hausen"
+   },
+   {
+    "nr": "3",
+    "name": "Dorfgemeinschaftshaus Fussingen",
+    "strasse": "Ellarer Weg",
+    "plz": "65620",
+    "ort": "Fussingen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Niederzeuzheim",
+  "vereinNr": "33053",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Niederzeuzheim",
+    "strasse": "Kirchgasse",
+    "plz": "65589",
+    "ort": "Niederzeuzheim"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Offheim 1949",
+  "vereinNr": "33058",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Halle 2",
+    "strasse": "Am Hallenbad",
+    "plz": "65555",
+    "ort": "Limburg-Offheim"
+   }
+  ]
+ },
+ {
+  "verein": "TTF Oberzeuzheim",
+  "vereinNr": "33056",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Oberzeuzheim",
+    "strasse": "Westerwaldstraße",
+    "plz": "65589",
+    "ort": "Oberzeuzheim"
+   }
+  ]
+ },
+ {
+  "verein": "TUS 05 Dehrn",
+  "vereinNr": "33010",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Dehrn",
+    "strasse": "Am Leinpfad",
+    "plz": "65594",
+    "ort": "Runkel-Dehrn"
+   }
+  ]
+ },
+ {
+  "verein": "TV  Frisch auf  Erbach",
+  "vereinNr": "33021",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Erlenbachhalle Erbach",
+    "strasse": "Horstweg",
+    "plz": "65520",
+    "ort": "Bad Camberg"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1882 Runkel",
+  "vereinNr": "33062",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Schulturnhalle Runkel",
+    "strasse": "Am Sportplatz",
+    "plz": "65594",
+    "ort": "Runkel"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1896 Nauheim",
+  "vereinNr": "33050",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle Nauheim",
+    "strasse": "Heringer Weg 4",
+    "plz": "65597",
+    "ort": "Hünfelden"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1905 Niederselters",
+  "vereinNr": "33052",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "TVN-Turnhalle",
+    "strasse": "An den Birken 1",
+    "plz": "65618",
+    "ort": "Selters-Niederselters"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1907 Kubach",
+  "vereinNr": "33039",
+  "lokale": [
+   {
+    "nr": "2",
+    "name": "Sporthalle Heinrich-von Gagern-Schule",
+    "strasse": "Windhof",
+    "plz": "35781",
+    "ort": "Weilburg"
+   }
+  ]
+ },
+ {
+  "verein": "TV Münster 1902",
+  "vereinNr": "33049",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "MZH Mehrzweckhalle",
+    "strasse": "An der Silbergrube",
+    "plz": "65618",
+    "ort": "Selters-Münster"
+   }
+  ]
+ },
+ {
+  "verein": "Tischtennisclub Elz",
+  "vereinNr": "33020",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Sporthalle Erlenbachschule (Elz-Nord)",
+    "strasse": "Hadamarer Str. 13",
+    "plz": "65604",
+    "ort": "Elz"
+   }
+  ]
+ },
+ {
+  "verein": "TuS 1904 Weinbach",
+  "vereinNr": "33072",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Weinbach",
+    "strasse": "Schulstraße",
+    "plz": "35796",
+    "ort": "Weinbach"
+   }
+  ]
+ },
+ {
+  "verein": "TuS 1911 Elkerhausen",
+  "vereinNr": "33018",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Pfarrstraße (Dorfmitte)",
+    "plz": "35796",
+    "ort": "Weinbach-Elkerhausen"
+   }
+  ]
+ },
+ {
+  "verein": "TuS 1912 Obertiefenbach",
+  "vereinNr": "33055",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Obertiefenbach",
+    "strasse": "Steinbacher Str. 10",
+    "plz": "65614",
+    "ort": "Beselich-Obertiefenbach"
+   },
+   {
+    "nr": "3",
+    "name": "Bürgerhaus Heckholzhausen",
+    "strasse": "Oberdorf 5",
+    "plz": "65614",
+    "ort": "Beselich-Heckholzhausen"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Aumenau 1896",
+  "vereinNr": "33078",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Eichelberghalle/Hintereingang",
+    "strasse": "Jahnstr.",
+    "plz": "65606",
+    "ort": "Villmar-Aumenau"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Dietkirchen 1911",
+  "vereinNr": "33011",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH Dietkirchen",
+    "strasse": "Am Sportplatz",
+    "plz": "65553",
+    "ort": "Limburg-Dietkirchen"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Kirschhofen",
+  "vereinNr": "33038",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Roßsteinstraße",
+    "plz": "35781",
+    "ort": "Wlbg-Kirschhofen"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Löhnberg 1909",
+  "vereinNr": "33047",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Schulturnhalle Löhnberg",
+    "strasse": "Am Falkenflug/Zufahrt Riehlstr.",
+    "plz": "35792",
+    "ort": "Löhnberg"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Neesbach",
+  "vereinNr": "33051",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus Neesbach",
+    "strasse": "Lehmgrube",
+    "plz": "65597",
+    "ort": "Hünfelden-Neesbach"
+   },
+   {
+    "nr": "2",
+    "name": "Schulsporthalle Dauborn",
+    "strasse": "Elisabeth Koch Straße",
+    "plz": "65597",
+    "ort": "Hünfelden Dauborn"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Wirbelau 1901",
+  "vereinNr": "33076",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Tischtennis-Raum",
+    "strasse": "Horstertstraße 9",
+    "plz": "65594",
+    "ort": "Runkel-Wirbelau"
+   }
+  ]
+ },
+ {
+  "verein": "VfL 01/20 Eschhofen",
+  "vereinNr": "33022",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Sporthalle Eschhofen",
+    "strasse": "Sportplatzstrasse",
+    "plz": "65552",
+    "ort": "Limburg-Eschhofen"
+   }
+  ]
+ },
+ {
+  "verein": "VfR 07 Limburg",
+  "vereinNr": "33043",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle der Erich-Kästner-Schule",
+    "strasse": "Ecke Goethe-/Wiesbadener Str.",
+    "plz": "65549",
+    "ort": "Limburg"
+   }
+  ]
+ },
+ {
+  "verein": "VfR 1919 Limburg",
+  "vereinNr": "33044",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Leo-Sternberg-Schule",
+    "strasse": "Im Ansper",
+    "plz": "65549",
+    "ort": "Limburg"
+   }
+  ]
+ }
+];
+
+// Adresse eines Spiellokals als einzeiliger Text (Strasse, PLZ Ort).
+function lokalAdresse(l){
+  if(!l) return "";
+  return [l.strasse, [l.plz, l.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+// Vollstaendige Bezeichnung inkl. Hallenname – Grundlage fuer die Kartensuche.
+function lokalSuchtext(l){
+  if(!l) return "";
+  return [l.name, lokalAdresse(l)].filter(Boolean).join(", ");
+}
+// Routenplaner-Links (Google Maps / Apple Karten).
+function googleMapsUrl(l){
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(lokalSuchtext(l));
+}
+function appleMapsUrl(l){
+  return "https://maps.apple.com/?q=" + encodeURIComponent(lokalSuchtext(l));
+}
+// Vereinsnamen fuer den Abgleich vereinheitlichen (Mannschaftssuffixe, Umlaute, Zusaetze).
+function normVereinName(s){
+  return String(s||"")
+    .toLowerCase()
+    .replace(/\s+(i{1,3}|iv|v|vi{0,3}|ix|x)\s*$/,"")   // roemische Mannschaftsnummer am Ende
+    .replace(/\b\d{4}\b/g,"")                          // Gruendungsjahr
+    .replace(/[.\-\/]/g," ")
+    .replace(/ae/g,"a").replace(/oe/g,"o").replace(/ue/g,"u")
+    .replace(/\u00e4/g,"a").replace(/\u00f6/g,"o").replace(/\u00fc/g,"u").replace(/\u00df/g,"ss")
+    .replace(/\s+/g," ")
+    .trim();
+}
+// Findet das Spiellokal eines Vereins anhand der Hallennummer.
+function findeSpiellokal(vereine, vereinName, halleNr){
+  if(!vereinName) return null;
+  const ziel = normVereinName(vereinName);
+  if(!ziel) return null;
+  let treffer = (vereine||[]).find(v=>normVereinName(v.verein)===ziel);
+  if(!treffer){
+    // Zweiter Versuch: Teilstring-Vergleich (z.B. "TTC Hausen" vs "TTC Hausen 1975")
+    treffer = (vereine||[]).find(v=>{
+      const a=normVereinName(v.verein);
+      return a && (a.includes(ziel) || ziel.includes(a));
+    });
+  }
+  if(!treffer) return null;
+  const lok = treffer.lokale||[];
+  const nr = String(halleNr||"").trim();
+  const gefunden = nr ? lok.find(l=>String(l.nr)===nr) : null;
+  return gefunden || lok[0] || null;
+}
+// Laedt die Spiellokale (mit Vorbelegung, falls noch nichts gespeichert wurde).
+function useSpiellokale(){
+  const [vereine,setVereine]=useState(SPIELLOKALE_SEED);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","spiellokale"),snap=>{
+      const d=snap.exists()?snap.data().vereine:null;
+      setVereine(Array.isArray(d)&&d.length?d:SPIELLOKALE_SEED);
+    },()=>{});
+    return u;
+  },[]);
+  return vereine;
+}
+
+
+
+// Spiellokal-Hinweis fuer Spielankuendigungen: Name, Anschrift und Routenplaner-Links.
+// aufRot=true fuer die rote Hero-Kachel (helle Schrift), sonst neutrale Farben.
+function SpiellokalHinweis({ spiel, vereine, aufRot=false }){
+  const lok = findeSpiellokal(vereine, spiel && spiel.heimVerein, spiel && spiel.halleNr);
+  if(!lok) return null;
+  const labelFarbe = aufRot ? "#ffd7dd" : "var(--text3)";
+  const textFarbe  = aufRot ? "#fff"    : "var(--text)";
+  const chip = aufRot
+    ? {background:"#ffffff",color:"#1a2b4a",border:"none"}
+    : {background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"};
+  return <div style={{marginTop:8}}>
+    <div style={{fontSize:11,color:labelFarbe,lineHeight:1.4}}>
+      🏟️ {lok.name||"Spiellokal"}
+    </div>
+    {lokalAdresse(lok)&&<div style={{fontSize:11,color:labelFarbe,lineHeight:1.4}}>{lokalAdresse(lok)}</div>}
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+      <a href={googleMapsUrl(lok)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+         title="Route mit Google Maps"
+         style={{display:"inline-flex",alignItems:"center",gap:4,borderRadius:8,padding:"4px 9px",
+           fontSize:11,fontWeight:700,textDecoration:"none",...chip}}>
+        <span style={{fontSize:12}}>📍</span> Google
+      </a>
+      <a href={appleMapsUrl(lok)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+         title="Route mit Apple Karten"
+         style={{display:"inline-flex",alignItems:"center",gap:4,borderRadius:8,padding:"4px 9px",
+           fontSize:11,fontWeight:700,textDecoration:"none",...chip}}>
+        <span style={{fontSize:12}}>🍎</span> Apple
+      </a>
+    </div>
+  </div>;
+}
+
+// Anzeige-Reiter "Spiellokale" fuer alle Funktionen. ziel = {verein, nr} springt zum Eintrag.
+function SpiellokaleView({ ziel=null }){
+  const vereine = useSpiellokale();
+  const [suche,setSuche] = useState("");
+  const refs = useRef({});
+  const scrollDone = useRef(false);
+
+  const gefiltert = (vereine||[]).filter(v=>{
+    if(!suche.trim()) return true;
+    const s=suche.toLowerCase();
+    if(String(v.verein||"").toLowerCase().includes(s)) return true;
+    return (v.lokale||[]).some(l=>
+      String(l.name||"").toLowerCase().includes(s) ||
+      String(l.ort||"").toLowerCase().includes(s) ||
+      String(l.plz||"").includes(s));
+  });
+
+  // Beim Sprung aus dem Spielplan zum passenden Verein scrollen und hervorheben.
+  useEffect(()=>{
+    if(!ziel || !ziel.verein || scrollDone.current) return;
+    const treffer=(vereine||[]).find(v=>normVereinName(v.verein)===normVereinName(ziel.verein));
+    if(!treffer) return;
+    const node=refs.current[treffer.verein];
+    if(node){
+      scrollDone.current=true;
+      setTimeout(()=>{ try{
+        const y=node.getBoundingClientRect().top+window.pageYOffset-fixedHeaderOffset()-8;
+        window.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+      }catch(e){} },90);
+    }
+  },[ziel,vereine]);
+
+  const MapLinks = ({l})=>(
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+      <a href={googleMapsUrl(l)} target="_blank" rel="noopener noreferrer"
+         style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--bg)",border:"1px solid var(--border2)",
+           borderRadius:8,padding:"5px 9px",fontSize:11,fontWeight:700,color:"var(--text)",textDecoration:"none"}}>
+        <span style={{fontSize:13}}>📍</span> Google Maps
+      </a>
+      <a href={appleMapsUrl(l)} target="_blank" rel="noopener noreferrer"
+         style={{display:"inline-flex",alignItems:"center",gap:5,background:"var(--bg)",border:"1px solid var(--border2)",
+           borderRadius:8,padding:"5px 9px",fontSize:11,fontWeight:700,color:"var(--text)",textDecoration:"none"}}>
+        <span style={{fontSize:13}}>🍎</span> Apple Karten
+      </a>
+    </div>
+  );
+
+  return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+      <span style={{fontSize:20}}>🏟️</span>
+      <span style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>Spiellokale</span>
+    </div>
+    <input value={suche} onChange={e=>setSuche(e.target.value)} placeholder="Verein, Halle oder Ort suchen …"
+      style={{width:"100%",boxSizing:"border-box",padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",
+        background:"var(--bg2)",color:"var(--text)",fontSize:13,marginBottom:12}}/>
+    {gefiltert.length===0
+      ? <div style={{padding:"26px 16px",textAlign:"center",color:"var(--text3)",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12}}>
+          Keine Treffer.
+        </div>
+      : <div style={{display:"flex",flexDirection:"column",gap:9}}>
+          {gefiltert.map(v=>{
+            const markiert = ziel && ziel.verein && normVereinName(ziel.verein)===normVereinName(v.verein);
+            return <div key={v.verein} ref={el=>{ if(el) refs.current[v.verein]=el; }}
+              style={{background:"var(--bg2)",border:`1px solid ${markiert?TTC_ROT:"var(--border2)"}`,
+                borderLeft:`3px solid ${TTC_ROT}`,borderRadius:12,padding:"11px 12px",scrollMarginTop:110}}>
+              <div style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:2}}>{v.verein}</div>
+              {v.vereinNr&&<div style={{fontSize:10,color:"var(--text4)",marginBottom:7}}>Vereinsnummer {v.vereinNr}</div>}
+              <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                {(v.lokale||[]).map(l=>{
+                  const hervor = markiert && ziel.nr && String(l.nr)===String(ziel.nr);
+                  return <div key={l.nr} style={{background:hervor?TTC_ROT+"12":"var(--bg)",border:`1px solid ${hervor?TTC_ROT+"55":"var(--border2)"}`,borderRadius:10,padding:"8px 10px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7}}>
+                      <span style={{flexShrink:0,background:TTC_ROT,color:"#fff",borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:800}}>{l.nr}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{l.name||"Spiellokal"}</span>
+                    </div>
+                    <div style={{fontSize:12,color:"var(--text2)",marginTop:3}}>{lokalAdresse(l)||"—"}</div>
+                    <MapLinks l={l}/>
+                  </div>;
+                })}
+                {(v.lokale||[]).length===0&&<div style={{fontSize:12,color:"var(--text4)"}}>Kein Spiellokal hinterlegt.</div>}
+              </div>
+            </div>;
+          })}
+        </div>}
+  </div>;
+}
+
+// Verwaltungs-Abschnitt: Spiellokale pflegen (bis zu 3 je Verein).
+function SpiellokaleVerwaltung({ showToast }){
+  const vereine = useSpiellokale();
+  const [entwurf,setEntwurf] = useState(null); // Arbeitskopie beim Bearbeiten
+  const [editVerein,setEditVerein] = useState(null);
+  const [busy,setBusy] = useState(false);
+  const [suche,setSuche] = useState("");
+
+  async function speichereAlle(liste){
+    await setDoc(doc(db,"config","spiellokale"),{vereine:liste,lastUpdated:Date.now()},{merge:true});
+  }
+  function starteBearbeiten(v){
+    const lok=[0,1,2].map(i=>{
+      const l=(v.lokale||[])[i]||{};
+      return {nr:String(l.nr||(i+1)),name:l.name||"",strasse:l.strasse||"",plz:l.plz||"",ort:l.ort||""};
+    });
+    setEditVerein(v.verein);
+    setEntwurf({verein:v.verein, vereinNr:v.vereinNr||"", lokale:lok});
+  }
+  function starteNeu(){
+    setEditVerein("__neu__");
+    setEntwurf({verein:"", vereinNr:"", lokale:[0,1,2].map(i=>({nr:String(i+1),name:"",strasse:"",plz:"",ort:""}))});
+  }
+  function abbrechen(){ setEditVerein(null); setEntwurf(null); }
+  function setLokalFeld(idx,feld,wert){
+    setEntwurf(p=>{ const lok=[...p.lokale]; lok[idx]={...lok[idx],[feld]:wert}; return {...p,lokale:lok}; });
+  }
+  async function speichern(){
+    if(!entwurf.verein.trim()){ showToast&&showToast("Bitte einen Vereinsnamen angeben","❌"); return; }
+    setBusy(true);
+    try{
+      // Nur ausgefuellte Spiellokale uebernehmen (Name oder Strasse gesetzt).
+      const lok=entwurf.lokale
+        .filter(l=>(l.name||"").trim()||(l.strasse||"").trim())
+        .map((l,i)=>({nr:String(l.nr||(i+1)),name:(l.name||"").trim(),strasse:(l.strasse||"").trim(),plz:(l.plz||"").trim(),ort:(l.ort||"").trim()}));
+      const neu={verein:entwurf.verein.trim(), vereinNr:(entwurf.vereinNr||"").trim(), lokale:lok};
+      let liste=[...(vereine||[])];
+      if(editVerein==="__neu__"){
+        if(liste.some(v=>normVereinName(v.verein)===normVereinName(neu.verein))){
+          showToast&&showToast("Verein ist bereits vorhanden","❌"); setBusy(false); return;
+        }
+        liste.push(neu);
+      }else{
+        liste=liste.map(v=>v.verein===editVerein?neu:v);
+      }
+      liste.sort((a,b)=>String(a.verein).localeCompare(String(b.verein)));
+      await speichereAlle(liste);
+      showToast&&showToast("Spiellokale gespeichert","✅");
+      abbrechen();
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    finally{ setBusy(false); }
+  }
+  async function loeschen(v){
+    try{
+      await speichereAlle((vereine||[]).filter(x=>x.verein!==v.verein));
+      showToast&&showToast("Verein entfernt","🗑️");
+      if(editVerein===v.verein) abbrechen();
+    }catch(e){ showToast&&showToast("Konnte nicht loeschen","❌"); }
+  }
+
+  const inp={padding:"7px 8px",borderRadius:7,fontSize:12,background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
+  const gefiltert=(vereine||[]).filter(v=>!suche.trim()||String(v.verein).toLowerCase().includes(suche.toLowerCase()));
+
+  return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
+    <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>🏟️ Spiellokale</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>
+      Spielstaetten der Vereine (bis zu 3 je Verein). Die Liste ist aus dem Vereinsspielplan
+      vorbelegt; Adressen koennen ergaenzt bzw. korrigiert und weitere Vereine angelegt werden.
+      Aus diesen Angaben werden die Links zu Google Maps und Apple Karten gebildet.
+    </div>
+
+    {entwurf
+      ? <div style={{background:"var(--bg)",border:"1px solid #3b82f6",borderRadius:10,padding:11,marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#3b82f6",marginBottom:8}}>
+            {editVerein==="__neu__"?"Neuen Verein anlegen":"Verein bearbeiten"}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+            <input value={entwurf.verein} onChange={e=>setEntwurf(p=>({...p,verein:e.target.value}))}
+              placeholder="Vereinsname" style={{...inp,flex:"1 1 200px",fontWeight:700}}/>
+            <input value={entwurf.vereinNr} onChange={e=>setEntwurf(p=>({...p,vereinNr:e.target.value}))}
+              placeholder="Vereinsnr." style={{...inp,width:110}}/>
+          </div>
+          {entwurf.lokale.map((l,i)=>(
+            <div key={i} style={{border:"1px solid var(--border2)",borderRadius:9,padding:9,marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>Spiellokal {i+1}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                <input value={l.name} onChange={e=>setLokalFeld(i,"name",e.target.value)} placeholder="Name der Spielstaette" style={{...inp,flex:"1 1 200px"}}/>
+                <input value={l.strasse} onChange={e=>setLokalFeld(i,"strasse",e.target.value)} placeholder="Strasse und Hausnummer" style={{...inp,flex:"1 1 180px"}}/>
+                <input value={l.plz} onChange={e=>setLokalFeld(i,"plz",e.target.value)} placeholder="PLZ" style={{...inp,width:90}}/>
+                <input value={l.ort} onChange={e=>setLokalFeld(i,"ort",e.target.value)} placeholder="Ort" style={{...inp,flex:"1 1 140px"}}/>
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={speichern} disabled={busy} style={{flex:1,padding:"9px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:700,cursor:busy?"not-allowed":"pointer"}}>{busy?"⏳ Speichern…":"Speichern"}</button>
+            <button onClick={abbrechen} style={{padding:"9px 14px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
+          </div>
+        </div>
+      : <button onClick={starteNeu} style={{padding:"9px 12px",background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:12}}>+ Neuer Verein</button>}
+
+    <input value={suche} onChange={e=>setSuche(e.target.value)} placeholder="Verein suchen …"
+      style={{width:"100%",boxSizing:"border-box",padding:"7px 9px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:12,marginBottom:8}}/>
+    <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+      {gefiltert.map(v=>(
+        <div key={v.verein} style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,padding:"7px 9px"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{v.verein}</div>
+            <div style={{fontSize:10,color:"var(--text4)"}}>{(v.lokale||[]).length} Spiellokal{(v.lokale||[]).length===1?"":"e"}</div>
+          </div>
+          <button onClick={()=>starteBearbeiten(v)} style={{padding:"5px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️</button>
+          <button onClick={()=>loeschen(v)} style={{padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:8,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>
+        </div>
+      ))}
+      {gefiltert.length===0&&<div style={{fontSize:11,color:"var(--text4)",padding:"6px 0"}}>Keine Treffer.</div>}
+    </div>
+  </div>;
+}
 
 // ─── HALLENINFO ───────────────────────────────────────────────────────────────
 // Infos, die die Aktiven auf Dinge in der Halle aufmerksam machen (Titel, Text,
@@ -17437,6 +18303,7 @@ const SPIELPLAN_COLS = [
   {key:"art",       label:"Art",         w:"56px"},
   {key:"ort",       label:"Ort",         w:"72px"},
   {key:"gegner",    label:"Gegner",      w:"auto"},
+  {key:"lokal",     label:"Lokal",       w:"52px"},
   {key:"ergebnis",  label:"Ergebnis",    w:"64px"},
   {key:"aenderung", label:"Änd.",        w:"50px"},
   {key:"spielcode", label:"Spielcode",   w:"110px"},
@@ -17738,7 +18605,8 @@ const SENTINEL_NACHWUCHS="__alle_nachwuchs__";
 const SENTINEL_HERREN="__alle_herren__";
 const SENTINEL_LEER="__leer__";
 
-function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=false, myPlayer=null}) {
+function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=false, myPlayer=null, onOpenLokal=null}) {
+  const spiellokaleListe = useSpiellokale();
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
   const [einsaetzeData,setEinsaetzeData]=useState({}); // {spielKey: {_betreuer1,_betreuer2,_fahrer,...}}
@@ -18302,7 +19170,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
                 </td>
                 <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
                 <td style={{padding:"5px 6px"}}></td>
-                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={7}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
+                <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={8}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
               </tr>;
             }
             const isChange=s.aenderung&&s.aenderung.trim()!=="";
@@ -18359,6 +19227,18 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
                 <span style={{color:s.ort==="Heim"?"#10b981":"#3b82f6",fontWeight:600,fontSize:10}}>{s.ort}</span>
               </td>
               <td style={{padding:"5px 6px",fontSize:11}}>{s.gegner}</td>
+              <td style={{padding:"5px 6px",fontSize:11,whiteSpace:"nowrap"}}>{(()=>{
+                // Spiellokal-Nummer: verlinkt auf den Eintrag in der Rubrik "Spiellokale".
+                const nr=String(s.halleNr||"").trim();
+                if(!nr) return <span style={{color:"var(--text4)"}}>–</span>;
+                const verein=s.heimVerein||"";
+                const lok=findeSpiellokal(spiellokaleListe,verein,nr);
+                const titel=lok?`${lok.name||"Spiellokal"} · ${lokalAdresse(lok)}`:"Spiellokal";
+                if(!onOpenLokal) return <span title={titel}>{nr}</span>;
+                return <button title={titel} onClick={()=>onOpenLokal(verein,nr)}
+                  style={{background:TTC_ROT+"18",color:TTC_ROT,border:"none",borderRadius:5,
+                    padding:"2px 8px",fontSize:10,fontWeight:800,cursor:"pointer"}}>{nr}</button>;
+              })()}</td>
               <td style={{padding:"5px 6px",fontWeight:700,fontSize:11,color:hasResult?"var(--text)":"var(--text4)"}}>{(()=>{
                 if(!hasResult) return "—";
                 if(s.ort!=="Auswärts") return s.ergebnis;
@@ -18398,7 +19278,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
               </td>
             </tr>;
           })}
-          {sorted.length===0&&<tr><td colSpan={14} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
+          {sorted.length===0&&<tr><td colSpan={15} style={{padding:20,textAlign:"center",color:"var(--text3)"}}>Keine Spiele gefunden.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -18564,6 +19444,9 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       const saisonCol=cols[idx("Saison")]||"";
       const spieleH=cols[idx("SpieleHeim")]||"";
       const spieleG=cols[idx("SpieleGast")]||"";
+      // Spiellokal: Nummer der Halle und Heimverein (fuer die Zuordnung zur Rubrik "Spiellokale")
+      const halleNr=(idx("HalleNr")>=0?(cols[idx("HalleNr")]||""):"").trim();
+      const halleNameCsv=(idx("HalleName")>=0?(cols[idx("HalleName")]||""):"").trim();
       if(!termin||!termin.trim()) continue;
       // Spielfreie Spiele überspringen
       if(heimMann.toLowerCase().includes("spielfrei")||gastMann.toLowerCase().includes("spielfrei")) continue;
@@ -18610,10 +19493,10 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
       if(istUnsVerein(heimVerein) && istUnsVerein(gastVerein)){
         const heimM=resolveMann(heimMann, heimAlk, heimNr);
         const gastM=resolveMann(gastMann, gastAlk, gastNr);
-        spiele.push({datum,tag,uhrzeit,mannschaft:heimM,art,ort:"Heim",   gegner:gastM,liga,ergebnis});
+        spiele.push({datum,tag,uhrzeit,mannschaft:heimM,art,ort:"Heim",   gegner:gastM,liga,ergebnis,halleNr,halleName:halleNameCsv,heimVerein});
         // Ergebnis für die Auswärts-Sicht spiegeln (Gast-Perspektive).
         const ergSpiegel=(spieleH&&spieleG&&!(spieleH==="0"&&spieleG==="0"))?`${spieleG}:${spieleH}`:"";
-        spiele.push({datum,tag,uhrzeit,mannschaft:gastM,art,ort:"Auswärts",gegner:heimM,liga,ergebnis:ergSpiegel});
+        spiele.push({datum,tag,uhrzeit,mannschaft:gastM,art,ort:"Auswärts",gegner:heimM,liga,ergebnis:ergSpiegel,halleNr,halleName:halleNameCsv,heimVerein});
         continue;
       }
       let mannschaft2="",ort2="",gegner2="";
@@ -18624,7 +19507,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
         mannschaft2=resolveMann(gastMann, gastAlk, gastNr);
         ort2="Auswärts"; gegner2=heimMann||heimVerein;
       } else continue;
-      spiele.push({datum,tag,uhrzeit,mannschaft:mannschaft2,art,ort:ort2,gegner:gegner2,liga,ergebnis});
+      spiele.push({datum,tag,uhrzeit,mannschaft:mannschaft2,art,ort:ort2,gegner:gegner2,liga,ergebnis,halleNr,halleName:halleNameCsv,heimVerein});
     }
     return spiele.sort((a,b)=>a.datum.localeCompare(b.datum)||a.mannschaft.localeCompare(b.mannschaft));
   }
@@ -19053,6 +19936,7 @@ const EW_HOME_GRUPPEN = [
   ]},
   { titel:"Wettkampf", items:[
     { key:"spielplan",    label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
+    { key:"spiellokale",  label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
     { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
     { key:"einsaetze",    label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
     { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
@@ -19077,6 +19961,7 @@ const EW_HOME_GRUPPEN = [
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
   const [spielcodes, setSpielcodes] = useState({});
@@ -19229,6 +20114,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
       {verlegStatusVon(s)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
         ⚠️ wird verlegt
       </div>}
+      <SpiellokalHinweis spiel={s} vereine={spiellokaleListe} aufRot={rot}/>
       <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
         {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
           style={{display:"inline-flex", alignItems:"center", gap:5, background:chipBg, color:berichtCol,
@@ -19298,6 +20184,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   const [activeTab,setActiveTab]=useState("home");
   // Zielmannschaft für die Aufstellung-Ansicht (gesetzt beim Klick auf die Home-Kachel).
   const [aufstellungTeam,setAufstellungTeam]=useState("");
+  const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   // Maßgeblich ist IMMER die eingeloggte Person. forcePlayer (Funktionswechsel/Admin-
   // Betrachtung) hat Vorrang; sonst die Login-Person case-insensitiv auflösen.
   // (Früher wurde hier p.email===user.email case-SENSITIV verglichen – das konnte bei
@@ -19320,6 +20207,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
+    {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
@@ -19395,8 +20283,9 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
+    {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}
-    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer}/>}
+    {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={true}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
