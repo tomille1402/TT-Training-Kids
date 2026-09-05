@@ -1,4 +1,4 @@
-// === TTC-App · Version 429 · erstellt 05.09.2026 ===
+// === TTC-App · Version 430 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "429";
+const APP_VERSION = "430";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14589,16 +14589,11 @@ function parseSpielpinZeilen(zeilen){
     let rest=zt.slice(dm.index+dm[0].length, pm.index).trim();
     // führende Uhrzeit + Hallennummer entfernen
     rest=rest.replace(/^\d{1,2}:\d{2}\s*\d*\s*/,"").trim();
-    let gegner=rest;
-    const marker="TTC Niederzeuzheim";
-    const idx=rest.indexOf(marker);
-    if(idx>=0){
-      const vor=rest.slice(0,idx).trim();
-      const nach=rest.slice(idx+marker.length).trim();
-      // Heimspiel: „TTC Niederzeuzheim <Gast>" → Gegner=nach; Auswärts: „<Heim> TTC Niederzeuzheim" → Gegner=vor.
-      gegner = nach || vor;
-    }
-    gegner=gegner.replace(/\s+/g," ").trim();
+    // Unseren Verein samt Mannschaftszusatz (z.B. „TTC Niederzeuzheim (M15)") entfernen –
+    // übrig bleibt der Gegner. Wichtig: Der Zusatz muss mit weg, sonst würde bei
+    // Auswärtsspielen fälschlich nur „(M15)" als Gegner erkannt.
+    let gegner=rest.replace(/TTC\s+Niederzeuzheim(\s*\([^)]*\))?/i," ").replace(/\s+/g," ").trim();
+    if(!gegner) gegner=rest.replace(/\s+/g," ").trim();
     ergebnis.push({datum, gegner, pin});
   }
   return ergebnis;
@@ -14623,8 +14618,20 @@ const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
 // ist, laesst sich der Eintrag zuverlaessig auf das neue Datum umziehen.
 // Es werden ausschliesslich Datums-Schluessel verschoben – vorhandene PINs/Codes
 // bleiben inhaltlich unveraendert und werden nie ueberschrieben.
+// Vergleich von Gegnernamen fuer die PIN-/Spielcode-Zuordnung. Anders als
+// normGegnerKurz bleibt die Mannschaftsziffer erhalten (z.B. „Villmar" und
+// „Villmar II" sind unterschiedliche Gegner). Klammerzusaetze wie „(M15)" und
+// Satzzeichen werden entfernt.
+function normGegnerVergleich(s){
+  return String(s||"").toLowerCase()
+    .replace(/\([^)]*\)/g," ")
+    .replace(/[.\-\/]/g," ")
+    .replace(/\u00e4/g,"a").replace(/\u00f6/g,"o").replace(/\u00fc/g,"u").replace(/\u00df/g,"ss")
+    .replace(/\s+/g,"").trim();
+}
 function normGegnerKurz(s){
   return String(s||"").toLowerCase()
+    .replace(/\([^)]*\)/g," ")                              // Mannschaftszusätze wie „(M15)", „(J13)"
     .replace(/\s+(i{1,3}|iv|v|vi{0,3}|ix|x)\s*$/,"")
     .replace(/\b\d{4}\b/g,"")
     .replace(/[.\-\/]/g," ")
@@ -14663,10 +14670,10 @@ function migriereNachVerlegung(quelle, spiele){
         if(!e || typeof e!=="object") continue;
         // Termin unveraendert vorhanden? Dann nichts tun.
         if(teamSpiele.some(s=>s.datum===datum)) continue;
-        const g = normGegnerKurz(e.gegner);
+        const g = normGegnerVergleich(e.gegner);
         if(!g) continue;
         // Spiel gegen denselben Gegner an einem anderen (noch freien) Termin suchen
-        const treffer = teamSpiele.filter(s=>normGegnerKurz(s.gegner)===g && !belegteDaten.has(s.datum));
+        const treffer = teamSpiele.filter(s=>normGegnerVergleich(s.gegner)===g && !belegteDaten.has(s.datum));
         if(treffer.length!==1) continue;   // nur bei eindeutiger Zuordnung umziehen
         const neuesDatum = treffer[0].datum;
         eintraege[neuesDatum] = e;
@@ -14700,7 +14707,7 @@ function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
     }
   }
   // 2) Rueckfall ueber den Gegner (verlegtes Spiel)
-  const zielGegner = normGegnerKurz(s.gegner);
+  const zielGegner = normGegnerVergleich(s.gegner);
   if(!zielGegner) return "";
   for(const sk of saisonKeys){
     const proSaison = quelle?.[sk]; if(!proSaison) continue;
@@ -14714,9 +14721,22 @@ function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
       const treffer = Object.keys(eintraege).filter(d=>{
         if(aktuelleDaten.has(d)) return false;               // Termin existiert noch -> gehoert zu einem anderen Spiel
         const e = eintraege[d];
-        return e && e[feld] && normGegnerKurz(e.gegner)===zielGegner;
+        return e && e[feld] && normGegnerVergleich(e.gegner)===zielGegner;
       });
       if(treffer.length===1) return eintraege[treffer[0]][feld];
+      // 3) Altdaten-Rückfall: In früher gespeicherten Einträgen fehlt bei Auswärtsspielen
+      // der Gegnername (es wurde nur der Mannschaftszusatz gespeichert). Eine Zuordnung
+      // ist dann nur zulässig, wenn sie zweifelsfrei ist: genau ein verwaister Eintrag
+      // und genau ein Spiel ohne eigenen Eintrag – und dieses Spiel ist das gesuchte.
+      const verwaist = Object.keys(eintraege).filter(d=>!aktuelleDaten.has(d) && eintraege[d] && eintraege[d][feld]);
+      if(verwaist.length===1){
+        const ohneEintrag = (spiele||[])
+          .filter(x=>mannschaftAliasse(x.mannschaft).some(a=>aliasse.includes(a)))
+          .filter(x=>!eintraege[x.datum] || !eintraege[x.datum][feld]);
+        if(ohneEintrag.length===1 && ohneEintrag[0].datum===s.datum){
+          return eintraege[verwaist[0]][feld];
+        }
+      }
     }
   }
   return "";
