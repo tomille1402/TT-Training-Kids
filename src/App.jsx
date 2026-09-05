@@ -1,4 +1,4 @@
-// === TTC-App · Version 428 · erstellt 05.09.2026 ===
+// === TTC-App · Version 429 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "428";
+const APP_VERSION = "429";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -12373,15 +12373,8 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   }, [kommend, meinSpielplanName]);
 
   const saisonKeys = ["2026_27","2026_2027"];
-  const feldVonSpiel = (s, quelle, feld) => {
-    if(!s) return "";
-    for(const sk of saisonKeys){
-      const proSaison = quelle?.[sk]; if(!proSaison) continue;
-      const e = proSaison?.[s.mannschaft]?.[s.datum];
-      if(e && e[feld]) return e[feld];
-    }
-    return "";
-  };
+  const feldVonSpiel = (s, quelle, feld) =>
+    spielEintragFinden(quelle, s, alleSpiele, feld, saisonKeys);
   const teamZuSpiel = (s) => {
     if(!s) return null;
     const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft] || s.mannschaft;
@@ -14685,6 +14678,48 @@ function migriereNachVerlegung(quelle, spiele){
     }
   }
   return { geaendert: anzahl>0, daten, anzahl };
+}
+
+
+// Sucht PIN bzw. Spielcode zu einem Spiel – zuerst ueber das Datum, danach ueber den
+// Gegner. Der zweite Weg ist noetig, wenn ein Spiel verlegt wurde: Der Eintrag liegt
+// dann noch unter dem alten Datum. Damit dabei nichts vertauscht wird, kommen nur
+// "verwaiste" Eintraege in Frage, deren Datum im aktuellen Spielplan nicht mehr
+// vorkommt, und die Zuordnung muss eindeutig sein.
+function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
+  if(!s || !quelle) return "";
+  const saisonKeys = (saisonKeysHint && saisonKeysHint.length)
+    ? saisonKeysHint : Object.keys(quelle||{});
+  const aliasse = mannschaftAliasse(s.mannschaft);
+  // 1) Exakte Zuordnung ueber das Spieldatum
+  for(const sk of saisonKeys){
+    const proSaison = quelle?.[sk]; if(!proSaison) continue;
+    for(const nm of aliasse){
+      const e = proSaison?.[nm]?.[s.datum];
+      if(e && e[feld]) return e[feld];
+    }
+  }
+  // 2) Rueckfall ueber den Gegner (verlegtes Spiel)
+  const zielGegner = normGegnerKurz(s.gegner);
+  if(!zielGegner) return "";
+  for(const sk of saisonKeys){
+    const proSaison = quelle?.[sk]; if(!proSaison) continue;
+    for(const nm of aliasse){
+      const eintraege = proSaison?.[nm];
+      if(!eintraege || typeof eintraege!=="object") continue;
+      // Termine, die im aktuellen Spielplan noch belegt sind, bleiben unangetastet
+      const aktuelleDaten = new Set((spiele||[])
+        .filter(x=>mannschaftAliasse(x.mannschaft).some(a=>aliasse.includes(a)))
+        .map(x=>x.datum));
+      const treffer = Object.keys(eintraege).filter(d=>{
+        if(aktuelleDaten.has(d)) return false;               // Termin existiert noch -> gehoert zu einem anderen Spiel
+        const e = eintraege[d];
+        return e && e[feld] && normGegnerKurz(e.gegner)===zielGegner;
+      });
+      if(treffer.length===1) return eintraege[treffer[0]][feld];
+    }
+  }
+  return "";
 }
 
 // ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
@@ -18752,17 +18787,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     // Die Spielcode-PDFs werden unter dem Team-Namen der Saison-Definition abgelegt
     // (z.B. "Erwachsene I"), der Spielplan nutzt aber "Herren 1". Beide Schreibweisen
     // sowie die Rohbezeichnung als Suchschlüssel probieren.
-    const namensKandidaten=[s.mannschaft];
-    const hm=String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
-    if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) namensKandidaten.push(`Erwachsene ${r}`); }
-    for(const sk of saisonKeys){
-      const proSaison=spielcodes?.[sk]; if(!proSaison) continue;
-      for(const nm of namensKandidaten){
-        const e=proSaison?.[nm]?.[s.datum];
-        if(e && e.code) return e.code;
-      }
-    }
-    return "";
+    return spielEintragFinden(spielcodes, s, spiele, "code", saisonKeys);
   };
 
   // Spiel-PINs je Saison/Mannschaft/Datum (aus den hochgeladenen Spiel-PIN-PDFs).
@@ -18781,17 +18806,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     const kandidatenSaison=[];
     if(m) kandidatenSaison.push(`${m[1]}_${m[2].slice(2)}`, `${m[1]}_${m[2]}`);
     const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielpins||{});
-    const namensKandidaten=[s.mannschaft];
-    const hm=String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
-    if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) namensKandidaten.push(`Erwachsene ${r}`); }
-    for(const sk of saisonKeys){
-      const proSaison=spielpins?.[sk]; if(!proSaison) continue;
-      for(const nm of namensKandidaten){
-        const e=proSaison?.[nm]?.[s.datum];
-        if(e && e.pin) return e.pin;
-      }
-    }
-    return "";
+    return spielEintragFinden(spielpins, s, spiele, "pin", saisonKeys);
   };
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","vereinstermine"),snap=>{
@@ -20143,17 +20158,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     if(hm){ const ROM=["","I","II","III","IV","V","VI","VII","VIII","IX","X"]; const r=ROM[parseInt(hm[1],10)]; if(r) out.push(`Erwachsene ${r}`); }
     return out;
   };
-  const feldVonSpiel = (s, quelle, feld) => {
-    if(!s) return "";
-    for(const sk of saisonKeys){
-      const proSaison = quelle?.[sk]; if(!proSaison) continue;
-      for(const nm of namensKandidaten(s)){
-        const e = proSaison?.[nm]?.[s.datum];
-        if(e && e[feld]) return e[feld];
-      }
-    }
-    return "";
-  };
+  const feldVonSpiel = (s, quelle, feld) =>
+    spielEintragFinden(quelle, s, alleSpiele, feld, saisonKeys);
   const codeVonSpiel = (s) => feldVonSpiel(s, spielcodes, "code");
   const pinVonSpiel  = (s) => feldVonSpiel(s, spielpins,  "pin");
 
