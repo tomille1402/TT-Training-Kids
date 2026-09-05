@@ -1,4 +1,4 @@
-// === TTC-App · Version 434 · erstellt 05.09.2026 ===
+// === TTC-App · Version 435 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "434";
+const APP_VERSION = "435";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -7239,7 +7239,11 @@ function UebungsUrkundenEditor({showToast}) {
 }
 
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
-function BrandingEditor({showToast}) {
+function BrandingEditor({showToast, teil="alles"}) {
+  // teil="design"  -> ohne Urkunden-Vorlage (App-Design)
+  // teil="urkunde" -> nur die Urkunden-Vorlage (Kapitel Wettkampf)
+  const zeigUrkunde = teil==="alles" || teil==="urkunde";
+  const zeigDesign  = teil==="alles" || teil==="design";
   const [name,     setName]     = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [loginFooter, setLoginFooter] = useState("");
@@ -7327,6 +7331,7 @@ function BrandingEditor({showToast}) {
   if(!loaded) return <div style={{padding:12,color:"var(--text3)",fontSize:12}}>⏳ Lade...</div>;
 
   return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:12}}>
+    {zeigDesign && <>
     <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:12}}>🏷️ Vereins-Branding</div>
 
     <div style={{marginBottom:10}}>
@@ -7374,6 +7379,8 @@ function BrandingEditor({showToast}) {
       ✕ Wappen entfernen
     </button>}
 
+    </>}
+    {zeigUrkunde && <>
     <label style={{fontSize:11,color:"var(--text3)",display:"block",margin:"16px 0 6px"}}>Urkunden-Vorlage (Hintergrundbild, A4 hochkant)</label>
     <div style={{textAlign:"center",marginBottom:8}}>
       {urkunde
@@ -7394,6 +7401,7 @@ function BrandingEditor({showToast}) {
     <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.4}}>
       Diese Vorlage wird als Hintergrund für die Urkunden verwendet (Schläger oben, „URKUNDE"-Titel, Wappen unten). Der Text wird automatisch darüber platziert.
     </div>
+    </>}
   </div>;
 }
 
@@ -8687,6 +8695,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showAppDesign,setShowAppDesign]=useState(false);
   const [showFaksimile,setShowFaksimile]=useState(false);
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
+  const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
 
@@ -9351,14 +9360,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </Modal>}
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-      <div style={{fontSize:17,fontWeight:800}}>⚙️ Personen-Verwaltung</div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
-        </button>
-      </div>
-    </div>
 
 
     {/* ─── Kapitel-Einstieg (Kacheln) ─────────────────────────────────────── */}
@@ -9726,7 +9727,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
         </div>}
         {/* Whitelabel Branding */}
-        <BrandingEditor showToast={showToast}/>
+        <BrandingEditor showToast={showToast} teil="design"/>
       </div></ErrorBoundary>}
     </div>
 
@@ -9741,10 +9742,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div></ErrorBoundary>}
     </div>
 
-    {/* Muster Übungs-Urkunden — eigener Bereich, standardmäßig zugeklappt */}
+
+    </>}
+    {vwKapitel==="training" && <>
+    {/* Übungs-Urkunden (aus dem Bereich Darstellung hierher verschoben) */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowUebungsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏅 Muster Übungs-Urkunden</div>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏅 Übungs-Urkunden</div>
         <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUebungsUrkunden?"▲":"▼"}</span>
       </div>
       {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
@@ -9752,8 +9756,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div></ErrorBoundary>}
     </div>
 
-    </>}
-    {vwKapitel==="training" && <>
     {/* Trainingszeitraum — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9889,6 +9891,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="wettkampf" && <>
+    {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📜 Turnier-Urkunde</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTurnierUrkunde?"▲":"▼"}</span>
+      </div>
+      {showTurnierUrkunde&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <BrandingEditor showToast={showToast} teil="urkunde"/>
+      </div></ErrorBoundary>}
+    </div>
+
     {/* Spiellokale Abschnitt */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9904,6 +9917,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
 
     {vwKapitel==="personen" && <>
+    {/* Kopfzeile des Personen-Kapitels mit Anlegen-Schaltfläche */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>⚙️ Personen-Verwaltung</div>
+      <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+        {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
+      </button>
+    </div>
     {/* Add form */}
     {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
       <div style={{fontSize:14,fontWeight:700,color:"#10b981",marginBottom:14}}>Neue Person anlegen</div>
