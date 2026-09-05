@@ -1,4 +1,4 @@
-// === TTC-App · Version 433 · erstellt 05.09.2026 ===
+// === TTC-App · Version 434 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "433";
+const APP_VERSION = "434";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8715,6 +8715,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     onJumpHandled && onJumpHandled();
   },[jumpToId]);
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
+  const [showUp,setShowUp]=useState({});                 // je Upload-Abschnitt auf/zu
   const [showHalleninfo,setShowHalleninfo]=useState(false); // Halleninfos section
   const [showTrainingszeiten,setShowTrainingszeiten]=useState(false); // Trainingszeiten section
   const [showSpiellokale,setShowSpiellokale]=useState(false); // Spiellokale section
@@ -9786,20 +9787,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="uploads" && <>
-    {/* Uploads – im Kapitel direkt aufgeklappt, damit alle Uploads auf einen Blick sichtbar sind */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div style={{padding:"13px 14px 6px"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📤 Uploads</div>
-        <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
-          Spielplan &amp; Spiel-PINs · Personen Export/Import · Mannschaftsfotos · Ehrungen-Import · Artikel-Fotos
-        </div>
-      </div>
-      <div style={{padding:"0 14px 14px"}}>
-        <SpielplanUpload showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>
-
-        {/* Personen Export/Import */}
-        <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>👥 Personen Export / Import</div>
+    {/* Uploads – je Bereich ein eigener aufklappbarer Abschnitt, alphabetisch sortiert */}
+    {(()=>{
+      const inhalt = {
+        artikelfotos:     <ArtikelFotoVerwaltung showToast={showToast}/>,
+        aufstellungen:    <SpielplanUpload abschnitt="aufstellungen" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        ehrungen:         (isSuperAdmin ? <EhrungenImport players={players} showToast={showToast}/> : <div style={{fontSize:11,color:"var(--text4)"}}>Nur für Super-Admins.</div>),
+        mannschaftsfotos: <MannschaftsfotosUpload showToast={showToast}/>,
+        personen:         <div>
+<div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>👥 Personen Export / Import</div>
           <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
             Exportiert alle Personen mit allen Feldern als Excel. Beim Import werden bestehende
             Personen (Vorname + Nachname) angereichert, neue Personen angelegt. Leere Zellen
@@ -9832,18 +9828,39 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               </ul>
             </div>}
           </div>}
+</div>,
+        qttr:             <SpielplanUpload abschnitt="qttr" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        pins:             <SpielplanUpload abschnitt="pins" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        spielerfotos:     <SpielerfotosUpload players={players} showToast={showToast}/>,
+        videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+      };
+      const abschnitte = [
+        {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
+        {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
+        {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
+        {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
+        {k:"personen",         icon:"👥", label:"Personen Export/Import"},
+        {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
+        {k:"pins",             icon:"🔑", label:"Spiel-PINs und Spielcodes"},
+        {k:"spielerfotos",     icon:"🧍", label:"Spielerfotos"},
+        {k:"videos",           icon:"🎬", label:"Übungsvideos"},
+        {k:"beitritte",        icon:"📥", label:"Vereinsbeitritte"},
+        {k:"spielplan",        icon:"📅", label:"Vereinsspielplan"},
+      ].sort((a,b)=>a.label.localeCompare(b.label,"de"));
+      return abschnitte.map(a=>(
+        <div key={a.k} style={{background:"var(--bg2)",border:"1px solid var(--border2)",
+          borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+          <div onClick={()=>setShowUp(p=>({...p,[a.k]:!p[a.k]}))}
+            style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>{a.icon} {a.label}</div>
+            <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUp[a.k]?"▲":"▼"}</span>
+          </div>
+          {showUp[a.k]&&<div style={{padding:"0 14px 14px"}}>{inhalt[a.k]}</div>}
         </div>
-        {/* Mannschaftsfotos (saisonabhängig, mit automatischer Verkleinerung) */}
-        <MannschaftsfotosUpload showToast={showToast}/>
-      </div>
-    </div>
-
-
-    {/* Ehrungen-Import (myTischtennis-CSV) — nur für Admins */}
-    {isSuperAdmin && <EhrungenImport players={players} showToast={showToast}/>}
-
-    {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
-    <ArtikelFotoVerwaltung showToast={showToast}/>
+      ));
+    })()}
     </>}
     {vwKapitel==="kommunikation" && <>
     {/* Halleninfos Abschnitt */}
@@ -14812,6 +14829,78 @@ function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
   return "";
 }
 
+
+// ─── SPIELERFOTOS-UPLOAD (Verwaltung → Uploads) ──────────────────────────────
+// Je Person ein Foto in der Sammlung "spielerFotos" (ein Dokument pro Person,
+// deshalb kein Groessenlimit-Problem). Fotos werden automatisch verkleinert.
+function SpielerfotosUpload({ players=[], showToast }){
+  const [fotos,setFotos]=useState({});     // {playerId: dataUrl}
+  const [busy,setBusy]=useState({});
+  const [suche,setSuche]=useState("");
+
+  useEffect(()=>{
+    const u=onSnapshot(collection(db,"spielerFotos"),snap=>{
+      const m={}; snap.forEach(d=>{ const v=d.data(); if(v&&v.dataUrl) m[d.id]=v.dataUrl; });
+      setFotos(m);
+    },()=>{});
+    return u;
+  },[]);
+
+  const liste=[...(players||[])]
+    .filter(p=>p && (p.firstName||p.lastName))
+    .filter(p=>!suche.trim()||personAnzeigeName(p).toLowerCase().includes(suche.toLowerCase()))
+    .sort((a,b)=>personAnzeigeName(a).localeCompare(personAnzeigeName(b),"de"));
+
+  async function hochladen(pid,file){
+    if(!file) return;
+    if(!file.type.startsWith("image/")){ showToast&&showToast("Bitte eine Bilddatei wählen","❌"); return; }
+    setBusy(b=>({...b,[pid]:true}));
+    try{
+      const dataUrl=await komprimiereBild(file,{maxBreite:FOTO_MAX_KANTE,maxHoehe:FOTO_MAX_KANTE,maxLen:FOTO_MAX_LEN});
+      await setDoc(doc(db,"spielerFotos",pid),{dataUrl,ts:Date.now()});
+      showToast&&showToast("Foto gespeichert","✅");
+    }catch(e){ showToast&&showToast((e&&e.message)||"Foto-Fehler","❌"); }
+    finally{ setBusy(b=>({...b,[pid]:false})); }
+  }
+  async function entfernen(pid){
+    try{ await deleteDoc(doc(db,"spielerFotos",pid)); showToast&&showToast("Foto entfernt","🗑️"); }
+    catch(e){ showToast&&showToast("Konnte nicht entfernen","❌"); }
+  }
+
+  const mitFoto=Object.keys(fotos).length;
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+      Je Person ein Foto (automatisch verkleinert auf max. {FOTO_MAX_KANTE} px).
+      Aktuell hinterlegt: {mitFoto}.
+    </div>
+    <input value={suche} onChange={e=>setSuche(e.target.value)} placeholder="Person suchen …"
+      style={{width:"100%",boxSizing:"border-box",padding:"7px 9px",borderRadius:8,
+        border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:12,marginBottom:8}}/>
+    <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
+      {liste.map(pl=>{
+        const foto=fotos[pl.id]; const b=busy[pl.id];
+        return <div key={pl.id} style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg)",
+          border:"1px solid var(--border2)",borderRadius:10,padding:"7px 9px"}}>
+          <div style={{width:38,height:38,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"var(--bg3)",
+            display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border)"}}>
+            {foto?<img src={foto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:15}}>🏓</span>}
+          </div>
+          <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:700,color:"var(--text)"}}>{personAnzeigeName(pl)}</div>
+          <label style={{padding:"6px 10px",background:"var(--bg3)",border:"1px dashed var(--border2)",borderRadius:8,
+            cursor:b?"not-allowed":"pointer",fontSize:11,color:b?"#6b7280":"var(--text2)",fontWeight:600}}>
+            {b?"⏳":"📎 Upload"}
+            <input type="file" accept="image/*" style={{display:"none"}} disabled={b}
+              onChange={e=>{const f=e.target.files&&e.target.files[0]; e.target.value=""; hochladen(pl.id,f);}}/>
+          </label>
+          {foto&&<button onClick={()=>entfernen(pl.id)} style={{padding:"6px 8px",background:"#ef444422",border:"none",
+            borderRadius:8,color:"#ef4444",fontSize:11,cursor:"pointer",fontWeight:700}}>🗑️</button>}
+        </div>;
+      })}
+      {liste.length===0&&<div style={{fontSize:11,color:"var(--text4)",padding:"6px 0"}}>Keine Treffer.</div>}
+    </div>
+  </div>;
+}
+
 // ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
 // Spielstaetten der Vereine im Kreis Limburg-Weilburg. Die Stammdaten unten sind
 // aus dem Vereinsspielplan vorbelegt und koennen in der Verwaltung gepflegt und
@@ -19564,7 +19653,9 @@ function UebungsvideoPlayer({url,exName}) {
 }
 
 // SpielplanUpload - PDF upload parses and saves to Firestore
-function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
+function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null}) {
+  // abschnitt=null -> alles anzeigen; sonst nur der gewuenschte Teilbereich.
+  const zeig=(k)=>!abschnitt||abschnitt===k;
   const [uploading,setUploading]=useState(false);
   const [savedSpielpläne,setSavedSpielpläne]=useState([]);
 
@@ -19823,6 +19914,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
   }
 
   return <div>
+    {zeig("spielplan") && <>
     {/* Spielplan Upload */}
     <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📅 Vereinsspielplan</div>
@@ -19845,9 +19937,11 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
           onChange={e=>handleUpload(e.target.files?.[0])}/>
       </label>
     </div>
+    </>}
 
+    {zeig("beitritte") && <>
     {/* Beitritte Import */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+    <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📥 Vereinsbeitritte importieren</div>
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
         Excel/CSV-Datei mit Spalten: Vorname, Nachname, Vereinsbeitritt (Datum).
@@ -19862,29 +19956,38 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
           onChange={e=>onJoinImport&&onJoinImport(e)} disabled={joinImporting}/>
       </label>
     </div>
+    </>}
 
+    {zeig("aufstellungen") && <>
     {/* Aufstellungen Upload */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+    <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📋 Aufstellungen</div>
       <AufstellungUpload showToast={showToast}/>
     </div>
+    </>}
 
+    {zeig("qttr") && <>
     {/* Q-TTR-Liste Upload */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+    <div style={{marginBottom:16}}>
       <TtrUpload showToast={showToast}/>
     </div>
+    </>}
 
+    {zeig("videos") && <>
     {/* Übungsvideos Upload */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginBottom:16}}>
+    <div style={{marginBottom:16}}>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>🎬 Übungsvideos</div>
       <UebungsvideoUpload showToast={showToast}/>
     </div>
+    </>}
 
+    {zeig("pins") && <>
     {/* Mannschaften */}
-    <div style={{borderTop:"1px solid var(--border)",paddingTop:14}}>
+    <div>
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
       <MannschaftenVerwaltung showToast={showToast}/>
     </div>
+    </>}
   </div>;
 }
 
