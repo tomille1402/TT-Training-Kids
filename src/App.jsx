@@ -1,4 +1,4 @@
-// === TTC-App · Version 435 · erstellt 05.09.2026 ===
+// === TTC-App · Version 436 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "435";
+const APP_VERSION = "436";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8725,6 +8725,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   },[jumpToId]);
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showUp,setShowUp]=useState({});                 // je Upload-Abschnitt auf/zu
+  const [showP,setShowP]=useState({});                   // je Personen-Abschnitt auf/zu                 // je Upload-Abschnitt auf/zu
   const [showHalleninfo,setShowHalleninfo]=useState(false); // Halleninfos section
   const [showTrainingszeiten,setShowTrainingszeiten]=useState(false); // Trainingszeiten section
   const [showSpiellokale,setShowSpiellokale]=useState(false); // Spiellokale section
@@ -9397,526 +9398,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>}
 
     {vwKapitel==="personen" && <>
-    {/* Einsatz-Benachrichtigungen: Protokoll der Sofort-Alarme, wenn ein Spieler
-        seine Verfügbarkeit von "verfügbar" auf einen anderen Status geändert hat.
-        Zeigt je Empfänger (MF/Admin), ob die Push-Nachricht zugestellt werden konnte. */}
-    <div style={{background:"#f59e0b10",border:"1px solid #f59e0b44",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
-      <div onClick={()=>setShowAlarmLog(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#d97706"}}>⚠️ Einsatz-Benachrichtigungen</div>
-        <span style={{fontSize:11,color:"#d97706"}}>{showAlarmLog?"▲":"▼"}</span>
-      </div>
-      {showAlarmLog&&<div style={{padding:"0 14px 14px"}}>
-        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
-          Protokoll der letzten Sofort-Benachrichtigungen (Spieler hat Verfügbarkeit von
-          „verfügbar“ auf einen anderen Status geändert). Je Empfänger (Mannschaftsführer,
-          Admin) ist erkennbar, ob die Push-Nachricht zugestellt werden konnte
-          (<b style={{color:"#10b981"}}>✅ zugestellt</b>,
-          <b style={{color:"#ef4444"}}> ❌ nicht zugestellt</b>,
-          <b style={{color:"#f59e0b"}}> ⚠️ kein Push-Abo</b>). Die Nachricht in der App
-          (hinter der Glocke) erscheint unabhängig davon.
-        </div>
-        {alarmLogLaedt && <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Lädt…</div>}
-        {!alarmLogLaedt && alarmLog && alarmLog.length===0 &&
-          <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Noch keine Einsatz-Benachrichtigungen protokolliert.</div>}
-        {!alarmLogLaedt && alarmLog && alarmLog.map(a=>{
-          const d = a.ts ? new Date(a.ts) : null;
-          const wann = d ? d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
-          return <div key={a.id} style={{background:"var(--bg2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>
-              {a.spielerName} → {STATUS_LABEL_EINSATZ(a.neuerStatus)}
-            </div>
-            <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>
-              {a.mannschaft}{a.gegner?` gegen ${a.gegner}`:""}{a.datum?` · Spiel am ${deDatumApp(a.datum)}`:""}{wann?` · gemeldet ${wann}`:""}
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {(a.empfaenger||[]).map((e,i)=>{
-                const farbe = !e.abo ? "#f59e0b" : e.zugestellt ? "#10b981" : "#ef4444";
-                const symbol = !e.abo ? "⚠️" : e.zugestellt ? "✅" : "❌";
-                const bg = !e.abo ? "#f59e0b18" : e.zugestellt ? "#10b98118" : "#ef444418";
-                return <span key={i} style={{fontSize:11,fontWeight:600,color:farbe,background:bg,padding:"3px 9px",borderRadius:20}}>
-                  {symbol} {e.name}
-                </span>;
-              })}
-            </div>
-          </div>;
-        })}
-      </div>}
-    </div>
-
-    {/* Doppelprofile erkennen und auflösen. Kriterium: gleiche E-Mail UND gleicher
-        Vor- und Nachname. So werden gewollte Eltern-Logins (gleiche Mail, aber
-        anderer Name als das Kind) NICHT faelschlich als Duplikat angezeigt. */}
-    {(()=>{
-      // Gruppen nach E-Mail + Vorname + Nachname bilden (nur echte Adressen)
-      const proSchluessel={};
-      for(const p of players){
-        const mail=(p.email||"").toLowerCase().trim();
-        if(!mail || mail.endsWith("@ttc-intern.de")) continue;
-        const vn=(p.firstName||"").toLowerCase().trim();
-        const nn=(p.lastName||"").toLowerCase().trim();
-        const key=mail+"|"+vn+"|"+nn;
-        (proSchluessel[key]=proSchluessel[key]||[]).push(p);
-      }
-      const dupletten=Object.entries(proSchluessel).filter(([,arr])=>arr.length>1);
-      if(dupletten.length===0) return null;
-      const gesamtDubletten=dupletten.reduce((s,[,arr])=>s+arr.length,0);
-
-      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,marginBottom:14,overflow:"hidden"}}>
-        <div onClick={()=>setShowDupletten(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:14,fontWeight:800,color:"#f59e0b"}}>⚠️ Doppelte Profile gefunden · {dupletten.length}</div>
-          <span style={{fontSize:11,color:"#f59e0b"}}>{showDupletten?"▲":"▼"}</span>
-        </div>
-        {showDupletten&&<div style={{padding:"0 14px 14px"}}>
-        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:10}}>
-          Für die folgenden Personen gibt es mehrere Profile mit derselben E-Mail-Adresse
-          und demselben Namen. Das führt zu doppelten Einträgen in den Übersichten. Behalte
-          das verknüpfte Profil (mit Login) und entferne die Dublette. Die Bestellung wird
-          dabei, falls nötig, auf das behaltene Profil übernommen.
-        </div>
-        {dupletten.map(([mail,arr])=>{
-          // Das mit Login verknüpfte Profil ist das, dessen ID der Auth-UID entspricht.
-          // Da wir die UID hier nicht kennen, markieren wir das neueste (updatedAt) als
-          // "vermutlich aktiv"; der Admin entscheidet bewusst per Knopf.
-          const sortiert=[...arr].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-          const kopf=`${sortiert[0].firstName||""} ${sortiert[0].lastName||""}`.trim()+" · "+(sortiert[0].email||"");
-          return <div key={mail} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:10,marginBottom:8}}>
-            <div style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:6}}>{kopf}</div>
-            {sortiert.map((p,idx)=>(
-              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
-                padding:"6px 8px",background:idx===0?"#10b98111":"transparent",borderRadius:6,marginBottom:4}}>
-                <div style={{fontSize:11,color:"var(--text2)"}}>
-                  <b>{p.firstName} {p.lastName}</b> · {p.group||"—"} · ID {String(p.id).slice(0,8)}…
-                  {idx===0 && <span style={{color:"#10b981",fontWeight:700}}> · neuestes</span>}
-                </div>
-                <button onClick={async()=>{
-                  if(!window.confirm(`Dieses Profil von ${p.firstName} ${p.lastName} (ID ${String(p.id).slice(0,10)}…) wirklich löschen?`)) return;
-                  try{
-                    // Falls das zu löschende Profil eine Bestellung hat und ein anderes
-                    // Profil derselben Mail keine, Bestellung dorthin übernehmen.
-                    const andere=arr.find(x=>x.id!==p.id);
-                    if(andere){
-                      const bDel=await getDoc(doc(db,"bestellungen",p.id));
-                      if(bDel.exists()){
-                        const bKeep=await getDoc(doc(db,"bestellungen",andere.id));
-                        if(!bKeep.exists()){
-                          await setDoc(doc(db,"bestellungen",andere.id),{...bDel.data(),playerId:andere.id});
-                        }
-                        await deleteDoc(doc(db,"bestellungen",p.id));
-                      }
-                    }
-                    await deleteDoc(doc(db,"players",p.id));
-                    showToast("Profil gelöscht","🗑️");
-                  }catch(e){ showToast("Fehler: "+(e?.message||""),"❌"); }
-                }} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",
-                  borderRadius:6,color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
-                  löschen
-                </button>
-              </div>
-            ))}
-          </div>;
-        })}
-        </div>}
-      </div>;
-    })()}
-
-    {/* Sammel-Banner: Login-Status ALLER Personen (nicht nur der erkannt-betroffenen) */}
-    {(()=>{
-      const alleAktiv = players.filter(p=>p.status!=="passiv")
-        .sort((a,b)=>{
-          // Kritische zuerst (kein echtes Login), dann alphabetisch
-          const ka=hatKeinEchtesLogin(a)?0:1, kb=hatKeinEchtesLogin(b)?0:1;
-          if(ka!==kb) return ka-kb;
-          return (a.firstName||"").localeCompare(b.firstName||"","de");
-        });
-      if(alleAktiv.length===0) return null;
-      const kritisch = alleAktiv.filter(p=>hatKeinEchtesLogin(p)).length;
-      // Status je Person bestimmen
-      const statusOf=(p)=>{
-        if(p.noLogin) return {txt:"kein Login",farbe:"#ef4444"};
-        if(istKuenstlicheEmail(p.email)) return {txt:"Platzhalter-Adresse",farbe:"#f59e0b"};
-        return {txt:p.email,farbe:"#10b981"};
-      };
-      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}
-          onClick={()=>setZeigeLoginProbleme(v=>!v)}>
-          <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>
-            🔑 Login-Status ({kritisch} von {alleAktiv.length} ohne echtes Login)
-          </div>
-          <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
-        </div>
-        {zeigeLoginProbleme && <><div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
-          Hier sind <b>alle {alleAktiv.length} aktiven Personen</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
-          „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
-          E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten.
-        </div>
-        {(()=>{
-          const flagFaelle = alleAktiv.filter(p=>p.noLogin===true && !istKuenstlicheEmail(p.email));
-          if(flagFaelle.length===0) return null;
-          return <div style={{marginTop:10,padding:"9px 11px",background:"#10b98112",border:"1px solid #10b98144",borderRadius:9}}>
-            <div style={{fontSize:11,color:"var(--text)",marginBottom:7,lineHeight:1.5}}>
-              ✅ <b>{flagFaelle.length}</b> {flagFaelle.length===1?"Person hat":"Personen haben"} bereits eine echte E-Mail, {flagFaelle.length===1?"wird":"werden"} aber noch als „kein Login" angezeigt (z.B. weil beim Einrichten das Konto schon bestand). Das lässt sich in einem Schritt korrigieren.
-            </div>
-            <button onClick={doFlagReparatur} disabled={flagFixLaeuft} style={{
-              padding:"7px 13px",background:flagFixLaeuft?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
-              border:"none",borderRadius:8,color:flagFixLaeuft?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:flagFixLaeuft?"wait":"pointer"}}>
-              {flagFixLaeuft?"⏳ Korrigiere…":`✅ ${flagFaelle.length} als „mit Login" markieren`}
-            </button>
-          </div>;
-        })()}
-        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
-          {alleAktiv.map(p=>{
-            const st=statusOf(p);
-            const krit=hatKeinEchtesLogin(p);
-            return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
-                background:"var(--bg2)",border:`1px solid ${krit?"#f59e0b55":"var(--border)"}`,borderRadius:8,padding:"7px 10px"}}>
-              <div style={{minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:600}}>{p.firstName} {p.lastName}
-                  <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{p.group}</span></div>
-                <div style={{fontSize:10,color:st.farbe,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {krit?"⚠️ ":"✅ "}{st.txt}</div>
-              </div>
-              <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}}
-                style={{flexShrink:0,background:krit?"#f59e0b":"var(--bg3)",border:krit?"none":"1px solid var(--border2)",borderRadius:6,color:krit?"#fff":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>
-                → Login einrichten</button>
-            </div>;
-          })}
-        </div></>}
-      </div>;
-    })()}
-
-    {/* Sammel-Reparatur: Login sicherstellen + Passwort-Mail für alle mit echter E-Mail */}
-    {(()=>{
-      const mitEchterMail = players.filter(p=>p.status!=="passiv" && !istKuenstlicheEmail(p.email));
-      if(mitEchterMail.length===0 && !sammelLog) return null;
-      return <div style={{background:"#3b82f610",border:"1px solid #3b82f644",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setZeigeReparatur(v=>!v)}>
-          <div style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>🔧 Passwort-Mail / Login-Reparatur</div>
-          <span style={{fontSize:13,color:"#2563eb"}}>{zeigeReparatur?"▲":"▼"}</span>
-        </div>
-        {zeigeReparatur && <>
-        <div style={{fontSize:11,color:"var(--text2)",margin:"8px 0 10px",lineHeight:1.5}}>
-          Verschickt an alle {mitEchterMail.length} Personen mit hinterlegter echter E-Mail eine Passwort-Mail und stellt
-          sicher, dass ihr Login auf die echte Adresse läuft. Personen, deren Login-Konto noch auf einer Platzhalter-Adresse
-          liegt (z. B. Heiko Schmid), werden dabei automatisch auf ihre echte E-Mail umgestellt — alle Daten bleiben erhalten.
-        </div>
-        <button onClick={doSammelReparatur} disabled={sammelLauft||mitEchterMail.length===0} style={{
-          padding:"9px 16px",background:(sammelLauft||mitEchterMail.length===0)?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",
-          border:"none",borderRadius:8,color:(sammelLauft||mitEchterMail.length===0)?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:sammelLauft?"wait":"pointer"}}>
-          {sammelLauft?"⏳ Läuft…":`🔧 Sammel-Reparatur für ${mitEchterMail.length} ${mitEchterMail.length===1?"Person":"Personen"} starten`}
-        </button>
-        {sammelLog && <div style={{marginTop:10,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,fontSize:11}}>
-          <div style={{fontWeight:700,marginBottom:4}}>Ergebnis</div>
-          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
-          {sammelLog.fehler.length>0 && <div style={{color:"#ef4444",marginTop:4}}>
-            ⚠️ {sammelLog.fehler.length} Fehler:
-            {sammelLog.fehler.map((f,i)=><div key={i} style={{color:"#fca5a5",marginLeft:8}}>• {f.p.firstName} {f.p.lastName}: {f.grund}</div>)}
-          </div>}
-          <button onClick={()=>setSammelLog(null)} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Schließen</button>
-        </div>}
-        </>}
-      </div>;
-    })()}
-
-    {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
-    {isSuperAdmin && <PersonenUebersicht players={players}/>}
-
-
-    {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-      <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
-      {joinNotFound.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
-      <button onClick={()=>setJoinNotFound([])} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid #ef444466",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>Schließen</button>
-    </div>}
-
-    {/* Hinweis wenn eingeloggter Admin kein Spielerprofil hat */}
-    {(()=>{
-      if (!user) return null;
-      const myP = players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase());
-      if (myP) return null;
-      // Also suppress if user has admin role in any player (e.g. email mismatch)
-      const hasAdminPlayer = players.find(p=>p.roles?.admin===true);
-      if (hasAdminPlayer) return null;
-
-      // Gibt es einen Eintrag mit ähnlichem Namen aber falscher E-Mail?
-      const trainerEntry = players.find(p=>p.group==="Trainer"&&!p.email);
-
-      return <div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>⚠️ Kein Spielerprofil für {user.email}</div>
-        <div style={{fontSize:11,color:"var(--text2)",marginBottom:8}}>
-          Dein Login-Konto hat kein verknüpftes Profil. Du kannst hier direkt ein Profil erstellen — ohne neuen Auth-Account.
-        </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={async()=>{
-            const id = "admin_"+Date.now();
-            await setDoc(doc(db,"players",id),{
-              id, email:user.email,
-              firstName:"Thomas", lastName:"Meilinger",
-              group:"Trainer", status:"aktiv",
-              avatar:"🏓", color:"#10b981",
-              noLogin:false,
-              roles:{player:true, trainer:true, admin:true},
-            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
-            showToast("Profil angelegt! Seite neu laden.","✅");
-            setTimeout(()=>window.location.reload(),1500);
-          }} style={{padding:"7px 14px",background:"#f59e0b",border:"none",borderRadius:8,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            ✅ Neues Profil anlegen
-          </button>
-          {trainerEntry&&<button onClick={async()=>{
-            await updateDoc(doc(db,"players",trainerEntry.id),{
-              email:user.email,
-              roles:{player:true,trainer:true,admin:true},
-            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
-            showToast("E-Mail verknüpft! Seite neu laden.","✅");
-            setTimeout(()=>window.location.reload(),1500);
-          }} style={{padding:"7px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            🔗 Mit {trainerEntry.firstName} {trainerEntry.lastName} verknüpfen
-          </button>}
-        </div>
-      </div>;
-    })()}
-
-    {/* Hinweis für Trainer-Gruppe ohne Funktionen */}
-    {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player).map(p=>(
-      <div key={p.id} style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:16}}>ℹ️</span>
-        <div style={{flex:1,fontSize:12,color:"#93c5fd"}}><b>{p.firstName} {p.lastName}</b> — Gruppe „Trainer" aber keine Funktionen gesetzt.</div>
-        <button onClick={()=>setEditPlayer({...p,_originalRacketNr:p.racketType==="TTC"?String(p.racketNr||""):""})} style={{padding:"5px 10px",background:"#3b82f6",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>✏️ Bearbeiten</button>
-      </div>
-    ))}
-
-    </>}
-    {vwKapitel==="system" && <>
-    {/* App-Design — P4 ausblendbar */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🎨 App-Design</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showAppDesign?"▲":"▼"}</span>
-      </div>
-      {showAppDesign&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
-        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-          Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
-        </div>
-        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
-            const isActive = effectiveGlobalTheme===opt.mode;
-            return <button key={opt.mode} onClick={async()=>{
-              setLocalGlobalTheme(opt.mode);
-              await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
-              showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
-            }} style={{
-              flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
-              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-              background:isActive?"#10b98122":"var(--bg3)",
-              color:isActive?"#10b981":"var(--text2)",
-            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-          })}
-        </div>
-        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
-        <div style={{display:"flex",gap:8}}>
-          {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
-            const isActive = userTheme===opt.mode;
-            return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
-              flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
-              background:isActive?"#10b98122":"var(--bg3)",
-              color:isActive?"#10b981":"var(--text2)",
-            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
-          })}
-        </div>
-        {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
-          Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
-        </div>}
-        {/* Whitelabel Branding */}
-        <BrandingEditor showToast={showToast} teil="design"/>
-      </div></ErrorBoundary>}
-    </div>
-
-    {/* Unterschriften (Faksimile) — eigener Bereich, standardmäßig zugeklappt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowFaksimile(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>✍️ Unterschriften (Faksimile)</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showFaksimile?"▲":"▼"}</span>
-      </div>
-      {showFaksimile&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
-        <FaksimileEditor showToast={showToast}/>
-      </div></ErrorBoundary>}
-    </div>
-
-
-    </>}
-    {vwKapitel==="training" && <>
-    {/* Übungs-Urkunden (aus dem Bereich Darstellung hierher verschoben) */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowUebungsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏅 Übungs-Urkunden</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUebungsUrkunden?"▲":"▼"}</span>
-      </div>
-      {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
-        <UebungsUrkundenEditor showToast={showToast}/>
-      </div></ErrorBoundary>}
-    </div>
-
-    {/* Trainingszeitraum — P4 ausblendbar */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📅 Trainingszeitraum</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingZR?"▲":"▼"}</span>
-      </div>
-      {showTrainingZR&&<div style={{padding:"0 14px 14px"}}>
-      <div style={{height:0}}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-        <div>
-          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Start Training</label>
-          <input type="date" value={trainingRange.start||""} min="2026-01-01" max="2026-12-31"
-            onChange={e=>setTrainingRange(p=>({...p,start:e.target.value}))}
-            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-        </div>
-        <div>
-          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Ende Training</label>
-          <input type="date" value={trainingRange.end||""} min="2026-01-01" max="2026-12-31"
-            onChange={e=>setTrainingRange(p=>({...p,end:e.target.value}))}
-            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
-        </div>
-      </div>
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-        Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums.
-      </div>
-      <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
-        {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
-      </button>
-      </div>}
-    </div>
-
-    </>}
-    {vwKapitel==="uploads" && <>
-    {/* Uploads – je Bereich ein eigener aufklappbarer Abschnitt, alphabetisch sortiert */}
-    {(()=>{
-      const inhalt = {
-        artikelfotos:     <ArtikelFotoVerwaltung showToast={showToast}/>,
-        aufstellungen:    <SpielplanUpload abschnitt="aufstellungen" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        ehrungen:         (isSuperAdmin ? <EhrungenImport players={players} showToast={showToast}/> : <div style={{fontSize:11,color:"var(--text4)"}}>Nur für Super-Admins.</div>),
-        mannschaftsfotos: <MannschaftsfotosUpload showToast={showToast}/>,
-        personen:         <div>
-<div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>👥 Personen Export / Import</div>
-          <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-            Exportiert alle Personen mit allen Feldern als Excel. Beim Import werden bestehende
-            Personen (Vorname + Nachname) angereichert, neue Personen angelegt. Leere Zellen
-            überschreiben nichts.
-          </div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            <button onClick={handlePersonExport} style={{flex:1,minWidth:140,padding:"9px 12px",
-              background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",
-              fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              📊 Personen exportieren
-            </button>
-            <label style={{flex:1,minWidth:140,padding:"9px 12px",background:"var(--bg3)",
-              border:"2px dashed var(--border2)",borderRadius:9,textAlign:"center",
-              cursor:personImporting?"not-allowed":"pointer",fontSize:12,
-              color:personImporting?"#6b7280":"var(--text3)"}}>
-              {personImporting?"⏳ Importiere...":"📎 Personen importieren"}
-              <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
-                onChange={handlePersonImport} disabled={personImporting}/>
-            </label>
-          </div>
-          {personImportLog&&<div style={{marginTop:10,padding:10,background:"var(--bg)",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
-            <div style={{color:"#10b981",fontWeight:700}}>✅ {personImportLog.updated} aktualisiert · {personImportLog.created} neu angelegt</div>
-            {personImportLog.withLogin>0&&<div style={{marginTop:4,color:"var(--text3)"}}>
-              🔑 {personImportLog.withLogin} davon mit E-Mail → können sich per „Passwort vergessen?" auf der Login-Seite ein Passwort setzen.
-            </div>}
-            {personImportLog.errors.length>0&&<div style={{marginTop:6,color:"#ef4444"}}>
-              {personImportLog.errors.length} Fehler:
-              <ul style={{margin:"4px 0 0 16px",padding:0}}>
-                {personImportLog.errors.slice(0,8).map((er,i)=><li key={i}>{er}</li>)}
-              </ul>
-            </div>}
-          </div>}
-</div>,
-        qttr:             <SpielplanUpload abschnitt="qttr" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        pins:             <SpielplanUpload abschnitt="pins" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        spielerfotos:     <SpielerfotosUpload players={players} showToast={showToast}/>,
-        videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-      };
-      const abschnitte = [
-        {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
-        {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
-        {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
-        {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
-        {k:"personen",         icon:"👥", label:"Personen Export/Import"},
-        {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
-        {k:"pins",             icon:"🔑", label:"Spiel-PINs und Spielcodes"},
-        {k:"spielerfotos",     icon:"🧍", label:"Spielerfotos"},
-        {k:"videos",           icon:"🎬", label:"Übungsvideos"},
-        {k:"beitritte",        icon:"📥", label:"Vereinsbeitritte"},
-        {k:"spielplan",        icon:"📅", label:"Vereinsspielplan"},
-      ].sort((a,b)=>a.label.localeCompare(b.label,"de"));
-      return abschnitte.map(a=>(
-        <div key={a.k} style={{background:"var(--bg2)",border:"1px solid var(--border2)",
-          borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-          <div onClick={()=>setShowUp(p=>({...p,[a.k]:!p[a.k]}))}
-            style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>{a.icon} {a.label}</div>
-            <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUp[a.k]?"▲":"▼"}</span>
-          </div>
-          {showUp[a.k]&&<div style={{padding:"0 14px 14px"}}>{inhalt[a.k]}</div>}
-        </div>
-      ));
-    })()}
-    </>}
-    {vwKapitel==="kommunikation" && <>
-    {/* Halleninfos Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowHalleninfo(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📣 Halleninfos</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showHalleninfo?"▲":"▼"}</span>
-      </div>
-      {showHalleninfo&&<div style={{padding:"0 14px 14px"}}>
-        <HalleninfoVerwaltung showToast={showToast}/>
-      </div>}
-    </div>
-
-    </>}
-    {vwKapitel==="training" && <>
-    {/* Trainingszeiten Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowTrainingszeiten(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🕒 Trainingszeiten</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingszeiten?"▲":"▼"}</span>
-      </div>
-      {showTrainingszeiten&&<div style={{padding:"0 14px 14px"}}>
-        <TrainingszeitenVerwaltung players={players} showToast={showToast}/>
-      </div>}
-    </div>
-
-    </>}
-    {vwKapitel==="wettkampf" && <>
-    {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📜 Turnier-Urkunde</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTurnierUrkunde?"▲":"▼"}</span>
-      </div>
-      {showTurnierUrkunde&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
-        <BrandingEditor showToast={showToast} teil="urkunde"/>
-      </div></ErrorBoundary>}
-    </div>
-
-    {/* Spiellokale Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
-      <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏟️ Spiellokale</div>
-        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showSpiellokale?"▲":"▼"}</span>
-      </div>
-      {showSpiellokale&&<div style={{padding:"0 14px 14px"}}>
-        <SpiellokaleVerwaltung showToast={showToast}/>
-      </div>}
-    </div>
-
-
-    </>}
-
-    {vwKapitel==="personen" && <>
     {/* Kopfzeile des Personen-Kapitels mit Anlegen-Schaltfläche */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
       <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>⚙️ Personen-Verwaltung</div>
@@ -9999,6 +9480,304 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </button>
     </div>}
 
+
+    {/* Hinweis wenn eingeloggter Admin kein Spielerprofil hat */}
+    {(()=>{
+      if (!user) return null;
+      const myP = players.find(p=>p.email?.toLowerCase()===user.email?.toLowerCase());
+      if (myP) return null;
+      // Also suppress if user has admin role in any player (e.g. email mismatch)
+      const hasAdminPlayer = players.find(p=>p.roles?.admin===true);
+      if (hasAdminPlayer) return null;
+
+      // Gibt es einen Eintrag mit ähnlichem Namen aber falscher E-Mail?
+      const trainerEntry = players.find(p=>p.group==="Trainer"&&!p.email);
+
+      return <div style={{background:"#f59e0b22",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>⚠️ Kein Spielerprofil für {user.email}</div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:8}}>
+          Dein Login-Konto hat kein verknüpftes Profil. Du kannst hier direkt ein Profil erstellen — ohne neuen Auth-Account.
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={async()=>{
+            const id = "admin_"+Date.now();
+            await setDoc(doc(db,"players",id),{
+              id, email:user.email,
+              firstName:"Thomas", lastName:"Meilinger",
+              group:"Trainer", status:"aktiv",
+              avatar:"🏓", color:"#10b981",
+              noLogin:false,
+              roles:{player:true, trainer:true, admin:true},
+            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            showToast("Profil angelegt! Seite neu laden.","✅");
+            setTimeout(()=>window.location.reload(),1500);
+          }} style={{padding:"7px 14px",background:"#f59e0b",border:"none",borderRadius:8,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            ✅ Neues Profil anlegen
+          </button>
+          {trainerEntry&&<button onClick={async()=>{
+            await updateDoc(doc(db,"players",trainerEntry.id),{
+              email:user.email,
+              roles:{player:true,trainer:true,admin:true},
+            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            showToast("E-Mail verknüpft! Seite neu laden.","✅");
+            setTimeout(()=>window.location.reload(),1500);
+          }} style={{padding:"7px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            🔗 Mit {trainerEntry.firstName} {trainerEntry.lastName} verknüpfen
+          </button>}
+        </div>
+      </div>;
+    })()}
+
+    {/* Hinweis für Trainer-Gruppe ohne Funktionen */}
+    {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player).map(p=>(
+      <div key={p.id} style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:16}}>ℹ️</span>
+        <div style={{flex:1,fontSize:12,color:"#93c5fd"}}><b>{p.firstName} {p.lastName}</b> — Gruppe „Trainer" aber keine Funktionen gesetzt.</div>
+        <button onClick={()=>setEditPlayer({...p,_originalRacketNr:p.racketType==="TTC"?String(p.racketNr||""):""})} style={{padding:"5px 10px",background:"#3b82f6",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>✏️ Bearbeiten</button>
+      </div>
+    ))}
+
+
+    {/* Doppelprofile erkennen und auflösen. Kriterium: gleiche E-Mail UND gleicher
+        Vor- und Nachname. So werden gewollte Eltern-Logins (gleiche Mail, aber
+        anderer Name als das Kind) NICHT faelschlich als Duplikat angezeigt. */}
+    {(()=>{
+      // Gruppen nach E-Mail + Vorname + Nachname bilden (nur echte Adressen)
+      const proSchluessel={};
+      for(const p of players){
+        const mail=(p.email||"").toLowerCase().trim();
+        if(!mail || mail.endsWith("@ttc-intern.de")) continue;
+        const vn=(p.firstName||"").toLowerCase().trim();
+        const nn=(p.lastName||"").toLowerCase().trim();
+        const key=mail+"|"+vn+"|"+nn;
+        (proSchluessel[key]=proSchluessel[key]||[]).push(p);
+      }
+      const dupletten=Object.entries(proSchluessel).filter(([,arr])=>arr.length>1);
+      if(dupletten.length===0) return null;
+      const gesamtDubletten=dupletten.reduce((s,[,arr])=>s+arr.length,0);
+
+      return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+        <div onClick={()=>setShowDupletten(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>⚠️ Doppelte Profile · {dupletten.length}</div>
+          <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showDupletten?"▲":"▼"}</span>
+        </div>
+        {showDupletten&&<div style={{padding:"0 14px 14px"}}>
+        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:10}}>
+          Für die folgenden Personen gibt es mehrere Profile mit derselben E-Mail-Adresse
+          und demselben Namen. Das führt zu doppelten Einträgen in den Übersichten. Behalte
+          das verknüpfte Profil (mit Login) und entferne die Dublette. Die Bestellung wird
+          dabei, falls nötig, auf das behaltene Profil übernommen.
+        </div>
+        {dupletten.map(([mail,arr])=>{
+          // Das mit Login verknüpfte Profil ist das, dessen ID der Auth-UID entspricht.
+          // Da wir die UID hier nicht kennen, markieren wir das neueste (updatedAt) als
+          // "vermutlich aktiv"; der Admin entscheidet bewusst per Knopf.
+          const sortiert=[...arr].sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+          const kopf=`${sortiert[0].firstName||""} ${sortiert[0].lastName||""}`.trim()+" · "+(sortiert[0].email||"");
+          return <div key={mail} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,padding:10,marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:6}}>{kopf}</div>
+            {sortiert.map((p,idx)=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
+                padding:"6px 8px",background:idx===0?"#10b98111":"transparent",borderRadius:6,marginBottom:4}}>
+                <div style={{fontSize:11,color:"var(--text2)"}}>
+                  <b>{p.firstName} {p.lastName}</b> · {p.group||"—"} · ID {String(p.id).slice(0,8)}…
+                  {idx===0 && <span style={{color:"#10b981",fontWeight:700}}> · neuestes</span>}
+                </div>
+                <button onClick={async()=>{
+                  if(!window.confirm(`Dieses Profil von ${p.firstName} ${p.lastName} (ID ${String(p.id).slice(0,10)}…) wirklich löschen?`)) return;
+                  try{
+                    // Falls das zu löschende Profil eine Bestellung hat und ein anderes
+                    // Profil derselben Mail keine, Bestellung dorthin übernehmen.
+                    const andere=arr.find(x=>x.id!==p.id);
+                    if(andere){
+                      const bDel=await getDoc(doc(db,"bestellungen",p.id));
+                      if(bDel.exists()){
+                        const bKeep=await getDoc(doc(db,"bestellungen",andere.id));
+                        if(!bKeep.exists()){
+                          await setDoc(doc(db,"bestellungen",andere.id),{...bDel.data(),playerId:andere.id});
+                        }
+                        await deleteDoc(doc(db,"bestellungen",p.id));
+                      }
+                    }
+                    await deleteDoc(doc(db,"players",p.id));
+                    showToast("Profil gelöscht","🗑️");
+                  }catch(e){ showToast("Fehler: "+(e?.message||""),"❌"); }
+                }} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",
+                  borderRadius:6,color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                  löschen
+                </button>
+              </div>
+            ))}
+          </div>;
+        })}
+        </div>}
+      </div>;
+    })()}
+
+
+    {/* Einsatz-Benachrichtigungen: Protokoll der Sofort-Alarme, wenn ein Spieler
+        seine Verfügbarkeit von "verfügbar" auf einen anderen Status geändert hat.
+        Zeigt je Empfänger (MF/Admin), ob die Push-Nachricht zugestellt werden konnte. */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,overflow:"hidden"}}>
+      <div onClick={()=>setShowAlarmLog(s=>!s)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>⚠️ Einsatz-Benachrichtigungen</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showAlarmLog?"▲":"▼"}</span>
+      </div>
+      {showAlarmLog&&<div style={{padding:"0 14px 14px"}}>
+        <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:12}}>
+          Protokoll der letzten Sofort-Benachrichtigungen (Spieler hat Verfügbarkeit von
+          „verfügbar“ auf einen anderen Status geändert). Je Empfänger (Mannschaftsführer,
+          Admin) ist erkennbar, ob die Push-Nachricht zugestellt werden konnte
+          (<b style={{color:"#10b981"}}>✅ zugestellt</b>,
+          <b style={{color:"#ef4444"}}> ❌ nicht zugestellt</b>,
+          <b style={{color:"#f59e0b"}}> ⚠️ kein Push-Abo</b>). Die Nachricht in der App
+          (hinter der Glocke) erscheint unabhängig davon.
+        </div>
+        {alarmLogLaedt && <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Lädt…</div>}
+        {!alarmLogLaedt && alarmLog && alarmLog.length===0 &&
+          <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Noch keine Einsatz-Benachrichtigungen protokolliert.</div>}
+        {!alarmLogLaedt && alarmLog && alarmLog.map(a=>{
+          const d = a.ts ? new Date(a.ts) : null;
+          const wann = d ? d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+          return <div key={a.id} style={{background:"var(--bg2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>
+              {a.spielerName} → {STATUS_LABEL_EINSATZ(a.neuerStatus)}
+            </div>
+            <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>
+              {a.mannschaft}{a.gegner?` gegen ${a.gegner}`:""}{a.datum?` · Spiel am ${deDatumApp(a.datum)}`:""}{wann?` · gemeldet ${wann}`:""}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {(a.empfaenger||[]).map((e,i)=>{
+                const farbe = !e.abo ? "#f59e0b" : e.zugestellt ? "#10b981" : "#ef4444";
+                const symbol = !e.abo ? "⚠️" : e.zugestellt ? "✅" : "❌";
+                const bg = !e.abo ? "#f59e0b18" : e.zugestellt ? "#10b98118" : "#ef444418";
+                return <span key={i} style={{fontSize:11,fontWeight:600,color:farbe,background:bg,padding:"3px 9px",borderRadius:20}}>
+                  {symbol} {e.name}
+                </span>;
+              })}
+            </div>
+          </div>;
+        })}
+      </div>}
+    </div>
+
+
+    {/* Login & Passwort */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowP(p=>({...p,login:!p.login}))} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🔑 Login & Passwort</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showP.login?"▲":"▼"}</span>
+      </div>
+      {showP.login&&<div style={{padding:"0 14px 14px"}}>
+    {/* Sammel-Banner: Login-Status ALLER Personen (nicht nur der erkannt-betroffenen) */}
+    {(()=>{
+      const alleAktiv = players.filter(p=>p.status!=="passiv")
+        .sort((a,b)=>{
+          // Kritische zuerst (kein echtes Login), dann alphabetisch
+          const ka=hatKeinEchtesLogin(a)?0:1, kb=hatKeinEchtesLogin(b)?0:1;
+          if(ka!==kb) return ka-kb;
+          return (a.firstName||"").localeCompare(b.firstName||"","de");
+        });
+      if(alleAktiv.length===0) return null;
+      const kritisch = alleAktiv.filter(p=>hatKeinEchtesLogin(p)).length;
+      // Status je Person bestimmen
+      const statusOf=(p)=>{
+        if(p.noLogin) return {txt:"kein Login",farbe:"#ef4444"};
+        if(istKuenstlicheEmail(p.email)) return {txt:"Platzhalter-Adresse",farbe:"#f59e0b"};
+        return {txt:p.email,farbe:"#10b981"};
+      };
+      return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}
+          onClick={()=>setZeigeLoginProbleme(v=>!v)}>
+          <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>
+            🔑 Login-Status ({kritisch} von {alleAktiv.length} ohne echtes Login)
+          </div>
+          <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
+        </div>
+        {zeigeLoginProbleme && <><div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
+          Hier sind <b>alle {alleAktiv.length} aktiven Personen</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
+          „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
+          E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten.
+        </div>
+        {(()=>{
+          const flagFaelle = alleAktiv.filter(p=>p.noLogin===true && !istKuenstlicheEmail(p.email));
+          if(flagFaelle.length===0) return null;
+          return <div style={{marginTop:10,padding:"9px 11px",background:"#10b98112",border:"1px solid #10b98144",borderRadius:9}}>
+            <div style={{fontSize:11,color:"var(--text)",marginBottom:7,lineHeight:1.5}}>
+              ✅ <b>{flagFaelle.length}</b> {flagFaelle.length===1?"Person hat":"Personen haben"} bereits eine echte E-Mail, {flagFaelle.length===1?"wird":"werden"} aber noch als „kein Login" angezeigt (z.B. weil beim Einrichten das Konto schon bestand). Das lässt sich in einem Schritt korrigieren.
+            </div>
+            <button onClick={doFlagReparatur} disabled={flagFixLaeuft} style={{
+              padding:"7px 13px",background:flagFixLaeuft?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
+              border:"none",borderRadius:8,color:flagFixLaeuft?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:flagFixLaeuft?"wait":"pointer"}}>
+              {flagFixLaeuft?"⏳ Korrigiere…":`✅ ${flagFaelle.length} als „mit Login" markieren`}
+            </button>
+          </div>;
+        })()}
+        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+          {alleAktiv.map(p=>{
+            const st=statusOf(p);
+            const krit=hatKeinEchtesLogin(p);
+            return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
+                background:"var(--bg2)",border:`1px solid ${krit?"#f59e0b55":"var(--border)"}`,borderRadius:8,padding:"7px 10px"}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600}}>{p.firstName} {p.lastName}
+                  <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{p.group}</span></div>
+                <div style={{fontSize:10,color:st.farbe,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {krit?"⚠️ ":"✅ "}{st.txt}</div>
+              </div>
+              <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}}
+                style={{flexShrink:0,background:krit?"#f59e0b":"var(--bg3)",border:krit?"none":"1px solid var(--border2)",borderRadius:6,color:krit?"#fff":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>
+                → Login einrichten</button>
+            </div>;
+          })}
+        </div></>}
+      </div>;
+    })()}
+
+
+    {/* Sammel-Reparatur: Login sicherstellen + Passwort-Mail für alle mit echter E-Mail */}
+    {(()=>{
+      const mitEchterMail = players.filter(p=>p.status!=="passiv" && !istKuenstlicheEmail(p.email));
+      if(mitEchterMail.length===0 && !sammelLog) return null;
+      return <div style={{background:"#3b82f610",border:"1px solid #3b82f644",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setZeigeReparatur(v=>!v)}>
+          <div style={{fontSize:13,fontWeight:800,color:"#2563eb"}}>🔧 Passwort-Mail / Login-Reparatur</div>
+          <span style={{fontSize:13,color:"#2563eb"}}>{zeigeReparatur?"▲":"▼"}</span>
+        </div>
+        {zeigeReparatur && <>
+        <div style={{fontSize:11,color:"var(--text2)",margin:"8px 0 10px",lineHeight:1.5}}>
+          Verschickt an alle {mitEchterMail.length} Personen mit hinterlegter echter E-Mail eine Passwort-Mail und stellt
+          sicher, dass ihr Login auf die echte Adresse läuft. Personen, deren Login-Konto noch auf einer Platzhalter-Adresse
+          liegt (z. B. Heiko Schmid), werden dabei automatisch auf ihre echte E-Mail umgestellt — alle Daten bleiben erhalten.
+        </div>
+        <button onClick={doSammelReparatur} disabled={sammelLauft||mitEchterMail.length===0} style={{
+          padding:"9px 16px",background:(sammelLauft||mitEchterMail.length===0)?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",
+          border:"none",borderRadius:8,color:(sammelLauft||mitEchterMail.length===0)?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:sammelLauft?"wait":"pointer"}}>
+          {sammelLauft?"⏳ Läuft…":`🔧 Sammel-Reparatur für ${mitEchterMail.length} ${mitEchterMail.length===1?"Person":"Personen"} starten`}
+        </button>
+        {sammelLog && <div style={{marginTop:10,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,fontSize:11}}>
+          <div style={{fontWeight:700,marginBottom:4}}>Ergebnis</div>
+          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
+          {sammelLog.fehler.length>0 && <div style={{color:"#ef4444",marginTop:4}}>
+            ⚠️ {sammelLog.fehler.length} Fehler:
+            {sammelLog.fehler.map((f,i)=><div key={i} style={{color:"#fca5a5",marginLeft:8}}>• {f.p.firstName} {f.p.lastName}: {f.grund}</div>)}
+          </div>}
+          <button onClick={()=>setSammelLog(null)} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>Schließen</button>
+        </div>}
+        </>}
+      </div>;
+    })()}
+
+      </div>}
+    </div>
+
+    {/* Personenliste */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowP(p=>({...p,liste:!p.liste}))} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>👥 Personenliste</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showP.liste?"▲":"▼"}</span>
+      </div>
+      {showP.liste&&<div style={{padding:"0 14px 14px"}}>
     {/* Players by group */}
     {groupOrder.map(group=>{
       const allGroupPlayers=[...players.filter(p=>(p.group||"Anfänger")===group)]
@@ -10628,7 +10407,263 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         ))}
       </div>;
     })}
+
+      </div>}
+    </div>
+
+    {/* Personenübersicht */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowP(p=>({...p,uebersicht:!p.uebersicht}))} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📋 Personenübersicht</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showP.uebersicht?"▲":"▼"}</span>
+      </div>
+      {showP.uebersicht&&<div style={{padding:"0 14px 14px"}}>
+    {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
+    {isSuperAdmin && <PersonenUebersicht players={players}/>}
+
+
+    {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
+      {joinNotFound.map((n,i)=><div key={i} style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>• {n}</div>)}
+      <button onClick={()=>setJoinNotFound([])} style={{marginTop:6,padding:"3px 8px",background:"transparent",border:"1px solid #ef444466",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>Schließen</button>
+    </div>}
+
+      </div>}
+    </div>
+
     </>}
+    {vwKapitel==="system" && <>
+    {/* App-Design — P4 ausblendbar */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🎨 App-Design</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showAppDesign?"▲":"▼"}</span>
+      </div>
+      {showAppDesign&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+          Grundeinstellung gilt für alle. Persönliche Einstellung hat Vorrang.
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Grundeinstellung für alle Nutzer:</div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {[{mode:"dark",icon:"🌙",label:"Dark Mode"},{mode:"light",icon:"☀️",label:"Light Mode"}].map(opt=>{
+            const isActive = effectiveGlobalTheme===opt.mode;
+            return <button key={opt.mode} onClick={async()=>{
+              setLocalGlobalTheme(opt.mode);
+              await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
+              showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
+            }} style={{
+              flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
+              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+              background:isActive?"#10b98122":"var(--bg3)",
+              color:isActive?"#10b981":"var(--text2)",
+            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+          })}
+        </div>
+        <div style={{fontSize:11,color:"var(--text2)",marginBottom:6,fontWeight:700}}>Deine persönliche Einstellung (hat Vorrang):</div>
+        <div style={{display:"flex",gap:8}}>
+          {[{mode:"dark",icon:"🌙",label:"Dark"},{mode:"light",icon:"☀️",label:"Light"}].map(opt=>{
+            const isActive = userTheme===opt.mode;
+            return <button key={opt.mode} onClick={()=>onSetUserTheme&&onSetUserTheme(opt.mode)} style={{
+              flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+              border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
+              background:isActive?"#10b98122":"var(--bg3)",
+              color:isActive?"#10b981":"var(--text2)",
+            }}>{opt.icon} {opt.label}{isActive?" ✓":""}</button>;
+          })}
+        </div>
+        {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
+          Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
+        </div>}
+        {/* Whitelabel Branding */}
+        <BrandingEditor showToast={showToast} teil="design"/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Unterschriften (Faksimile) — eigener Bereich, standardmäßig zugeklappt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowFaksimile(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>✍️ Unterschriften (Faksimile)</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showFaksimile?"▲":"▼"}</span>
+      </div>
+      {showFaksimile&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <FaksimileEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+
+    </>}
+    {vwKapitel==="training" && <>
+    {/* Übungs-Urkunden (aus dem Bereich Darstellung hierher verschoben) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowUebungsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏅 Übungs-Urkunden</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUebungsUrkunden?"▲":"▼"}</span>
+      </div>
+      {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <UebungsUrkundenEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Trainingszeitraum — P4 ausblendbar */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📅 Trainingszeitraum</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingZR?"▲":"▼"}</span>
+      </div>
+      {showTrainingZR&&<div style={{padding:"0 14px 14px"}}>
+      <div style={{height:0}}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+        <div>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Start Training</label>
+          <input type="date" value={trainingRange.start||""} min="2026-01-01" max="2026-12-31"
+            onChange={e=>setTrainingRange(p=>({...p,start:e.target.value}))}
+            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+        <div>
+          <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Ende Training</label>
+          <input type="date" value={trainingRange.end||""} min="2026-01-01" max="2026-12-31"
+            onChange={e=>setTrainingRange(p=>({...p,end:e.target.value}))}
+            style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
+        Die Teilnahme-Auswertung bezieht sich nur auf Trainingstage innerhalb dieses Zeitraums.
+      </div>
+      <button onClick={saveTrainingRange} disabled={rangeSaving} style={{width:"100%",padding:9,background:rangeSaving?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:rangeSaving?"#6b7280":"#fff",fontSize:13,fontWeight:700,cursor:rangeSaving?"not-allowed":"pointer"}}>
+        {rangeSaving?"Wird gespeichert…":"💾 Zeitraum speichern"}
+      </button>
+      </div>}
+    </div>
+
+    </>}
+    {vwKapitel==="uploads" && <>
+    {/* Uploads – je Bereich ein eigener aufklappbarer Abschnitt, alphabetisch sortiert */}
+    {(()=>{
+      const inhalt = {
+        artikelfotos:     <ArtikelFotoVerwaltung showToast={showToast}/>,
+        aufstellungen:    <SpielplanUpload abschnitt="aufstellungen" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        ehrungen:         (isSuperAdmin ? <EhrungenImport players={players} showToast={showToast}/> : <div style={{fontSize:11,color:"var(--text4)"}}>Nur für Super-Admins.</div>),
+        mannschaftsfotos: <MannschaftsfotosUpload showToast={showToast}/>,
+        personen:         <div>
+<div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>👥 Personen Export / Import</div>
+          <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
+            Exportiert alle Personen mit allen Feldern als Excel. Beim Import werden bestehende
+            Personen (Vorname + Nachname) angereichert, neue Personen angelegt. Leere Zellen
+            überschreiben nichts.
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={handlePersonExport} style={{flex:1,minWidth:140,padding:"9px 12px",
+              background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",
+              fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              📊 Personen exportieren
+            </button>
+            <label style={{flex:1,minWidth:140,padding:"9px 12px",background:"var(--bg3)",
+              border:"2px dashed var(--border2)",borderRadius:9,textAlign:"center",
+              cursor:personImporting?"not-allowed":"pointer",fontSize:12,
+              color:personImporting?"#6b7280":"var(--text3)"}}>
+              {personImporting?"⏳ Importiere...":"📎 Personen importieren"}
+              <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}}
+                onChange={handlePersonImport} disabled={personImporting}/>
+            </label>
+          </div>
+          {personImportLog&&<div style={{marginTop:10,padding:10,background:"var(--bg)",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
+            <div style={{color:"#10b981",fontWeight:700}}>✅ {personImportLog.updated} aktualisiert · {personImportLog.created} neu angelegt</div>
+            {personImportLog.withLogin>0&&<div style={{marginTop:4,color:"var(--text3)"}}>
+              🔑 {personImportLog.withLogin} davon mit E-Mail → können sich per „Passwort vergessen?" auf der Login-Seite ein Passwort setzen.
+            </div>}
+            {personImportLog.errors.length>0&&<div style={{marginTop:6,color:"#ef4444"}}>
+              {personImportLog.errors.length} Fehler:
+              <ul style={{margin:"4px 0 0 16px",padding:0}}>
+                {personImportLog.errors.slice(0,8).map((er,i)=><li key={i}>{er}</li>)}
+              </ul>
+            </div>}
+          </div>}
+</div>,
+        qttr:             <SpielplanUpload abschnitt="qttr" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        pins:             <SpielplanUpload abschnitt="pins" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        spielerfotos:     <SpielerfotosUpload players={players} showToast={showToast}/>,
+        videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+      };
+      const abschnitte = [
+        {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
+        {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
+        {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
+        {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
+        {k:"personen",         icon:"👥", label:"Personen Export/Import"},
+        {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
+        {k:"pins",             icon:"🔑", label:"Spiel-PINs und Spielcodes"},
+        {k:"spielerfotos",     icon:"🧍", label:"Spielerfotos"},
+        {k:"videos",           icon:"🎬", label:"Übungsvideos"},
+        {k:"beitritte",        icon:"📥", label:"Vereinsbeitritte"},
+        {k:"spielplan",        icon:"📅", label:"Vereinsspielplan"},
+      ].sort((a,b)=>a.label.localeCompare(b.label,"de"));
+      return abschnitte.map(a=>(
+        <div key={a.k} style={{background:"var(--bg2)",border:"1px solid var(--border2)",
+          borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+          <div onClick={()=>setShowUp(p=>({...p,[a.k]:!p[a.k]}))}
+            style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>{a.icon} {a.label}</div>
+            <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUp[a.k]?"▲":"▼"}</span>
+          </div>
+          {showUp[a.k]&&<div style={{padding:"0 14px 14px"}}>{inhalt[a.k]}</div>}
+        </div>
+      ));
+    })()}
+    </>}
+    {vwKapitel==="kommunikation" && <>
+    {/* Halleninfos Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowHalleninfo(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📣 Halleninfos</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showHalleninfo?"▲":"▼"}</span>
+      </div>
+      {showHalleninfo&&<div style={{padding:"0 14px 14px"}}>
+        <HalleninfoVerwaltung showToast={showToast}/>
+      </div>}
+    </div>
+
+    </>}
+    {vwKapitel==="training" && <>
+    {/* Trainingszeiten Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowTrainingszeiten(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🕒 Trainingszeiten</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingszeiten?"▲":"▼"}</span>
+      </div>
+      {showTrainingszeiten&&<div style={{padding:"0 14px 14px"}}>
+        <TrainingszeitenVerwaltung players={players} showToast={showToast}/>
+      </div>}
+    </div>
+
+    </>}
+    {vwKapitel==="wettkampf" && <>
+    {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📜 Turnier-Urkunde</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTurnierUrkunde?"▲":"▼"}</span>
+      </div>
+      {showTurnierUrkunde&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <BrandingEditor showToast={showToast} teil="urkunde"/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Spiellokale Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏟️ Spiellokale</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showSpiellokale?"▲":"▼"}</span>
+      </div>
+      {showSpiellokale&&<div style={{padding:"0 14px 14px"}}>
+        <SpiellokaleVerwaltung showToast={showToast}/>
+      </div>}
+    </div>
+
+
+    </>}
+
 
     {vwKapitel==="kommunikation" && <>
     {/* ─── Termin-Verwaltung (ganz unten, analog Personen-Verwaltung) ─── */}
