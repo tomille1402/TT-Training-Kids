@@ -1,4 +1,4 @@
-// === TTC-App · Version 431 · erstellt 05.09.2026 ===
+// === TTC-App · Version 432 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "431";
+const APP_VERSION = "432";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -8530,6 +8530,17 @@ function TtrUpload({ showToast }){
   </div>;
 }
 
+// Kapitel der Verwaltung – Einstieg über Kacheln, danach die zugehörigen
+// Abschnitte (jeweils aufklappbar). Reihenfolge bestimmt die Kachel-Reihenfolge.
+const VW_KAPITEL = [
+  { key:"personen",      icon:"👥", label:"Personen",      sub:"Profile, Logins, Ehrungen" },
+  { key:"training",      icon:"🏓", label:"Training",      sub:"Zeitraum & Trainingszeiten" },
+  { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale" },
+  { key:"kommunikation", icon:"📣", label:"Kommunikation", sub:"Halleninfos, Termine, Push" },
+  { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
+  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"App-Design, Urkunden" },
+];
+
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -8711,6 +8722,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showPushRegeln,setShowPushRegeln]=useState(false); // Push-Regeln section
   const [showDupletten,setShowDupletten]=useState(false);   // Doppelprofile-Abschnitt (standardmäßig zu)
   const [showAlarmLog,setShowAlarmLog]=useState(false);     // Einsatz-Benachrichtigungen (standardmäßig zu)
+  // Kapitel-Einstieg: null = Kachelübersicht, sonst der Schlüssel des offenen Kapitels
+  const [vwKapitel,setVwKapitel]=useState(null);
   const [alarmLog,setAlarmLog]=useState(null);              // null = noch nicht geladen
   const [alarmLogLaedt,setAlarmLogLaedt]=useState(false);
   const [avatarPickerFor,setAvatarPickerFor]=useState(null);
@@ -9346,6 +9359,42 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     </div>
 
+
+    {/* ─── Kapitel-Einstieg (Kacheln) ─────────────────────────────────────── */}
+    {!vwKapitel && <div style={{marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:20}}>⚙️</span>
+        <span style={{fontSize:16,fontWeight:800,color:"var(--text)"}}>Verwaltung</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:10}}>
+        {VW_KAPITEL.map(k=>(
+          <button key={k.key} onClick={()=>{ setVwKapitel(k.key); try{window.scrollTo({top:0,behavior:"auto"});}catch(e){} }}
+            style={{textAlign:"left",background:"var(--bg2)",border:"1px solid var(--border2)",
+              borderLeft:`3px solid ${TTC_ROT}`,borderRadius:12,padding:"13px 12px",cursor:"pointer",
+              display:"flex",flexDirection:"column",gap:3}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:20,width:24,textAlign:"center"}}>{k.icon}</span>
+              <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{k.label}</span>
+            </div>
+            <span style={{fontSize:11,color:"var(--text3)"}}>{k.sub}</span>
+          </button>
+        ))}
+      </div>
+    </div>}
+
+    {/* Kopfzeile innerhalb eines Kapitels mit Zurueck-Schaltflaeche */}
+    {vwKapitel && <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+      <button onClick={()=>{ setVwKapitel(null); try{window.scrollTo({top:0,behavior:"auto"});}catch(e){} }}
+        style={{padding:"7px 11px",background:"var(--bg2)",border:"1px solid var(--border2)",
+          borderRadius:9,color:"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+        ← Übersicht
+      </button>
+      <span style={{fontSize:16,fontWeight:800,color:"var(--text)"}}>
+        {(VW_KAPITEL.find(k=>k.key===vwKapitel)||{}).icon} {(VW_KAPITEL.find(k=>k.key===vwKapitel)||{}).label}
+      </span>
+    </div>}
+
+    {vwKapitel==="personen" && <>
     {/* Einsatz-Benachrichtigungen: Protokoll der Sofort-Alarme, wenn ein Spieler
         seine Verfügbarkeit von "verfügbar" auf einen anderen Status geändert hat.
         Zeigt je Empfänger (MF/Admin), ob die Push-Nachricht zugestellt werden konnte. */}
@@ -9569,11 +9618,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
     {isSuperAdmin && <PersonenUebersicht players={players}/>}
 
-    {/* Ehrungen-Import (myTischtennis-CSV) — nur für Admins */}
-    {isSuperAdmin && <EhrungenImport players={players} showToast={showToast}/>}
-
-    {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
-    <ArtikelFotoVerwaltung showToast={showToast}/>
 
     {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
       <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>⚠️ {joinNotFound.length} Einträge nicht importiert:</div>
@@ -9637,6 +9681,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
     ))}
 
+    </>}
+    {vwKapitel==="system" && <>
     {/* App-Design — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9705,6 +9751,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div></ErrorBoundary>}
     </div>
 
+    </>}
+    {vwKapitel==="training" && <>
     {/* Trainingszeitraum — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9736,6 +9784,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>}
     </div>
 
+    </>}
+    {vwKapitel==="uploads" && <>
     {/* Uploads Abschnitt */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
         <div onClick={()=>setShowUploads(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9786,6 +9836,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>}
     </div>
 
+
+    {/* Ehrungen-Import (myTischtennis-CSV) — nur für Admins */}
+    {isSuperAdmin && <EhrungenImport players={players} showToast={showToast}/>}
+
+    {/* Artikel-Fotos für Bestellungen verwalten (aus dem Bestell-Reiter hierher verschoben) */}
+    <ArtikelFotoVerwaltung showToast={showToast}/>
+    </>}
+    {vwKapitel==="kommunikation" && <>
     {/* Halleninfos Abschnitt */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowHalleninfo(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9797,6 +9855,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>}
     </div>
 
+    </>}
+    {vwKapitel==="training" && <>
     {/* Trainingszeiten Abschnitt */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowTrainingszeiten(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9808,6 +9868,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>}
     </div>
 
+    </>}
+    {vwKapitel==="wettkampf" && <>
     {/* Spiellokale Abschnitt */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
       <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -9820,7 +9882,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>
 
 
+    </>}
 
+    {vwKapitel==="personen" && <>
     {/* Add form */}
     {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
       <div style={{fontSize:14,fontWeight:700,color:"#10b981",marginBottom:14}}>Neue Person anlegen</div>
@@ -10525,7 +10589,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         ))}
       </div>;
     })}
+    </>}
 
+    {vwKapitel==="kommunikation" && <>
     {/* ─── Termin-Verwaltung (ganz unten, analog Personen-Verwaltung) ─── */}
     <div style={{marginTop:18,background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
       <div onClick={()=>setShowTermine(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -10547,6 +10613,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <PushRegelnVerwaltung showToast={showToast}/>
       </div>}
     </div>}
+    </>}
   </div>;
 }
 
