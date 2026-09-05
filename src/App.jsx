@@ -1,4 +1,4 @@
-// === TTC-App · Version 432 · erstellt 05.09.2026 ===
+// === TTC-App · Version 433 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "432";
+const APP_VERSION = "433";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -9420,7 +9420,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           const d = a.ts ? new Date(a.ts) : null;
           const wann = d ? d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
           return <div key={a.id} style={{background:"var(--bg2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-            <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>
               {a.spielerName} → {STATUS_LABEL_EINSATZ(a.neuerStatus)}
             </div>
             <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>
@@ -9684,10 +9684,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
     {vwKapitel==="system" && <>
     {/* App-Design — P4 ausblendbar */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🎨 App-Design</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showAppDesign?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🎨 App-Design</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showAppDesign?"▲":"▼"}</span>
       </div>
       {showAppDesign&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
@@ -9730,10 +9730,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>
 
     {/* Unterschriften (Faksimile) — eigener Bereich, standardmäßig zugeklappt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowFaksimile(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>✍️ Unterschriften (Faksimile)</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showFaksimile?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>✍️ Unterschriften (Faksimile)</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showFaksimile?"▲":"▼"}</span>
       </div>
       {showFaksimile&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <FaksimileEditor showToast={showToast}/>
@@ -9741,10 +9741,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>
 
     {/* Muster Übungs-Urkunden — eigener Bereich, standardmäßig zugeklappt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowUebungsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🏅 Muster Übungs-Urkunden</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showUebungsUrkunden?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏅 Muster Übungs-Urkunden</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showUebungsUrkunden?"▲":"▼"}</span>
       </div>
       {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <UebungsUrkundenEditor showToast={showToast}/>
@@ -9754,10 +9754,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
     {vwKapitel==="training" && <>
     {/* Trainingszeitraum — P4 ausblendbar */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 Trainingszeitraum</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showTrainingZR?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📅 Trainingszeitraum</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingZR?"▲":"▼"}</span>
       </div>
       {showTrainingZR&&<div style={{padding:"0 14px 14px"}}>
       <div style={{height:0}}/>
@@ -9786,13 +9786,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="uploads" && <>
-    {/* Uploads Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
-        <div onClick={()=>setShowUploads(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📤 Uploads</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showUploads?"▲":"▼"}</span>
+    {/* Uploads – im Kapitel direkt aufgeklappt, damit alle Uploads auf einen Blick sichtbar sind */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div style={{padding:"13px 14px 6px"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📤 Uploads</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
+          Spielplan &amp; Spiel-PINs · Personen Export/Import · Mannschaftsfotos · Ehrungen-Import · Artikel-Fotos
+        </div>
       </div>
-      {showUploads&&<div style={{padding:"0 14px 14px"}}>
+      <div style={{padding:"0 14px 14px"}}>
         <SpielplanUpload showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>
 
         {/* Personen Export/Import */}
@@ -9833,7 +9835,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         </div>
         {/* Mannschaftsfotos (saisonabhängig, mit automatischer Verkleinerung) */}
         <MannschaftsfotosUpload showToast={showToast}/>
-      </div>}
+      </div>
     </div>
 
 
@@ -9845,10 +9847,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
     {vwKapitel==="kommunikation" && <>
     {/* Halleninfos Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowHalleninfo(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📣 Halleninfos</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showHalleninfo?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📣 Halleninfos</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showHalleninfo?"▲":"▼"}</span>
       </div>
       {showHalleninfo&&<div style={{padding:"0 14px 14px"}}>
         <HalleninfoVerwaltung showToast={showToast}/>
@@ -9858,10 +9860,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
     {vwKapitel==="training" && <>
     {/* Trainingszeiten Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTrainingszeiten(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🕒 Trainingszeiten</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showTrainingszeiten?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🕒 Trainingszeiten</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingszeiten?"▲":"▼"}</span>
       </div>
       {showTrainingszeiten&&<div style={{padding:"0 14px 14px"}}>
         <TrainingszeitenVerwaltung players={players} showToast={showToast}/>
@@ -9871,10 +9873,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </>}
     {vwKapitel==="wettkampf" && <>
     {/* Spiellokale Abschnitt */}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,marginBottom:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowSpiellokale(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>🏟️ Spiellokale</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showSpiellokale?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏟️ Spiellokale</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showSpiellokale?"▲":"▼"}</span>
       </div>
       {showSpiellokale&&<div style={{padding:"0 14px 14px"}}>
         <SpiellokaleVerwaltung showToast={showToast}/>
@@ -10461,7 +10463,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 return <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:14}}>
                   <div onClick={()=>setShowT(p=>!p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",marginBottom:showT?10:0}}>
                     <div style={{fontSize:12,color:"var(--text2)",fontWeight:600}}>🏆 Turniererfolge</div>
-                    <span style={{fontSize:11,color:"var(--text4)"}}>{showT?"▲":"▼ einblenden"}</span>
+                    <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showT?"▲":"▼ einblenden"}</span>
                   </div>
                   {showT&&<>
                   {sortedT.map((t,sortedIdx)=>{
@@ -10543,7 +10545,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 return <div style={{background:"var(--bg2)",border:"1px solid #f59e0b33",borderRadius:11,padding:"10px 12px",marginBottom:10}}>
                   <div onClick={()=>setShowEhr(p=>!p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#f59e0b"}}>🏅 Ehrungen</div>
-                    <span style={{fontSize:11,color:"var(--text4)"}}>{showEhr?"▲":"▼ einblenden"}</span>
+                    <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showEhr?"▲":"▼ einblenden"}</span>
                   </div>
                   {showEhr&&<div style={{marginTop:8}}>
                     <EhrungenAdminSection playerId={editPlayer.id} initialEhrungen={editPlayer.ehrungen||[]} showToast={showToast}/>
@@ -10595,8 +10597,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {/* ─── Termin-Verwaltung (ganz unten, analog Personen-Verwaltung) ─── */}
     <div style={{marginTop:18,background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
       <div onClick={()=>setShowTermine(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>📌 Termin-Verwaltung · Vereins-Termine</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showTermine?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📌 Termin-Verwaltung · Vereins-Termine</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTermine?"▲":"▼"}</span>
       </div>
       {showTermine&&<div style={{padding:"0 14px 16px"}}>
         <TerminVerwaltung showToast={showToast}/>
@@ -10606,8 +10608,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {/* ─── Push-Regeln (Benachrichtigungen vor Terminen) ─── */}
     {isSuperAdmin && <div style={{marginTop:18,background:"var(--bg2)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden"}}>
       <div onClick={()=>setShowPushRegeln(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>🔔 Push-Regeln · Erinnerungen vor Terminen</div>
-        <span style={{fontSize:11,color:"var(--text4)"}}>{showPushRegeln?"▲":"▼"}</span>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🔔 Push-Regeln · Erinnerungen vor Terminen</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showPushRegeln?"▲":"▼"}</span>
       </div>
       {showPushRegeln&&<div style={{padding:"0 14px 16px"}}>
         <PushRegelnVerwaltung showToast={showToast}/>
