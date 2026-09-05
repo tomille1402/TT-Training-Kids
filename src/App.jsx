@@ -1,4 +1,4 @@
-// === TTC-App · Version 430 · erstellt 05.09.2026 ===
+// === TTC-App · Version 431 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "430";
+const APP_VERSION = "431";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14589,10 +14589,11 @@ function parseSpielpinZeilen(zeilen){
     let rest=zt.slice(dm.index+dm[0].length, pm.index).trim();
     // führende Uhrzeit + Hallennummer entfernen
     rest=rest.replace(/^\d{1,2}:\d{2}\s*\d*\s*/,"").trim();
-    // Unseren Verein samt Mannschaftszusatz (z.B. „TTC Niederzeuzheim (M15)") entfernen –
-    // übrig bleibt der Gegner. Wichtig: Der Zusatz muss mit weg, sonst würde bei
-    // Auswärtsspielen fälschlich nur „(M15)" als Gegner erkannt.
-    let gegner=rest.replace(/TTC\s+Niederzeuzheim(\s*\([^)]*\))?/i," ").replace(/\s+/g," ").trim();
+    // Unseren Verein samt Mannschaftszusatz entfernen – übrig bleibt der Gegner.
+    // Der Zusatz steht je nach Altersklasse in Klammern („TTC Niederzeuzheim (M15)")
+    // oder als römische Ziffer („TTC Niederzeuzheim VI"). Beides muss mit entfernt
+    // werden, sonst bliebe ein Rest am Gegnernamen hängen.
+    let gegner=rest.replace(/TTC\s+Niederzeuzheim(\s*\([^)]*\)|\s+[IVX]{1,5}\b)?/i," ").replace(/\s+/g," ").trim();
     if(!gegner) gegner=rest.replace(/\s+/g," ").trim();
     ergebnis.push({datum, gegner, pin});
   }
