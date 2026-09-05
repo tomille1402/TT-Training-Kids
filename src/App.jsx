@@ -1,4 +1,4 @@
-// === TTC-App · Version 426 · erstellt 05.09.2026 ===
+// === TTC-App · Version 428 · erstellt 05.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "426";
+const APP_VERSION = "428";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14621,6 +14621,72 @@ const FOTO_MAX_KANTE = 900;      // Pixel – größere Fotos werden proportiona
 const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
 
 
+
+// ─── SPIEL-PINS / SPIELCODES BEI VERLEGUNG MITZIEHEN ─────────────────────────
+// PINs und Spielcodes sind je Mannschaft unter dem SPIELDATUM abgelegt
+// ({saison:{mannschaft:{datum:{pin|code,gegner}}}}). Wird ein Spiel verlegt, aendert
+// sich beim naechsten Spielplan-Import das Datum – der alte Schluessel zeigt dann ins
+// Leere und die PIN waere "verschwunden". Da bei jedem Eintrag der Gegner mitgespeichert
+// ist, laesst sich der Eintrag zuverlaessig auf das neue Datum umziehen.
+// Es werden ausschliesslich Datums-Schluessel verschoben – vorhandene PINs/Codes
+// bleiben inhaltlich unveraendert und werden nie ueberschrieben.
+function normGegnerKurz(s){
+  return String(s||"").toLowerCase()
+    .replace(/\s+(i{1,3}|iv|v|vi{0,3}|ix|x)\s*$/,"")
+    .replace(/\b\d{4}\b/g,"")
+    .replace(/[.\-\/]/g," ")
+    .replace(/\u00e4/g,"a").replace(/\u00f6/g,"o").replace(/\u00fc/g,"u").replace(/\u00df/g,"ss")
+    .replace(/\s+/g,"").trim();
+}
+// Mannschaftsnamen, unter denen ein Eintrag abgelegt sein kann ("Erwachsene III" bzw. "Herren 3").
+function mannschaftAliasse(teamName){
+  const out=new Set([teamName]);
+  const auf = SPIELPLAN_TO_AUFSTELLUNG[teamName];
+  if(auf) out.add(auf);
+  const sp = AUFSTELLUNG_TO_SPIELPLAN[normAufName(teamName)];
+  if(sp) out.add(sp);
+  return [...out].filter(Boolean);
+}
+// Zieht Datums-Schluessel eines Ablage-Objekts auf die neuen Spieltermine um.
+// quelle: { [saison]: { [mannschaft]: { [datum]: {..., gegner} } } }
+// Rueckgabe: { geaendert:boolean, daten:object, anzahl:number }
+function migriereNachVerlegung(quelle, spiele){
+  const daten = JSON.parse(JSON.stringify(quelle||{}));
+  let anzahl = 0;
+  for(const saison of Object.keys(daten)){
+    const proSaison = daten[saison];
+    if(!proSaison || typeof proSaison!=="object") continue;
+    for(const teamName of Object.keys(proSaison)){
+      const eintraege = proSaison[teamName];
+      if(!eintraege || typeof eintraege!=="object") continue;
+      const aliasse = mannschaftAliasse(teamName);
+      // Spiele dieser Mannschaft im neuen Spielplan
+      const teamSpiele = (spiele||[]).filter(s=>aliasse.some(a=>
+        normAufName(a)===normAufName(s.mannschaft) || a===s.mannschaft));
+      if(teamSpiele.length===0) continue;
+      const belegteDaten = new Set(Object.keys(eintraege));
+      for(const datum of Object.keys(eintraege)){
+        const e = eintraege[datum];
+        if(!e || typeof e!=="object") continue;
+        // Termin unveraendert vorhanden? Dann nichts tun.
+        if(teamSpiele.some(s=>s.datum===datum)) continue;
+        const g = normGegnerKurz(e.gegner);
+        if(!g) continue;
+        // Spiel gegen denselben Gegner an einem anderen (noch freien) Termin suchen
+        const treffer = teamSpiele.filter(s=>normGegnerKurz(s.gegner)===g && !belegteDaten.has(s.datum));
+        if(treffer.length!==1) continue;   // nur bei eindeutiger Zuordnung umziehen
+        const neuesDatum = treffer[0].datum;
+        eintraege[neuesDatum] = e;
+        delete eintraege[datum];
+        belegteDaten.delete(datum);
+        belegteDaten.add(neuesDatum);
+        anzahl++;
+      }
+    }
+  }
+  return { geaendert: anzahl>0, daten, anzahl };
+}
+
 // ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
 // Spielstaetten der Vereine im Kreis Limburg-Weilburg. Die Stammdaten unten sind
 // aus dem Vereinsspielplan vorbelegt und koennen in der Verwaltung gepflegt und
@@ -16572,6 +16638,13 @@ function fahrerKandidaten(selTeam, players, aufSpieler){
       if(v||n) namen.add(`${v} ${n}`.trim());
     }
   }
+  // Zusätzlich alle Personen der Gruppe „Trainer" (nicht passiv) als Fahrer anbieten.
+  for(const p of (players||[])){
+    if(p.status==="passiv") continue;
+    if(p.group!=="Trainer") continue;
+    const label=`${(p.firstName||"").trim()} ${(p.lastName||"").trim()}`.trim();
+    if(label) namen.add(label);
+  }
   return [...namen].sort((a,b)=>a.localeCompare(b,"de"));
 }
 
@@ -16933,7 +17006,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
           <div style={{display:"flex",gap:8}}>
             {feld("_fahrer",cur._fahrer,fahrerListe,"Fahrer …")}
           </div>
-          {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Keine Eltern-Namen hinterlegt.</div>}
+          {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Keine Eltern- oder Trainer-Namen hinterlegt.</div>}
         </div>}
       </div>
     </div>;
@@ -19575,6 +19648,21 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting}) {
               }
               if(umgestellt>0) showToast(`${umgestellt} Verlegung(en) als „erfolgt" markiert`,"✅");
             }catch(e){ /* Abgleich ist optional; Upload läuft weiter */ }
+            // Spiel-PINs und Spielcodes verlegter Spiele auf den neuen Termin umziehen,
+            // damit sie nach der Verlegung erhalten bleiben (es werden keine neuen PINs vergeben).
+            try{
+              let verschoben=0;
+              for(const cfg of ["spielpins","spielcodes"]){
+                const snapP=await getDoc(doc(db,"config",cfg));
+                if(!snapP.exists()) continue;
+                const res=migriereNachVerlegung(snapP.data(), spiele);
+                if(res.geaendert){
+                  await setDoc(doc(db,"config",cfg), res.daten);
+                  verschoben+=res.anzahl;
+                }
+              }
+              if(verschoben>0) showToast(`${verschoben} Spiel-PIN/Spielcode auf neuen Termin übernommen`,"🔑");
+            }catch(e){ /* optional; Upload läuft weiter */ }
             await setDoc(doc(db,"config",key),{spiele,saison,lastUpdated:ts});
             showToast(`${saison}: ${spiele.length} Spiele importiert`,"📅");
             reloadSpielpläne();
