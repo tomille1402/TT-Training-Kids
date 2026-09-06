@@ -1,4 +1,4 @@
-// === TTC-App · Version 439 · erstellt 06.09.2026 ===
+// === TTC-App · Version 440 · erstellt 06.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "439";
+const APP_VERSION = "440";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6284,7 +6284,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               istAdmin={isSuperAdmin}/>
             {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
             <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-            <GlobalSucheButton players={players} onNavigate={(k)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:k})); }catch(e){} }}/>
+            <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
         <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
           </div>
         </div>
@@ -12872,7 +12872,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>
           <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-          <GlobalSucheButton players={players} onNavigate={(k)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:k})); }catch(e){} }}/>
+          <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
       </div>
@@ -15090,7 +15090,8 @@ function useSuchNavigation(tabKeys, setActiveTab){
   useEffect(()=>{
     const liste = keys ? keys.split("|") : [];
     const onNav = (e)=>{
-      const ziel = e && e.detail;
+      const d = e && e.detail;
+      const ziel = (d && typeof d==="object") ? d.ziel : d;
       if(!ziel || !liste.includes(ziel)) return;
       setActiveTab(ziel);
       try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(err){}
@@ -15109,6 +15110,8 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
   // in dieser Ansicht vorhandenen Reiter. Nur erreichbare Treffer sind anklickbar.
   const [offen,setOffen]=useState(false);
   const [q,setQ]=useState("");
+  // Beim Verlassen der Suchmaske den Suchbegriff zuruecksetzen
+  const schliessen=()=>{ setOffen(false); setQ(""); };
   const [daten,setDaten]=useState(null);
 
   useEffect(()=>{
@@ -15163,7 +15166,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
     }
     for(const h of (d.halleninfos||[])){
       if(hat(h.titel,h.text))
-        out.push({art:"Halleninfo",icon:"📣",ziel:"halleninfo",titel:h.titel||"Halleninfo",zusatz:""});
+        out.push({art:"Halleninfo",icon:"📣",ziel:"halleninfo",id:h.id,titel:h.titel||"Halleninfo",zusatz:""});
     }
     for(const v of (d.lokale||[])){
       for(const l of (v.lokale||[])){
@@ -15184,7 +15187,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
       flexShrink:0,padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
       borderRadius:8,color:"var(--text2)",fontSize:15,cursor:"pointer",lineHeight:1,
     }}>🔍</button>
-    {offen&&<div onClick={()=>setOffen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",
+    {offen&&<div onClick={schliessen} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",
       zIndex:10000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"14px 12px"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:560,background:"var(--bg2)",
         border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
@@ -15193,7 +15196,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
           <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="In der App suchen …"
             style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",
               background:"var(--bg)",color:"var(--text)",fontSize:14}}/>
-          <button onClick={()=>setOffen(false)} style={{flexShrink:0,padding:"7px 10px",background:"var(--bg3)",
+          <button onClick={schliessen} style={{flexShrink:0,padding:"7px 10px",background:"var(--bg3)",
             border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>✕</button>
         </div>
         <div style={{overflowY:"auto",padding:"10px 13px 14px"}}>
@@ -15211,7 +15214,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
                         {treffer.map((t,i)=>{
                           // Anklickbar, wenn der Zielbereich in dieser Ansicht vorhanden ist
                           const erreichbar = !!(onNavigate && t.ziel && (!verfuegbar || verfuegbar.has(t.ziel)));
-                          const springe = ()=>{ if(!erreichbar) return; setOffen(false); onNavigate(t.ziel); };
+                          const springe = ()=>{ if(!erreichbar) return; schliessen(); onNavigate(t.ziel, t.id); };
                           return <div key={i} onClick={springe} title={erreichbar?"Zum Bereich springen":undefined}
                             style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg)",
                             border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:10,
@@ -16200,6 +16203,31 @@ function HalleninfoView() {
     setGelesen(neu);
     speichereHalleninfoGelesen(neu);
   };
+  // Aus der globalen Suche kommend: den gesuchten Beitrag direkt aufklappen,
+  // als gelesen markieren und zu ihm scrollen.
+  const kartenRefs = useRef({});
+  useEffect(()=>{
+    const onNav=(e)=>{
+      const d=e&&e.detail;
+      if(!d||typeof d!=="object"||d.ziel!=="halleninfo"||!d.id) return;
+      setOffen(p=>({...p,[d.id]:true}));
+      setGelesen(g=>{
+        if(g.includes(d.id)) return g;
+        const neu=[...g,d.id]; speichereHalleninfoGelesen(neu); return neu;
+      });
+      setTimeout(()=>{
+        const node=kartenRefs.current[d.id];
+        if(!node) return;
+        try{
+          const y=node.getBoundingClientRect().top+window.pageYOffset-fixedHeaderOffset()-8;
+          window.scrollTo({top:Math.max(0,y),behavior:"smooth"});
+        }catch(err){}
+      },220);
+    };
+    window.addEventListener("ttc-navigate", onNav);
+    return ()=> window.removeEventListener("ttc-navigate", onNav);
+  },[]);
+
   // Auf-/Zuklappen; beim Öffnen gilt die Info als gelesen.
   const toggleOffen = (id)=>{
     setOffen(p=>{ const auf=!p[id]; if(auf) markiereGelesen(id); return {...p,[id]:auf}; });
@@ -16221,8 +16249,8 @@ function HalleninfoView() {
             const fotos = Array.isArray(info.fotos) ? info.fotos : [];
             const istNeu = !gelesen.includes(info.id);
             const istOffen = !!offen[info.id];
-            return <div key={info.id}
-              style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${info.fixiert?"#d97706":TTC_ROT}`}}>
+            return <div key={info.id} ref={el=>{ if(el) kartenRefs.current[info.id]=el; }}
+              style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",borderLeft:`3px solid ${info.fixiert?"#d97706":TTC_ROT}`,scrollMarginTop:110}}>
               {/* Kopfzeile: nur Überschrift (+ Datum), aufklappbar */}
               <div onClick={()=>toggleOffen(info.id)} style={{padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
                 <div style={{flex:1,minWidth:0}}>
@@ -20870,7 +20898,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         </div>
         {!inRSW&&<BirthdayBtn players={players} attendance={{}} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>}
         {!inRSW&&<ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>}
-        {!inRSW&&<GlobalSucheButton players={players} onNavigate={(k)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:k})); }catch(e){} }}/>}
+        {!inRSW&&<GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>}
         {!inRSW&&<button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:14,cursor:"pointer",lineHeight:1,flexShrink:0,
@@ -21104,7 +21132,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF"};
           const label = hasAdminRole ? (KURZ[v]||cfg.label) : cfg.label;
           return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
-            padding:"6px 12px",borderRadius:20,border:`2px solid ${isActive?cfg.color:cfg.color+"44"}`,
+            padding:"6px 8px",borderRadius:20,border:`1px solid ${isActive?cfg.color:cfg.color+"44"}`,
             background:isActive?cfg.color+"22":"transparent",color:isActive?cfg.color:"var(--text3)",
             fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,
           }}>{cfg.icon} {label}</button>;
@@ -21112,7 +21140,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         <div style={{flex:1}}/>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-        <GlobalSucheButton players={players} onNavigate={(k)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:k})); }catch(e){} }}/>
+        <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
         <button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
