@@ -1,4 +1,4 @@
-// === TTC-App · Version 436 · erstellt 05.09.2026 ===
+// === TTC-App · Version 437 · erstellt 06.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "436";
+const APP_VERSION = "437";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6171,7 +6171,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               istAdmin={isSuperAdmin}/>
             {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
             <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-            <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
+            <GlobalSucheButton players={players}/>
+        <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
           </div>
         </div>
       </div>
@@ -8543,10 +8544,10 @@ function TtrUpload({ showToast }){
 const VW_KAPITEL = [
   { key:"personen",      icon:"👥", label:"Personen",      sub:"Profile, Logins, Ehrungen" },
   { key:"training",      icon:"🏓", label:"Training",      sub:"Zeitraum & Trainingszeiten" },
-  { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale" },
+  { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale, Turnier-Urkunde" },
   { key:"kommunikation", icon:"📣", label:"Kommunikation", sub:"Halleninfos, Termine, Push" },
   { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
-  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"App-Design, Urkunden" },
+  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"App-Design, Vereins-Branding" },
 ];
 
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
@@ -8696,6 +8697,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showFaksimile,setShowFaksimile]=useState(false);
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
   const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
+  const [showBranding,setShowBranding]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
 
@@ -9399,10 +9401,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     {vwKapitel==="personen" && <>
     {/* Kopfzeile des Personen-Kapitels mit Anlegen-Schaltfläche */}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
-      <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>⚙️ Personen-Verwaltung</div>
+    <div style={{display:"flex",justifyContent:"flex-start",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
       <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-        {showAdd?"✕ Abbrechen":"+ Neu anlegen"}
+        {showAdd?"✕ Abbrechen":"+ Person neu anlegen"}
       </button>
     </div>
     {/* Add form */}
@@ -10474,7 +10475,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
           Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
         </div>}
-        {/* Whitelabel Branding */}
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Vereins-Branding als eigener Abschnitt */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowBranding(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏛️ Vereins-Branding</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showBranding?"▲":"▼"}</span>
+      </div>
+      {showBranding&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <BrandingEditor showToast={showToast} teil="design"/>
       </div></ErrorBoundary>}
     </div>
@@ -12748,6 +12758,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>
           <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+          <GlobalSucheButton players={players}/>
           <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
         </div>
       </div>
@@ -14954,6 +14965,132 @@ function SpielerfotosUpload({ players=[], showToast }){
       {liste.length===0&&<div style={{fontSize:11,color:"var(--text4)",padding:"6px 0"}}>Keine Treffer.</div>}
     </div>
   </div>;
+}
+
+
+// ─── GLOBALE SUCHE ────────────────────────────────────────────────────────────
+// Lupe in der obersten Menuezeile. Durchsucht Personen, Spiele, Vereinstermine,
+// Halleninfos, Spiellokale und Trainingszeiten. Die Daten werden erst beim
+// Oeffnen geladen, damit der App-Start nicht ausgebremst wird.
+function GlobalSucheButton({ players=[] }){
+  const [offen,setOffen]=useState(false);
+  const [q,setQ]=useState("");
+  const [daten,setDaten]=useState(null);
+
+  useEffect(()=>{
+    if(!offen || daten) return;
+    let ab=false;
+    (async()=>{
+      const d={spiele:[],termine:[],halleninfos:[],lokale:[],zeiten:[]};
+      try{
+        const sp=await getDoc(doc(db,"config","spielplan_2026_2027"));
+        d.spiele=(sp.exists()&&sp.data().spiele)||[];
+      }catch(e){}
+      try{
+        const vt=await getDoc(doc(db,"config","vereinstermine"));
+        d.termine=(vt.exists()&&vt.data().termine)||[];
+      }catch(e){}
+      try{
+        const hi=await getDocs(collection(db,"halleninfos"));
+        d.halleninfos=hi.docs.map(x=>({id:x.id,...x.data()}));
+      }catch(e){}
+      try{
+        const sl=await getDoc(doc(db,"config","spiellokale"));
+        d.lokale=(sl.exists()&&sl.data().vereine)||SPIELLOKALE_SEED;
+      }catch(e){ d.lokale=SPIELLOKALE_SEED; }
+      try{
+        const tz=await getDoc(doc(db,"config","trainingszeiten"));
+        d.zeiten=(tz.exists()&&tz.data().eintraege)||[];
+      }catch(e){}
+      if(!ab) setDaten(d);
+    })();
+    return ()=>{ab=true;};
+  },[offen,daten]);
+
+  const such=q.trim().toLowerCase();
+  const treffer=(()=>{
+    if(such.length<2) return [];
+    const hat=(...felder)=>felder.filter(Boolean).join(" ").toLowerCase().includes(such);
+    const out=[];
+    for(const pl of (players||[])){
+      if(hat(pl.firstName,pl.lastName,pl.group,pl.email))
+        out.push({art:"Person",icon:"👤",titel:`${pl.firstName||""} ${pl.lastName||""}`.trim(),zusatz:pl.group||""});
+    }
+    const d=daten||{};
+    for(const s of (d.spiele||[])){
+      if(hat(s.mannschaft,s.gegner,s.ort,s.datum))
+        out.push({art:"Spiel",icon:"📅",titel:`${s.mannschaft||""} – ${s.gegner||""}`,
+          zusatz:`${(s.datum||"").split("-").reverse().join(".")}${s.uhrzeit?" · "+s.uhrzeit:""}`});
+    }
+    for(const t of (d.termine||[])){
+      if(hat(t.veranstaltung,t.ort,t.rubrik))
+        out.push({art:"Termin",icon:"📌",titel:t.veranstaltung||"Termin",
+          zusatz:`${(t.datumStart||"").split("-").reverse().join(".")}${t.ort?" · "+t.ort:""}`});
+    }
+    for(const h of (d.halleninfos||[])){
+      if(hat(h.titel,h.text))
+        out.push({art:"Halleninfo",icon:"📣",titel:h.titel||"Halleninfo",zusatz:""});
+    }
+    for(const v of (d.lokale||[])){
+      for(const l of (v.lokale||[])){
+        if(hat(v.verein,l.name,l.ort,l.plz,l.strasse))
+          out.push({art:"Spiellokal",icon:"🏟️",titel:`${v.verein} · ${l.name||""}`,zusatz:lokalAdresse(l)});
+      }
+    }
+    for(const z of (d.zeiten||[])){
+      if(hat(z.gruppe,z.tag))
+        out.push({art:"Trainingszeit",icon:"🕒",titel:`${z.gruppe||""} · ${z.tag||""}`,
+          zusatz:[z.zeitVon,z.zeitBis].filter(Boolean).join("–")});
+    }
+    return out.slice(0,60);
+  })();
+
+  return <>
+    <button onClick={()=>setOffen(true)} title="Suchen" style={{
+      flexShrink:0,padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
+      borderRadius:8,color:"var(--text2)",fontSize:15,cursor:"pointer",lineHeight:1,
+    }}>🔍</button>
+    {offen&&<div onClick={()=>setOffen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",
+      zIndex:10000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"14px 12px"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:560,background:"var(--bg2)",
+        border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden",maxHeight:"85vh",display:"flex",flexDirection:"column"}}>
+        <div style={{padding:"12px 13px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid var(--border)"}}>
+          <span style={{fontSize:16}}>🔍</span>
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="In der App suchen …"
+            style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",
+              background:"var(--bg)",color:"var(--text)",fontSize:14}}/>
+          <button onClick={()=>setOffen(false)} style={{flexShrink:0,padding:"7px 10px",background:"var(--bg3)",
+            border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:13,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{overflowY:"auto",padding:"10px 13px 14px"}}>
+          {such.length<2
+            ? <div style={{fontSize:12,color:"var(--text3)",padding:"12px 0"}}>
+                Mindestens zwei Zeichen eingeben. Gesucht wird in Personen, Spielen, Terminen,
+                Halleninfos, Spiellokalen und Trainingszeiten.
+              </div>
+            : (!daten
+                ? <div style={{fontSize:12,color:"var(--text3)",padding:"12px 0"}}>⏳ Lade Daten …</div>
+                : (treffer.length===0
+                    ? <div style={{fontSize:12,color:"var(--text3)",padding:"12px 0"}}>Keine Treffer.</div>
+                    : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <div style={{fontSize:11,color:"var(--text4)",marginBottom:2}}>{treffer.length} Treffer</div>
+                        {treffer.map((t,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg)",
+                            border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:10,padding:"8px 10px"}}>
+                            <span style={{fontSize:16,flexShrink:0}}>{t.icon}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{t.titel}</div>
+                              {t.zusatz&&<div style={{fontSize:11,color:"var(--text3)"}}>{t.zusatz}</div>}
+                            </div>
+                            <span style={{flexShrink:0,fontSize:10,fontWeight:700,color:TTC_ROT,
+                              background:TTC_ROT+"18",borderRadius:5,padding:"2px 7px"}}>{t.art}</span>
+                          </div>
+                        ))}
+                      </div>))}
+        </div>
+      </div>
+    </div>}
+  </>;
 }
 
 // ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
@@ -20592,6 +20729,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
         </div>
         {!inRSW&&<BirthdayBtn players={players} attendance={{}} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>}
         {!inRSW&&<ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>}
+        {!inRSW&&<GlobalSucheButton players={players}/>}
         {!inRSW&&<button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:14,cursor:"pointer",lineHeight:1,flexShrink:0,
@@ -20833,6 +20971,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
         <div style={{flex:1}}/>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+        <GlobalSucheButton players={players}/>
         <button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
