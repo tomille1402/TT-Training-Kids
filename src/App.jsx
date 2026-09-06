@@ -1,4 +1,4 @@
-// === TTC-App · Version 437 · erstellt 06.09.2026 ===
+// === TTC-App · Version 438 · erstellt 06.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "437";
+const APP_VERSION = "438";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -5938,7 +5938,7 @@ const TR_HOME_GRUPPEN = [
 function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const halleninfoNeu = useHalleninfoNeuCount();
   const meinName = (()=>{
-    const p = findLoginPlayer(players, user?.email, false);
+    const p = findLoginPlayer(players, user?.email, true);
     return p?.firstName ? ` ${p.firstName}` : "";
   })();
   const heuteText = (()=>{
@@ -5952,6 +5952,100 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
 
   const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
 
+  // ── Nachwuchsspiele für die Kachel-Startseite (Admins/Trainer sehen sie wie Betreuer) ──
+  const [alleSpiele,setAlleSpiele] = useState([]);
+  const [einsaetze,setEinsaetze] = useState({});
+  const [spielcodes,setSpielcodes] = useState({});
+  const [spielpins,setSpielpins] = useState({});
+  const [mehrOffen,setMehrOffen] = useState(false);   // Liste standardmäßig zugeklappt
+  const spiellokaleListe = useSpiellokale();
+  const { statusVon:verlegStatusVon } = useVerlegungen();
+
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{ try{
+      const snap=await getDoc(doc(db,"config","spielplan_2026_2027"));
+      if(!ab) setAlleSpiele((snap.exists()&&snap.data().spiele)||[]);
+    }catch(e){ if(!ab) setAlleSpiele([]); } })();
+    return ()=>{ab=true;};
+  },[]);
+  useEffect(()=>{
+    const u1=onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+      s=>setEinsaetze(s.exists()?(s.data().data||{}):{}), ()=>setEinsaetze({}));
+    const u2=onSnapshot(doc(db,"config","spielcodes"), s=>setSpielcodes(s.exists()?s.data():{}), ()=>{});
+    const u3=onSnapshot(doc(db,"config","spielpins"),  s=>setSpielpins(s.exists()?s.data():{}),  ()=>{});
+    return ()=>{u1&&u1();u2&&u2();u3&&u3();};
+  },[]);
+
+  const heuteISO = new Date().toLocaleDateString("sv");
+  const nachwuchsSpiele = useMemo(()=> (alleSpiele||[])
+    .filter(s=>s&&s.datum&&s.datum>=heuteISO)
+    .filter(s=>istNachwuchsMannschaft(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft||""))
+    .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
+    [alleSpiele,heuteISO]);
+
+  const spielMetaTR = (s)=>{
+    if(!s) return "";
+    const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
+    const d=m?`${m[3]}.${m[2]}.`:(s.datum||"");
+    const heim=/heim/i.test(s.ort||"");
+    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+  };
+  const teamZuSpielTR = (s)=>{
+    if(!s) return null;
+    const aufName = SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft] || s.mannschaft;
+    return (SEASONS.find(x=>x.current)||SEASONS[0]).teams.find(t=>normAufName(t.name)===normAufName(aufName)) || null;
+  };
+  // Einheitliche Spielkarte (rot = nächstes Spiel, grau = weitere Spiele)
+  const nachwuchsKarte = (s, rot)=>{
+    if(!s) return null;
+    const heim=/heim/i.test(s.ort||"");
+    const code=spielEintragFinden(spielcodes,s,alleSpiele,"code",["2026_27","2026_2027"]);
+    const pin =spielEintragFinden(spielpins, s,alleSpiele,"pin", ["2026_27","2026_2027"]);
+    const berichtUrl = code?`https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`:"";
+    const team=teamZuSpielTR(s);
+    const spielplanUrl = team?teamLinks(team,(SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan:"";
+    const e=einsaetze[spielKeyFromSpiel(s)]||{};
+    const betreuerText=[e._betreuer1,e._betreuer2].filter(Boolean).join(", ");
+    const fahrerText=(!heim?(e._fahrer||""):"");
+    const labelFarbe = rot?"#ffd7dd":"var(--text3)";
+    const titelFarbe = rot?"#fff":"var(--text)";
+    const chip = rot?{background:"#fff",color:"#1a2b4a",border:"none"}
+                    :{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"};
+    return <div key={s.datum+"_"+s.mannschaft+"_"+(s.gegner||"")}
+      style={{background:rot?TTC_ROT:"var(--bg3)",border:rot?"none":"1px solid var(--border2)",
+        borderRadius:14,padding:"14px 15px",marginBottom:10,boxShadow:rot?"0 4px 14px #c8102e33":"none"}}>
+      <div style={{fontSize:12,color:labelFarbe,marginBottom:3,fontWeight:600}}>
+        {rot?"Nächstes Nachwuchsspiel":"Nachwuchsspiel"} · {spielMetaTR(s)}
+      </div>
+      <div style={{fontSize:16,color:titelFarbe,fontWeight:700,lineHeight:1.25}}>
+        {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}
+      </div>
+      {verlegStatusVon(s)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
+        ⚠️ wird verlegt
+      </div>}
+      <SpiellokalHinweis spiel={s} vereine={spiellokaleListe} aufRot={rot}/>
+      {(betreuerText||fahrerText) && <div style={{fontSize:11,color:labelFarbe,marginTop:6,lineHeight:1.4}}>
+        {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
+        {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
+      </div>}
+      <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,marginTop:12}}>
+        {heim&&berichtUrl&&<a href={berichtUrl} target="_blank" rel="noopener noreferrer"
+          style={{display:"inline-flex",alignItems:"center",gap:5,background:rot?"#fff":"var(--bg2)",
+            color:rot?TTC_ROT:"var(--text)",fontSize:12,fontWeight:700,padding:"7px 11px",borderRadius:9,textDecoration:"none"}}>📝 Spielbericht</a>}
+        {spielplanUrl&&<a href={spielplanUrl} target="_blank" rel="noopener noreferrer"
+          title="Mannschaftsspielplan auf myTischtennis.de öffnen"
+          style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:9,padding:"5px 10px",
+            fontSize:12,fontWeight:700,textDecoration:"none",...chip}}>
+          <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18,display:"block"}}/> Spielplan</a>}
+        {pin&&<span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,
+          padding:"7px 10px",borderRadius:9,fontVariantNumeric:"tabular-nums",
+          ...(rot?{background:"#ffffff22",color:"#fff",border:"1px solid #ffffff55"}
+                 :{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"})}}>🔑 PIN {pin}</span>}
+      </div>
+    </div>;
+  };
+
   const gruppen = TR_HOME_GRUPPEN
     .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
     .filter(g => g.items.length>0);
@@ -5962,6 +6056,24 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
       <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{meinName}!</div>
       {heuteText && <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>{heuteText}</div>}
     </div>
+
+    {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
+    {nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
+
+    {/* Aufklappbar: die nächsten fünf Nachwuchsspiele (standardmäßig zu) */}
+    {nachwuchsSpiele.length>0 && <div style={{marginBottom:16}}>
+      <button onClick={()=>setMehrOffen(o=>!o)} style={{width:"100%",textAlign:"left",
+        background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,
+        borderRadius:12,padding:"11px 12px",cursor:"pointer",display:"flex",
+        justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 Nächste Nachwuchsspiele</span>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{mehrOffen?"▲":"▼"}</span>
+      </button>
+      {mehrOffen && <div style={{marginTop:10}}>
+        {nachwuchsSpiele.slice(0,5).map(s=>nachwuchsKarte(s,false))}
+        {nachwuchsSpiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Keine anstehenden Nachwuchsspiele.</div>}
+      </div>}
+    </div>}
 
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
       <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
@@ -21547,7 +21659,12 @@ export default function App() {
     : myPlayerCandidates.length<=1
     ? myPlayerCandidates[0]
     : [...myPlayerCandidates].sort((a,b)=>{
-        // Profile mit Spieler-Rolle bevorzugen, dann nach Rollen-Anzahl, dann aktiv vor passiv
+        // Erwachsenen-Profil bevorzugen: Ist dieselbe E-Mail einem Erwachsenen UND
+        // einem oder mehreren Spielern zugeordnet, gilt der Erwachsene als die
+        // eingeloggte Person (und erscheint so auch in der Kachel-Startseite).
+        const ae=istErwachsenerPlayer(a)?1:0, be=istErwachsenerPlayer(b)?1:0;
+        if(ae!==be) return be-ae;
+        // danach Profile mit Spieler-Rolle, dann nach Rollen-Anzahl, dann aktiv vor passiv
         const ap=a.roles?.player?1:0, bp=b.roles?.player?1:0;
         if(ap!==bp) return bp-ap;
         const rs=roleScore(b)-roleScore(a);
