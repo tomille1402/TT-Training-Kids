@@ -1,4 +1,4 @@
-// === TTC-App · Version 442 · erstellt 07.09.2026 ===
+// === TTC-App · Version 443 · erstellt 07.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "442";
+const APP_VERSION = "443";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -21104,7 +21104,7 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
       borderBottom:"2px solid var(--border2)"
     }}>
       {/* Switch Bar (Funktionen + Abmelden + Theme) */}
-      <div style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+      <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
         {switchBarContent}
       </div>
       {/* Eltern-/Kind-Umschaltleiste — direkt unter der Funktionsleiste, über allen anderen Menüs */}
@@ -21232,6 +21232,8 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     {/* Header-Container — misst seine eigene Höhe */}
     <RSWHeader parentBarContent={parentBar} switchBarContent={
       <>
+        {/* Zeile 1: alle Funktions-Schaltflächen nebeneinander (bei Bedarf seitlich scrollbar) */}
+        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflowX:"auto",width:"100%"}}>
         {availableViews.map(v=>{
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
           // Punkt 4: Für Admins die Rollen-Buttons abkürzen, damit auf dem Handy in der
@@ -21244,6 +21246,9 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,
           }}>{cfg.icon} {label}</button>;
         })}
+        </div>
+        {/* Zeile 2: Benachrichtigungen, Ansicht, Suche, Abmelden und Version */}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap",width:"100%"}}>
         <div style={{flex:1}}/>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
@@ -21256,6 +21261,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           flexShrink:0,padding:"5px 7px",borderRadius:20,border:"1px solid var(--border2)",
           background:"var(--bg3)",color:"var(--text3)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",lineHeight:1,
         }}>V{APP_VERSION}</span>
+        </div>
       </>
     } chipsContent={showChips ? (
       <>
