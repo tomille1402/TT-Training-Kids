@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "443";
-const APP_DATUM   = "14.08.2026";
+const APP_VERSION = "444";
+const APP_DATUM   = "07.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -12170,6 +12170,10 @@ function MeineVerwaltung({me, showToast, group}) {
   const [pushHinweis,setPushHinweis]= useState("");
   const autoVersuchtRef            = useRef(false);
 
+  // ── Datenschutz: Erklaerung als PDF ──
+  const [dsLaeuft,setDsLaeuft] = useState(false);
+  const [dsFehler,setDsFehler] = useState("");
+
   // Aktuellen Zustand ermitteln und – als Voreinstellung – beim ersten Öffnen
   // aktivieren, sofern die Person das nicht ausdrücklich abgeschaltet hat.
   useEffect(()=>{
@@ -12246,6 +12250,18 @@ function MeineVerwaltung({me, showToast, group}) {
       window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||""));
     }
     setSaving(false);
+  }
+
+  // Erklaerung als PDF erzeugen und herunterladen (Text = Zustimmungs-Erklaerung).
+  async function datenschutzPdf(){
+    setDsLaeuft(true); setDsFehler("");
+    try{
+      await datenschutzAlsPdfHerunterladen();
+      notify("Datenschutzerklärung als PDF gespeichert","📄");
+    }catch(e){
+      setDsFehler("Die PDF konnte nicht erstellt werden. Bitte prüfe die Internetverbindung und versuche es erneut.");
+    }
+    setDsLaeuft(false);
   }
 
   const fmtDate=(d)=> d? d.split("-").reverse().join(".") : "—";
@@ -12330,6 +12346,34 @@ function MeineVerwaltung({me, showToast, group}) {
             {pushHinweis}
           </div>}
         </>}
+    </div>
+
+    {/* Datenschutz */}
+    <div style={box}>
+      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>🔒 Datenschutz</div>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={roLabel}>Bestätigt am</div>
+          <div style={{...roVal,marginBottom:0,
+            color:me.datenschutzAccepted?"var(--text)":"var(--text3)"}}>
+            {me.datenschutzAccepted ? fmtDate(me.datenschutzAccepted) : "noch nicht bestätigt"}
+          </div>
+        </div>
+        <button onClick={datenschutzPdf} disabled={dsLaeuft} style={{
+          padding:"9px 13px",borderRadius:9,border:"1px solid var(--border2)",
+          background:"var(--bg3)",color:"var(--text2)",fontSize:12,fontWeight:700,
+          cursor:dsLaeuft?"wait":"pointer"}}>
+          {dsLaeuft?"⏳ Wird erstellt…":"📄 Datenschutzerklärung (PDF)"}
+        </button>
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:10,lineHeight:1.6}}>
+        Das ist die Erklärung, der bei der ersten Anmeldung zugestimmt wurde. Du kannst sie
+        hier jederzeit als PDF-Datei öffnen, speichern oder ausdrucken.
+      </div>
+      {dsFehler && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
+        background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
+        {dsFehler}
+      </div>}
     </div>
 
     {/* Read-only-Bereich */}
@@ -21447,6 +21491,72 @@ const DATENSCHUTZ_TEXT = [
     "Die Nutzung der Trainings-App des TTC Niederzeuzheim setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.",
   ]},
 ];
+
+// jsPDF bei Bedarf nachladen (gleiche Quelle wie bei den Urkunden).
+async function ladeJsPDFLib(){
+  if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+  await new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden."));
+    document.head.appendChild(s);
+  });
+  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfuegbar.");
+  return window.jspdf.jsPDF;
+}
+
+// Erzeugt aus DATENSCHUTZ_TEXT — also aus genau der Erklaerung, der jede Person bei
+// der ersten Anmeldung zustimmen muss — eine echte PDF-Datei und laedt sie herunter.
+// Bewusst nur eine Quelle: aendert sich der Text oben, aendert sich auch die PDF.
+async function datenschutzAlsPdfHerunterladen(){
+  const jsPDF = await ladeJsPDFLib();
+  const pdf = new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const PW=210, PH=297, L=20, R=20, BREITE=PW-L-R;
+  let y=22;
+  const platzPruefen=(h)=>{ if(y+h > PH-18){ pdf.addPage(); y=22; } };
+
+  // Kopf
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(17); pdf.setTextColor(31,78,121);
+  pdf.text("TTC Niederzeuzheim", PW/2, y, {align:"center"}); y+=7;
+  pdf.setFont("helvetica","normal"); pdf.setFontSize(10); pdf.setTextColor(95,95,95);
+  pdf.text("Datenschutzerklärung und Einwilligung zur Nutzung der Trainings-App", PW/2, y, {align:"center"}); y+=5;
+  pdf.text("gemäß DSGVO (EU 2016/679)", PW/2, y, {align:"center"}); y+=4;
+  pdf.setDrawColor(31,78,121); pdf.setLineWidth(0.5); pdf.line(L,y,PW-R,y); y+=8;
+
+  // Kapitel
+  for(const abschnitt of DATENSCHUTZ_TEXT){
+    platzPruefen(16);
+    pdf.setFont("helvetica","bold"); pdf.setFontSize(11.5); pdf.setTextColor(31,78,121);
+    pdf.splitTextToSize(abschnitt.h, BREITE).forEach(z=>{ pdf.text(z, L, y); y+=5.5; });
+    y+=1;
+    pdf.setFont("helvetica","normal"); pdf.setFontSize(9.5); pdf.setTextColor(34,34,34);
+    for(const absatz of abschnitt.t){
+      for(const z of pdf.splitTextToSize(absatz, BREITE)){
+        platzPruefen(6);
+        pdf.text(z, L, y); y+=4.6;
+      }
+      y+=2.5;
+    }
+    y+=2;
+  }
+
+  // Fusszeile mit Seitenzahlen
+  const seiten = pdf.getNumberOfPages();
+  for(let i=1;i<=seiten;i++){
+    pdf.setPage(i);
+    pdf.setFont("helvetica","normal"); pdf.setFontSize(8); pdf.setTextColor(130,130,130);
+    pdf.text(`Seite ${i} von ${seiten}`, PW/2, PH-10, {align:"center"});
+  }
+
+  // Download ueber temporaeren Blob-Link mit target=_blank: die App-Seite wird nicht
+  // ersetzt — wichtig auf Mobilgeraeten, wo sie sonst neu starten wuerde.
+  const url = URL.createObjectURL(pdf.output("blob"));
+  const a = document.createElement("a");
+  a.href=url; a.download="Datenschutzerklaerung_TTC_Niederzeuzheim.pdf";
+  a.target="_blank"; a.rel="noopener noreferrer";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
 
 function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut}) {
   const [saving,setSaving]=useState(false);
