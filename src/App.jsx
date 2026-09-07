@@ -1,4 +1,4 @@
-// === TTC-App · Version 440 · erstellt 06.09.2026 ===
+// === TTC-App · Version 441 · erstellt 07.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "440";
+const APP_VERSION = "441";
 const APP_DATUM   = "14.08.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -4006,7 +4006,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <span style={{fontSize:13,fontWeight:800,color:"#10b981"}}>✅ Konkurrenz abgeschlossen</span>
               <span style={{fontSize:11,color:"var(--text3)",flex:1}}>Ergebnisse sind gesperrt (nur Admin). Platzierungen wurden in die Turniererfolge übertragen.</span>
-              <button type="button" onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"#c8102e",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
+              <button type="button" onClick={()=>turnierberichtOeffnen(konk)} style={{padding:"6px 11px",background:"var(--club)",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>📄 Turnierbericht</button>
               <button type="button" onClick={()=>urkundenOeffnen(konk)} style={{padding:"6px 11px",background:"#1a1a1a",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>🏅 Urkunden (alle)</button>
               <button type="button" onClick={konkurrenzWiederOeffnen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Abschluss aufheben</button>
             </div>
@@ -4030,7 +4030,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                   {liste.map(e=><button type="button" key={e.id} onClick={()=>urkundenOeffnen(konk, e.id)} style={{
                     padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
                     border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text2)"}}>
-                    <span style={{color:"#c8102e",fontWeight:800}}>{e.platz}.</span> {e.label}{istDoppelK?" 📄📄":""}
+                    <span style={{color:"var(--club)",fontWeight:800}}>{e.platz}.</span> {e.label}{istDoppelK?" 📄📄":""}
                   </button>)}
                 </div>
                 {istDoppelK && <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Bei Doppel/Mixed werden je Team zwei Urkunden erzeugt (Spieler 1 / Spieler 2 und umgekehrt).</div>}
@@ -6008,13 +6008,13 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
     const e=einsaetze[spielKeyFromSpiel(s)]||{};
     const betreuerText=[e._betreuer1,e._betreuer2].filter(Boolean).join(", ");
     const fahrerText=(!heim?(e._fahrer||""):"");
-    const labelFarbe = rot?"#ffd7dd":"var(--text3)";
+    const labelFarbe = rot?"var(--club-hell)":"var(--text3)";
     const titelFarbe = rot?"#fff":"var(--text)";
     const chip = rot?{background:"#fff",color:"#1a2b4a",border:"none"}
                     :{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"};
     return <div key={s.datum+"_"+s.mannschaft+"_"+(s.gegner||"")}
       style={{background:rot?TTC_ROT:"var(--bg3)",border:rot?"none":"1px solid var(--border2)",
-        borderRadius:14,padding:"14px 15px",marginBottom:10,boxShadow:rot?"0 4px 14px #c8102e33":"none"}}>
+        borderRadius:14,padding:"14px 15px",marginBottom:10,boxShadow:rot?"var(--club-shadow)":"none"}}>
       <div style={{fontSize:12,color:labelFarbe,marginBottom:3,fontWeight:600}}>
         {rot?"Nächstes Nachwuchsspiel":"Nachwuchsspiel"} · {spielMetaTR(s)}
       </div>
@@ -6052,9 +6052,9 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
 
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
     {/* Hero: Begrüßung (Trainer haben kein eigenes „nächstes Spiel") */}
-    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
+    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow)"}}>
       <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{meinName}!</div>
-      {heuteText && <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>{heuteText}</div>}
+      {heuteText && <div style={{fontSize:12, color:"var(--club-hell)", marginTop:4}}>{heuteText}</div>}
     </div>
 
     {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
@@ -8660,7 +8660,7 @@ const VW_KAPITEL = [
   { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale, Turnier-Urkunde" },
   { key:"kommunikation", icon:"📣", label:"Kommunikation", sub:"Halleninfos, Termine, Push" },
   { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
-  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"App-Design, Vereins-Branding" },
+  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Farbschema, App-Design, Branding" },
 ];
 
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
@@ -8811,6 +8811,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
   const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
   const [showBranding,setShowBranding]=useState(false);
+  const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
 
@@ -10338,7 +10339,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                       {editPlayer[key]&&<button type="button" onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
                       <button type="button" title="Urkunde als PDF erzeugen"
                         onClick={()=>uebungsUrkundePdf(editPlayer, a.label, musterKey, editPlayer[key])}
-                        style={{padding:"4px 9px",background:"#c8102e",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
+                        style={{padding:"4px 9px",background:"var(--club)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
                     </div>;
                   })}
                   <div style={{marginTop:8,borderTop:"1px solid var(--border2)",paddingTop:8}}>
@@ -10588,6 +10589,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         {userTheme&&<div style={{marginTop:8,fontSize:10,color:"var(--text4)"}}>
           Persönliche Einstellung aktiv. Der Theme-Button oben im Menü schaltet um.
         </div>}
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* Farbschema (Whitelabel) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowFarbschema(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🎨 Farbschema</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showFarbschema?"▲":"▼"}</span>
+      </div>
+      {showFarbschema&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <FarbschemaVerwaltung showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
@@ -12677,8 +12689,8 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
     {/* Hero: nächstes eigenes Spiel (falls vorhanden) */}
     {naechstes
-      ? <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
-          <div style={{fontSize:12, color:"#ffd7dd", marginBottom:3, fontWeight:600}}>Dein nächstes Spiel · {spielMeta(naechstes)}</div>
+      ? <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow)"}}>
+          <div style={{fontSize:12, color:"var(--club-hell)", marginBottom:3, fontWeight:600}}>Dein nächstes Spiel · {spielMeta(naechstes)}</div>
           <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
             {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
           </div>
@@ -12686,7 +12698,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
             ⚠️ wird verlegt
           </div>}
           <SpiellokalHinweis spiel={naechstes} vereine={spiellokaleListe} aufRot={true}/>
-          {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"#ffd7dd", marginTop:6, lineHeight:1.4}}>
+          {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"var(--club-hell)", marginTop:6, lineHeight:1.4}}>
             {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
             {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
           </div>}
@@ -12699,9 +12711,9 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
             {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55", fontVariantNumeric:"tabular-nums"}}>🔑 PIN {pin}</span>}
           </div>
         </div>
-      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"0 4px 14px #c8102e33"}}>
+      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow)"}}>
           <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{myPlayer?.firstName?` ${myPlayer.firstName}`:""}!</div>
-          <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell steht kein eigenes Spiel an.</div>
+          <div style={{fontSize:12, color:"var(--club-hell)", marginTop:4}}>Aktuell steht kein eigenes Spiel an.</div>
         </div>}
 
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
@@ -15101,6 +15113,63 @@ function useSuchNavigation(tabKeys, setActiveTab){
   },[keys, setActiveTab]);
 }
 
+
+// ─── FARBSCHEMA (Whitelabel) ─────────────────────────────────────────────────
+// Auswahl der Vereinsfarben. Die Auswahl wird in config/clubConfig gespeichert
+// und wirkt ueber CSS-Variablen auf die gesamte App.
+function FarbschemaVerwaltung({ showToast }){
+  const [aktiv,setAktiv]=useState("rot");
+  const [busy,setBusy]=useState(false);
+
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","clubConfig"),snap=>{
+      setAktiv((snap.exists()&&snap.data().farbschema)||"rot");
+    },()=>{});
+    return u;
+  },[]);
+
+  async function waehle(key){
+    setBusy(true);
+    try{
+      await setDoc(doc(db,"config","clubConfig"),{farbschema:key},{merge:true});
+      setzeFarbschema(key);           // sofort sichtbar
+      setAktiv(key);
+      showToast&&showToast("Farbschema übernommen","🎨");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    finally{ setBusy(false); }
+  }
+
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>
+      Bestimmt die Vereinsfarben der gesamten App – Kacheln, Überschriften, Hinweise
+      und Schaltflächen übernehmen die Auswahl sofort.
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:10}}>
+      {FARBSCHEMATA.map(s=>{
+        const gewaehlt = aktiv===s.key;
+        return <button key={s.key} onClick={()=>waehle(s.key)} disabled={busy}
+          style={{textAlign:"left",background:"var(--bg)",cursor:busy?"not-allowed":"pointer",
+            border:`2px solid ${gewaehlt?s.prim:"var(--border2)"}`,borderRadius:12,padding:10,
+            display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:22,height:22,borderRadius:6,background:s.prim,flexShrink:0,border:"1px solid var(--border)"}}/>
+            <span style={{width:22,height:22,borderRadius:6,background:s.dark,flexShrink:0,border:"1px solid var(--border)"}}/>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{s.label}</span>
+          </div>
+          {/* Kleine Vorschau im Stil der Kacheln */}
+          <div style={{background:s.prim,borderRadius:8,padding:"7px 9px"}}>
+            <div style={{fontSize:10,color:s.hell,fontWeight:700}}>Nächstes Spiel</div>
+            <div style={{fontSize:11,color:"#fff",fontWeight:700}}>Herren 3 gegen …</div>
+          </div>
+          <div style={{fontSize:10,fontWeight:700,color:gewaehlt?s.prim:"var(--text4)"}}>
+            {gewaehlt?"✓ aktiv":"auswählen"}
+          </div>
+        </button>;
+      })}
+    </div>
+  </div>;
+}
+
 // ─── GLOBALE SUCHE ────────────────────────────────────────────────────────────
 // Lupe in der obersten Menuezeile. Durchsucht Personen, Spiele, Vereinstermine,
 // Halleninfos, Spiellokale und Trainingszeiten. Die Daten werden erst beim
@@ -15225,7 +15294,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
                               {t.zusatz&&<div style={{fontSize:11,color:"var(--text3)"}}>{t.zusatz}</div>}
                             </div>
                             <span style={{flexShrink:0,fontSize:10,fontWeight:700,color:TTC_ROT,
-                              background:TTC_ROT+"18",borderRadius:5,padding:"2px 7px"}}>{t.art}</span>
+                              background:"var(--club-18)",borderRadius:5,padding:"2px 7px"}}>{t.art}</span>
                             {erreichbar&&<span style={{flexShrink:0,fontSize:13,color:"var(--text4)"}}>›</span>}
                           </div>;
                         })}
@@ -15847,7 +15916,7 @@ function useSpiellokale(){
 function SpiellokalHinweis({ spiel, vereine, aufRot=false }){
   const lok = findeSpiellokal(vereine, spiel && spiel.heimVerein, spiel && spiel.halleNr);
   if(!lok) return null;
-  const labelFarbe = aufRot ? "#ffd7dd" : "var(--text3)";
+  const labelFarbe = aufRot ? "var(--club-hell)" : "var(--text3)";
   const textFarbe  = aufRot ? "#fff"    : "var(--text)";
   const chip = aufRot
     ? {background:"#ffffff",color:"#1a2b4a",border:"none"}
@@ -15944,7 +16013,7 @@ function SpiellokaleView({ ziel=null }){
               <div style={{display:"flex",flexDirection:"column",gap:9}}>
                 {(v.lokale||[]).map(l=>{
                   const hervor = markiert && ziel.nr && String(l.nr)===String(ziel.nr);
-                  return <div key={l.nr} style={{background:hervor?TTC_ROT+"12":"var(--bg)",border:`1px solid ${hervor?TTC_ROT+"55":"var(--border2)"}`,borderRadius:10,padding:"8px 10px"}}>
+                  return <div key={l.nr} style={{background:hervor?"var(--club-12)":"var(--bg)",border:`1px solid ${hervor?"var(--club-55)":"var(--border2)"}`,borderRadius:10,padding:"8px 10px"}}>
                     <div style={{display:"flex",alignItems:"center",gap:7}}>
                       <span style={{flexShrink:0,background:TTC_ROT,color:"#fff",borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:800}}>{l.nr}</span>
                       <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{l.name||"Spiellokal"}</span>
@@ -16501,7 +16570,7 @@ function TrainingszeitenView({ players=[] }){
               <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,marginBottom:tids.length>0?9:0}}>
                 <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{z.tag||"—"}</span>
                 <span style={{fontSize:13,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>{zeitraum||"—"}</span>
-                <span style={{marginLeft:"auto",background:TTC_ROT+"18",color:TTC_ROT,borderRadius:5,padding:"2px 9px",fontSize:11,fontWeight:700}}>{z.gruppe||"—"}</span>
+                <span style={{marginLeft:"auto",background:"var(--club-18)",color:TTC_ROT,borderRadius:5,padding:"2px 9px",fontSize:11,fontWeight:700}}>{z.gruppe||"—"}</span>
               </div>
               {/* Trainer (mehrere möglich, mit Foto) */}
               {tids.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px"}}>
@@ -19863,7 +19932,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
                 const titel=lok?`${lok.name||"Spiellokal"} · ${lokalAdresse(lok)}`:"Spiellokal";
                 if(!onOpenLokal) return <span title={titel}>{nr}</span>;
                 return <button title={titel} onClick={()=>onOpenLokal(verein,nr)}
-                  style={{background:TTC_ROT+"18",color:TTC_ROT,border:"none",borderRadius:5,
+                  style={{background:"var(--club-18)",color:TTC_ROT,border:"none",borderRadius:5,
                     padding:"2px 8px",fontSize:10,fontWeight:800,cursor:"pointer"}}>{nr}</button>;
               })()}</td>
               <td style={{padding:"5px 6px",fontWeight:700,fontSize:11,color:hasResult?"var(--text)":"var(--text4)"}}>{(()=>{
@@ -20580,8 +20649,41 @@ function EhrungenView({player}) {
 // ─── Vereinsfarben (Rot/Weiß/Schwarz) für die Kachel-Startseite ──────────────
 // myTischtennis.de-Logo (klein, als Data-URL) für den Spielplan-Link auf der Startseite.
 const MYTT_LOGO = "data:image/jpeg;base64,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";
-const TTC_ROT = "#c8102e";
-const TTC_ROT_DUNKEL = "#9c0c24";
+// Vereinsfarbe: laeuft ueber CSS-Variablen, damit sich das gesamte Layout mit
+// einem anderen Farbschema aendert (Whitelabel). Die Variablen setzt setzeFarbschema().
+const TTC_ROT = "var(--club)";
+const TTC_ROT_DUNKEL = "var(--club-dark)";
+const TTC_HELL = "var(--club-hell)";     // helle Schrift auf farbigem Grund
+
+// Auswaehlbare Farbschemata (Verwaltung → Darstellung → Farbschema).
+// prim = Hauptfarbe, dark = dunklere Variante, hell = Schrift auf farbigem Grund.
+const FARBSCHEMATA = [
+  { key:"rot",     label:"Rot / Schwarz",    prim:"var(--club)", dark:"#9c0c24", hell:"var(--club-hell)" },
+  { key:"blau",    label:"Blau / Weiß",      prim:"#1d4ed8", dark:"#1e3a8a", hell:"#dbe6ff" },
+  { key:"gruen",   label:"Grün / Weiß",      prim:"#047857", dark:"#065f46", hell:"#d1fae5" },
+  { key:"schwarz", label:"Schwarz / Gelb",   prim:"#1f2937", dark:"#111827", hell:"#fde68a" },
+  { key:"orange",  label:"Orange / Blau",    prim:"#ea580c", dark:"#c2410c", hell:"#ffe4d1" },
+  { key:"lila",    label:"Lila / Silber",    prim:"#6d28d9", dark:"#5b21b6", hell:"#e9d5ff" },
+];
+// Setzt die Farbvariablen global (inkl. der abgestuften Transparenzen).
+function setzeFarbschema(key){
+  const s = FARBSCHEMATA.find(x=>x.key===key) || FARBSCHEMATA[0];
+  try{
+    const r = document.documentElement.style;
+    r.setProperty("--club", s.prim);
+    r.setProperty("--club-dark", s.dark);
+    r.setProperty("--club-hell", s.hell);
+    r.setProperty("--club-12", s.prim+"12");
+    r.setProperty("--club-18", s.prim+"18");
+    r.setProperty("--club-22", s.prim+"22");
+    r.setProperty("--club-55", s.prim+"55");
+    r.setProperty("--club-shadow", "0 4px 14px "+s.prim+"33");
+  }catch(e){}
+  return s;
+}
+// Standardfarben sofort setzen, damit die App schon vor dem Laden der
+// Vereinskonfiguration korrekt eingefaerbt ist.
+try{ setzeFarbschema("rot"); }catch(e){}
 
 // Thematische Gruppierung der Erwachsene-Bereiche für die Kachel-Startseite.
 // Reihenfolge/Untertitel sind bewusst knapp; die Kacheln springen in die
@@ -20738,8 +20840,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     const rot = variante==="rot";
     const bg = rot ? TTC_ROT : "var(--bg3)";
     const rahmen = rot ? "none" : "1px solid var(--border2)";
-    const schatten = rot ? "0 4px 14px #c8102e33" : "none";
-    const labelFarbe = rot ? "#ffd7dd" : "var(--text3)";
+    const schatten = rot ? "var(--club-shadow)" : "none";
+    const labelFarbe = rot ? "var(--club-hell)" : "var(--text3)";
     const titelFarbe = rot ? "#fff" : "var(--text)";
     const chipBg = rot ? "#fff" : "var(--bg2)";
     const berichtCol = rot ? TTC_ROT : "var(--text)";
@@ -20793,9 +20895,9 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     {/* Kachel 1: eigenes nächstes Spiel (rot) */}
     {naechstes
       ? spielKarte(naechstes, { titelText: meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel", variante:"rot" })
-      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:"0 4px 14px #c8102e33"}}>
+      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:"var(--club-shadow)"}}>
           <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
-          <div style={{fontSize:12, color:"#ffd7dd", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
+          <div style={{fontSize:12, color:"var(--club-hell)", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
         </div>}
 
     {/* Kachel 2: nächste Betreuung eines Nachwuchsspiels (grau/schwarz) */}
@@ -21461,7 +21563,7 @@ export default function App() {
   // dann per Live-Listener nach). Verhindert 20-Sekunden-Hänger bei langsamer Verbindung.
   const [startFallback, setStartFallback] = useState(false);
   const [attendance,   setAttendance]   = useState({});
-  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:""});
+  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:"",farbschema:"rot"});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
@@ -21521,7 +21623,8 @@ export default function App() {
           name:d.name||"TTC Niederzeuzheim",
           subtitle:d.subtitle||"Trainings-App",
           loginFooter:d.loginFooter||"",
-          logo:d.logo||""
+          logo:d.logo||"",
+          farbschema:d.farbschema||"rot"
         });
       }
       setClubConfigLoaded(true);
@@ -21534,13 +21637,17 @@ export default function App() {
           name:d.name||"TTC Niederzeuzheim",
           subtitle:d.subtitle||"Trainings-App",
           loginFooter:d.loginFooter||"",
-          logo:d.logo||""
+          logo:d.logo||"",
+          farbschema:d.farbschema||"rot"
         });
       }
       setClubConfigLoaded(true);
     },()=>{ setClubConfigLoaded(true); });
     return ()=>{ unsub2(); };
   },[]);
+  // Vereinsfarben anwenden (Whitelabel): setzt die CSS-Variablen der gesamten App.
+  useEffect(()=>{ setzeFarbschema(clubConfig.farbschema||"rot"); },[clubConfig.farbschema]);
+
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
       if(snap.exists()) setGlobalTheme(snap.data().mode||"dark");
