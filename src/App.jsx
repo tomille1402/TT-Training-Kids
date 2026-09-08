@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "444";
+const APP_VERSION = "445";
 const APP_DATUM   = "07.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -6355,20 +6355,27 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>}
 
     {/* Tabs — immer fixiert: unter RSWHeader (hideHeader) oder standalone (62px) */}
-    <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
+    <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"62px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
-        const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
+        // Aktiver Reiter durchgehend in der Vereinsfarbe (Farbschema der Verwaltung),
+        // dazu ein leicht getoenter Hintergrund. Der fixierte Home-Reiter braucht einen
+        // deckenden Grund, damit der scrollende Inhalt nicht durchscheint – daher der
+        // Farbschleier als Verlaufsebene ueber var(--bg).
+        const aktiv = activeTab===t.key;
         const istHome = t.key==="home";
         return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
         flexShrink:0,flex:istHome?"0 0 auto":1,padding:"10px 4px",
-        background:istHome?"var(--bg)":"transparent",border:"none",
+        background: istHome
+          ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)")
+          : (aktiv?"var(--club-12)":"transparent"),
+        border:"none",
         ...(istHome?{position:"sticky",left:0,zIndex:2,minWidth:56,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
-        borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
-        color:activeTab===t.key?aktivFarbe:"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
+        borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,
+        color:aktiv?TTC_ROT:"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1}}>
           <span style={{fontSize:15}}>{t.icon}</span>
           <span>{t.label}</span>
@@ -12940,15 +12947,16 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--border)",background:"var(--bg)",
+    <div style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"70px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
-        const aktivFarbe = t.key==="home" ? TTC_ROT : "#10b981";
+        // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
+        const aktiv = activeTab===t.key;
         const istHome = t.key==="home";
-        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"8px 10px",background:istHome?"var(--bg)":"transparent",border:"none",...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,color:activeTab===t.key?aktivFarbe:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"8px 10px",background:istHome?(aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)"):(aktiv?"var(--club-12)":"transparent"),border:"none",...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,color:aktiv?TTC_ROT:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
           <span style={{fontSize:15}}>{t.icon}</span>
           <span>{t.label}</span>
         </button>;
@@ -20707,7 +20715,7 @@ const TTC_HELL = "var(--club-hell, #ffd7dd)";     // helle Schrift auf farbigem 
 // Auswaehlbare Farbschemata (Verwaltung → Darstellung → Farbschema).
 // prim = Hauptfarbe, dark = dunklere Variante, hell = Schrift auf farbigem Grund.
 const FARBSCHEMATA = [
-  { key:"rot",     label:"Rot / Schwarz",    prim:"var(--club, #c8102e)", dark:"#9c0c24", hell:"var(--club-hell, #ffd7dd)" },
+  { key:"rot",     label:"Rot / Schwarz",    prim:"#c8102e", dark:"#9c0c24", hell:"#ffd7dd" },
   { key:"blau",    label:"Blau / Weiß",      prim:"#1d4ed8", dark:"#1e3a8a", hell:"#dbe6ff" },
   { key:"gruen",   label:"Grün / Weiß",      prim:"#047857", dark:"#065f46", hell:"#d1fae5" },
   { key:"schwarz", label:"Schwarz / Gelb",   prim:"#1f2937", dark:"#111827", hell:"#fde68a" },
@@ -20717,16 +20725,21 @@ const FARBSCHEMATA = [
 // Setzt die Farbvariablen global (inkl. der abgestuften Transparenzen).
 function setzeFarbschema(key){
   const s = FARBSCHEMATA.find(x=>x.key===key) || FARBSCHEMATA[0];
+  // Die Transparenzstufen entstehen, indem an einen Hex-Wert zwei Alpha-Ziffern
+  // angehaengt werden (#c8102e + "12"). Das ergibt nur mit einer echten Hex-Farbe
+  // gueltiges CSS – deshalb hier ein Rueckfall auf das Vereinsrot, falls ein Schema
+  // einmal keinen Hex-Wert liefern sollte. Sonst blieben getoente Flaechen leer.
+  const basis = /^#[0-9a-f]{6}$/i.test(s.prim) ? s.prim : "#c8102e";
   try{
     const r = document.documentElement.style;
     r.setProperty("--club", s.prim);
     r.setProperty("--club-dark", s.dark);
     r.setProperty("--club-hell", s.hell);
-    r.setProperty("--club-12", s.prim+"12");
-    r.setProperty("--club-18", s.prim+"18");
-    r.setProperty("--club-22", s.prim+"22");
-    r.setProperty("--club-55", s.prim+"55");
-    r.setProperty("--club-shadow", "0 4px 14px "+s.prim+"33");
+    r.setProperty("--club-12", basis+"12");
+    r.setProperty("--club-18", basis+"18");
+    r.setProperty("--club-22", basis+"22");
+    r.setProperty("--club-55", basis+"55");
+    r.setProperty("--club-shadow", "0 4px 14px "+basis+"33");
   }catch(e){}
   return s;
 }
@@ -21028,17 +21041,22 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     <div style={{position:"fixed",
       top:inRSW?"var(--rsw-height)":"0px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:200,
-      background:"var(--bg2)",borderBottom:"2px solid var(--border2)"}}>
+      background:"var(--bg2)",borderBottom:"2px solid var(--club-22)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=>{
-            const aktivFarbe = t.key==="home" ? TTC_ROT : "#ec4899";
+            // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
+            const aktiv = activeTab===t.key;
             const istHome = t.key==="home";
             return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
-            flexShrink:0,padding:"7px 8px",background:istHome?"var(--bg2)":"transparent",border:"none",
+            flexShrink:0,padding:"7px 8px",
+            background: istHome
+              ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg2)":"var(--bg2)")
+              : (aktiv?"var(--club-12)":"transparent"),
+            border:"none",
             ...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
-            borderBottom:`2px solid ${activeTab===t.key?aktivFarbe:"transparent"}`,
-            color:activeTab===t.key?aktivFarbe:"var(--text3)",
+            borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,
+            color:aktiv?TTC_ROT:"var(--text3)",
             fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
             display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,
           }}>
@@ -21145,7 +21163,7 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
     <div ref={containerRef} style={{
       position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
       width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
-      borderBottom:"2px solid var(--border2)"
+      borderBottom:"2px solid var(--club-22)"
     }}>
       {/* Switch Bar (Funktionen + Abmelden + Theme) */}
       <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
