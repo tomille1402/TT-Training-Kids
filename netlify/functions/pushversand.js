@@ -139,6 +139,21 @@ function deDatum(iso){
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
   return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso||"");
 }
+// Wochentag in Kurzform mit Punkt ("Sa.") zu einem ISO-Datum (JJJJ-MM-TT).
+// Leer, wenn kein auswertbares Datum vorliegt.
+function deWochentagKurz(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
+  if(!m) return "";
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  return ["So.","Mo.","Di.","Mi.","Do.","Fr.","Sa."][d.getUTCDay()];
+}
+// Datum mit vorangestelltem Wochentag: "Sa. 12.09.2026". Ohne auswertbares
+// Datum bleibt es beim unveraenderten Ausgangswert.
+function deDatumMitTag(iso){
+  const wt = deWochentagKurz(iso);
+  const dat = deDatum(iso);
+  return wt ? `${wt} ${dat}` : dat;
+}
 // Deutscher Wochentag zu einem ISO-Datum (JJJJ-MM-TT).
 function deWochentag(iso){
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
@@ -446,7 +461,7 @@ Viel Erfolg 🏓`;
         sendeId: `spiel_${sk}_d${diff}`,
         empfaengerIds: ids,
         titel: `🏓 ${s.mannschaft} – Spiel ${wann}`,
-        text: `${deDatum(s.datum)}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""}${gegen}${ort}`,
+        text: `${deDatumMitTag(s.datum)}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""}${gegen}${ort}`,
         kategorie: "mannschaft",
         url: "/"
       });
@@ -475,7 +490,7 @@ Viel Erfolg 🏓`;
         sendeId: `termin_${datum}_${normName(t.veranstaltung||t.titel||rubrik)}_d${diff}`,
         empfaengerIds: ids,
         titel: `📌 ${t.veranstaltung||t.titel||"Vereinstermin"} ${wann}`,
-        text: `${deDatum(datum)}${uhr}${ort}`,
+        text: `${deDatumMitTag(datum)}${uhr}${ort}`,
         kategorie: "verein",
         url: "/"
       });
@@ -535,7 +550,9 @@ Viel Erfolg 🏓`;
         const alter = heuteD.getUTCFullYear() - bd.getUTCFullYear();
         const name = `${p.firstName||""} ${p.lastName||""}`.trim();
         const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
-        const gebDatum = `${String(bd.getUTCDate()).padStart(2,"0")}.${String(bd.getUTCMonth()+1).padStart(2,"0")}.`;
+        // Wochentag des diesjaehrigen Geburtstags voranstellen: "Sa. 15.09.".
+        const gebWtag = deWochentagKurz(gebDiesesJahr.toISOString().slice(0,10));
+        const gebDatum = `${gebWtag?gebWtag+" ":""}${String(bd.getUTCDate()).padStart(2,"0")}.${String(bd.getUTCMonth()+1).padStart(2,"0")}.`;
 
         // Empfängerkreis + Berechtigte für Alter je nach Gruppe wählen
         const kreis = istErw ? erwKreis : spielerKreis;

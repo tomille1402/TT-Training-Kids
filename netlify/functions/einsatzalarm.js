@@ -104,7 +104,7 @@ exports.handler = async (event) => {
     };
 
     const gegnerTeil = gegner ? ` gegen ${gegner}` : "";
-    const datumTeil  = datum ? ` am ${deDatum(datum)}` : "";
+    const datumTeil  = datum ? ` am ${deDatumMitTag(datum)}` : "";
     const titel = `⚠️ ${spielerName} ist jetzt ${STATUS_TEXT[neuerStatus]||neuerStatus}`;
     const text  = `${mannschaft}${gegnerTeil}${datumTeil}: Status von „verfügbar“ auf „${STATUS_TEXT[neuerStatus]||neuerStatus}“ geändert.`;
     const sendeId = `einsatzalarm_${datum}_${normName(mannschaft)}_${normName(spielerName)}_${Date.now()}`;
@@ -202,4 +202,17 @@ function cors(){
 function deDatum(iso){
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
   return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso||"");
+}
+// Wochentag in Kurzform mit Punkt ("Sa.") zu einem ISO-Datum. Leer ohne Datum.
+function deWochentagKurz(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso||"");
+  if(!m) return "";
+  const d = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  return ["So.","Mo.","Di.","Mi.","Do.","Fr.","Sa."][d.getUTCDay()];
+}
+// Datum mit vorangestelltem Wochentag: "Sa. 12.09.2026".
+function deDatumMitTag(iso){
+  const wt = deWochentagKurz(iso);
+  const dat = deDatum(iso);
+  return wt ? `${wt} ${dat}` : dat;
 }
