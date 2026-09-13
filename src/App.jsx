@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "449";
+const APP_VERSION = "450";
 const APP_DATUM   = "13.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -14526,7 +14526,9 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                       if(!d) return null;
                       const hatZeit = n.ts!=null;
                       const p2=(x)=>String(x).padStart(2,"0");
-                      const datum=`${p2(d.getDate())}.${p2(d.getMonth()+1)}.${d.getFullYear()}`;   // TT.MM.JJJJ
+                      // Wochentag in Kurzform vor das Datum: "Sa. 12.09.2026".
+                      const wt=["So.","Mo.","Di.","Mi.","Do.","Fr.","Sa."][d.getDay()];
+                      const datum=`${wt} ${p2(d.getDate())}.${p2(d.getMonth()+1)}.${d.getFullYear()}`;   // Tt. TT.MM.JJJJ
                       const zeit=hatZeit? `${p2(d.getHours())}:${p2(d.getMinutes())}` : "";          // HH:MM
                       return <div style={{fontSize:11,color:"var(--text4)",marginTop:5}}>
                         🕒 {datum}{zeit?` · ${zeit} h`:""}
