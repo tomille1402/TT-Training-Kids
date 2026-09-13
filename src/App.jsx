@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "445";
-const APP_DATUM   = "07.09.2026";
+const APP_VERSION = "449";
+const APP_DATUM   = "13.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -5937,18 +5937,6 @@ const TR_HOME_GRUPPEN = [
 // verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
 function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const halleninfoNeu = useHalleninfoNeuCount();
-  const meinName = (()=>{
-    const p = findLoginPlayer(players, user?.email, true);
-    return p?.firstName ? ` ${p.firstName}` : "";
-  })();
-  const heuteText = (()=>{
-    try{
-      const d=new Date();
-      const TAGE=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
-      const p=n=>String(n).padStart(2,"0");
-      return `${TAGE[d.getDay()]}, ${p(d.getDate())}.${p(d.getMonth()+1)}.${d.getFullYear()}`;
-    }catch(e){ return ""; }
-  })();
 
   const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
 
@@ -5987,7 +5975,9 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const spielMetaTR = (s)=>{
     if(!s) return "";
     const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
-    const d=m?`${m[3]}.${m[2]}.`:(s.datum||"");
+    // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
+    const wt=wochentagKurz(s.datum||"");
+    const d=m?`${wt?wt+". ":""}${m[3]}.${m[2]}.`:(s.datum||"");
     const heim=/heim/i.test(s.ort||"");
     return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
   };
@@ -6051,12 +6041,6 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
     .filter(g => g.items.length>0);
 
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
-    {/* Hero: Begrüßung (Trainer haben kein eigenes „nächstes Spiel") */}
-    <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
-      <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{meinName}!</div>
-      {heuteText && <div style={{fontSize:12, color:"var(--club-hell, #ffd7dd)", marginTop:4}}>{heuteText}</div>}
-    </div>
-
     {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
     {nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
 
@@ -12715,7 +12699,9 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
   const spielMeta = (s) => {
     if(!s) return "";
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
-    const d = m ? `${m[3]}.${m[2]}.` : (s.datum||"");
+    // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
+    const wt = wochentagKurz(s.datum||"");
+    const d = m ? `${wt?wt+". ":""}${m[3]}.${m[2]}.` : (s.datum||"");
     const heim = /heim/i.test(s.ort||"");
     return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
   };
@@ -12743,9 +12729,9 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
     .filter(g => g.items.length>0);
 
   return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
-    {/* Hero: nächstes eigenes Spiel (falls vorhanden) */}
-    {naechstes
-      ? <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
+    {/* Hero: nächstes eigenes Spiel. Steht keines an, beginnt die Seite direkt mit den Kacheln. */}
+    {naechstes &&
+      <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
           <div style={{fontSize:12, color:"var(--club-hell, #ffd7dd)", marginBottom:3, fontWeight:600}}>Dein nächstes Spiel · {spielMeta(naechstes)}</div>
           <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
             {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}
@@ -12766,10 +12752,6 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
               <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
             {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55", fontVariantNumeric:"tabular-nums"}}>🔑 PIN {pin}</span>}
           </div>
-        </div>
-      : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
-          <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Hallo{myPlayer?.firstName?` ${myPlayer.firstName}`:""}!</div>
-          <div style={{fontSize:12, color:"var(--club-hell, #ffd7dd)", marginTop:4}}>Aktuell steht kein eigenes Spiel an.</div>
         </div>}
 
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
@@ -20345,8 +20327,35 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
               }
               if(verschoben>0) showToast(`${verschoben} Spiel-PIN/Spielcode auf neuen Termin übernommen`,"🔑");
             }catch(e){ /* optional; Upload läuft weiter */ }
+            // Bestehende Ergebnisse erhalten: Der Upload ersetzt das Spielplan-Dokument
+            // vollstaendig. Liefert ein Export fuer ein Spiel kein Ergebnis (z. B. weil er
+            // vor der Ergebnismeldung gezogen wurde), wuerde ein bereits importiertes
+            // Ergebnis verloren gehen. Deshalb werden alte Ergebnisse uebernommen, wo die
+            // neue Datei keines mitbringt. Abgleich ueber Mannschaft + Gegner + Ort + Art,
+            // damit Hin- und Rueckspiel sowie Runde und Pokal auseinandergehalten werden;
+            // das Datum bleibt bewusst aussen vor, weil es sich bei Verlegungen aendert.
+            try{
+              const altSnap=await getDoc(doc(db,"config",key));
+              const alteSpiele=(altSnap.exists()&&altSnap.data().spiele)||[];
+              if(alteSpiele.length){
+                const normG=(x)=>String(x||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");
+                const spielKey=(s)=>`${s.mannschaft}|${normG(s.gegner)}|${s.ort}|${s.art||"Runde"}`;
+                const alteErgebnisse=new Map();
+                for(const a of alteSpiele){
+                  if(a && a.ergebnis && String(a.ergebnis).trim()!=="") alteErgebnisse.set(spielKey(a), a.ergebnis);
+                }
+                let uebernommen=0;
+                for(const s of spiele){
+                  if(s.ergebnis && String(s.ergebnis).trim()!=="") continue;
+                  const alt=alteErgebnisse.get(spielKey(s));
+                  if(alt){ s.ergebnis=alt; uebernommen++; }
+                }
+                if(uebernommen>0) showToast(`${uebernommen} bereits erfasste(s) Ergebnis(se) beibehalten`,"💾");
+              }
+            }catch(e){ /* optional; Upload laeuft weiter */ }
             await setDoc(doc(db,"config",key),{spiele,saison,lastUpdated:ts});
-            showToast(`${saison}: ${spiele.length} Spiele importiert`,"📅");
+            const mitErgebnis=spiele.filter(s=>s.ergebnis&&String(s.ergebnis).trim()!=="").length;
+            showToast(`${saison}: ${spiele.length} Spiele importiert, davon ${mitErgebnis} mit Ergebnis`,"📅");
             reloadSpielpläne();
           } catch(e){showToast("Fehler: "+e.message,"❌");}
           setUploading(false);
@@ -20884,7 +20893,9 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const spielMeta = (s) => {
     if(!s) return "";
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
-    const d = m ? `${m[3]}.${m[2]}.` : (s.datum||"");
+    // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
+    const wt = wochentagKurz(s.datum||"");
+    const d = m ? `${wt?wt+". ":""}${m[3]}.${m[2]}.` : (s.datum||"");
     const heim = /heim/i.test(s.ort||"");
     return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
   };
