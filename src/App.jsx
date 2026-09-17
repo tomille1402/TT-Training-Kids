@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "450";
+const APP_VERSION = "451";
 const APP_DATUM   = "13.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1023,7 +1023,7 @@ function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
 // alle; Spieler/Erwachsene nur für Spiele, an denen sie selbst beteiligt sind.
 
 const TURNIER_NAMEN = ["Vereinsmeisterschaften","Saisonabschluss-Turnier","Brettchenturnier"];
-const TURNIER_ARTEN = ["Gruppen","einfaches KO-System","doppeltes KO-System","gemischt"];
+const TURNIER_ARTEN = ["Gruppen","einfaches KO-System","doppeltes KO-System","gemischt","Schweizer System"];
 // Funktionen (Rollen), für die ein Turnier sichtbar geschaltet werden kann.
 // Standard ist leer = für niemanden sichtbar (außer Admin/Trainer, die immer Zugriff haben).
 const TURNIER_SICHTBAR_ROLLEN = [
@@ -1254,6 +1254,177 @@ function paarungenFuerGruppe(ids){
     arr=[arr[0], arr[n-1], ...arr.slice(1,n-1)]; // erste Position fix, Rest rotiert
   }
   return paare;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCHWEIZER SYSTEM (Turnierart, Vorbild: VR-Cup des HTTV)
+// ═══════════════════════════════════════════════════════════════════════════
+// Jede Runde wird neu ausgelost: Spieler mit gleicher Punktzahl treffen
+// aufeinander, Wiederholungen werden vermieden. Dadurch spielt man mit
+// fortschreitendem Turnier immer wahrscheinlicher gegen aehnlich starke Gegner –
+// unabhaengig von Alter, Geschlecht und Spielstaerke.
+//
+// Besonderheit gegenueber allen anderen Turnierarten: Es duerfen auch Spieler
+// teilnehmen, die NICHT im Spielerstamm des TTC stehen (Gaeste anderer Vereine).
+// Diese werden je Konkurrenz in konk.gaeste gefuehrt und ueber IDs mit dem
+// Praefix "gast::" angesprochen, damit sie ueberall dort funktionieren, wo sonst
+// eine Spieler-ID steht (Paarungen, Ergebnisse, Tabelle).
+
+const SW_GAST_PREFIX = "gast::";
+function istGastId(id){ return typeof id==="string" && id.startsWith(SW_GAST_PREFIX); }
+function istSchweizerKonk(k){ return k?.art==="Schweizer System"; }
+// Gastdatensatz einer Konkurrenz zu einer ID.
+function gastVon(konk, id){ return (konk?.gaeste||[]).find(g=>g.id===id) || null; }
+// Anzeigename eines Gastes: "Vorname Nachname (Verein)".
+function gastName(g, mitVerein=true){
+  if(!g) return "";
+  const nm=`${g.firstName||""} ${g.lastName||""}`.trim();
+  return mitVerein && g.verein ? `${nm} (${g.verein})` : nm;
+}
+
+// Rundenvorschlag: ceil(log2(n)) + 1, mindestens 3, hoechstens n-1.
+// Bei den ueblichen 9 bis 16 Teilnehmern ergibt das 5 Runden — die Turnierdauer
+// bleibt damit wie beim VR-Cup mit rund 3 Stunden gut planbar.
+function swRundenVorschlag(anzahl){
+  const n=Math.max(0, Number(anzahl)||0);
+  if(n<2) return 0;
+  const vorschlag=Math.ceil(Math.log2(n))+1;
+  return Math.max(3, Math.min(vorschlag, n-1));
+}
+
+// Satzbilanz eines Spiels aus der Satzliste: [aSaetze, bSaetze].
+function swSatzBilanz(saetze){
+  let a=0,b=0;
+  for(const s of (saetze||[])){
+    const pa=Number(s?.[0]), pb=Number(s?.[1]);
+    if(s?.[0]===""||s?.[1]===""||s?.[0]==null||s?.[1]==null||Number.isNaN(pa)||Number.isNaN(pb)) continue;
+    if(pa>pb) a++; else if(pb>pa) b++;
+  }
+  return [a,b];
+}
+// Ist ein Spiel entschieden (jemand hat die noetigen Gewinnsaetze)?
+function swEntschieden(sp, gewinnsaetze=3){
+  if(sp?.freilos) return true;
+  const g=Math.max(1, Number(gewinnsaetze)||3);
+  const [a,b]=swSatzBilanz(sp?.saetze);
+  return a>=g || b>=g;
+}
+// Sieger-ID eines Spiels oder null.
+function swSieger(sp, gewinnsaetze=3){
+  if(sp?.freilos) return sp.a||null;
+  if(!swEntschieden(sp,gewinnsaetze)) return null;
+  const [a,b]=swSatzBilanz(sp?.saetze);
+  return a>b ? sp.a : (b>a ? sp.b : null);
+}
+
+// Tabelle des Schweizer Systems.
+// Wertung: 1 Punkt je Sieg (Freilos zaehlt als Sieg, aber ohne Saetze).
+// Reihenfolge: Punkte, dann Buchholz (Summe der Punkte aller Gegner — misst die
+// Staerke des eigenen Weges), dann Satzdifferenz, dann QTTR, zuletzt die ID.
+// Die ID am Ende macht die Platzierung auf allen Geraeten identisch.
+function swTabelle(teilnehmerIds, spiele, gewinnsaetze=3, qttrOf=()=>0){
+  const stat={};
+  for(const id of (teilnehmerIds||[])) stat[id]={id,siege:0,niederlagen:0,punkte:0,satzGew:0,satzVerl:0,gegner:[],freilose:0,gespielt:0};
+  for(const sp of (spiele||[])){
+    if(!sp || !sp.a) continue;
+    if(sp.freilos){
+      if(stat[sp.a]){ stat[sp.a].punkte+=1; stat[sp.a].siege+=1; stat[sp.a].freilose+=1; }
+      continue;
+    }
+    if(!sp.b || !stat[sp.a] || !stat[sp.b]) continue;
+    stat[sp.a].gegner.push(sp.b);
+    stat[sp.b].gegner.push(sp.a);
+    if(!swEntschieden(sp,gewinnsaetze)) continue;
+    const [a,b]=swSatzBilanz(sp.saetze);
+    stat[sp.a].satzGew+=a; stat[sp.a].satzVerl+=b; stat[sp.a].gespielt+=1;
+    stat[sp.b].satzGew+=b; stat[sp.b].satzVerl+=a; stat[sp.b].gespielt+=1;
+    if(a>b){ stat[sp.a].siege++; stat[sp.a].punkte+=1; stat[sp.b].niederlagen++; }
+    else if(b>a){ stat[sp.b].siege++; stat[sp.b].punkte+=1; stat[sp.a].niederlagen++; }
+  }
+  const rows=Object.values(stat);
+  for(const r of rows) r.buchholz=r.gegner.reduce((s,gid)=> s+((stat[gid]?.punkte)||0), 0);
+  const satzDiff=r=>r.satzGew-r.satzVerl;
+  rows.sort((x,y)=>
+      (y.punkte-x.punkte)
+   || (y.buchholz-x.buchholz)
+   || (satzDiff(y)-satzDiff(x))
+   || ((Number(qttrOf(y.id))||0)-(Number(qttrOf(x.id))||0))
+   || String(x.id).localeCompare(String(y.id)));
+  rows.forEach((r,i)=> r.platz=i+1);
+  return rows;
+}
+
+// Schluessel einer Begegnung, richtungsunabhaengig.
+function swPaarKey(a,b){ return [String(a),String(b)].sort().join("|"); }
+
+// Paarungen einer Runde bilden.
+//  runde 1: Setzung nach QTTR (obere gegen untere Haelfte) oder freie Auslosung.
+//  ab Runde 2: nach Tabellenstand, Wiederholungen werden vermieden.
+// Bei ungerader Teilnehmerzahl bekommt der letzte Spieler ohne bisheriges Freilos
+// ein Freilos (zaehlt als Sieg ohne Saetze).
+// Rueckgabe: Liste von Spielen [{runde,a,b,saetze,fixiert}] bzw. Freilos-Eintrag.
+function swRundePaaren(teilnehmerIds, bisherigeSpiele, runde, setzung, gewinnsaetze, qttrOf){
+  const ids=[...(teilnehmerIds||[])];
+  if(ids.length<2) return [];
+  const gespielt=new Set();
+  const freilosGehabt=new Set();
+  for(const sp of (bisherigeSpiele||[])){
+    if(sp?.freilos){ if(sp.a) freilosGehabt.add(sp.a); continue; }
+    if(sp?.a && sp?.b) gespielt.add(swPaarKey(sp.a,sp.b));
+  }
+
+  // Reihenfolge festlegen
+  let liste;
+  if(runde<=1){
+    if(setzung==="Auslosung"){
+      liste=[...ids];
+      for(let i=liste.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [liste[i],liste[j]]=[liste[j],liste[i]]; }
+    } else {
+      liste=[...ids].sort((x,y)=> (Number(qttrOf(y))||0)-(Number(qttrOf(x))||0) || String(x).localeCompare(String(y)));
+    }
+  } else {
+    liste=swTabelle(ids, bisherigeSpiele, gewinnsaetze, qttrOf).map(r=>r.id);
+  }
+
+  // Freilos bei ungerader Anzahl: von unten der erste ohne bisheriges Freilos.
+  const freilosSpiele=[];
+  if(liste.length%2===1){
+    let idx=-1;
+    for(let i=liste.length-1;i>=0;i--){ if(!freilosGehabt.has(liste[i])){ idx=i; break; } }
+    if(idx<0) idx=liste.length-1;
+    const frei=liste[idx];
+    liste=liste.filter(x=>x!==frei);
+    freilosSpiele.push({runde, a:frei, b:null, freilos:true, saetze:[], fixiert:true});
+  }
+
+  // Runde 1 mit QTTR-Setzung: obere Haelfte gegen untere Haelfte (1-9, 2-10, …).
+  if(runde<=1 && setzung!=="Auslosung"){
+    const h=liste.length/2;
+    const oben=liste.slice(0,h), unten=liste.slice(h);
+    const paare=oben.map((a,i)=>({runde, a, b:unten[i], saetze:[], fixiert:false}));
+    return [...paare, ...freilosSpiele];
+  }
+
+  // Sonst: von oben nach unten paaren, Wiederholungen vermeiden (mit Rueckverfolgung).
+  function paaren(rest){
+    if(rest.length===0) return [];
+    const a=rest[0];
+    for(let i=1;i<rest.length;i++){
+      const b=rest[i];
+      if(gespielt.has(swPaarKey(a,b))) continue;
+      const weiter=paaren(rest.filter((_,j)=> j!==0 && j!==i));
+      if(weiter) return [{a,b},...weiter];
+    }
+    return null;
+  }
+  let paare=paaren(liste);
+  // Notfall: Wenn sich keine wiederholungsfreie Paarung mehr bilden laesst (bei
+  // vielen Runden und wenigen Spielern unvermeidlich), der Reihe nach paaren.
+  if(!paare){
+    paare=[];
+    for(let i=0;i+1<liste.length;i+=2) paare.push({a:liste[i], b:liste[i+1]});
+  }
+  return [...paare.map(p=>({runde, a:p.a, b:p.b, saetze:[], fixiert:false})), ...freilosSpiele];
 }
 
 // Wieviele Satz-Eingabefelder sollen sichtbar sein? Abhängig vom Modus (Gewinnsätze g):
@@ -1897,6 +2068,310 @@ function Feld({label,children,klein}){
 const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"};
 
 // ─── Turnier-Detail: Teilnehmer, Gruppen (Drag&Drop), Tabelle, Spiele ───────
+// ─── SCHWEIZER SYSTEM — Oberfläche ────────────────────────────────────────────
+// Gästeverwaltung (Nicht-Vereinsmitglieder), Rundenauslosung, Ergebniseingabe
+// und Tabelle. Bewusst in sich geschlossen, damit die bestehenden Turnierarten
+// (Gruppen/KO/gemischt) unverändert bleiben.
+function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, myPlayer }){
+  const LEER={firstName:"",lastName:"",birthdate:"",verein:"",qttr:""};
+  const [gastForm,setGastForm]=useState(LEER);
+  const [gastFehler,setGastFehler]=useState("");
+  const [gaesteOffen,setGaesteOffen]=useState(true);
+
+  const gaeste      = konk.gaeste||[];
+  const teilnehmer  = konk.teilnehmer||[];
+  const spiele      = konk.swSpiele||[];
+  const gew         = Math.max(1, Number(konk.gewinnsaetze)||3);
+  const setzung     = konk.swSetzung||"QTTR";
+  const vorschlag   = swRundenVorschlag(teilnehmer.length);
+  const runden      = Number(konk.swRunden)||vorschlag;
+  const gespielteRunden = spiele.length ? Math.max(...spiele.map(s=>Number(s.runde)||0)) : 0;
+
+  const nameVon=(id)=>{
+    if(istGastId(id)){ const g=gastVon(konk,id); return g?gastName(g,false):"Gast"; }
+    const p=(players||[]).find(x=>x.id===id);
+    return p?`${p.firstName||""} ${p.lastName||""}`.trim():String(id||"");
+  };
+  const vereinVon=(id)=>{
+    if(istGastId(id)) return gastVon(konk,id)?.verein || "–";
+    return "TTC Niederzeuzheim";
+  };
+  const qttrOf=(id)=>{
+    if(istGastId(id)) return Number(gastVon(konk,id)?.qttr)||0;
+    return Number(qttrVon?.(id))||0;
+  };
+  // Darf diese Person ein Ergebnis eintragen? Admin/Trainer immer, Spieler nur
+  // bei eigenen Spielen. Gäste tragen selbst nichts ein (kein Zugang zur App).
+  const darfErgebnis=(sp)=> darfAlle || (myPlayer && (sp.a===myPlayer.id || sp.b===myPlayer.id));
+
+  // ── Gäste ──────────────────────────────────────────────────────────────────
+  function gastHinzufuegen(){
+    const f={...gastForm};
+    const fehlt=[];
+    if(!f.firstName.trim()) fehlt.push("Vorname");
+    if(!f.lastName.trim())  fehlt.push("Name");
+    if(!f.birthdate)        fehlt.push("Geburtsdatum");
+    if(!f.verein.trim())    fehlt.push("Verein");
+    if(String(f.qttr).trim()==="") fehlt.push("QTTR-Wert");
+    if(fehlt.length){ setGastFehler("Bitte noch ausfüllen: "+fehlt.join(", ")); return; }
+    const qttrZahl=Number(String(f.qttr).replace(/[^\d]/g,""));
+    if(!qttrZahl){ setGastFehler("Der QTTR-Wert muss eine Zahl sein."); return; }
+    const id=`${SW_GAST_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const neu={ id, firstName:f.firstName.trim(), lastName:f.lastName.trim(),
+                birthdate:f.birthdate, verein:f.verein.trim(), qttr:qttrZahl };
+    updKonk({ gaeste:[...gaeste, neu], teilnehmer:[...teilnehmer, id] });
+    setGastForm(LEER); setGastFehler("");
+  }
+  function gastEntfernen(id){
+    if(!isAdmin) return;
+    if(!window.confirm("Diesen Gast aus der Konkurrenz entfernen? Seine Spiele werden gelöscht.")) return;
+    updKonk({
+      gaeste: gaeste.filter(g=>g.id!==id),
+      teilnehmer: teilnehmer.filter(x=>x!==id),
+      swSpiele: spiele.filter(s=> s.a!==id && s.b!==id),
+    });
+  }
+
+  // ── Runden ─────────────────────────────────────────────────────────────────
+  function rundeAuslosen(){
+    if(!isAdmin) return;
+    const naechste=gespielteRunden+1;
+    if(naechste>runden){ return; }
+    const neu=swRundePaaren(teilnehmer, spiele, naechste, setzung, gew, qttrOf);
+    if(!neu.length) return;
+    updKonk({ swSpiele:[...spiele, ...neu], swRunden:runden, swSetzung:setzung });
+  }
+  function letzteRundeVerwerfen(){
+    if(!isAdmin || gespielteRunden<1) return;
+    if(!window.confirm(`Runde ${gespielteRunden} mit allen Ergebnissen verwerfen?`)) return;
+    updKonk({ swSpiele: spiele.filter(s=> Number(s.runde)!==gespielteRunden) });
+  }
+  // Alle Paarungen der laufenden Runde entschieden?
+  const laufendeFertig = gespielteRunden>0 && spiele
+    .filter(s=>Number(s.runde)===gespielteRunden)
+    .every(s=> s.freilos || s.fixiert);
+
+  function setzeSatz(idx, satzIdx, seite, wert){
+    const kopie=spiele.map((s,i)=>{
+      if(i!==idx) return s;
+      const saetze=(s.saetze||[]).map(x=>[...x]);
+      while(saetze.length<=satzIdx) saetze.push(["",""]);
+      saetze[satzIdx][seite]=wert;
+      return {...s, saetze};
+    });
+    updKonk({ swSpiele:kopie });
+  }
+  function setzeBeide(idx, satzIdx, a, b){
+    const kopie=spiele.map((s,i)=>{
+      if(i!==idx) return s;
+      const saetze=(s.saetze||[]).map(x=>[...x]);
+      while(saetze.length<=satzIdx) saetze.push(["",""]);
+      saetze[satzIdx]=[a,b];
+      return {...s, saetze};
+    });
+    updKonk({ swSpiele:kopie });
+  }
+  function toggleFix(idx, wert){
+    updKonk({ swSpiele: spiele.map((s,i)=> i===idx?{...s, fixiert:wert}:s) });
+  }
+
+  const tabelle = swTabelle(teilnehmer, spiele, gew, qttrOf);
+
+  // Regelhinweise des VR-Cups: Teilnehmerzahl und Vereinsanteil.
+  const anzahl=teilnehmer.length;
+  const proVerein={};
+  for(const id of teilnehmer){ const v=vereinVon(id); proVerein[v]=(proVerein[v]||0)+1; }
+  const ueberVertreten=Object.entries(proVerein).filter(([,n])=> anzahl>0 && n/anzahl>=0.5);
+
+  const boxSt={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:13,marginBottom:12};
+  const inpSt={padding:"7px 9px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:12,width:"100%"};
+  const labSt={fontSize:10,color:"var(--text4)",fontWeight:700,marginBottom:3,display:"block"};
+
+  return <div>
+    {/* Kurzinfo zur Turnierart */}
+    <div style={{...boxSt,borderLeft:`3px solid ${TTC_ROT}`}}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:6}}>🇨🇭 Schweizer System</div>
+      <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65}}>
+        Jede Runde wird neu ausgelost: Wer gleich viele Siege hat, spielt gegeneinander.
+        So trifft man mit fortschreitendem Turnier immer wahrscheinlicher auf ähnlich starke
+        Gegner – unabhängig von Alter, Geschlecht und Spielstärke. Teilnehmen können auch
+        Spieler anderer Vereine; sie werden unten als Gäste erfasst.
+      </div>
+      {(anzahl>0 && (anzahl<9||anzahl>16)) && <div style={{fontSize:11,color:"#f59e0b",marginTop:8}}>
+        Hinweis: Beim VR-Cup sind 9 bis 16 Teilnehmer vorgesehen – aktuell sind es {anzahl}.
+      </div>}
+      {ueberVertreten.length>0 && <div style={{fontSize:11,color:"#f59e0b",marginTop:6}}>
+        Hinweis: {ueberVertreten.map(([v,n])=>`${v} stellt ${n} von ${anzahl}`).join(", ")} –
+        beim VR-Cup ist ein Verein auf weniger als die Hälfte der Teilnehmer beschränkt.
+      </div>}
+    </div>
+
+    {/* Gäste (Nicht-Vereinsmitglieder) */}
+    <div style={boxSt}>
+      <div onClick={()=>setGaesteOffen(o=>!o)} style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",userSelect:"none"}}>
+        <span style={{fontSize:11,color:"var(--text3)",transform:gaesteOffen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+        <span style={{fontSize:12,fontWeight:800,color:"var(--text2)"}}>👥 Gäste anderer Vereine ({gaeste.length})</span>
+      </div>
+      {gaesteOffen && <div style={{marginTop:11}}>
+        {gaeste.length>0 && <div style={{marginBottom:11}}>
+          {gaeste.map(g=><div key={g.id} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 9px",
+            background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{g.firstName} {g.lastName}</div>
+              <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>
+                {g.verein} · QTTR {g.qttr} · geb. {String(g.birthdate||"").split("-").reverse().join(".")}
+              </div>
+            </div>
+            {isAdmin && <button onClick={()=>gastEntfernen(g.id)} title="Gast entfernen" style={{
+              background:"#ef444422",border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",
+              fontSize:13,padding:"4px 9px",cursor:"pointer",fontWeight:700}}>🗑</button>}
+          </div>)}
+        </div>}
+        {isAdmin ? <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div><label style={labSt}>Vorname</label>
+              <input style={inpSt} value={gastForm.firstName} onChange={e=>setGastForm(f=>({...f,firstName:e.target.value}))}/></div>
+            <div><label style={labSt}>Name</label>
+              <input style={inpSt} value={gastForm.lastName} onChange={e=>setGastForm(f=>({...f,lastName:e.target.value}))}/></div>
+            <div><label style={labSt}>Geburtsdatum</label>
+              <input type="date" style={inpSt} value={gastForm.birthdate} onChange={e=>setGastForm(f=>({...f,birthdate:e.target.value}))}/></div>
+            <div><label style={labSt}>Verein</label>
+              <input style={inpSt} value={gastForm.verein} onChange={e=>setGastForm(f=>({...f,verein:e.target.value}))}/></div>
+            <div><label style={labSt}>QTTR-Wert</label>
+              <input inputMode="numeric" style={inpSt} value={gastForm.qttr} onChange={e=>setGastForm(f=>({...f,qttr:e.target.value}))}/></div>
+          </div>
+          {gastFehler && <div style={{fontSize:11,color:"#f59e0b",marginBottom:8}}>{gastFehler}</div>}
+          <button onClick={gastHinzufuegen} style={{padding:"8px 14px",borderRadius:9,border:"none",
+            background:TTC_ROT,color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer"}}>+ Gast aufnehmen</button>
+        </> : <div style={{fontSize:11,color:"var(--text4)"}}>Gäste werden vom Turnierleiter erfasst.</div>}
+      </div>}
+    </div>
+
+    {/* Einstellungen */}
+    {isAdmin && <div style={boxSt}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:10}}>⚙️ Turniereinstellungen</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+        <div>
+          <label style={labSt}>Setzung der 1. Runde</label>
+          <select value={setzung} onChange={e=>updKonk({swSetzung:e.target.value})} disabled={gespielteRunden>0} style={inpSt}>
+            <option value="QTTR">nach QTTR (Stärkehälften)</option>
+            <option value="Auslosung">freie Auslosung</option>
+          </select>
+        </div>
+        <div>
+          <label style={labSt}>Runden (Vorschlag: {vorschlag})</label>
+          <input inputMode="numeric" style={inpSt} value={runden}
+            onChange={e=>{ const n=Number(e.target.value.replace(/[^\d]/g,"")); updKonk({swRunden:n||""}); }}/>
+        </div>
+      </div>
+      {gespielteRunden>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:7}}>
+        Die Setzung lässt sich nach der ersten Auslosung nicht mehr ändern.
+      </div>}
+    </div>}
+
+    {/* Runden */}
+    {isAdmin && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <button onClick={rundeAuslosen}
+        disabled={teilnehmer.length<2 || gespielteRunden>=runden || (gespielteRunden>0 && !laufendeFertig)}
+        style={{padding:"9px 14px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
+          background:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"var(--bg3)":"#8b5cf6",
+          color:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"var(--text4)":"#fff",
+          cursor:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"default":"pointer"}}>
+        🎲 Runde {Math.min(gespielteRunden+1,runden)} auslosen
+      </button>
+      {gespielteRunden>0 && <button onClick={letzteRundeVerwerfen} style={{padding:"9px 14px",borderRadius:9,
+        border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text3)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+        Runde {gespielteRunden} verwerfen
+      </button>}
+    </div>}
+    {isAdmin && gespielteRunden>0 && !laufendeFertig && gespielteRunden<runden &&
+      <div style={{fontSize:11,color:"var(--text4)",marginBottom:12}}>
+        Die nächste Runde kann erst ausgelost werden, wenn alle Ergebnisse der Runde {gespielteRunden} gespeichert sind.
+      </div>}
+
+    {/* Paarungen je Runde */}
+    {Array.from({length:gespielteRunden},(_,i)=>i+1).map(r=>{
+      const rs=spiele.map((s,idx)=>({s,idx})).filter(x=>Number(x.s.runde)===r);
+      return <div key={r} style={boxSt}>
+        <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:9}}>Runde {r}</div>
+        {rs.map(({s,idx})=>{
+          if(s.freilos) return <div key={idx} style={{padding:"8px 10px",marginBottom:6,borderRadius:8,
+            background:"var(--bg)",border:"1px dashed var(--border2)",fontSize:12,color:"var(--text3)"}}>
+            <b style={{color:"var(--text2)"}}>{nameVon(s.a)}</b> · Freilos (zählt als Sieg)
+          </div>;
+          const sichtbar=anzahlSichtbareSaetze(s.saetze, gew);
+          const [sa,sb]=swSatzBilanz(s.saetze);
+          const fertig=swEntschieden(s,gew);
+          const darf=darfErgebnis(s);
+          return <div key={idx} style={{padding:"9px 10px",marginBottom:6,borderRadius:8,
+            background:s.fixiert?"#10b98112":"var(--bg)",border:`1px solid ${s.fixiert?"#10b98144":"var(--border)"}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{nameVon(s.a)}</span>
+              <span style={{fontSize:11,color:"var(--text4)"}}>gegen</span>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{nameVon(s.b)}</span>
+              <span style={{marginLeft:"auto",fontSize:12,fontWeight:800,color:fertig?"var(--text)":"var(--text4)"}}>{sa}:{sb}</span>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              {Array.from({length:sichtbar},(_,si)=>{
+                const paar=(s.saetze||[])[si]||["",""];
+                const fehler=satzFehler(paar[0],paar[1]);
+                return <span key={si} title={fehler||""} style={{display:"inline-flex",alignItems:"center",gap:2}}>
+                  <input value={paar[0]??""} disabled={!darf||s.fixiert} style={{width:34,textAlign:"center",padding:"4px 2px",
+                    borderRadius:5,border:`1px solid ${fehler?"#f59e0b":"var(--border2)"}`,background:"var(--bg2)",color:"var(--text)",fontSize:12}}
+                    {...satzInputProps(v=>setzeSatz(idx,si,0,v), v=>setzeSatz(idx,si,1,v), (a,b)=>setzeBeide(idx,si,a,b), 0)}/>
+                  <span style={{fontSize:10,color:"var(--text4)"}}>:</span>
+                  <input value={paar[1]??""} disabled={!darf||s.fixiert} style={{width:34,textAlign:"center",padding:"4px 2px",
+                    borderRadius:5,border:`1px solid ${fehler?"#f59e0b":"var(--border2)"}`,background:"var(--bg2)",color:"var(--text)",fontSize:12}}
+                    {...satzInputProps(v=>setzeSatz(idx,si,1,v), v=>setzeSatz(idx,si,0,v), (b,a)=>setzeBeide(idx,si,a,b), 1)}/>
+                </span>;
+              })}
+              {darf && fertig && !s.fixiert && <button onClick={()=>toggleFix(idx,true)} style={{border:"none",
+                background:"#10b981",color:"#fff",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>
+                ✓ Ergebnis speichern</button>}
+              {darf && s.fixiert && <button onClick={()=>toggleFix(idx,false)} title="Ergebnis wieder freigeben" style={{border:"none",
+                background:"var(--bg3)",color:"var(--text3)",borderRadius:6,fontSize:11,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>
+                ✓ gespeichert</button>}
+            </div>
+          </div>;
+        })}
+      </div>;
+    })}
+
+    {/* Tabelle */}
+    {teilnehmer.length>0 && <div style={boxSt}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:9}}>🏆 Tabelle</div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+          <thead><tr style={{color:"var(--text4)",textAlign:"left"}}>
+            <th style={{padding:"5px 6px"}}>#</th>
+            <th style={{padding:"5px 6px"}}>Name</th>
+            <th style={{padding:"5px 6px"}}>Verein</th>
+            <th style={{padding:"5px 6px",whiteSpace:"nowrap"}}>S:N</th>
+            <th style={{padding:"5px 6px"}}>Pkt</th>
+            <th style={{padding:"5px 6px"}} title="Summe der Punkte aller Gegner">BH</th>
+            <th style={{padding:"5px 6px",whiteSpace:"nowrap"}}>Sätze</th>
+          </tr></thead>
+          <tbody>
+            {tabelle.map(r=><tr key={r.id} style={{borderTop:"1px solid var(--border)"}}>
+              <td style={{padding:"5px 6px",fontWeight:800,color:r.platz<=3?TTC_ROT:"var(--text3)"}}>{r.platz}</td>
+              <td style={{padding:"5px 6px",fontWeight:700,color:"var(--text)"}}>{nameVon(r.id)}</td>
+              <td style={{padding:"5px 6px",color:"var(--text4)"}}>{vereinVon(r.id)}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap"}}>{r.siege}:{r.niederlagen}</td>
+              <td style={{padding:"5px 6px",fontWeight:800}}>{r.punkte}</td>
+              <td style={{padding:"5px 6px",color:"var(--text3)"}}>{r.buchholz}</td>
+              <td style={{padding:"5px 6px",whiteSpace:"nowrap",color:"var(--text3)"}}>{r.satzGew}:{r.satzVerl}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
+        Wertung: 1 Punkt je Sieg (ein Freilos zählt als Sieg). Bei Punktgleichheit entscheidet
+        die Buchholz-Zahl (BH) – die Summe der Punkte aller Gegner –, danach die Satzdifferenz.
+      </div>
+    </div>}
+  </div>;
+}
+
 // ─── BEAMER-/PRÄSENTATIONSMODUS ───────────────────────────────────────────────
 // Vollbild-Ansicht für die Projektion (Beamer). Zeigt je Konkurrenz wahlweise
 // KO-Tableau, Gruppentabellen oder Platzierungen – oder turnierweit alle laufenden
@@ -2393,6 +2868,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const teamVonId=(id)=> alleDoppelTeams.find(tm=>tm.id===id);
   const nameVon = (id)=>{
     if(!id) return "";
+    // Gäste anderer Vereine (Schweizer System) liegen je Konkurrenz in k.gaeste.
+    if(istGastId(id)){
+      for(const k of (t.konkurrenzen||[])){
+        const g=gastVon(k,id);
+        if(g) return gastName(g,false);
+      }
+      return "Gast";
+    }
     // P8: Eltern-Schiedsrichter „eltern::<spielerId>::<1|2>" auflösen.
     if(typeof id==="string" && id.startsWith("eltern::")){
       const [,kindId,idx]=id.split("::");
@@ -2578,6 +3061,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const koHelpers = { de_baueStruktur, de_loese, ko_baueRunden, berechneGruppenTabelle };
   function konkAbschliessbar(k){
     if(!k) return false;
+    // Schweizer System: alle vorgesehenen Runden gespielt und jedes Spiel fixiert.
+    if(istSchweizerKonk(k)){
+      const sw=k.swSpiele||[];
+      if(sw.length===0) return false;
+      const runden=Number(k.swRunden)||swRundenVorschlag((k.teilnehmer||[]).length);
+      const gespielt=Math.max(...sw.map(s=>Number(s.runde)||0));
+      if(gespielt<runden) return false;
+      return sw.every(s=> s.freilos || s.fixiert);
+    }
     const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
     if(hatKO){
       // KO: es muss ein Endergebnis (Champion) feststehen. Über die Platzierungen
@@ -4050,6 +4542,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           </button>
         </div>;
       })()}
+
+      {/* Schweizer System */}
+      {istSchweizerKonk(konk) && <SchweizerSystem
+        konk={konk} updKonk={updKonk} players={players} qttrVon={qttrVon}
+        isAdmin={isAdmin} darfAlle={darfAlle} myPlayer={myPlayer}/>}
 
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
