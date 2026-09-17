@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "452";
+const APP_VERSION = "453";
 const APP_DATUM   = "13.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2083,7 +2083,7 @@ const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--bo
 // Gästeverwaltung (Nicht-Vereinsmitglieder), Rundenauslosung, Ergebniseingabe
 // und Tabelle. Bewusst in sich geschlossen, damit die bestehenden Turnierarten
 // (Gruppen/KO/gemischt) unverändert bleiben.
-function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, myPlayer }){
+function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, myPlayer, tischMap={} }){
   const LEER={firstName:"",lastName:"",birthdate:"",verein:"",qttr:""};
   const [gastForm,setGastForm]=useState(LEER);
   const [gastFehler,setGastFehler]=useState("");
@@ -2150,7 +2150,9 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
     if(naechste>runden){ return; }
     const neu=swRundePaaren(teilnehmer, spiele, naechste, setzung, gew, qttrOf);
     if(!neu.length) return;
-    updKonk({ swSpiele:[...spiele, ...neu], swRunden:runden, swSetzung:setzung });
+    // gestartet:true ist Voraussetzung dafuer, dass die Begegnungen turnierweit in die
+    // Tischvergabe und in die Box „Laufende Spiele" aufgenommen werden.
+    updKonk({ swSpiele:[...spiele, ...neu], swRunden:runden, swSetzung:setzung, gestartet:true });
   }
   function letzteRundeVerwerfen(){
     if(!isAdmin || gespielteRunden<1) return;
@@ -2317,6 +2319,10 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
           return <div key={idx} style={{padding:"9px 10px",marginBottom:6,borderRadius:8,
             background:s.fixiert?"#10b98112":"var(--bg)",border:`1px solid ${s.fixiert?"#10b98144":"var(--border)"}`}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+              {/* Tischnummer aus der turnierweiten Vergabe – solange das Spiel laeuft. */}
+              {tischMap[`sw_${idx}`] && <span style={{fontSize:10,fontWeight:800,color:"#fff",
+                background:"#8b5cf6",borderRadius:5,padding:"2px 7px",whiteSpace:"nowrap"}}>
+                Tisch {tischMap[`sw_${idx}`]}</span>}
               <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{nameVon(s.a)}</span>
               <span style={{fontSize:11,color:"var(--text4)"}}>gegen</span>
               <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{nameVon(s.b)}</span>
@@ -2774,6 +2780,15 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         map[mkey]=eintrag;
         return { koSpiele:map };
       });
+    } else if(lokalKey.startsWith("sw_")){
+      const idx=Number(lokalKey.slice(3));
+      updKonkByKey(konkKey, k=>({ swSpiele:(k.swSpiele||[]).map((s,i)=>{
+        if(i!==idx) return s;
+        const saetze=(s.saetze||[]).map(x=>[...x]);
+        while(saetze.length<=satzIndex) saetze.push(["",""]);
+        saetze[satzIndex][seiteIdx]=val;
+        return {...s, saetze};
+      }) }));
     }
   }
   // Beide Seiten eines Satzes einer beliebigen Begegnung in EINEM Update setzen
@@ -2790,7 +2805,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       s[satzIndex][seiteEigen===0?1:0]=vg;
       return s;
     };
-    if(lokalKey.startsWith("g_")){
+    if(lokalKey.startsWith("sw_")){
+      const idx=Number(lokalKey.slice(3));
+      updKonkByKey(konkKey, k=>({ swSpiele:(k.swSpiele||[]).map((s,i)=> i===idx?{...s, saetze:setzen(s.saetze)}:s) }));
+    } else if(lokalKey.startsWith("g_")){
       const idx=Number(lokalKey.slice(2));
       updKonkByKey(konkKey, k=>({ spiele:(k.spiele||[]).map((s,i)=> i===idx?{...s, saetze:setzen(s.saetze)}:s) }));
     } else if(lokalKey.startsWith("k_")){
@@ -2809,7 +2827,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     if(!darfAlle) return;
     const kZiel=(t.konkurrenzen||[]).find(kk=>kk.key===konkKey);
     if(kZiel?.abgeschlossen && !isAdmin) return;   // P3
-    if(lokalKey.startsWith("g_")){
+    if(lokalKey.startsWith("sw_")){
+      const idx=Number(lokalKey.slice(3));
+      updKonkByKey(konkKey, k=>({ swSpiele:(k.swSpiele||[]).map((s,i)=> i===idx?{...s, fixiert:fix}:s) }));
+    } else if(lokalKey.startsWith("g_")){
       const idx=Number(lokalKey.slice(2));
       updKonkByKey(konkKey, k=>({ spiele:(k.spiele||[]).map((s,i)=> i===idx?{...s, fixiert:fix}:s) }));
     } else if(lokalKey.startsWith("k_")){
@@ -3747,6 +3768,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // Alle Begegnungen EINER Konkurrenz (Gruppen + KO) mit lokalem Key, Gruppe, Runde.
   function begegnungenDerKonk(k){
     const liste=[];
+    // Schweizer System: die ausgelosten Paarungen der Runden. Freilose bekommen
+    // keinen Tisch und erscheinen nicht unter „Laufende Spiele" – es wird ja nicht
+    // gespielt. Die Runde dient als Reihenfolge, damit Runde 1 zuerst drankommt.
+    (k?.swSpiele||[]).forEach((s,idx)=>{
+      if(!s.a || !s.b || s.freilos) return;
+      liste.push({ key:`sw_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
+        gi:0, runde:(Number(s.runde)||1)-1, fertig:istFertig(s.saetze, s.fixiert) });
+    });
     (k?.spiele||[]).forEach((s,idx)=>{
       if(!s.a || !s.b) return;
       liste.push({ key:`g_${idx}`, a:s.a, b:s.b, saetze:s.saetze,
@@ -4035,7 +4064,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       if(!neueSchiris[kk] || !neu[kk]) delete schiriBenachrichtigt.current[kk];
     }
     // eslint-disable-next-line
-  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.spielerPausiert])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(t.schirisManuell), JSON.stringify(t.schirisKeiner), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
+  },[JSON.stringify((t.konkurrenzen||[]).map(k=>[k.key,k.gestartet,k.spiele,k.koSpiele,k.koSlots,k.swSpiele,k.spielerPausiert])), JSON.stringify(t.schiedsrichter), t.schiedsrichterAktiv, JSON.stringify(t.schirisManuell), JSON.stringify(t.schirisKeiner), JSON.stringify(pausiertG), JSON.stringify(schirisPausiertG), anzahlTische]);
 
   // Ruft die Netlify-Funktion, die beide Seiten per Push an den Tisch bittet.
   // Im Doppel ist eine Seite ein Team: Der Anzeigename ist „Vorname1 / Vorname2",
@@ -4224,6 +4253,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       const istBegegnungFixiert=(x)=>{
         const kX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
         if(!kX) return false;
+        if(x.key.startsWith("sw_")){ const i=Number(x.key.slice(3)); return !!(kX.swSpiele||[])[i]?.fixiert; }
         if(x.key.startsWith("g_")){ const i=Number(x.key.slice(2)); return !!(kX.spiele||[])[i]?.fixiert; }
         if(x.key.startsWith("k_")){ const mk=x.key.slice(2); return !!((kX.koSpiele||{})[mk]?.fixiert); }
         return false;
@@ -4557,7 +4587,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       {/* Schweizer System */}
       {istSchweizerKonk(konk) && <SchweizerSystem
         konk={konk} updKonk={updKonk} players={players} qttrVon={qttrVon}
-        isAdmin={isAdmin} darfAlle={darfAlle} myPlayer={myPlayer}/>}
+        isAdmin={isAdmin} darfAlle={darfAlle} myPlayer={myPlayer} tischMap={koTischMap}/>}
 
       {/* Gruppen-Modus */}
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
