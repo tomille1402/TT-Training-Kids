@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "451";
+const APP_VERSION = "452";
 const APP_DATUM   = "13.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1546,6 +1546,12 @@ function turnierFuerFirestore(t){
       fixiert:!!v.fixiert,
       saetze:(v.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})),
     }])) : {},
+    // Schweizer System: Firestore erlaubt keine verschachtelten Arrays, deshalb
+    // werden die Saetze – wie bei Gruppen- und KO-Spielen – als {a,b} abgelegt.
+    ...(k.swSpiele ? { swSpiele:(k.swSpiele||[]).map(s=>({
+      runde:Number(s.runde)||0, a:s.a??"", b:s.b??"", freilos:!!s.freilos, fixiert:!!s.fixiert,
+      saetze:(s.saetze||[]).map(paar=>({a:String(paar[0]??""), b:String(paar[1]??"")})),
+    })) } : {}),
   }));
   return {...t, konkurrenzen};
 }
@@ -1565,6 +1571,11 @@ function turnierVonFirestore(t){
       fixiert:!!v.fixiert,
       saetze:(v.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),
     }])) : {},
+    // Schweizer System: {a,b} zurueck in [a,b]; b wird bei Freilos wieder zu null.
+    ...(k.swSpiele ? { swSpiele:(k.swSpiele||[]).map(s=>({
+      runde:Number(s.runde)||0, a:s.a||null, b:s.b||null, freilos:!!s.freilos, fixiert:!!s.fixiert,
+      saetze:(s.saetze||[]).map(o=> Array.isArray(o)?o:[o?.a??"", o?.b??""]),
+    })) } : {}),
   }));
   return {...t, konkurrenzen};
 }
