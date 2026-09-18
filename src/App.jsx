@@ -1,4 +1,4 @@
-// === TTC-App · Version 443 · erstellt 07.09.2026 ===
+// === TTC-App · Version 455 · erstellt 18.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "453";
-const APP_DATUM   = "13.09.2026";
+const APP_VERSION = "455";
+const APP_DATUM   = "18.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -15418,8 +15418,16 @@ function parseSpielcodeZeilen(zeilen){
     const datum=`${dm[3]}-${dm[2]}-${dm[1]}`;
     let rest=zt.slice(0,cm.index).trim();
     const nzIdx=rest.lastIndexOf("Niederzeuzheim");
-    const gegner = nzIdx>=0 ? rest.slice(nzIdx+"Niederzeuzheim".length).trim() : rest;
-    ergebnis.push({datum, gegner, code});
+    let gegner = nzIdx>=0 ? rest.slice(nzIdx+"Niederzeuzheim".length).trim() : rest;
+    // Hinter "Niederzeuzheim" steht zuerst noch der Zusatz UNSERER Mannschaft –
+    // als roemische Ziffer ("III", "VI") oder in Klammern ("(M15)"). Bliebe er
+    // stehen, waere der Gegnername verfaelscht ("VI KSG Aulenhausen II") und eine
+    // Zuordnung ueber den Gegner – noetig bei verlegten Spielen – unmoeglich.
+    gegner = gegner.replace(/^\s*(\([^)]*\)|[IVX]{1,5})\s+/i,"").trim();
+    // Die Spielcode-PDF listet ausschliesslich Heimspiele (nur der Ausrichter
+    // laedt den Spielbericht). Das Kennzeichen verhindert spaeter Verwechslungen
+    // mit dem Rueckspiel am selben Termin.
+    ergebnis.push({datum, gegner, code, heim:true});
   }
   return ergebnis;
 }
@@ -15480,6 +15488,13 @@ const FOTO_MAX_LEN   = 300000;   // ~300 KB Ziel-Länge der Data-URL
 // normGegnerKurz bleibt die Mannschaftsziffer erhalten (z.B. „Villmar" und
 // „Villmar II" sind unterschiedliche Gegner). Klammerzusaetze wie „(M15)" und
 // Satzzeichen werden entfernt.
+// Entfernt einen faelschlich vorangestellten Zusatz der EIGENEN Mannschaft.
+// Frueher gespeicherte Spielcode-Eintraege enthalten ihn noch ("VI KSG Aulenhausen II");
+// damit diese Daten ohne erneuten PDF-Upload wieder zugeordnet werden, wird er hier
+// beim Vergleich abgeschnitten.
+function gegnerOhneEigenZusatz(s){
+  return String(s||"").replace(/^\s*(\([^)]*\)|[IVX]{1,5})\s+/i,"").trim();
+}
 function normGegnerVergleich(s){
   return String(s||"").toLowerCase()
     .replace(/\([^)]*\)/g," ")
@@ -15508,7 +15523,7 @@ function mannschaftAliasse(teamName){
 // Zieht Datums-Schluessel eines Ablage-Objekts auf die neuen Spieltermine um.
 // quelle: { [saison]: { [mannschaft]: { [datum]: {..., gegner} } } }
 // Rueckgabe: { geaendert:boolean, daten:object, anzahl:number }
-function migriereNachVerlegung(quelle, spiele){
+function migriereNachVerlegung(quelle, spiele, feld){
   const daten = JSON.parse(JSON.stringify(quelle||{}));
   let anzahl = 0;
   for(const saison of Object.keys(daten)){
@@ -15523,15 +15538,20 @@ function migriereNachVerlegung(quelle, spiele){
         normAufName(a)===normAufName(s.mannschaft) || a===s.mannschaft));
       if(teamSpiele.length===0) continue;
       const belegteDaten = new Set(Object.keys(eintraege));
+      const istHeimspiel = (x)=> x && x.ort!=="Auswärts";
+      const nurHeim = (e)=> !!e && (e.heim===true || (e.heim==null && feld==="code"));
       for(const datum of Object.keys(eintraege)){
         const e = eintraege[datum];
         if(!e || typeof e!=="object") continue;
-        // Termin unveraendert vorhanden? Dann nichts tun.
-        if(teamSpiele.some(s=>s.datum===datum)) continue;
-        const g = normGegnerVergleich(e.gegner);
+        // Termin unveraendert vorhanden? Dann nichts tun. Bei Heimspiel-Eintraegen
+        // zaehlen nur Heimspiele – ein Auswaertsspiel am selben Tag blockiert nicht.
+        const passende = nurHeim(e) ? teamSpiele.filter(istHeimspiel) : teamSpiele;
+        if(passende.some(s=>s.datum===datum)) continue;
+        // Altdaten koennen den Zusatz der eigenen Mannschaft vorangestellt haben.
+        const g = normGegnerVergleich(gegnerOhneEigenZusatz(e.gegner));
         if(!g) continue;
         // Spiel gegen denselben Gegner an einem anderen (noch freien) Termin suchen
-        const treffer = teamSpiele.filter(s=>normGegnerVergleich(s.gegner)===g && !belegteDaten.has(s.datum));
+        const treffer = passende.filter(s=>normGegnerVergleich(s.gegner)===g && !belegteDaten.has(s.datum));
         if(treffer.length!==1) continue;   // nur bei eindeutiger Zuordnung umziehen
         const neuesDatum = treffer[0].datum;
         eintraege[neuesDatum] = e;
@@ -15556,12 +15576,20 @@ function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
   const saisonKeys = (saisonKeysHint && saisonKeysHint.length)
     ? saisonKeysHint : Object.keys(quelle||{});
   const aliasse = mannschaftAliasse(s.mannschaft);
+  // Gilt ein Eintrag nur fuer Heimspiele? Spielcodes ja – die PDF enthaelt nur die
+  // Begegnungen, die wir ausrichten. Aeltere Eintraege tragen das Kennzeichen noch
+  // nicht, deshalb der Rueckfall ueber das Feld.
+  const nurHeim  = (e)=> !!e && (e.heim===true || (e.heim==null && feld==="code"));
+  const ortPasst = (e)=> !nurHeim(e) || s.ort!=="Auswärts";
+  const istHeimspiel = (x)=> x && x.ort!=="Auswärts";
   // 1) Exakte Zuordnung ueber das Spieldatum
   for(const sk of saisonKeys){
     const proSaison = quelle?.[sk]; if(!proSaison) continue;
     for(const nm of aliasse){
       const e = proSaison?.[nm]?.[s.datum];
-      if(e && e[feld]) return e[feld];
+      // Ohne Ortspruefung wuerde am selben Termin das Rueckspiel den Code des
+      // Heimspiels erben, wenn eines der beiden verlegt wurde.
+      if(e && e[feld] && ortPasst(e)) return e[feld];
     }
   }
   // 2) Rueckfall ueber den Gegner (verlegtes Spiel)
@@ -15572,24 +15600,32 @@ function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
     for(const nm of aliasse){
       const eintraege = proSaison?.[nm];
       if(!eintraege || typeof eintraege!=="object") continue;
-      // Termine, die im aktuellen Spielplan noch belegt sind, bleiben unangetastet
-      const aktuelleDaten = new Set((spiele||[])
-        .filter(x=>mannschaftAliasse(x.mannschaft).some(a=>aliasse.includes(a)))
-        .map(x=>x.datum));
+      // Termine, die im aktuellen Spielplan noch belegt sind, bleiben unangetastet.
+      // Bei Heimspiel-Eintraegen zaehlen dabei nur die Heimspiele: Steht am alten
+      // Termin inzwischen ein Auswaertsspiel (genau der Fall Herren 3, 12.03.2027),
+      // ist der Eintrag trotzdem verwaist und darf umgezogen werden.
+      const teamSpiele = (spiele||[]).filter(x=>mannschaftAliasse(x.mannschaft).some(a=>aliasse.includes(a)));
+      const datenAlle  = new Set(teamSpiele.map(x=>x.datum));
+      const datenHeim  = new Set(teamSpiele.filter(istHeimspiel).map(x=>x.datum));
+      const aktuelleDaten = datenAlle;
+      const belegt = (e,d)=> (nurHeim(e)?datenHeim:datenAlle).has(d);
       const treffer = Object.keys(eintraege).filter(d=>{
-        if(aktuelleDaten.has(d)) return false;               // Termin existiert noch -> gehoert zu einem anderen Spiel
         const e = eintraege[d];
-        return e && e[feld] && normGegnerVergleich(e.gegner)===zielGegner;
+        if(!e || !e[feld]) return false;
+        if(belegt(e,d)) return false;                        // Termin existiert noch -> gehoert zu einem anderen Spiel
+        if(!ortPasst(e)) return false;
+        return normGegnerVergleich(gegnerOhneEigenZusatz(e.gegner))===zielGegner;
       });
       if(treffer.length===1) return eintraege[treffer[0]][feld];
       // 3) Altdaten-Rückfall: In früher gespeicherten Einträgen fehlt bei Auswärtsspielen
       // der Gegnername (es wurde nur der Mannschaftszusatz gespeichert). Eine Zuordnung
       // ist dann nur zulässig, wenn sie zweifelsfrei ist: genau ein verwaister Eintrag
       // und genau ein Spiel ohne eigenen Eintrag – und dieses Spiel ist das gesuchte.
-      const verwaist = Object.keys(eintraege).filter(d=>!aktuelleDaten.has(d) && eintraege[d] && eintraege[d][feld]);
+      const verwaist = Object.keys(eintraege).filter(d=>
+        eintraege[d] && eintraege[d][feld] && !belegt(eintraege[d],d) && ortPasst(eintraege[d]));
       if(verwaist.length===1){
-        const ohneEintrag = (spiele||[])
-          .filter(x=>mannschaftAliasse(x.mannschaft).some(a=>aliasse.includes(a)))
+        const ohneEintrag = teamSpiele
+          .filter(x=> !nurHeim(eintraege[verwaist[0]]) || istHeimspiel(x))
           .filter(x=>!eintraege[x.datum] || !eintraege[x.datum][feld]);
         if(ohneEintrag.length===1 && ohneEintrag[0].datum===s.datum){
           return eintraege[verwaist[0]][feld];
@@ -20859,7 +20895,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
               for(const cfg of ["spielpins","spielcodes"]){
                 const snapP=await getDoc(doc(db,"config",cfg));
                 if(!snapP.exists()) continue;
-                const res=migriereNachVerlegung(snapP.data(), spiele);
+                const res=migriereNachVerlegung(snapP.data(), spiele, cfg==="spielcodes"?"code":"pin");
                 if(res.geaendert){
                   await setDoc(doc(db,"config",cfg), res.daten);
                   verschoben+=res.anzahl;
