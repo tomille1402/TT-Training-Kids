@@ -1,4 +1,4 @@
-// === TTC-App · Version 456 · erstellt 18.09.2026 ===
+// === TTC-App · Version 457 · erstellt 19.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "456";
-const APP_DATUM   = "18.09.2026";
+const APP_VERSION = "457";
+const APP_DATUM   = "19.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -17934,6 +17934,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const [selSeasonId,setSelSeasonId] = useState("spielplan_2026_2027");
   const [selTeam,setSelTeam] = useState("");
   const [expandedGames,setExpandedGames] = useState({}); // {spielKey: true} — aufgeklappte Spieltage
+  // Zeitraum-Schalter: Voreinstellung sind die noch anstehenden Spiele – das haelt
+  // den Reiter uebersichtlich, weil gespielte Begegnungen nicht mehr mitlaufen.
+  const [nurKuenftige,setNurKuenftige] = useState(true);
   const { statusVon:verlegStatusVon } = useVerlegungen();
 
   const SEASON_OPTS = [
@@ -18177,7 +18180,17 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     }
   }
 
+  // Erwachsene ohne Admin-/MF-Rolle sehen dieselbe Zaehlung der Rueckmeldungen wie
+  // Mannschaftsfuehrer und Trainer – nur eben ohne Bearbeitungsrechte.
+  const zeigtZaehlung = !!(viewerCanEditAll || myPlayer?.roles?.erwachsene || roles?.erwachsene);
+
   const heuteStr=new Date().toLocaleDateString("sv");
+
+  // Die tatsaechlich angezeigten Spiele. Der heutige Spieltag zaehlt noch als
+  // kuenftig – er steht ja noch an.
+  const sichtbareSpiele = nurKuenftige
+    ? teamSpiele.filter(s=> s.datum >= heuteStr)
+    : teamSpiele;
 
   // ── Finale Nominierung durch den Mannschaftsführer (Anf. 1) ──────────────────
   // Pro Spieltag wird unter einsaetze[sk]._nominiert ein Array der endgültig
@@ -18203,13 +18216,18 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const kannBetreuerFahrer = !!(viewerCanEditAll || myPlayer);
 
   // Anf.2: Block mit der finalen Aufstellung – für ALLE Spieler der Mannschaft sichtbar.
-  function nominierungsBlock(spiel){
+  function nominierungsBlock(spiel, opt={}){
+    // obenstehend: Der Abschnitt steht VOR der Namensliste – dann grenzt er sich
+    // nach unten ab statt nach oben.
+    const rahmen = opt.obenstehend
+      ? {marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}
+      : {marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"};
     const sk=spielKey(spiel);
     const cur=einsaetze[sk]||{};
     const ids=Array.isArray(cur._nominiert)?cur._nominiert:[];
     if(ids.length===0){
       if(!viewerCanEditAll) return null;   // Spieler sehen erst etwas, wenn nominiert wurde
-      return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)",fontSize:11,color:"var(--text4)"}}>
+      return <div style={{...rahmen,fontSize:11,color:"var(--text4)"}}>
         Noch keine finale Aufstellung festgelegt. Mit ⭐ die endgültig aufgestellten Spieler markieren.
       </div>;
     }
@@ -18218,7 +18236,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       ...spielberechtigt.filter(p=>ids.includes(p.id)).map(p=>`${p.firstName} ${p.lastName}`),
       ...ids.filter(id=>!spielberechtigt.some(p=>p.id===id)).map(nameVonId).filter(Boolean),
     ];
-    return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"}}>
+    return <div style={rahmen}>
       <div style={{fontSize:10,fontWeight:700,color:"#f59e0b",marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>⭐ Finale Aufstellung ({geordnet.length})</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
         {geordnet.map((nm,i)=><span key={i} style={{fontSize:12,fontWeight:600,color:"var(--text)",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:7,padding:"3px 9px"}}>{nm}</span>)}
@@ -18242,7 +18260,10 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // Abschnitt „Verfügbare Spieler": alle, die für dieses Spiel den gruenen Haken
   // gesetzt haben. Ausgenommen sind Spieler, die zur gleichen Zeit bereits bei einem
   // anderen Spiel final aufgestellt sind — die stehen dort nicht mehr zur Verfuegung.
-  function verfuegbarBlock(spiel){
+  function verfuegbarBlock(spiel, opt={}){
+    const rahmen = opt.obenstehend
+      ? {marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}
+      : {marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"};
     const sk=spielKey(spiel);
     const cur=einsaetze[sk]||{};
     const nominiertHier=Array.isArray(cur._nominiert)?cur._nominiert:[];
@@ -18261,7 +18282,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     const liste=verfuegbar.filter(p=>!gebunden.has(p.id));
     const ausgeblendet=verfuegbar.filter(p=>gebunden.has(p.id));
 
-    return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"}}>
+    return <div style={rahmen}>
       <div style={{fontSize:10,fontWeight:700,color:"#10b981",marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>
         ✅ Verfügbare Spieler ({liste.length})
       </div>
@@ -18342,6 +18363,15 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
         {allowed.length===0&&<option value="">Keine Mannschaft verfügbar</option>}
         {allowed.map(t=><option key={t} value={t}>{t}</option>)}
       </select>
+      {/* Zeitraum: künftige Spiele (Voreinstellung) oder alle */}
+      <div style={{display:"flex",borderRadius:8,overflow:"hidden",border:"1px solid var(--border2)"}}>
+        {[["kuenftig","künftige Spiele"],["alle","alle Spiele"]].map(([wert,text])=>{
+          const aktiv=(wert==="kuenftig")===nurKuenftige;
+          return <button key={wert} onClick={()=>setNurKuenftige(wert==="kuenftig")}
+            style={{padding:"7px 11px",border:"none",fontSize:12,fontWeight:700,cursor:"pointer",
+              background:aktiv?TTC_ROT:"var(--bg2)",color:aktiv?"#fff":"var(--text3)"}}>{text}</button>;
+        })}
+      </div>
     </div>
 
     {allowed.length===0&&<div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>
@@ -18352,16 +18382,26 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       Keine Spiele für {selTeam} in dieser Saison gefunden.
     </div>}
 
-    {viewerCanEditAll&&selTeam&&teamSpiele.length>0&&<div style={{display:"flex",gap:8,marginBottom:10}}>
+    {selTeam&&teamSpiele.length>0&&sichtbareSpiele.length===0&&<div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>
+      Für {selTeam} steht kein Spiel mehr an.
+      <div style={{marginTop:8}}>
+        <button onClick={()=>setNurKuenftige(false)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",
+          background:"var(--bg2)",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+          Alle {teamSpiele.length} Spiele anzeigen
+        </button>
+      </div>
+    </div>}
+
+    {viewerCanEditAll&&selTeam&&sichtbareSpiele.length>0&&<div style={{display:"flex",gap:8,marginBottom:10}}>
       <button onClick={()=>{
-        const all={}; teamSpiele.forEach(s=>{all[spielKey(s)]=true;}); setExpandedGames(g=>({...g,...all}));
+        const all={}; sichtbareSpiele.forEach(s=>{all[spielKey(s)]=true;}); setExpandedGames(g=>({...g,...all}));
       }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>▼ Alle aufklappen</button>
       <button onClick={()=>{
-        const all={...expandedGames}; teamSpiele.forEach(s=>{all[spielKey(s)]=false;}); setExpandedGames(all);
+        const all={...expandedGames}; sichtbareSpiele.forEach(s=>{all[spielKey(s)]=false;}); setExpandedGames(all);
       }} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>▶ Alle zuklappen</button>
     </div>}
 
-    {selTeam&&teamSpiele.map(spiel=>{
+    {selTeam&&sichtbareSpiele.map(spiel=>{
       const sk=spielKey(spiel);
       const entries=einsaetze[sk]||{};
       const past = spiel.datum < heuteStr;
@@ -18420,8 +18460,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                   </div>}
               </div>
             </div>
-            {/* Voll-Sicht: Zählung. Self-View: die 4 Buttons direkt im Kopf. */}
-            {viewerCanEditAll&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0,alignItems:"center"}}>
+            {/* Zählung: Admin/Trainer/MF und zusätzlich Erwachsene. Self-View: die 4 Buttons direkt im Kopf. */}
+            {zeigtZaehlung&&<div style={{display:"flex",gap:6,fontSize:11,fontWeight:700,flexShrink:0,alignItems:"center"}}>
               <span style={{color:"#f59e0b"}} title="fest aufgestellte Spieler">⭐{nominierteAnzahl}</span>
               <span style={{color:"#10b981"}}>✅{counts.ja}</span>
               <span style={{color:"#ef4444"}}>❌{counts.nein}</span>
@@ -18448,6 +18488,10 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
         {!viewerCanEditAll&&!selfPlayer&&<div style={{padding:"8px 12px 10px",fontSize:12,color:"var(--text4)"}}>Für dieses Spiel bist du nicht spielberechtigt.</div>}
         {/* Voll-Sicht: Spielerliste (aufklappbar) */}
         {viewerCanEditAll&&showRows&&<div style={{padding:rows.length?"6px 10px 10px":"0"}}>
+          {/* Finale Aufstellung und verfügbare Spieler stehen vor der Namensliste –
+              nur im aufgeklappten Zustand, denn dieser Block wird nur dann gerendert. */}
+          {nominierungsBlock(spiel,{obenstehend:true})}
+          {verfuegbarBlock(spiel,{obenstehend:true})}
           {spielberechtigt.length===0&&<div style={{fontSize:12,color:"var(--text4)",padding:"8px 0"}}>Keine spielberechtigten Spieler gefunden.</div>}
           {rows.map(p=>{
             const entry=entries[p.id]||{};
@@ -18494,8 +18538,6 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
             </div>;
           })}
           {betreuerFahrerBlock(spiel)}
-          {nominierungsBlock(spiel)}
-          {verfuegbarBlock(spiel)}
         </div>}
         {/* Self-View (Spieler/Erwachsene/Eltern): finale Aufstellung + ggf. Betreuer/Fahrer */}
         {!viewerCanEditAll&&selfPlayer&&<div style={{padding:"0 12px 10px"}}>
