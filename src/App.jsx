@@ -1,4 +1,4 @@
-// === TTC-App · Version 455 · erstellt 18.09.2026 ===
+// === TTC-App · Version 456 · erstellt 18.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "455";
+const APP_VERSION = "456";
 const APP_DATUM   = "18.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -18226,6 +18226,65 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     </div>;
   }
 
+  // Zwei Spiele kollidieren zeitlich, wenn sie am selben Tag stattfinden und die
+  // Anstosszeiten weniger als vier Stunden auseinanderliegen — ein Punktspiel dauert
+  // gut drei Stunden. Fehlt bei einem der beiden die Uhrzeit, wird vorsichtshalber
+  // von einer Kollision ausgegangen. So bleibt z.B. ein Nachwuchsspiel um 10:00 Uhr
+  // neben einem Erwachsenenspiel um 18:00 Uhr am selben Samstag moeglich.
+  function zeitlichKollidiert(a, b){
+    if(!a || !b || a.datum!==b.datum) return false;
+    const min=(u)=>{ const m=/^(\d{1,2}):(\d{2})/.exec(String(u||"")); return m ? (+m[1]*60 + +m[2]) : null; };
+    const ma=min(a.uhrzeit), mb=min(b.uhrzeit);
+    if(ma==null || mb==null) return true;
+    return Math.abs(ma-mb) < 240;
+  }
+
+  // Abschnitt „Verfügbare Spieler": alle, die für dieses Spiel den gruenen Haken
+  // gesetzt haben. Ausgenommen sind Spieler, die zur gleichen Zeit bereits bei einem
+  // anderen Spiel final aufgestellt sind — die stehen dort nicht mehr zur Verfuegung.
+  function verfuegbarBlock(spiel){
+    const sk=spielKey(spiel);
+    const cur=einsaetze[sk]||{};
+    const nominiertHier=Array.isArray(cur._nominiert)?cur._nominiert:[];
+    const verfuegbar=spielberechtigt.filter(p=> (cur[p.id]||{}).status==="ja");
+    if(verfuegbar.length===0 && nominiertHier.length===0) return null;
+
+    // Wer ist zur gleichen Zeit anderweitig fest aufgestellt?
+    const gebunden=new Map();   // Spieler-ID → Mannschaft des anderen Spiels
+    for(const s of (spiele||[])){
+      if(spielKey(s)===sk || !zeitlichKollidiert(s, spiel)) continue;
+      const ids=(einsaetze[spielKey(s)]||{})._nominiert;
+      for(const id of (Array.isArray(ids)?ids:[])){
+        if(!gebunden.has(id)) gebunden.set(id, s.mannschaft);
+      }
+    }
+    const liste=verfuegbar.filter(p=>!gebunden.has(p.id));
+    const ausgeblendet=verfuegbar.filter(p=>gebunden.has(p.id));
+
+    return <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--border2)"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"#10b981",marginBottom:4,textTransform:"uppercase",letterSpacing:0.3}}>
+        ✅ Verfügbare Spieler ({liste.length})
+      </div>
+      {liste.length>0
+        ? <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {liste.map(p=>{
+              const schonAufgestellt=nominiertHier.includes(p.id);
+              return <span key={p.id} title={schonAufgestellt?"bereits final aufgestellt":undefined}
+                style={{fontSize:12,fontWeight:600,color:"var(--text)",
+                  background:schonAufgestellt?"#f59e0b18":"#10b98118",
+                  border:`1px solid ${schonAufgestellt?"#f59e0b44":"#10b98144"}`,
+                  borderRadius:7,padding:"3px 9px"}}>
+                {schonAufgestellt?"⭐ ":""}{p._rang?`${p._rang} `:""}{p.firstName} {p.lastName}
+              </span>;
+            })}
+          </div>
+        : <div style={{fontSize:11,color:"var(--text4)"}}>Niemand hat sich bisher als verfügbar gemeldet.</div>}
+      {ausgeblendet.length>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:5,lineHeight:1.6}}>
+        Zur gleichen Zeit anderweitig aufgestellt: {ausgeblendet.map(p=>`${p.firstName} ${p.lastName} (${gebunden.get(p.id)})`).join(", ")}
+      </div>}
+    </div>;
+  }
+
   // Rendert den Betreuer-/Fahrer-Block für ein Nachwuchsspiel.
   function betreuerFahrerBlock(spiel){
     if(!selTeamIstNachwuchs) return null;
@@ -18436,11 +18495,13 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
           })}
           {betreuerFahrerBlock(spiel)}
           {nominierungsBlock(spiel)}
+          {verfuegbarBlock(spiel)}
         </div>}
         {/* Self-View (Spieler/Erwachsene/Eltern): finale Aufstellung + ggf. Betreuer/Fahrer */}
         {!viewerCanEditAll&&selfPlayer&&<div style={{padding:"0 12px 10px"}}>
           {selTeamIstNachwuchs&&betreuerFahrerBlock(spiel)}
           {nominierungsBlock(spiel)}
+          {verfuegbarBlock(spiel)}
         </div>}
       </div>;
     })}
