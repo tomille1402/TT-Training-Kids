@@ -1,4 +1,4 @@
-// === TTC-App · Version 463 · erstellt 20.09.2026 ===
+// === TTC-App · Version 464 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "463";
+const APP_VERSION = "464";
 const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2394,23 +2394,36 @@ function HistorieTabelle({zeilen}){
     if(key===sortKey) setAbsteigend(x=>!x);
     else { setSortKey(key); setAbsteigend(key!=="name"); }
   }
+  // Kopfzeile oben und Namensspalte links bleiben beim Scrollen stehen. Dafür
+  // scrollt die Tabelle in einem eigenen Rahmen (beide Richtungen) — sonst hätte
+  // „sticky" keinen Bezugspunkt. borderCollapse:"separate" ist nötig, weil
+  // zusammengefasste Rahmen an fixierten Zellen in manchen Browsern verschwinden.
   const th={padding:"6px 7px",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",
-    fontSize:10,fontWeight:800,color:"var(--text3)",textAlign:"right",borderBottom:"1px solid var(--border2)"};
+    fontSize:10,fontWeight:800,color:"var(--text3)",textAlign:"right",
+    borderBottom:"1px solid var(--border2)",background:"var(--bg2)",
+    position:"sticky",top:0,zIndex:2};
   const td={padding:"6px 7px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
+  // Namensspalte: höchstens 20 Zeichen breit, längere Namen brechen um.
+  const nameTh={...th, left:0, zIndex:3, textAlign:"left", whiteSpace:"normal",
+    width:"20ch", minWidth:"20ch", maxWidth:"20ch"};
+  const nameTd={...td, position:"sticky", left:0, zIndex:1, background:"var(--bg2)",
+    textAlign:"left", fontWeight:700, color:"var(--text)", whiteSpace:"normal",
+    overflowWrap:"anywhere", width:"20ch", minWidth:"20ch", maxWidth:"20ch",
+    borderRight:"1px solid var(--border2)"};
   if(zeilen.length===0) return <div style={{fontSize:12,color:"var(--text4)",padding:"14px 2px"}}>
     Keine Personen für diese Auswahl.
   </div>;
-  return <div style={{overflowX:"auto"}}>
-    <table style={{borderCollapse:"collapse",width:"100%",minWidth:640}}>
+  return <div style={{overflow:"auto",maxHeight:"70vh"}}>
+    <table style={{borderCollapse:"separate",borderSpacing:0,width:"100%",minWidth:640}}>
       <thead><tr>
         {HISTORIE_SPALTEN.map(s=><th key={s.key} onClick={()=>klick(s.key)} title={s.hint||"Sortieren"}
-          style={{...th, textAlign:s.txt?"left":"right", color:sortKey===s.key?TTC_ROT:"var(--text3)"}}>
+          style={{...(s.txt?nameTh:th), color:sortKey===s.key?TTC_ROT:"var(--text3)"}}>
           {s.label}{sortKey===s.key?(absteigend?" ▼":" ▲"):""}
         </th>)}
       </tr></thead>
       <tbody>
         {sortiert.map(r=><tr key={r.id} style={{opacity:r.hatDaten?1:0.55}}>
-          <td style={{...td,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{r.name}</td>
+          <td style={nameTd}>{r.name}</td>
           <td style={{...td,fontWeight:800}}>{r.gesamtA}</td>
           <td style={td}>{r.einzelA}</td>
           <td style={{...td,color:"#10b981"}}>{r.einzelG}</td>
