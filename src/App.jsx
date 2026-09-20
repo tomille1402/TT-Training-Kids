@@ -1,4 +1,4 @@
-// === TTC-App · Version 465 · erstellt 20.09.2026 ===
+// === TTC-App · Version 466 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "465";
-const APP_DATUM   = "20.09.2026";
+const APP_VERSION = "466";
+const APP_DATUM   = "21.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -2336,9 +2336,51 @@ function useHistorieStore(){
 // Einordnung einer Person für den Funktionsfilter des Admins.
 // Mehrere Funktionen: „Erwachsene" gewinnt immer.
 function historieGruppeVon(p){
+  if(p?._gruppe) return p._gruppe;   // Ehemalige: aus der Mannschaft abgeleitet
   if(p?.roles?.erwachsene) return (String(p.gender||p.geschlecht||"").toLowerCase().startsWith("w")) ? "Damen" : "Herren";
   if(p?.roles?.player) return "Nachwuchs";
   return "Sonstige";
+}
+// Einordnung anhand der Mannschaftsnamen — für Personen, die gar nicht (mehr) im
+// Spielerstamm stehen und für die es deshalb keine Funktion gibt.
+function historieGruppeAusTeams(teams){
+  const t=[...(teams||[])].join(" ").toLowerCase();
+  if(/herren/.test(t)) return "Herren";
+  if(/damen/.test(t))  return "Damen";
+  if(/mädchen|maedchen|jungen|jugend|schüler|schueler/.test(t)) return "Nachwuchs";
+  return "Herren";
+}
+// Mannschaften je Person, optional auf eine Saison eingegrenzt.
+function historieTeamsProPerson(store, saison){
+  const map={};
+  for(const datei of Object.values(store?.dateien||{})){
+    if(saison && datei.saison!==saison) continue;
+    for(const [k,e] of Object.entries(datei.spieler||{})){
+      if(!map[k]) map[k]=new Set();
+      for(const t of Object.keys(e?.teams||{})) map[k].add(t);
+    }
+  }
+  return map;
+}
+// Personen, die in den Bilanzen vorkommen, aber nicht im Spielerstamm stehen —
+// typischerweise Ehemalige aus der Zeit vor der App. Sie werden als passiv
+// behandelt und erscheinen deshalb nur, wenn auch Inaktive eingeblendet sind.
+function historieEhemalige(store, saison, bilanzen, players){
+  const bekannt=new Set((players||[]).map(historieKeyAusPlayer));
+  const teams=historieTeamsProPerson(store, saison);
+  const liste=[];
+  for(const [k,b] of Object.entries(bilanzen||{})){
+    if(bekannt.has(k)) continue;
+    const t=String(b.name||"").split(",");
+    const nachname=(t[0]||"").trim();
+    const vorname=(t.slice(1).join(" ")||"").trim();
+    liste.push({
+      id:`ehem::${k}`, firstName:vorname, lastName:nachname,
+      status:"passiv", roles:{}, _ehemalig:true,
+      _gruppe:historieGruppeAusTeams(teams[k]),
+    });
+  }
+  return liste;
 }
 // Aktiv oder passiv? Die App führt inaktive Personen über status==="passiv"
 // (so auch an allen anderen Stellen, z. B. in der Aufstellung).
@@ -2369,7 +2411,7 @@ function historieZeilen(players, bilanzen){
     const b=bilanzen[historieKeyAusPlayer(p)]||leereBilanz();
     return {
       id:p.id, person:p,
-      name:`${p.firstName||""} ${p.lastName||""}`.trim(),
+      name:`${p.firstName||""} ${p.lastName||""}`.trim() + (p._ehemalig?" (ehem.)":""),
       gesamtA:b.einsaetze, einzelA:b.einzelEinsaetze,
       einzelG:b.einzelG, einzelV:b.einzelV,
       doppelG:b.doppelG, doppelV:b.doppelV,
@@ -2571,16 +2613,20 @@ function HistorieAdminView({ players }){
   const [mannschaft,setMannschaft]=useState("");
   if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
   const saisons=historieSaisons(store);
-  const kreis=(players||[]).filter(p=>{
+  const mannschaften=historieMannschaften(store, saison);
+  // Bei Saisonwechsel kann die gewählte Mannschaft wegfallen – dann gilt wieder „alle".
+  const mannschaftAktiv = mannschaften.includes(mannschaft) ? mannschaft : "";
+  const bilanzen=historieAggregieren(store, saison, mannschaftAktiv);
+  // Ehemalige: stehen in den Bilanzen, aber nicht mehr im Spielerstamm. Sie gelten
+  // als passiv und erscheinen deshalb nur, wenn Inaktive eingeblendet sind.
+  const alle=[...(players||[]), ...(nurAktive?[]:historieEhemalige(store, saison, bilanzen, players))];
+  const kreis=alle.filter(p=>{
     if(nurAktive && !historieIstAktiv(p)) return false;
     if(gruppe!=="alle" && historieGruppeVon(p)!==gruppe) return false;
     if(gruppe==="alle" && historieGruppeVon(p)==="Sonstige") return false;
     return true;
   });
-  const mannschaften=historieMannschaften(store, saison);
-  // Bei Saisonwechsel kann die gewählte Mannschaft wegfallen – dann gilt wieder „alle".
-  const mannschaftAktiv = mannschaften.includes(mannschaft) ? mannschaft : "";
-  const zeilen=historieZeilen(kreis, historieAggregieren(store, saison, mannschaftAktiv));
+  const zeilen=historieZeilen(kreis, bilanzen);
   const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
     background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
   return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
@@ -2615,6 +2661,9 @@ function HistorieAdminView({ players }){
       Hat eine Person mehrere Funktionen, zählt „Erwachsene" — Herren und Damen ergeben sich
       daraus zusammen mit dem Geschlecht, Nachwuchs aus der Funktion „Spieler".
       Ausgegraute Zeilen haben in der gewählten Saison keine Bilanz.
+      Mit „(ehem.)" gekennzeichnete Personen kommen in den Bilanzen vor, stehen aber nicht
+      im Spielerstamm — meist Ehemalige aus der Zeit vor der App. Sie gelten als passiv und
+      erscheinen nur bei „Aktive + Inaktive"; ihre Einordnung ergibt sich aus der Mannschaft.
     </div>
   </div>;
 }
