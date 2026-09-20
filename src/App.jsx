@@ -1,4 +1,4 @@
-// === TTC-App · Version 457 · erstellt 19.09.2026 ===
+// === TTC-App · Version 458 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "457";
-const APP_DATUM   = "19.09.2026";
+const APP_VERSION = "458";
+const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -1256,8 +1256,178 @@ function paarungenFuerGruppe(ids){
   return paare;
 }
 
+// pdf.js bei Bedarf nachladen (modulweit nutzbar).
+async function ladePdfJsLib(){
+  if(window.pdfjsLib) return window.pdfjsLib;
+  await new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden."));
+    document.head.appendChild(s);
+  });
+  if(!window.pdfjsLib) throw new Error("pdf.js nicht verfügbar.");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  return window.pdfjsLib;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// SCHWEIZER SYSTEM (Turnierart, Vorbild: VR-Cup des HTTV)
+// HISTORIE SPIELE — Bilanzübersichten aus click-tt/nuLiga
+// ═══════════════════════════════════════════════════════════════════════════
+// Gespeichert wird unter config/historie_spiele in der Form
+//   { dateien: { "<saison>::<quelle>": {saison, quelle, dateiname, stand,
+//                                       spieler:{ <schluessel>: {...} } } } }
+// Bewusst je Datei abgelegt: Eine Saison besteht aus mehreren PDFs (Herren,
+// Mädchen 13, Mädchen 15 …). Wird eine davon erneut hochgeladen, ersetzt sie
+// genau ihren eigenen Eintrag – die übrigen bleiben unangetastet und nichts
+// wird doppelt gezählt.
+
+// Saison aus dem Dateinamen: "Bilanzuebersicht_2025_26_Herren" -> "2025/26".
+// Im PDF selbst steht sie nicht.
+function bilanzSaisonAusDateiname(name){
+  const n=String(name||"");
+  let m=/(\d{4})[_\-\s]+(\d{4})/.exec(n);
+  if(m) return `${m[1]}/${m[2].slice(2)}`;
+  m=/(\d{4})[_\-\s]+(\d{2})(?!\d)/.exec(n);
+  if(m) return `${m[1]}/${m[2]}`;
+  return "";
+}
+// Herkunft aus dem Dateinamen: alles nach der Saison ("Herren", "Maedchen_13").
+function bilanzQuelleAusDateiname(name){
+  const n=String(name||"").replace(/\.pdf$/i,"");
+  const m=/(\d{4})[_\-\s]+(\d{2,4})[_\-\s]+(.+)$/.exec(n);
+  return (m ? m[3] : n).replace(/[_\-]+/g," ").trim() || "Unbekannt";
+}
+// Vergleichsschlüssel einer Person: "nachnamevorname", ohne Umlaute und Zeichen.
+function historieKey(nachname, vorname){
+  const norm=(x)=>String(x||"").toLowerCase()
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
+    .replace(/[^a-z]/g,"");
+  return norm(nachname)+"|"+norm(vorname);
+}
+// Entfernt Zusätze in Klammern hinter dem Namen ("Horz, Lara Marie (NES)").
+// Ohne das würde dieselbe Person je nach Einsatzstatus doppelt gezählt.
+function historieNameBereinigt(voll){
+  return String(voll||"").replace(/\s*\([^)]*\)\s*$/,"").trim();
+}
+// Schlüssel aus "Nachname, Vorname" (PDF-Schreibweise).
+function historieKeyAusPdfName(voll){
+  const t=historieNameBereinigt(voll).split(",");
+  return historieKey(t[0]||"", t.slice(1).join(" ")||"");
+}
+// Schlüssel einer Person aus dem Spielerstamm.
+function historieKeyAusPlayer(p){ return historieKey(p?.lastName, p?.firstName); }
+
+// Leerer Bilanzsatz.
+function leereBilanz(name){
+  return {name:name||"", einsaetze:0, einzelEinsaetze:0,
+          einzelG:0, einzelV:0, doppelG:0, doppelV:0};
+}
+// Addiert b auf a (beide Bilanzsätze).
+function bilanzAddieren(a, b){
+  a.einsaetze       += b.einsaetze||0;
+  a.einzelEinsaetze += b.einzelEinsaetze||0;
+  a.einzelG += b.einzelG||0;  a.einzelV += b.einzelV||0;
+  a.doppelG += b.doppelG||0;  a.doppelV += b.doppelV||0;
+  return a;
+}
+
+// Liest die Zeilen einer Bilanzübersicht aus.
+// Einzelzeile:  "1.1 Titz, Stefan   17   17   5:12  7:10   12:22"
+//               Rang, Name, Einsätze gesamt, Einsätze im Einzel, Bilanzen je
+//               Paarkreuz, ganz rechts die Einzelbilanz gesamt.
+// Doppelzeile:  "Meilinger, Thomas / Titz, Stefan   10   3:7"
+//               beide Namen, Anzahl Doppel, Doppelbilanz.
+// Zusammenfassungszeilen (Einzel/Doppel/Gesamt) werden übersprungen, weil sie
+// sonst doppelt zählen würden.
+function parseBilanzZeilen(zeilen){
+  const spieler={};
+  const hol=(schluessel,name)=>{
+    if(!spieler[schluessel]) spieler[schluessel]=leereBilanz(name);
+    else if(!spieler[schluessel].name && name) spieler[schluessel].name=name;
+    return spieler[schluessel];
+  };
+  const bilanz=(tok)=>{ const m=/^(\d+):(\d+)$/.exec(tok||""); return m?[+m[1],+m[2]]:null; };
+
+  for(const roh of (zeilen||[])){
+    const z=String(roh||"").replace(/\s+/g," ").trim();
+    if(!z) continue;
+    if(/^(Rang|TTC|Bilanz|nu ?\.|Seite)/i.test(z)) continue;
+    if(/^(Einzel|Doppel|Gesamt)\b/i.test(z)) continue;
+
+    // ── Doppelzeile ──
+    if(z.includes(" / ")){
+      const teile=z.split(" / ");
+      if(teile.length===2){
+        const tok=teile[1].split(" ");
+        // von hinten: Bilanz, davor die Anzahl
+        const b=bilanz(tok[tok.length-1]);
+        const anzahl=Number(tok[tok.length-2]);
+        if(b && Number.isFinite(anzahl)){
+          const name1=teile[0].replace(/^\d+\.\d+\s+/,"").trim();
+          const name2=tok.slice(0,tok.length-2).join(" ").trim();
+          for(const nm of [name1,name2]){
+            const e=hol(historieKeyAusPdfName(nm), historieNameBereinigt(nm));
+            e.doppelG+=b[0]; e.doppelV+=b[1];
+          }
+          continue;
+        }
+      }
+    }
+
+    // ── Einzelzeile ──
+    const rm=/^(\d+\.\d+)\s+(.*)$/.exec(z);
+    if(!rm) continue;
+    const rest=rm[2].split(" ");
+    // Der Name endet vor der ersten reinen Zahl (Einsätze).
+    let i=rest.findIndex(t=>/^\d+$/.test(t));
+    if(i<1) continue;
+    const name=rest.slice(0,i).join(" ").trim();
+    if(!name.includes(",")) continue;
+    const zahlen=rest.slice(i);
+    const einsaetze=Number(zahlen[0]);
+    const einzelEinsaetze=/^\d+$/.test(zahlen[1]||"") ? Number(zahlen[1]) : einsaetze;
+    const gesamt=bilanz(zahlen[zahlen.length-1]);
+    if(!Number.isFinite(einsaetze) || !gesamt) continue;
+    const e=hol(historieKeyAusPdfName(name), historieNameBereinigt(name));
+    e.einsaetze+=einsaetze;
+    e.einzelEinsaetze+=einzelEinsaetze;
+    e.einzelG+=gesamt[0]; e.einzelV+=gesamt[1];
+  }
+  return spieler;
+}
+
+// Fasst die abgelegten Dateien zu einer Auswertung zusammen.
+// saison="" -> alle Saisons. Rückgabe: { <schluessel>: Bilanzsatz }
+function historieAggregieren(store, saison){
+  const ergebnis={};
+  for(const eintrag of Object.values(store?.dateien||{})){
+    if(saison && eintrag.saison!==saison) continue;
+    for(const [k,b] of Object.entries(eintrag.spieler||{})){
+      if(!ergebnis[k]) ergebnis[k]=leereBilanz(b.name);
+      bilanzAddieren(ergebnis[k], b);
+    }
+  }
+  return ergebnis;
+}
+// Alle in der Ablage vorkommenden Saisons, neueste zuerst.
+function historieSaisons(store){
+  const s=new Set();
+  for(const e of Object.values(store?.dateien||{})) if(e.saison) s.add(e.saison);
+  return [...s].sort().reverse();
+}
+// Bilanzen einer Person je Saison, neueste zuerst.
+function historieProSaison(store, schluessel){
+  const proSaison={};
+  for(const e of Object.values(store?.dateien||{})){
+    const b=(e.spieler||{})[schluessel];
+    if(!b) continue;
+    if(!proSaison[e.saison]) proSaison[e.saison]=leereBilanz(b.name);
+    bilanzAddieren(proSaison[e.saison], b);
+  }
+  return Object.entries(proSaison).sort((a,b)=>b[0].localeCompare(a[0]));
+}
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Jede Runde wird neu ausgelost: Spieler mit gleicher Punktzahl treffen
 // aufeinander, Wiederholungen werden vermieden. Dadurch spielt man mit
@@ -2079,6 +2249,331 @@ function Feld({label,children,klein}){
 const selT2={padding:"8px 9px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"};
 
 // ─── Turnier-Detail: Teilnehmer, Gruppen (Drag&Drop), Tabelle, Spiele ───────
+// ─── HISTORIE SPIELE — Upload und Ansichten ──────────────────────────────────
+
+// Lädt die Ablage config/historie_spiele und hält sie aktuell.
+function useHistorieStore(){
+  const [store,setStore]=useState({dateien:{}});
+  const [laedt,setLaedt]=useState(true);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","historie_spiele"), snap=>{
+      setStore(snap.exists()?{dateien:(snap.data().dateien||{})}:{dateien:{}});
+      setLaedt(false);
+    }, ()=>setLaedt(false));
+    return ()=>u();
+  },[]);
+  return {store, laedt};
+}
+
+// Einordnung einer Person für den Funktionsfilter des Admins.
+// Mehrere Funktionen: „Erwachsene" gewinnt immer.
+function historieGruppeVon(p){
+  if(p?.roles?.erwachsene) return (String(p.gender||p.geschlecht||"").toLowerCase().startsWith("w")) ? "Damen" : "Herren";
+  if(p?.roles?.player) return "Nachwuchs";
+  return "Sonstige";
+}
+// Aktiv oder passiv? Die App führt inaktive Personen über status==="passiv"
+// (so auch an allen anderen Stellen, z. B. in der Aufstellung).
+function historieIstAktiv(p){ return p?.status!=="passiv"; }
+
+// Tabellenspalten der Vereins-/Admin-Übersicht.
+const HISTORIE_SPALTEN=[
+  {key:"name",    label:"Name",                  txt:true},
+  {key:"gesamtA", label:"Einzel/Doppel",         hint:"Anzahl Einsätze"},
+  {key:"einzelA", label:"Einzel",                hint:"Anzahl Einzel-Einsätze"},
+  {key:"einzelG", label:"Einzel +"},
+  {key:"einzelV", label:"Einzel −"},
+  {key:"doppelG", label:"Doppel +"},
+  {key:"doppelV", label:"Doppel −"},
+  {key:"summeG",  label:"Gesamt +"},
+  {key:"summeV",  label:"Gesamt −"},
+];
+// Baut die Tabellenzeilen aus Spielerstamm und Bilanzablage.
+function historieZeilen(players, bilanzen){
+  return (players||[]).map(p=>{
+    const b=bilanzen[historieKeyAusPlayer(p)]||leereBilanz();
+    return {
+      id:p.id, person:p,
+      name:`${p.firstName||""} ${p.lastName||""}`.trim(),
+      gesamtA:b.einsaetze, einzelA:b.einzelEinsaetze,
+      einzelG:b.einzelG, einzelV:b.einzelV,
+      doppelG:b.doppelG, doppelV:b.doppelV,
+      summeG:b.einzelG+b.doppelG, summeV:b.einzelV+b.doppelV,
+      hatDaten:(b.einsaetze||0)>0,
+    };
+  });
+}
+
+// Sortierbare Tabelle, gemeinsam genutzt von Vereins- und Admin-Übersicht.
+function HistorieTabelle({zeilen}){
+  const [sortKey,setSortKey]=useState("gesamtA");
+  const [absteigend,setAbsteigend]=useState(true);
+  const sortiert=[...zeilen].sort((a,b)=>{
+    const sp=HISTORIE_SPALTEN.find(s=>s.key===sortKey);
+    const v = sp?.txt ? String(a[sortKey]||"").localeCompare(String(b[sortKey]||""))
+                      : (Number(a[sortKey])||0)-(Number(b[sortKey])||0);
+    return absteigend ? -v : v;
+  });
+  function klick(key){
+    if(key===sortKey) setAbsteigend(x=>!x);
+    else { setSortKey(key); setAbsteigend(key!=="name"); }
+  }
+  const th={padding:"6px 7px",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",
+    fontSize:10,fontWeight:800,color:"var(--text3)",textAlign:"right",borderBottom:"1px solid var(--border2)"};
+  const td={padding:"6px 7px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
+  if(zeilen.length===0) return <div style={{fontSize:12,color:"var(--text4)",padding:"14px 2px"}}>
+    Keine Personen für diese Auswahl.
+  </div>;
+  return <div style={{overflowX:"auto"}}>
+    <table style={{borderCollapse:"collapse",width:"100%",minWidth:640}}>
+      <thead><tr>
+        {HISTORIE_SPALTEN.map(s=><th key={s.key} onClick={()=>klick(s.key)} title={s.hint||"Sortieren"}
+          style={{...th, textAlign:s.txt?"left":"right", color:sortKey===s.key?TTC_ROT:"var(--text3)"}}>
+          {s.label}{sortKey===s.key?(absteigend?" ▼":" ▲"):""}
+        </th>)}
+      </tr></thead>
+      <tbody>
+        {sortiert.map(r=><tr key={r.id} style={{opacity:r.hatDaten?1:0.55}}>
+          <td style={{...td,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{r.name}</td>
+          <td style={{...td,fontWeight:800}}>{r.gesamtA}</td>
+          <td style={td}>{r.einzelA}</td>
+          <td style={{...td,color:"#10b981"}}>{r.einzelG}</td>
+          <td style={{...td,color:"#ef4444"}}>{r.einzelV}</td>
+          <td style={{...td,color:"#10b981"}}>{r.doppelG}</td>
+          <td style={{...td,color:"#ef4444"}}>{r.doppelV}</td>
+          <td style={{...td,color:"#10b981",fontWeight:800}}>{r.summeG}</td>
+          <td style={{...td,color:"#ef4444",fontWeight:800}}>{r.summeV}</td>
+        </tr>)}
+      </tbody>
+    </table>
+  </div>;
+}
+
+// 1) Eigene Historie: alle Saisons der angemeldeten Person.
+function HistorieEigeneView({ myPlayer }){
+  const {store,laedt}=useHistorieStore();
+  if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
+  if(!myPlayer) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Kein Spielerprofil zugeordnet.</div>;
+  const reihen=historieProSaison(store, historieKeyAusPlayer(myPlayer));
+  const gesamt=reihen.reduce((a,[,b])=>bilanzAddieren(a,b), leereBilanz());
+  const td={padding:"7px 8px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
+  const th={padding:"6px 8px",whiteSpace:"nowrap",textAlign:"right",fontSize:10,fontWeight:800,
+    color:"var(--text3)",borderBottom:"1px solid var(--border2)"};
+  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📈 Eigene Historie Spiele</div>
+    <div style={{fontSize:12,color:"var(--text3)",marginBottom:12}}>
+      {myPlayer.firstName} {myPlayer.lastName} — alle erfassten Saisons
+    </div>
+    {reihen.length===0
+      ? <div style={{padding:18,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,
+          fontSize:12,color:"var(--text3)"}}>Für dich sind noch keine Bilanzen hinterlegt.</div>
+      : <div style={{overflowX:"auto",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:600}}>
+            <thead><tr>
+              <th style={{...th,textAlign:"left"}}>Saison</th>
+              <th style={th} title="Anzahl Einsätze">Einzel/Doppel</th>
+              <th style={th} title="Anzahl Einzel-Einsätze">Einzel</th>
+              <th style={th}>Einzel +</th><th style={th}>Einzel −</th>
+              <th style={th}>Doppel +</th><th style={th}>Doppel −</th>
+              <th style={th}>Gesamt +</th><th style={th}>Gesamt −</th>
+            </tr></thead>
+            <tbody>
+              {reihen.map(([saison,b])=><tr key={saison}>
+                <td style={{...td,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{saison}</td>
+                <td style={{...td,fontWeight:800}}>{b.einsaetze}</td>
+                <td style={td}>{b.einzelEinsaetze}</td>
+                <td style={{...td,color:"#10b981"}}>{b.einzelG}</td>
+                <td style={{...td,color:"#ef4444"}}>{b.einzelV}</td>
+                <td style={{...td,color:"#10b981"}}>{b.doppelG}</td>
+                <td style={{...td,color:"#ef4444"}}>{b.doppelV}</td>
+                <td style={{...td,color:"#10b981",fontWeight:800}}>{b.einzelG+b.doppelG}</td>
+                <td style={{...td,color:"#ef4444",fontWeight:800}}>{b.einzelV+b.doppelV}</td>
+              </tr>)}
+              {reihen.length>1 && <tr style={{background:"var(--bg3)"}}>
+                <td style={{...td,textAlign:"left",fontWeight:800,color:"var(--text)"}}>Gesamt</td>
+                <td style={{...td,fontWeight:800}}>{gesamt.einsaetze}</td>
+                <td style={{...td,fontWeight:700}}>{gesamt.einzelEinsaetze}</td>
+                <td style={{...td,color:"#10b981"}}>{gesamt.einzelG}</td>
+                <td style={{...td,color:"#ef4444"}}>{gesamt.einzelV}</td>
+                <td style={{...td,color:"#10b981"}}>{gesamt.doppelG}</td>
+                <td style={{...td,color:"#ef4444"}}>{gesamt.doppelV}</td>
+                <td style={{...td,color:"#10b981",fontWeight:800}}>{gesamt.einzelG+gesamt.doppelG}</td>
+                <td style={{...td,color:"#ef4444",fontWeight:800}}>{gesamt.einzelV+gesamt.doppelV}</td>
+              </tr>}
+            </tbody>
+          </table>
+        </div>}
+  </div>;
+}
+
+// 2) Vereins-Übersicht: aktive Personen derselben Funktion wie der Betrachter.
+function HistorieVereinView({ players, myPlayer }){
+  const {store,laedt}=useHistorieStore();
+  if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
+  // Erwachsene sehen Erwachsene, Nachwuchsspieler sehen den Nachwuchs.
+  const alsErwachsener = !!myPlayer?.roles?.erwachsene;
+  const kreis=(players||[]).filter(p=>
+    historieIstAktiv(p) && (alsErwachsener ? !!p?.roles?.erwachsene : !!p?.roles?.player));
+  const zeilen=historieZeilen(kreis, historieAggregieren(store,""));
+  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele Verein</div>
+    <div style={{fontSize:12,color:"var(--text3)",marginBottom:12}}>
+      {alsErwachsener?"Erwachsene":"Nachwuchs"} · alle erfassten Saisons · Spaltenüberschrift antippen zum Sortieren
+    </div>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
+      <HistorieTabelle zeilen={zeilen}/>
+    </div>
+  </div>;
+}
+
+// 4) Admin-Übersicht mit Filtern für Aktivität, Funktion und Saison.
+function HistorieAdminView({ players }){
+  const {store,laedt}=useHistorieStore();
+  const [nurAktive,setNurAktive]=useState(true);
+  const [gruppe,setGruppe]=useState("alle");
+  const [saison,setSaison]=useState("");
+  if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
+  const saisons=historieSaisons(store);
+  const kreis=(players||[]).filter(p=>{
+    if(nurAktive && !historieIstAktiv(p)) return false;
+    if(gruppe!=="alle" && historieGruppeVon(p)!==gruppe) return false;
+    if(gruppe==="alle" && historieGruppeVon(p)==="Sonstige") return false;
+    return true;
+  });
+  const zeilen=historieZeilen(kreis, historieAggregieren(store, saison));
+  const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
+    background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
+  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele (alle)</div>
+    <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+      Spaltenüberschrift antippen zum Sortieren
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <select value={gruppe} onChange={e=>setGruppe(e.target.value)} style={sel}>
+        <option value="alle">alle Funktionen</option>
+        <option value="Herren">Herren</option>
+        <option value="Damen">Damen</option>
+        <option value="Nachwuchs">Nachwuchs</option>
+      </select>
+      <select value={saison} onChange={e=>setSaison(e.target.value)} style={sel}>
+        <option value="">alle Saisons</option>
+        {saisons.map(s=><option key={s} value={s}>{s}</option>)}
+      </select>
+      <button onClick={()=>setNurAktive(a=>!a)} style={{...sel,cursor:"pointer",
+        background:nurAktive?TTC_ROT:"var(--bg2)",color:nurAktive?"#fff":"var(--text3)",border:"1px solid var(--border2)"}}>
+        {nurAktive?"nur Aktive":"Aktive + Inaktive"}
+      </button>
+    </div>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
+      <HistorieTabelle zeilen={zeilen}/>
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
+      Hat eine Person mehrere Funktionen, zählt „Erwachsene" — Herren und Damen ergeben sich
+      daraus zusammen mit dem Geschlecht, Nachwuchs aus der Funktion „Spieler".
+      Ausgegraute Zeilen haben in der gewählten Saison keine Bilanz.
+    </div>
+  </div>;
+}
+
+// Upload der Bilanzübersichten (Verwaltung → Wettkampf).
+function HistorieSpieleUpload({ showToast }){
+  const {store}=useHistorieStore();
+  const [laeuft,setLaeuft]=useState(false);
+  const [meldung,setMeldung]=useState("");
+  const inputRef=useRef(null);
+
+  async function pdfZeilen(file){
+    const pdfjs=await ladePdfJsLib();
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;
+    const alle=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const tc=await page.getTextContent();
+      // Textstücke nach Zeilen (y-Position) gruppieren und von links nach rechts
+      // zusammensetzen — dasselbe Verfahren wie beim Aufstellungs-PDF.
+      const zeilen={};
+      for(const it of tc.items){
+        const y=Math.round(it.transform[5]); const x=it.transform[4];
+        (zeilen[y]=zeilen[y]||[]).push({x,s:it.str});
+      }
+      Object.keys(zeilen).map(Number).sort((a,b)=>b-a)
+        .forEach(y=>alle.push(zeilen[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(" ")));
+    }
+    return alle;
+  }
+
+  async function dateienVerarbeiten(e){
+    const files=[...(e.target.files||[])];
+    e.target.value="";
+    if(!files.length) return;
+    setLaeuft(true); setMeldung("");
+    const neu={...(store.dateien||{})};
+    const berichte=[];
+    for(const file of files){
+      try{
+        const saison=bilanzSaisonAusDateiname(file.name);
+        if(!saison){ berichte.push(`${file.name}: Saison nicht erkannt (erwartet z. B. „…_2025_26_…")`); continue; }
+        const quelle=bilanzQuelleAusDateiname(file.name);
+        const spieler=parseBilanzZeilen(await pdfZeilen(file));
+        const anzahl=Object.keys(spieler).length;
+        if(anzahl===0){ berichte.push(`${file.name}: keine Bilanzen gefunden`); continue; }
+        neu[`${saison}::${quelle}`]={saison, quelle, dateiname:file.name, stand:Date.now(), spieler};
+        berichte.push(`${saison} · ${quelle}: ${anzahl} Personen`);
+      }catch(err){
+        berichte.push(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"})`);
+      }
+    }
+    try{
+      await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()},{merge:true});
+      showToast?.("Historie gespeichert","📈");
+    }catch(err){
+      berichte.push("Speichern fehlgeschlagen: "+(err?.message||"unbekannt"));
+    }
+    setMeldung(berichte.join("\n"));
+    setLaeuft(false);
+  }
+
+  async function eintragLoeschen(key){
+    if(!window.confirm("Diese Datei aus der Historie entfernen?")) return;
+    const neu={...(store.dateien||{})};
+    delete neu[key];
+    try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); }catch(e){}
+  }
+
+  const eintraege=Object.entries(store.dateien||{}).sort((a,b)=>b[0].localeCompare(a[0]));
+  return <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:12}}>
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:6}}>📈 Historie Spiele</div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
+      Bilanzübersichten aus click-tt als PDF hochladen — mehrere Dateien auf einmal möglich.
+      Die Saison wird aus dem Dateinamen gelesen (z. B. „Bilanzuebersicht_2025_26_Herren"),
+      da sie im Dokument selbst nicht steht. Jede Datei ersetzt beim erneuten Hochladen nur
+      ihren eigenen Stand, die übrigen Dateien der Saison bleiben erhalten.
+    </div>
+    <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple
+      onChange={dateienVerarbeiten} style={{display:"none"}}/>
+    <button onClick={()=>inputRef.current?.click()} disabled={laeuft} style={{
+      padding:"9px 14px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
+      background:laeuft?"var(--bg3)":TTC_ROT, color:laeuft?"var(--text4)":"#fff",
+      cursor:laeuft?"wait":"pointer"}}>
+      {laeuft?"⏳ Wird gelesen…":"📎 Bilanzübersichten hochladen"}
+    </button>
+    {meldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{meldung}</div>}
+    {eintraege.length>0 && <div style={{marginTop:12}}>
+      <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",marginBottom:6,textTransform:"uppercase"}}>Hinterlegte Dateien</div>
+      {eintraege.map(([key,e])=><div key={key} style={{display:"flex",alignItems:"center",gap:8,
+        padding:"6px 9px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{e.saison} · {e.quelle}</div>
+          <div style={{fontSize:10,color:"var(--text4)"}}>{Object.keys(e.spieler||{}).length} Personen</div>
+        </div>
+        <button onClick={()=>eintragLoeschen(key)} title="entfernen" style={{background:"#ef444422",
+          border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",fontSize:12,padding:"4px 9px",cursor:"pointer"}}>🗑</button>
+      </div>)}
+    </div>}
+  </div>;
+}
+
 // ─── SCHWEIZER SYSTEM — Oberfläche ────────────────────────────────────────────
 // Gästeverwaltung (Nicht-Vereinsmitglieder), Rundenauslosung, Ergebniseingabe
 // und Tabelle. Bewusst in sich geschlossen, damit die bestehenden Turnierarten
@@ -6459,6 +6954,7 @@ const TR_HOME_GRUPPEN = [
     { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
     { key:"turniere",    label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
     { key:"ttr",         label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
+    { key:"historieadmin", label:"Historie Spiele", icon:"📊", sub:"Bilanzen aller Personen" },
   ]},
   { titel:"Verein & Verwaltung", items:[
     { key:"termine",          label:"Termine",     icon:"📌", sub:"Vereinstermine" },
@@ -6637,6 +7133,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"ttr",          label:"TTR",           icon:"📊"},
+    {key:"historieadmin", label:"Historie Spiele", icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"spiellokale",  label:"Spiellokale",   icon:"🏟️"},
     {key:"termine",      label:"Termine",       icon:"📌"},
@@ -7092,6 +7589,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       viewerCanEditAll={true}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
+    {activeTab==="historieadmin"&&<HistorieAdminView players={players}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null);}}/>}
 
     <style>{`
@@ -11308,6 +11806,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="wettkampf" && <>
+    {/* Historie Spiele: Bilanzübersichten je Saison einlesen */}
+    <HistorieSpieleUpload showToast={showToast}/>
     {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -13162,6 +13662,8 @@ const SP_HOME_GRUPPEN = [
     { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
     { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
     { key:"ttr",         label:"TTR",         icon:"📊", sub:"Ranglistenwerte" },
+    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
+    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
   ]},
   { titel:"Verein & mehr", items:[
     { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
@@ -13375,6 +13877,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
+    {key:"historie",label:"Eigene Historie",icon:"📈"},
+    {key:"historieverein",label:"Historie Verein",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
@@ -13716,6 +14220,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
+    {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
+    {activeTab==="historieverein"&&<HistorieVereinView players={players} myPlayer={myPlayer}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
@@ -21450,6 +21956,8 @@ const EW_HOME_GRUPPEN = [
     { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",     label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
     { key:"ttr",          label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
+    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
+    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
   ]},
   { titel:"Mein Bereich", items:[
     { key:"erfolge",      label:"Erfolge",      icon:"🏅", sub:"Meine Erfolge" },
@@ -21707,6 +22215,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
     {key:"ttr",label:"TTR",icon:"📊"},
+    {key:"historie",label:"Eigene Historie",icon:"📈"},
+    {key:"historieverein",label:"Historie Verein",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
@@ -21803,6 +22313,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       viewerCanEditAll={!!isMF}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
+    {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
+    {activeTab==="historieverein"&&<HistorieVereinView players={players} myPlayer={myPlayer}/>}
   </div>;
 }
 
