@@ -1,4 +1,4 @@
-// === TTC-App · Version 461 · erstellt 20.09.2026 ===
+// === TTC-App · Version 462 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "461";
+const APP_VERSION = "462";
 const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -1464,21 +1464,35 @@ function historieSaisons(store){
   return [...s].sort().reverse();
 }
 // Bilanzen einer Person je Saison, neueste zuerst.
-function historieProSaison(store, schluessel){
+function historieProSaison(store, schluessel, mannschaft){
   const proSaison={};
   for(const datei of Object.values(store?.dateien||{})){
     const e=(datei.spieler||{})[schluessel];
     if(!e) continue;
     if(!proSaison[datei.saison]){ proSaison[datei.saison]=leereBilanz(e.name); proSaison[datei.saison].teams=new Set(); }
-    for(const [team,b] of Object.entries(e.teams||{})){
-      bilanzAddieren(proSaison[datei.saison], b);
-      proSaison[datei.saison].teams.add(team);
+    if(e.teams){
+      for(const [team,b] of Object.entries(e.teams)){
+        if(mannschaft && team!==mannschaft) continue;
+        bilanzAddieren(proSaison[datei.saison], b);
+        proSaison[datei.saison].teams.add(team);
+      }
+    } else if(!mannschaft){
+      bilanzAddieren(proSaison[datei.saison], e);   // alte Ablage ohne Mannschaft
     }
-    if(!e.teams) bilanzAddieren(proSaison[datei.saison], e);   // alte Ablage
   }
   return Object.entries(proSaison)
+    .filter(([,b])=> b.einsaetze>0 || b.einzelG||b.einzelV||b.doppelG||b.doppelV)
     .map(([s,b])=>[s,{...b, teams:[...(b.teams||[])].sort((x,y)=>x.localeCompare(y,"de"))}])
     .sort((a,b)=>b[0].localeCompare(a[0]));
+}
+// Mannschaften, in denen diese Person gespielt hat.
+function historieMannschaftenDerPerson(store, schluessel){
+  const s=new Set();
+  for(const datei of Object.values(store?.dateien||{})){
+    const e=(datei.spieler||{})[schluessel];
+    for(const t of Object.keys(e?.teams||{})) s.add(t);
+  }
+  return [...s].sort((a,b)=>a.localeCompare(b,"de"));
 }
 
 
@@ -2403,62 +2417,89 @@ function HistorieTabelle({zeilen}){
   </div>;
 }
 
-// 1) Eigene Historie: alle Saisons der angemeldeten Person.
+// 1) Eigene Historie: Saisons der angemeldeten Person, filterbar nach Mannschaft
+// und Saison. Bewusst schmal gehalten — sechs Spalten passen auf ein Handy im
+// Hochformat, ohne dass seitlich gescrollt werden muss. Gewonnen und verloren
+// stehen deshalb zusammen in einer Zelle ("16:20") statt in zwei Spalten.
 function HistorieEigeneView({ myPlayer }){
   const {store,laedt}=useHistorieStore();
+  const [mannschaft,setMannschaft]=useState("");
+  const [saison,setSaison]=useState("");
   if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
   if(!myPlayer) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Kein Spielerprofil zugeordnet.</div>;
-  const reihen=historieProSaison(store, historieKeyAusPlayer(myPlayer));
+
+  const schluessel=historieKeyAusPlayer(myPlayer);
+  const mannschaften=historieMannschaftenDerPerson(store, schluessel);
+  const mannschaftAktiv=mannschaften.includes(mannschaft)?mannschaft:"";
+  const alle=historieProSaison(store, schluessel, mannschaftAktiv);
+  const saisons=alle.map(([s])=>s);
+  const saisonAktiv=saisons.includes(saison)?saison:"";
+  const reihen=saisonAktiv?alle.filter(([s])=>s===saisonAktiv):alle;
   const gesamt=reihen.reduce((a,[,b])=>bilanzAddieren(a,b), leereBilanz());
-  const td={padding:"7px 8px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
-  const th={padding:"6px 8px",whiteSpace:"nowrap",textAlign:"right",fontSize:10,fontWeight:800,
-    color:"var(--text3)",borderBottom:"1px solid var(--border2)"};
+
+  const th={padding:"6px 4px",textAlign:"right",fontSize:10,fontWeight:800,
+    color:"var(--text3)",borderBottom:"1px solid var(--border2)",lineHeight:1.2};
+  const td={padding:"7px 4px",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
+  const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
+    background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
+  const paar=(g,v)=><><span style={{color:"#10b981"}}>{g}</span>
+    <span style={{color:"var(--text4)"}}>:</span><span style={{color:"#ef4444"}}>{v}</span></>;
+
   return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📈 Eigene Historie Spiele</div>
-    <div style={{fontSize:12,color:"var(--text3)",marginBottom:12}}>
-      {myPlayer.firstName} {myPlayer.lastName} — alle erfassten Saisons
+    <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+      {myPlayer.firstName} {myPlayer.lastName}
     </div>
+    {(mannschaften.length>0||saisons.length>0) && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      {mannschaften.length>0 && <select value={mannschaftAktiv} onChange={e=>setMannschaft(e.target.value)} style={sel}>
+        <option value="">alle Mannschaften</option>
+        {mannschaften.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>}
+      {saisons.length>0 && <select value={saisonAktiv} onChange={e=>setSaison(e.target.value)} style={sel}>
+        <option value="">alle Saisons</option>
+        {saisons.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>}
+    </div>}
     {reihen.length===0
       ? <div style={{padding:18,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,
-          fontSize:12,color:"var(--text3)"}}>Für dich sind noch keine Bilanzen hinterlegt.</div>
-      : <div style={{overflowX:"auto",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
-          <table style={{borderCollapse:"collapse",width:"100%",minWidth:600}}>
+          fontSize:12,color:"var(--text3)"}}>Für diese Auswahl sind keine Bilanzen hinterlegt.</div>
+      : <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"8px 10px"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",tableLayout:"fixed"}}>
+            <colgroup>
+              <col style={{width:"22%"}}/><col style={{width:"13%"}}/><col style={{width:"13%"}}/>
+              <col style={{width:"17%"}}/><col style={{width:"17%"}}/><col style={{width:"18%"}}/>
+            </colgroup>
             <thead><tr>
               <th style={{...th,textAlign:"left"}}>Saison</th>
-              <th style={{...th,textAlign:"left"}}>Mannschaft</th>
-              <th style={th} title="Anzahl Einsätze">Einzel/Doppel</th>
-              <th style={th} title="Anzahl Einzel-Einsätze">Einzel</th>
-              <th style={th}>Einzel +</th><th style={th}>Einzel −</th>
-              <th style={th}>Doppel +</th><th style={th}>Doppel −</th>
-              <th style={th}>Gesamt +</th><th style={th}>Gesamt −</th>
+              <th style={th} title="Anzahl Einsätze (Einzel/Doppel)">Spiele</th>
+              <th style={th} title="davon Einsätze im Einzel">Einzel</th>
+              <th style={th} title="Einzel gewonnen : verloren">Einzel</th>
+              <th style={th} title="Doppel gewonnen : verloren">Doppel</th>
+              <th style={th} title="gesamt gewonnen : verloren">Gesamt</th>
             </tr></thead>
             <tbody>
-              {reihen.map(([saison,b])=><tr key={saison}>
-                <td style={{...td,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{saison}</td>
-                <td style={{...td,textAlign:"left",color:"var(--text3)"}}>{(b.teams||[]).join(", ")||"—"}</td>
+              {reihen.map(([s,b])=><tr key={s}>
+                <td style={{...td,textAlign:"left",fontWeight:700,color:"var(--text)"}}>{s}</td>
                 <td style={{...td,fontWeight:800}}>{b.einsaetze}</td>
                 <td style={td}>{b.einzelEinsaetze}</td>
-                <td style={{...td,color:"#10b981"}}>{b.einzelG}</td>
-                <td style={{...td,color:"#ef4444"}}>{b.einzelV}</td>
-                <td style={{...td,color:"#10b981"}}>{b.doppelG}</td>
-                <td style={{...td,color:"#ef4444"}}>{b.doppelV}</td>
-                <td style={{...td,color:"#10b981",fontWeight:800}}>{b.einzelG+b.doppelG}</td>
-                <td style={{...td,color:"#ef4444",fontWeight:800}}>{b.einzelV+b.doppelV}</td>
+                <td style={td}>{paar(b.einzelG,b.einzelV)}</td>
+                <td style={td}>{paar(b.doppelG,b.doppelV)}</td>
+                <td style={{...td,fontWeight:800}}>{paar(b.einzelG+b.doppelG, b.einzelV+b.doppelV)}</td>
               </tr>)}
               {reihen.length>1 && <tr style={{background:"var(--bg3)"}}>
                 <td style={{...td,textAlign:"left",fontWeight:800,color:"var(--text)"}}>Gesamt</td>
-                <td style={td}></td>
                 <td style={{...td,fontWeight:800}}>{gesamt.einsaetze}</td>
-                <td style={{...td,fontWeight:700}}>{gesamt.einzelEinsaetze}</td>
-                <td style={{...td,color:"#10b981"}}>{gesamt.einzelG}</td>
-                <td style={{...td,color:"#ef4444"}}>{gesamt.einzelV}</td>
-                <td style={{...td,color:"#10b981"}}>{gesamt.doppelG}</td>
-                <td style={{...td,color:"#ef4444"}}>{gesamt.doppelV}</td>
-                <td style={{...td,color:"#10b981",fontWeight:800}}>{gesamt.einzelG+gesamt.doppelG}</td>
-                <td style={{...td,color:"#ef4444",fontWeight:800}}>{gesamt.einzelV+gesamt.doppelV}</td>
+                <td style={td}>{gesamt.einzelEinsaetze}</td>
+                <td style={td}>{paar(gesamt.einzelG,gesamt.einzelV)}</td>
+                <td style={td}>{paar(gesamt.doppelG,gesamt.doppelV)}</td>
+                <td style={{...td,fontWeight:800}}>{paar(gesamt.einzelG+gesamt.doppelG, gesamt.einzelV+gesamt.doppelV)}</td>
               </tr>}
             </tbody>
           </table>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
+            Spiele = Einsätze im Einzel und Doppel · Einzel = davon Einsätze im Einzel ·
+            die Zahlenpaare nennen gewonnen : verloren.
+          </div>
         </div>}
   </div>;
 }
