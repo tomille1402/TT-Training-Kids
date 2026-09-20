@@ -1,4 +1,4 @@
-// === TTC-App · Version 462 · erstellt 20.09.2026 ===
+// === TTC-App · Version 463 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "462";
+const APP_VERSION = "463";
 const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2345,6 +2345,12 @@ function historieGruppeVon(p){
 function historieIstAktiv(p){ return p?.status!=="passiv"; }
 
 // Tabellenspalten der Vereins-/Admin-Übersicht.
+// Saldo = gewonnene minus verlorene Spiele. Positiv grün, negativ rot,
+// ausgeglichen grau. Ein positiver Wert bekommt ein Pluszeichen, damit die
+// Richtung auch ohne Farbe erkennbar bleibt.
+function saldoFarbe(n){ return n>0 ? "#10b981" : (n<0 ? "#ef4444" : "var(--text4)"); }
+function saldoText(n){ return n>0 ? `+${n}` : String(n); }
+
 const HISTORIE_SPALTEN=[
   {key:"name",    label:"Name",                  txt:true},
   {key:"gesamtA", label:"Einzel/Doppel",         hint:"Anzahl Einsätze"},
@@ -2355,6 +2361,7 @@ const HISTORIE_SPALTEN=[
   {key:"doppelV", label:"Doppel −"},
   {key:"summeG",  label:"Gesamt +"},
   {key:"summeV",  label:"Gesamt −"},
+  {key:"saldo",   label:"Saldo", hint:"gewonnen minus verloren"},
 ];
 // Baut die Tabellenzeilen aus Spielerstamm und Bilanzablage.
 function historieZeilen(players, bilanzen){
@@ -2367,6 +2374,7 @@ function historieZeilen(players, bilanzen){
       einzelG:b.einzelG, einzelV:b.einzelV,
       doppelG:b.doppelG, doppelV:b.doppelV,
       summeG:b.einzelG+b.doppelG, summeV:b.einzelV+b.doppelV,
+      saldo:(b.einzelG+b.doppelG)-(b.einzelV+b.doppelV),
       hatDaten:(b.einsaetze||0)>0,
     };
   });
@@ -2411,6 +2419,7 @@ function HistorieTabelle({zeilen}){
           <td style={{...td,color:"#ef4444"}}>{r.doppelV}</td>
           <td style={{...td,color:"#10b981",fontWeight:800}}>{r.summeG}</td>
           <td style={{...td,color:"#ef4444",fontWeight:800}}>{r.summeV}</td>
+          <td style={{...td,color:saldoFarbe(r.saldo),fontWeight:800}}>{saldoText(r.saldo)}</td>
         </tr>)}
       </tbody>
     </table>
@@ -2466,8 +2475,9 @@ function HistorieEigeneView({ myPlayer }){
       : <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:"8px 10px"}}>
           <table style={{borderCollapse:"collapse",width:"100%",tableLayout:"fixed"}}>
             <colgroup>
-              <col style={{width:"22%"}}/><col style={{width:"13%"}}/><col style={{width:"13%"}}/>
-              <col style={{width:"17%"}}/><col style={{width:"17%"}}/><col style={{width:"18%"}}/>
+              <col style={{width:"20%"}}/><col style={{width:"11%"}}/><col style={{width:"11%"}}/>
+              <col style={{width:"16%"}}/><col style={{width:"16%"}}/><col style={{width:"16%"}}/>
+              <col style={{width:"10%"}}/>
             </colgroup>
             <thead><tr>
               <th style={{...th,textAlign:"left"}}>Saison</th>
@@ -2476,6 +2486,7 @@ function HistorieEigeneView({ myPlayer }){
               <th style={th} title="Einzel gewonnen : verloren">Einzel</th>
               <th style={th} title="Doppel gewonnen : verloren">Doppel</th>
               <th style={th} title="gesamt gewonnen : verloren">Gesamt</th>
+              <th style={th} title="gewonnen minus verloren">Saldo</th>
             </tr></thead>
             <tbody>
               {reihen.map(([s,b])=><tr key={s}>
@@ -2485,6 +2496,8 @@ function HistorieEigeneView({ myPlayer }){
                 <td style={td}>{paar(b.einzelG,b.einzelV)}</td>
                 <td style={td}>{paar(b.doppelG,b.doppelV)}</td>
                 <td style={{...td,fontWeight:800}}>{paar(b.einzelG+b.doppelG, b.einzelV+b.doppelV)}</td>
+                {(()=>{ const sa=(b.einzelG+b.doppelG)-(b.einzelV+b.doppelV);
+                  return <td style={{...td,color:saldoFarbe(sa),fontWeight:800}}>{saldoText(sa)}</td>; })()}
               </tr>)}
               {reihen.length>1 && <tr style={{background:"var(--bg3)"}}>
                 <td style={{...td,textAlign:"left",fontWeight:800,color:"var(--text)"}}>Gesamt</td>
@@ -2493,12 +2506,14 @@ function HistorieEigeneView({ myPlayer }){
                 <td style={td}>{paar(gesamt.einzelG,gesamt.einzelV)}</td>
                 <td style={td}>{paar(gesamt.doppelG,gesamt.doppelV)}</td>
                 <td style={{...td,fontWeight:800}}>{paar(gesamt.einzelG+gesamt.doppelG, gesamt.einzelV+gesamt.doppelV)}</td>
+                {(()=>{ const sa=(gesamt.einzelG+gesamt.doppelG)-(gesamt.einzelV+gesamt.doppelV);
+                  return <td style={{...td,color:saldoFarbe(sa),fontWeight:800}}>{saldoText(sa)}</td>; })()}
               </tr>}
             </tbody>
           </table>
           <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
             Spiele = Einsätze im Einzel und Doppel · Einzel = davon Einsätze im Einzel ·
-            die Zahlenpaare nennen gewonnen : verloren.
+            die Zahlenpaare nennen gewonnen : verloren · Saldo = gewonnen minus verloren.
           </div>
         </div>}
   </div>;
