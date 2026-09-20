@@ -1,4 +1,4 @@
-// === TTC-App · Version 458 · erstellt 20.09.2026 ===
+// === TTC-App · Version 460 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "458";
+const APP_VERSION = "460";
 const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2480,7 +2480,6 @@ function HistorieSpieleUpload({ showToast }){
   const {store}=useHistorieStore();
   const [laeuft,setLaeuft]=useState(false);
   const [meldung,setMeldung]=useState("");
-  const inputRef=useRef(null);
 
   async function pdfZeilen(file){
     const pdfjs=await ladePdfJsLib();
@@ -2512,6 +2511,11 @@ function HistorieSpieleUpload({ showToast }){
     const berichte=[];
     for(const file of files){
       try{
+        // Ist es wirklich ein PDF? Jede PDF-Datei beginnt mit "%PDF".
+        const kopf=new Uint8Array(await file.slice(0,5).arrayBuffer());
+        if(String.fromCharCode(...kopf).slice(0,4)!=="%PDF"){
+          berichte.push(`${file.name}: keine PDF-Datei`); continue;
+        }
         const saison=bilanzSaisonAusDateiname(file.name);
         if(!saison){ berichte.push(`${file.name}: Saison nicht erkannt (erwartet z. B. „…_2025_26_…")`); continue; }
         const quelle=bilanzQuelleAusDateiname(file.name);
@@ -2550,14 +2554,18 @@ function HistorieSpieleUpload({ showToast }){
       da sie im Dokument selbst nicht steht. Jede Datei ersetzt beim erneuten Hochladen nur
       ihren eigenen Stand, die übrigen Dateien der Saison bleiben erhalten.
     </div>
-    <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple
-      onChange={dateienVerarbeiten} style={{display:"none"}}/>
-    <button onClick={()=>inputRef.current?.click()} disabled={laeuft} style={{
-      padding:"9px 14px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
-      background:laeuft?"var(--bg3)":TTC_ROT, color:laeuft?"var(--text4)":"#fff",
-      cursor:laeuft?"wait":"pointer"}}>
-      {laeuft?"⏳ Wird gelesen…":"📎 Bilanzübersichten hochladen"}
-    </button>
+    {/* Bewusst OHNE accept-Filter: Die Dateien aus click-tt kommen haeufig ganz ohne
+        Endung an ("Bilanzuebersicht_2025_26_Herren"). Mit einem PDF-Filter graut der
+        Dateidialog sie dann aus und sie lassen sich nicht auswaehlen. Geprueft wird
+        stattdessen der Inhalt. Und: <label> statt Button mit programmatischem Klick –
+        so oeffnet der Dialog auf allen Geraeten zuverlaessig. */}
+    <label style={{display:"block",padding:"10px 12px",borderRadius:9,textAlign:"center",
+      fontSize:12,fontWeight:800,color:laeuft?"var(--text4)":"#fff",
+      background:laeuft?"var(--bg3)":TTC_ROT, cursor:laeuft?"wait":"pointer"}}>
+      {laeuft?"⏳ Wird gelesen…":"📎 Bilanzübersichten auswählen"}
+      <input type="file" multiple disabled={laeuft}
+        onChange={dateienVerarbeiten} style={{display:"none"}}/>
+    </label>
     {meldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{meldung}</div>}
     {eintraege.length>0 && <div style={{marginTop:12}}>
       <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",marginBottom:6,textTransform:"uppercase"}}>Hinterlegte Dateien</div>
@@ -11752,11 +11760,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        historie:         <HistorieSpieleUpload showToast={showToast}/>,
       };
       const abschnitte = [
         {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
         {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
         {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
+        {k:"historie",         icon:"📈", label:"Historie Spiele (Bilanzen)"},
         {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
         {k:"personen",         icon:"👥", label:"Personen Export/Import"},
         {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
@@ -11806,8 +11816,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="wettkampf" && <>
-    {/* Historie Spiele: Bilanzübersichten je Saison einlesen */}
-    <HistorieSpieleUpload showToast={showToast}/>
     {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
