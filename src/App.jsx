@@ -1,4 +1,4 @@
-// === TTC-App · Version 464 · erstellt 20.09.2026 ===
+// === TTC-App · Version 465 · erstellt 20.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "464";
+const APP_VERSION = "465";
 const APP_DATUM   = "20.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -2403,12 +2403,12 @@ function HistorieTabelle({zeilen}){
     borderBottom:"1px solid var(--border2)",background:"var(--bg2)",
     position:"sticky",top:0,zIndex:2};
   const td={padding:"6px 7px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
-  // Namensspalte: höchstens 20 Zeichen breit, längere Namen brechen um.
+  // Namensspalte: höchstens 16 Zeichen breit, längere Namen brechen um.
   const nameTh={...th, left:0, zIndex:3, textAlign:"left", whiteSpace:"normal",
-    width:"20ch", minWidth:"20ch", maxWidth:"20ch"};
+    width:"16ch", minWidth:"16ch", maxWidth:"16ch"};
   const nameTd={...td, position:"sticky", left:0, zIndex:1, background:"var(--bg2)",
     textAlign:"left", fontWeight:700, color:"var(--text)", whiteSpace:"normal",
-    overflowWrap:"anywhere", width:"20ch", minWidth:"20ch", maxWidth:"20ch",
+    overflowWrap:"anywhere", width:"16ch", minWidth:"16ch", maxWidth:"16ch",
     borderRight:"1px solid var(--border2)"};
   if(zeilen.length===0) return <div style={{fontSize:12,color:"var(--text4)",padding:"14px 2px"}}>
     Keine Personen für diese Auswahl.
@@ -22523,8 +22523,12 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
       width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
       borderBottom:"2px solid var(--club-22)"
     }}>
-      {/* Switch Bar (Funktionen + Abmelden + Theme) */}
-      <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
+      {/* Switch Bar (Funktionen + Abmelden + Theme).
+          Kein erzwungener Zeilenumbruch mehr: Die beiden Bereiche liegen als
+          umbrechende Reihe nebeneinander. Ist genug Platz — etwa auf dem Handy
+          im Querformat —, bleiben sie in einer Zeile; sonst rutscht der zweite
+          Bereich wie bisher darunter. */}
+      <div style={{padding:"8px 10px",display:"flex",flexWrap:"wrap",alignItems:"center",gap:6}}>
         {switchBarContent}
       </div>
       {/* Eltern-/Kind-Umschaltleiste — direkt unter der Funktionsleiste, über allen anderen Menüs */}
@@ -22652,8 +22656,9 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     {/* Header-Container — misst seine eigene Höhe */}
     <RSWHeader parentBarContent={parentBar} switchBarContent={
       <>
-        {/* Zeile 1: alle Funktions-Schaltflächen nebeneinander (bei Bedarf seitlich scrollbar) */}
-        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflowX:"auto",width:"100%"}}>
+        {/* Bereich 1: alle Funktions-Schaltflächen nebeneinander (bei Bedarf seitlich scrollbar) */}
+        <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflowX:"auto",
+          flex:"1 1 240px",minWidth:0}}>
         {availableViews.map(v=>{
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
           // Punkt 4: Für Admins die Rollen-Buttons abkürzen, damit auf dem Handy in der
@@ -22667,9 +22672,11 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           }}>{cfg.icon} {label}</button>;
         })}
         </div>
-        {/* Zeile 2: Benachrichtigungen, Ansicht, Suche, Abmelden und Version */}
-        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap",width:"100%"}}>
-        <div style={{flex:1}}/>
+        {/* Bereich 2: Benachrichtigungen, Ansicht, Suche, Abmelden und Version.
+            marginLeft:auto haelt ihn rechtsbuendig — ob er nun neben Bereich 1
+            steht oder allein in der naechsten Zeile. */}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap",
+          flex:"0 0 auto",marginLeft:"auto"}}>
         <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
         <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
