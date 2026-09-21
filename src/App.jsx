@@ -1,4 +1,4 @@
-// === TTC-App · Version 473 · erstellt 21.09.2026 ===
+// === TTC-App · Version 474 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "473";
+const APP_VERSION = "474";
 const APP_DATUM   = "21.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1459,16 +1459,35 @@ function bilanzenDesEintrags(eintrag, mannschaft){
 
 // Fasst die abgelegten Dateien zu einer Auswertung zusammen.
 // saison="" -> alle Saisons. Rückgabe: { <schluessel>: Bilanzsatz }
-function historieAggregieren(store, saison, mannschaft){
-  const ergebnis={};
-  for(const datei of Object.values(store?.dateien||{})){
-    if(saison && datei.saison!==saison) continue;
-    for(const [k,e] of Object.entries(datei.spieler||{})){
-      for(const b of bilanzenDesEintrags(e, mannschaft)){
-        if(!ergebnis[k]) ergebnis[k]=leereBilanz(e.name||b.name);
-        bilanzAddieren(ergebnis[k], b);
+// Alle WIRKSAMEN Bilanzsätze – je Saison, Mannschaft und Person genau einer.
+// Manuell erfasste Werte (Excel-Upload, V474) haben Vorrang vor PDF-Werten derselben
+// Saison und Mannschaft: Sie ersetzen diese, statt addiert zu werden. Ohne diese
+// Regel würde eine Person, die in beiden Quellen steht, doppelt gezählt.
+function historieEintraege(store){
+  const map=new Map();
+  const dateien=Object.values(store?.dateien||{})
+    .sort((a,b)=>(a?.manuell?1:0)-(b?.manuell?1:0));      // PDFs zuerst, manuell überschreibt
+  for(const d of dateien){
+    for(const [k,e] of Object.entries(d?.spieler||{})){
+      if(e?.teams){
+        for(const [team,b] of Object.entries(e.teams))
+          map.set(`${d.saison}|${team}|${k}`, {saison:d.saison, team, key:k, name:e.name||b.name, b});
+      } else if(e){
+        // alte Ablage ohne Mannschaft (V458/V459)
+        map.set(`${d.saison}|—|${k}|${d.quelle}`, {saison:d.saison, team:null, key:k, name:e.name, b:e});
       }
     }
+  }
+  return [...map.values()];
+}
+
+function historieAggregieren(store, saison, mannschaft){
+  const ergebnis={};
+  for(const x of historieEintraege(store)){
+    if(saison && x.saison!==saison) continue;
+    if(x.team===null ? !!mannschaft : !teamPasstZuFilter(x.team, mannschaft)) continue;
+    if(!ergebnis[x.key]) ergebnis[x.key]=leereBilanz(x.name);
+    bilanzAddieren(ergebnis[x.key], x.b);
   }
   return ergebnis;
 }
@@ -1491,25 +1510,126 @@ function historieSaisons(store){
 // Bilanzen einer Person je Saison, neueste zuerst.
 function historieProSaison(store, schluessel, mannschaft){
   const proSaison={};
-  for(const datei of Object.values(store?.dateien||{})){
-    const e=(datei.spieler||{})[schluessel];
-    if(!e) continue;
-    if(!proSaison[datei.saison]){ proSaison[datei.saison]=leereBilanz(e.name); proSaison[datei.saison].teams=new Set(); }
-    if(e.teams){
-      for(const [team,b] of Object.entries(e.teams)){
-        if(!teamPasstZuFilter(team, mannschaft)) continue;
-        bilanzAddieren(proSaison[datei.saison], b);
-        proSaison[datei.saison].teams.add(team);
-      }
-    } else if(!mannschaft){
-      bilanzAddieren(proSaison[datei.saison], e);   // alte Ablage ohne Mannschaft
-    }
+  for(const x of historieEintraege(store)){
+    if(x.key!==schluessel) continue;
+    if(x.team===null ? !!mannschaft : !teamPasstZuFilter(x.team, mannschaft)) continue;
+    if(!proSaison[x.saison]){ proSaison[x.saison]=leereBilanz(x.name); proSaison[x.saison].teams=new Set(); }
+    bilanzAddieren(proSaison[x.saison], x.b);
+    if(x.team) proSaison[x.saison].teams.add(x.team);
   }
   return Object.entries(proSaison)
     .filter(([,b])=> b.einsaetze>0 || b.einzelG||b.einzelV||b.doppelG||b.doppelV)
     .map(([s,b])=>[s,{...b, teams:[...(b.teams||[])].sort((x,y)=>x.localeCompare(y,"de"))}])
     .sort((a,b)=>b[0].localeCompare(a[0]));
 }
+// ─── Manuelle Bilanzen per Excel (V474) ──────────────────────────────────────
+// Reiter „Bilanzen", Kopfzeile mit Saison · Mannschaft · Name · Anzahl Spiele ·
+// Anzahl Einzel · Einzel gewonnen · Einzel verloren · Doppel gewonnen · Doppel verloren.
+// Die Spalten werden über ihre Überschrift gefunden, nicht über ihre Position – eine
+// umsortierte oder erweiterte Tabelle funktioniert also weiter. Die abgeleiteten
+// Spalten (Saldo Einzel, Gesamt gewonnen/verloren, Saldo Gesamt) sind in der Vorlage
+// Formeln und werden bewusst NICHT gelesen, sondern wie überall in der App berechnet.
+
+async function ladeXlsxLib(){
+  if(window.XLSX) return window.XLSX;
+  await new Promise((res,rej)=>{
+    const sc=document.createElement("script");
+    sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    sc.onload=res; sc.onerror=()=>rej(new Error("SheetJS konnte nicht geladen werden."));
+    document.head.appendChild(sc);
+  });
+  if(!window.XLSX) throw new Error("SheetJS nicht verfügbar.");
+  return window.XLSX;
+}
+
+// Saison vereinheitlichen: "2005/2006", "2005-06", "2005/06" -> "2005/06".
+function historieSaisonNorm(v){
+  const m=/(\d{4})\s*[\/\-_]\s*(\d{2,4})/.exec(String(v??""));
+  return m ? `${m[1]}/${m[2].slice(-2)}` : "";
+}
+
+// Name im Format „Vorname Nachname" (wie in der Excel-Vorlage) auflösen.
+//  1. Akademische Titel werden für den Abgleich entfernt, bleiben aber in der Anzeige.
+//  2. Steht die Person im Spielerstamm, gilt deren Aufteilung in Vor- und Nachname –
+//     so passen auch Doppel- und mehrteilige Namen sicher.
+//  3. Sonst: letztes Wort = Nachname; Namenszusätze wie von, van, de gehören dazu.
+function historieNameAusVollname(voll, players){
+  const roh=String(voll||"").replace(/\s+/g," ").trim();
+  const tm=/^((?:(?:Prof|Dr|Dipl)\.?(?:-\w+\.?)?\s+)+)/i.exec(roh);
+  const titel=tm ? tm[1].trim() : "";
+  const ohneTitel=titel ? roh.slice(tm[1].length).trim() : roh;
+  const norm=(x)=>String(x||"").toLowerCase()
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z]/g,"");
+  const p=(players||[]).find(pl=>{
+    const n=norm(`${pl.firstName||""} ${pl.lastName||""}`);
+    return n && (n===norm(ohneTitel) || n===norm(roh));
+  });
+  if(p) return {key:historieKeyAusPlayer(p), anzeige:`${p.lastName}, ${p.firstName}`, imStamm:true};
+  const t=ohneTitel.split(" ").filter(Boolean);
+  if(t.length<2) return null;
+  let i=t.length-1;
+  while(i>1 && /^(von|van|vom|zu|zum|zur|de|der|den|di|da|du|le|la|ten|ter)$/i.test(t[i-1])) i--;
+  const nachname=t.slice(i).join(" "), vorname=t.slice(0,i).join(" ");
+  return {key:historieKey(nachname, vorname),
+          anzeige:`${nachname}, ${titel?titel+" ":""}${vorname}`, imStamm:false};
+}
+
+// Wertet die Zeilen des Reiters „Bilanzen" aus (Array von Arrays, erste Zeile mit
+// Überschriften). Rückgabe: { proSaison:{ saison:{ key:{name,teams:{team:bilanz}} } },
+// zeilen, zusammengefasst, hinweise:[…] }.
+function parseHistorieExcelZeilen(rows, players){
+  const hinweise=[];
+  const norm=(x)=>String(x??"").toLowerCase().replace(/\s+/g," ").trim();
+  const kopfIdx=(rows||[]).findIndex(r=>(r||[]).some(c=>norm(c)==="saison") && (r||[]).some(c=>norm(c)==="name"));
+  if(kopfIdx<0) return {fehler:"Keine Kopfzeile mit „Saison“ und „Name“ gefunden."};
+  const kopf=rows[kopfIdx].map(norm);
+  const spalte=(...namen)=>kopf.findIndex(k=>namen.includes(k));
+  const S={
+    saison:spalte("saison"), team:spalte("mannschaft"), name:spalte("name"),
+    spiele:spalte("anzahl spiele"), einzel:spalte("anzahl einzel"),
+    eg:spalte("einzel gewonnen","einzel +"), ev:spalte("einzel verloren","einzel -","einzel −"),
+    dg:spalte("doppel gewonnen","doppel +"), dv:spalte("doppel verloren","doppel -","doppel −"),
+  };
+  const fehlend=Object.entries(S).filter(([,i])=>i<0).map(([k])=>k);
+  if(["saison","team","name"].some(k=>S[k]<0))
+    return {fehler:"Pflichtspalten fehlen: "+fehlend.join(", ")};
+  if(fehlend.length) hinweise.push("Spalten nicht gefunden (als 0 gewertet): "+fehlend.join(", "));
+
+  const zahl=(v,zeile,feld)=>{
+    if(v===null||v===undefined||v==="") return 0;
+    const n=Number(String(v).replace(",","."));
+    if(!Number.isFinite(n)){ hinweise.push(`Zeile ${zeile}: „${feld}“ ist keine Zahl („${v}“) – als 0 gewertet`); return 0; }
+    return Math.round(n);
+  };
+  const proSaison={};
+  const gesehen=new Set();
+  let zeilen=0, zusammengefasst=0;
+  rows.slice(kopfIdx+1).forEach((r,i)=>{
+    const zeile=kopfIdx+2+i;
+    if(!r || r.every(c=>c===null||c===undefined||String(c).trim()==="")) return;
+    const saison=historieSaisonNorm(r[S.saison]);
+    const team=String(r[S.team]??"").replace(/\s+/g," ").trim();
+    const nameRoh=String(r[S.name]??"").trim();
+    if(!saison||!team||!nameRoh){ hinweise.push(`Zeile ${zeile}: Saison, Mannschaft oder Name fehlt – übersprungen`); return; }
+    const person=historieNameAusVollname(nameRoh, players);
+    if(!person){ hinweise.push(`Zeile ${zeile}: Name „${nameRoh}“ nicht auswertbar – übersprungen`); return; }
+    const b={ name:person.anzeige,
+      einsaetze:zahl(S.spiele>=0?r[S.spiele]:0,zeile,"Anzahl Spiele"),
+      einzelEinsaetze:zahl(S.einzel>=0?r[S.einzel]:0,zeile,"Anzahl Einzel"),
+      einzelG:zahl(S.eg>=0?r[S.eg]:0,zeile,"Einzel gewonnen"), einzelV:zahl(S.ev>=0?r[S.ev]:0,zeile,"Einzel verloren"),
+      doppelG:zahl(S.dg>=0?r[S.dg]:0,zeile,"Doppel gewonnen"), doppelV:zahl(S.dv>=0?r[S.dv]:0,zeile,"Doppel verloren") };
+    const proS=(proSaison[saison]=proSaison[saison]||{});
+    const e=(proS[person.key]=proS[person.key]||{name:person.anzeige, teams:{}});
+    // Mehrere Zeilen für dieselbe Person, Saison und Mannschaft (z. B. Vor- und
+    // Rückrunde getrennt erfasst) werden zusammengezählt.
+    const id=`${saison}|${team}|${person.key}`;
+    if(gesehen.has(id)){ bilanzAddieren(e.teams[team], b); zusammengefasst++; }
+    else { e.teams[team]=b; gesehen.add(id); }
+    zeilen++;
+  });
+  return {proSaison, zeilen, zusammengefasst, hinweise};
+}
+
 // Mannschaften, in denen diese Person gespielt hat.
 function historieMannschaftenDerPerson(store, schluessel){
   const s=new Set();
@@ -2688,10 +2808,62 @@ function HistorieVereinView({ players, modus="admin" }){
 function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
 
 // Upload der Bilanzübersichten (Verwaltung → Wettkampf).
-function HistorieSpieleUpload({ showToast }){
+function HistorieSpieleUpload({ showToast, players=[] }){
   const {store}=useHistorieStore();
   const [laeuft,setLaeuft]=useState(false);
   const [meldung,setMeldung]=useState("");
+  const [excelLaeuft,setExcelLaeuft]=useState(false);
+  const [excelMeldung,setExcelMeldung]=useState("");
+
+  // ── Manuelle Bilanzen (Excel) ── Jeder Upload ERSETZT alle bisher manuell
+  // hochgeladenen Einträge vollständig; die Excel-Datei ist die führende Liste.
+  // PDF-Einträge bleiben erhalten – bei gleicher Saison, Mannschaft und Person gilt
+  // aber der manuelle Wert (siehe historieEintraege).
+  async function excelVerarbeiten(e){
+    const file=(e.target.files||[])[0];
+    e.target.value="";
+    if(!file) return;
+    setExcelLaeuft(true); setExcelMeldung("");
+    try{
+      const XLSX=await ladeXlsxLib();
+      const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+      const blatt = wb.SheetNames.includes("Bilanzen") ? "Bilanzen" : wb.SheetNames[0];
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[blatt],{header:1,defval:null,raw:true});
+      const erg=parseHistorieExcelZeilen(rows, players);
+      if(erg.fehler){ setExcelMeldung(`${file.name}: ${erg.fehler}`); setExcelLaeuft(false); return; }
+      const saisons=Object.keys(erg.proSaison).sort();
+      if(!saisons.length){ setExcelMeldung(`${file.name}: keine auswertbaren Zeilen gefunden.`); setExcelLaeuft(false); return; }
+      const neu={...(store.dateien||{})};
+      let ersetzt=0;
+      for(const k of Object.keys(neu)) if(neu[k]?.manuell){ delete neu[k]; ersetzt++; }
+      let personen=0;
+      for(const sa of saisons){
+        const spieler=erg.proSaison[sa];
+        personen+=Object.keys(spieler).length;
+        neu[`${sa}::Manuell`]={saison:sa, quelle:"Manuell (Excel)", manuell:true,
+          dateiname:file.name, stand:Date.now(), spieler};
+      }
+      // Ohne merge: Nur so verschwinden die ersetzten manuellen Einträge wirklich.
+      await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()});
+      const zeilen=[
+        `Reiter „${blatt}“: ${erg.zeilen} Zeilen · ${personen} Personeneinträge · Saison${saisons.length>1?"s":""} ${saisons.join(", ")}`,
+        ersetzt ? `Bisherige manuelle Einträge ersetzt (${ersetzt} Saison${ersetzt>1?"s":""}).` : "",
+        erg.zusammengefasst ? `${erg.zusammengefasst} doppelte Zeile(n) derselben Person, Saison und Mannschaft zusammengezählt.` : "",
+        ...erg.hinweise,
+      ].filter(Boolean);
+      setExcelMeldung(zeilen.join("\n"));
+      showToast?.("Manuelle Bilanzen gespeichert","📈");
+    }catch(err){
+      setExcelMeldung(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
+    }
+    setExcelLaeuft(false);
+  }
+  async function manuelleLoeschen(){
+    if(!window.confirm("Alle manuell hochgeladenen Bilanzen entfernen? Die PDF-Bilanzen bleiben erhalten.")) return;
+    const neu={...(store.dateien||{})};
+    for(const k of Object.keys(neu)) if(neu[k]?.manuell) delete neu[k];
+    try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); setExcelMeldung(""); }catch(e){}
+  }
 
   async function pdfZeilen(file){
     const pdfjs=await ladePdfJsLib();
@@ -2757,7 +2929,8 @@ function HistorieSpieleUpload({ showToast }){
     try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); }catch(e){}
   }
 
-  const eintraege=Object.entries(store.dateien||{}).sort((a,b)=>b[0].localeCompare(a[0]));
+  const eintraege=Object.entries(store.dateien||{}).filter(([,e])=>!e?.manuell).sort((a,b)=>b[0].localeCompare(a[0]));
+  const manuelle=Object.entries(store.dateien||{}).filter(([,e])=>e?.manuell).sort((a,b)=>b[0].localeCompare(a[0]));
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:12}}>
     <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:6}}>📈 Historie Spiele</div>
     <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
@@ -2795,6 +2968,41 @@ function HistorieSpieleUpload({ showToast }){
           border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",fontSize:12,padding:"4px 9px",cursor:"pointer"}}>🗑</button>
       </div>)}
     </div>}
+
+    {/* ── Zweiter Upload: manuell zusammengetragene Bilanzen (Excel) ── */}
+    <div style={{marginTop:16,paddingTop:14,borderTop:"1px dashed var(--border2)"}}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:6}}>📗 Manuelle Bilanzen (Excel)</div>
+      <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
+        Für Saisons, die in den PDF-Dateien fehlen. Gelesen wird der Reiter „Bilanzen“ mit den
+        Spalten Saison, Mannschaft, Name (Vorname Nachname), Anzahl Spiele, Anzahl Einzel,
+        Einzel gewonnen/verloren und Doppel gewonnen/verloren; Salden und Summen berechnet die
+        App selbst. <b>Jeder Upload ersetzt alle bisher manuell hochgeladenen Einträge.</b>
+        Stehen Saison, Mannschaft und Person zugleich in einer PDF, gilt der Wert aus der Excel-Datei.
+      </div>
+      <label style={{display:"block",padding:"10px 12px",borderRadius:9,textAlign:"center",
+        fontSize:12,fontWeight:800,color:excelLaeuft?"var(--text4)":"#fff",
+        background:excelLaeuft?"var(--bg3)":"#15803d", cursor:excelLaeuft?"wait":"pointer"}}>
+        {excelLaeuft?"⏳ Wird gelesen…":"📗 Excel-Datei auswählen"}
+        <input type="file" disabled={excelLaeuft} onChange={excelVerarbeiten} style={{display:"none"}}/>
+      </label>
+      {excelMeldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{excelMeldung}</div>}
+      {manuelle.length>0 && <div style={{marginTop:12}}>
+        <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",flex:1}}>Manuell hinterlegt</div>
+          <button onClick={manuelleLoeschen} style={{background:"#ef444422",border:"1px solid #ef444444",borderRadius:7,
+            color:"#ef4444",fontSize:11,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>🗑 alle entfernen</button>
+        </div>
+        {manuelle.map(([key,e])=>{
+          const teams=new Set(); for(const sp of Object.values(e.spieler||{})) for(const n of Object.keys(sp?.teams||{})) teams.add(n);
+          return <div key={key} style={{padding:"6px 9px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{e.saison} · {Object.keys(e.spieler||{}).length} Personen</div>
+            <div style={{fontSize:10,color:"var(--text4)"}}>
+              {[...teams].sort((a,b)=>a.localeCompare(b,"de")).join(", ")}{e.dateiname?` · aus „${e.dateiname}“`:""}
+            </div>
+          </div>;
+        })}
+      </div>}
+    </div>
   </div>;
 }
 
@@ -12013,7 +12221,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
-        historie:         <HistorieSpieleUpload showToast={showToast}/>,
+        historie:         <HistorieSpieleUpload showToast={showToast} players={players}/>,
       };
       const abschnitte = [
         {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
