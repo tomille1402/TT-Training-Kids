@@ -1,4 +1,4 @@
-// === TTC-App · Version 470 · erstellt 21.09.2026 ===
+// === TTC-App · Version 471 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "470";
+const APP_VERSION = "471";
 const APP_DATUM   = "21.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -13927,7 +13927,6 @@ const SP_HOME_GRUPPEN = [
 // Kachel-Startseite der Spieler-Ansicht — analog zu ErwachseneHome, aber mit den
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
 function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
-  const aufSpieler = useAufstellungSpieler();
   const halleninfoNeu = useHalleninfoNeuCount();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
@@ -22303,7 +22302,6 @@ const EW_HOME_GRUPPEN = [
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const halleninfoNeu = useHalleninfoNeuCount();
-  const aufSpieler = useAufstellungSpieler();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
