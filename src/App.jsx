@@ -1,4 +1,4 @@
-// === TTC-App · Version 471 · erstellt 21.09.2026 ===
+// === TTC-App · Version 472 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "471";
+const APP_VERSION = "472";
 const APP_DATUM   = "21.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -2517,7 +2517,7 @@ function HistorieEigeneView({ myPlayer }){
     <span style={{color:"var(--text4)"}}>:</span><span style={{color:"#ef4444"}}>{v}</span></>;
 
   return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📈 Eigene Historie Spiele</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📈 Historie Spiele</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
       {myPlayer.firstName} {myPlayer.lastName}
     </div>
@@ -7199,8 +7199,8 @@ const TR_HOME_GRUPPEN = [
   { titel:"Spieler & Statistiken", items:[
     { key:"geburtstage", label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
     { key:"historieadmin", label:"Historie Spiele", icon:"📊", sub:"Bilanzen aller Personen" },
+    { key:"ttr",         label:"QTTR-Werte",   icon:"📊", sub:"Ranglistenwerte" },
     { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
-    { key:"ttr",         label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
   ]},
   // Alphabetisch; Schläger und Eltern hierher verschoben.
   { titel:"Verein & Verwaltung", items:[
@@ -7380,7 +7380,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
-    {key:"ttr",          label:"TTR",           icon:"📊"},
+    {key:"ttr",          label:"QTTR-Werte",    icon:"📊"},
     {key:"historieadmin", label:"Historie Spiele", icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"spiellokale",  label:"Spiellokale",   icon:"🏟️"},
@@ -9712,7 +9712,7 @@ function TtrView({ players }) {
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:8}}>
-      <div style={{fontSize:17,fontWeight:800}}>📊 Q-TTR-Werte</div>
+      <div style={{fontSize:17,fontWeight:800}}>📊 QTTR-Werte</div>
       {pdfVorhanden && <button onClick={openTtrPdf} style={{padding:"7px 12px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF öffnen</button>}
     </div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
@@ -13894,16 +13894,13 @@ function GeburtstageTab({players,showToast}) {
 // Thematische Gruppierung der Spieler-Bereiche für die Kachel-Startseite.
 // Es werden nur Kacheln gezeigt, deren Reiter für die Gruppe der Person verfügbar ist.
 const SP_HOME_GRUPPEN = [
-  // Wettkampf vorn (V469). Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
+  // Wettkampf vorn. Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
     { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
     { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
     { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
-    { key:"ttr",         label:"TTR",         icon:"📊", sub:"Ranglistenwerte" },
-    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
-    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"spiellokale", label:"Spiellokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
   ]},
   { titel:"Mein Training", items:[
@@ -13915,11 +13912,18 @@ const SP_HOME_GRUPPEN = [
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Für das Training" },
     { key:"erfolge",      label:"Erfolge",       icon:"🏅", sub:"Meine Erfolge" },
   ]},
+  // Neu seit V472 (bei den Spielern gab es keinen „Mein Bereich") – alphabetisch.
+  { titel:"Mein Bereich und Statistiken", items:[
+    { key:"historie",       label:"Historie Spiele",        icon:"📈", sub:"Meine Bilanzen" },
+    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
+    { key:"ttr",            label:"QTTR-Werte",             icon:"📊", sub:"Ranglistenwerte" },
+  ]},
+  // Alphabetisch.
   { titel:"Verein & mehr", items:[
-    { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
-    { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
-    { key:"halleninfo",     label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"bestellungen",   label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
+    { key:"halleninfo",     label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
+    { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
+    { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
     { key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
   ]},
 ];
@@ -14124,8 +14128,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
-    {key:"ttr",label:"TTR",icon:"📊"},
-    {key:"historie",label:"Eigene Historie",icon:"📈"},
+    {key:"ttr",label:"QTTR-Werte",icon:"📊"},
+    {key:"historie",label:"Historie Spiele",icon:"📈"},
     {key:"historieverein",label:"Historie Verein",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
@@ -22269,31 +22273,33 @@ try{ setzeFarbschema("rot"); }catch(e){}
 // Reihenfolge/Untertitel sind bewusst knapp; die Kacheln springen in die
 // bestehenden Reiter (Unterseiten bleiben unverändert).
 const EW_HOME_GRUPPEN = [
-  // Wettkampf vorn (V469). Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
+  // Wettkampf vorn. Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
   { titel:"Wettkampf", items:[
     { key:"spielplan",    label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
     { key:"einsaetze",    label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
     { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
     { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",     label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
-    { key:"ttr",          label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
-    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
-    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"spiellokale",  label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
   ]},
   { titel:"Training", items:[
     { key:"zeiten",       label:"Zeiten",       icon:"🕒", sub:"Trainingszeiten" },
   ]},
-  { titel:"Mein Bereich", items:[
-    { key:"erfolge",      label:"Erfolge",      icon:"🏅", sub:"Meine Erfolge" },
-    { key:"ehrungen",     label:"Ehrungen",     icon:"🌟", sub:"Auszeichnungen" },
-    { key:"meineverwaltung",label:"Verwaltung", icon:"🗂️", sub:"Meine Daten" },
+  // Vormals „Mein Bereich" – mit den Statistik-Kacheln, alphabetisch.
+  { titel:"Mein Bereich und Statistiken", items:[
+    { key:"ehrungen",       label:"Ehrungen",               icon:"🌟", sub:"Auszeichnungen" },
+    { key:"erfolge",        label:"Erfolge",                icon:"🏅", sub:"Meine Erfolge" },
+    { key:"historie",       label:"Historie Spiele",        icon:"📈", sub:"Meine Bilanzen" },
+    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
+    { key:"ttr",            label:"QTTR-Werte",             icon:"📊", sub:"Ranglistenwerte" },
+    { key:"meineverwaltung",label:"Verwaltung",             icon:"🗂️", sub:"Meine Daten" },
   ]},
+  // Alphabetisch.
   { titel:"Verein", items:[
-    { key:"termine",      label:"Termine",      icon:"📌", sub:"Vereinstermine" },
-    { key:"kalender",     label:"Kalender",     icon:"📅", sub:"Abo & Export" },
     { key:"geburtstage",  label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
     { key:"halleninfo",   label:"Halleninfo",   icon:"📣", sub:"Infos aus der Halle" },
+    { key:"kalender",     label:"Kalender",     icon:"📅", sub:"Abo & Export" },
+    { key:"termine",      label:"Termine",      icon:"📌", sub:"Vereinstermine" },
   ]},
 ];
 
@@ -22545,8 +22551,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"spielbetrieb",label:"Spielbetrieb",icon:"📋"},
     {key:"turniere",label:"Turniere",icon:"🏆"},
     {key:"aufstellung",label:"Aufstellung",icon:"📋"},
-    {key:"ttr",label:"TTR",icon:"📊"},
-    {key:"historie",label:"Eigene Historie",icon:"📈"},
+    {key:"ttr",label:"QTTR-Werte",icon:"📊"},
+    {key:"historie",label:"Historie Spiele",icon:"📈"},
     {key:"historieverein",label:"Historie Verein",icon:"📊"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
