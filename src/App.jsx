@@ -1,4 +1,4 @@
-// === TTC-App · Version 466 · erstellt 21.09.2026 ===
+// === TTC-App · Version 467 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "466";
+const APP_VERSION = "467";
 const APP_DATUM   = "21.09.2026";
 
 const app        = initializeApp(firebaseConfig);
@@ -7492,7 +7492,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* Standalone header + chips - only when NOT inside RSW */}
-    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:97,background:"var(--bg2)"}}>
+    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:97,background:"var(--bg2)",paddingTop:"var(--sat, 0px)"}}>
       <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -7581,7 +7581,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* Tabs — immer fixiert: unter RSWHeader (hideHeader) oder standalone (62px) */}
     <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
-      top:hideHeader?"var(--rsw-height)":"62px",
+      top:hideHeader?"var(--rsw-height)":"calc(62px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
@@ -7608,7 +7608,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>
     {/* Spacer: standalone = header(62) + gemessene Tab-Höhe; im RSW-Modus nur die
         gemessene Tab-Höhe (die fixierte Leiste sitzt bereits bei var(--rsw-height)). */}
-    <div style={{height:hideHeader?tabBarH:(62+tabBarH)}}/>
+    <div style={{height:hideHeader?tabBarH:`calc(${62+tabBarH}px + var(--sat, 0px))`}}/>
 
     {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)}/>}
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
@@ -14154,7 +14154,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
-    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",position:"sticky",top:0,zIndex:100}}>
+    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
@@ -14178,7 +14178,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* Tabs */}
     <div style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
-      top:hideHeader?"var(--rsw-height)":"70px",
+      top:hideHeader?"var(--rsw-height)":"calc(70px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
@@ -22446,7 +22446,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     <div style={{position:"fixed",
       top:inRSW?"var(--rsw-height)":"0px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:200,
-      background:"var(--bg2)",borderBottom:"2px solid var(--club-22)"}}>
+      background:"var(--bg2)",borderBottom:"2px solid var(--club-22)",
+      paddingTop:inRSW?0:"var(--sat, 0px)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
           {TABS.map(t=>{
@@ -22480,7 +22481,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       </div>
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
-    <div style={{height:44}}/>
+    <div style={{height:inRSW?44:"calc(44px + var(--sat, 0px))"}}/>
     {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
@@ -22570,7 +22571,10 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
     <div ref={containerRef} style={{
       position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
       width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
-      borderBottom:"2px solid var(--club-22)"
+      borderBottom:"2px solid var(--club-22)",
+      // Platz fuer die Statusleiste (iPad/iPhone). Da die Hoehe gemessen wird,
+      // ruecken Reiterleisten und Platzhalter automatisch mit.
+      paddingTop:"var(--sat, 0px)"
     }}>
       {/* Switch Bar (Funktionen + Abmelden + Theme).
           Kein erzwungener Zeilenumbruch mehr: Die beiden Bereiche liegen als
