@@ -1,4 +1,4 @@
-// === TTC-App · Version 467 · erstellt 21.09.2026 ===
+// === TTC-App · Version 468 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,15 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "467";
+const APP_VERSION = "468";
 const APP_DATUM   = "21.09.2026";
+
+// Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
+// (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
+// decken alle gaengigen Tablets vollstaendig ab (auch iPad Pro 13" und grosse
+// Android-Tablets); nur auf sehr breiten Desktop-Monitoren bleibt ein Rand, damit
+// Formulare und Tabellen dort nicht uebermaessig in die Breite gezogen werden.
+const APP_MAX_BREITE = 1600;
 
 const app        = initializeApp(firebaseConfig);
 const auth       = getAuth(app);
@@ -2509,7 +2516,7 @@ function HistorieEigeneView({ myPlayer }){
   const paar=(g,v)=><><span style={{color:"#10b981"}}>{g}</span>
     <span style={{color:"var(--text4)"}}>:</span><span style={{color:"#ef4444"}}>{v}</span></>;
 
-  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📈 Eigene Historie Spiele</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
       {myPlayer.firstName} {myPlayer.lastName}
@@ -2585,7 +2592,7 @@ function HistorieVereinView({ players, myPlayer }){
     historieIstAktiv(p) && (alsErwachsener ? !!p?.roles?.erwachsene : !!p?.roles?.player));
   const mannschaften=historieMannschaften(store,"");
   const zeilen=historieZeilen(kreis, historieAggregieren(store,"",mannschaft));
-  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele Verein</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
       {alsErwachsener?"Erwachsene":"Nachwuchs"} · alle erfassten Saisons · Spaltenüberschrift antippen zum Sortieren
@@ -2629,7 +2636,7 @@ function HistorieAdminView({ players }){
   const zeilen=historieZeilen(kreis, bilanzen);
   const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
     background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
-  return <div style={{padding:13,paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele (alle)</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
       Spaltenüberschrift antippen zum Sortieren
@@ -7279,7 +7286,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
     .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
     .filter(g => g.items.length>0);
 
-  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
     {nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
 
@@ -7303,7 +7310,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
         <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
       </div>
-      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:10}}>
         {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
           textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
           borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
@@ -7479,7 +7486,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return result;
   }
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
@@ -7492,7 +7499,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* Standalone header + chips - only when NOT inside RSW */}
-    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:97,background:"var(--bg2)",paddingTop:"var(--sat, 0px)"}}>
+    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:97,background:"var(--bg2)",paddingTop:"var(--sat, 0px)"}}>
       <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -7582,7 +7589,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"calc(62px + var(--sat, 0px))",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:96,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
         // Aktiver Reiter durchgehend in der Vereinsfarbe (Farbschema der Verwaltung),
@@ -10722,7 +10729,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <span style={{fontSize:20}}>⚙️</span>
         <span style={{fontSize:16,fontWeight:800,color:"var(--text)"}}>Verwaltung</span>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:10}}>
         {VW_KAPITEL.map(k=>(
           <button key={k.key} onClick={()=>{ setVwKapitel(k.key); try{window.scrollTo({top:0,behavior:"auto"});}catch(e){} }}
             style={{textAlign:"left",background:"var(--bg2)",border:"1px solid var(--border2)",
@@ -13973,7 +13980,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
     .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
     .filter(g => g.items.length>0);
 
-  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Hero: nächstes eigenes Spiel. Steht keines an, beginnt die Seite direkt mit den Kacheln. */}
     {naechstes &&
       <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
@@ -14004,7 +14011,7 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
         <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
       </div>
-      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:10}}>
         {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
           textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
           borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
@@ -14150,7 +14157,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   }
   const pct=total>0?Math.round((present/total)*100):0;
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:1024,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80}}>
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
@@ -14179,7 +14186,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     <div style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"calc(70px + var(--sat, 0px))",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:99,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {TABS.map(t=>{
         // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
@@ -16470,7 +16477,7 @@ function FarbschemaVerwaltung({ showToast }){
       Bestimmt die Vereinsfarben der gesamten App – Kacheln, Überschriften, Hinweise
       und Schaltflächen übernehmen die Auswahl sofort.
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2, minmax(0,1fr))",gap:10}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))",gap:10}}>
       {FARBSCHEMATA.map(s=>{
         const gewaehlt = aktiv===s.key;
         return <button key={s.key} onClick={()=>waehle(s.key)} disabled={busy}
@@ -17316,7 +17323,7 @@ function SpiellokaleView({ ziel=null }){
     </div>
   );
 
-  return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px",maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
       <span style={{fontSize:20}}>🏟️</span>
       <span style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>Spiellokale</span>
@@ -17630,7 +17637,7 @@ function HalleninfoView() {
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
 
-  return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px",maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
       <span style={{fontSize:20}}>📣</span>
       <span style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>Halleninfo</span>
@@ -17878,7 +17885,7 @@ function TrainingszeitenView({ players=[] }){
 
   if(loading) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>⏳ Lade...</div>;
 
-  return <div style={{padding:"12px 12px 40px",maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px",maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
       <span style={{fontSize:20}}>🕒</span>
       <span style={{fontSize:16,fontWeight:700,color:"var(--text)"}}>Trainingszeiten</span>
@@ -22356,7 +22363,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     </div>;
   };
 
-  return <div style={{padding:"12px 12px 40px", maxWidth:1024, margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Kachel 1: eigenes nächstes Spiel (rot) */}
     {naechstes
       ? spielKarte(naechstes, { titelText: meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel", variante:"rot" })
@@ -22376,7 +22383,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
         <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
       </div>
-      <div style={{display:"grid", gridTemplateColumns:"repeat(2, minmax(0,1fr))", gap:10}}>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:10}}>
         {g.items.map(it => <button key={it.key} onClick={()=>oeffne(it.key)} style={{
           textAlign:"left", background:"var(--bg2)", border:"1px solid var(--border2)",
           borderRadius:12, padding:"13px 12px", cursor:"pointer", display:"flex",
@@ -22437,7 +22444,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
-  return <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:40,maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",
       background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",
       display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,zIndex:900,
@@ -22445,7 +22452,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Punkt 1+2: Sticky header mit Tabs + Logout + Theme */}
     <div style={{position:"fixed",
       top:inRSW?"var(--rsw-height)":"0px",
-      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:1024,zIndex:200,
+      left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:200,
       background:"var(--bg2)",borderBottom:"2px solid var(--club-22)",
       paddingTop:inRSW?0:"var(--sat, 0px)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
@@ -22570,7 +22577,7 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
   return <>
     <div ref={containerRef} style={{
       position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
-      width:"100%",maxWidth:1024,zIndex:500,background:"var(--bg2)",
+      width:"100%",maxWidth:APP_MAX_BREITE,zIndex:500,background:"var(--bg2)",
       borderBottom:"2px solid var(--club-22)",
       // Platz fuer die Statusleiste (iPad/iPhone). Da die Hoehe gemessen wird,
       // ruecken Reiterleisten und Platzhalter automatisch mit.
@@ -22705,7 +22712,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     ((activeView==="erwachsene" || activeView==="mannschaftsfuehrer") && hasAdminRole)
   );
 
-  return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:1024,margin:"0 auto"}}>
+  return <div style={{background:"var(--bg)",minHeight:"100vh",maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     {/* Header-Container — misst seine eigene Höhe */}
     <RSWHeader parentBarContent={parentBar} switchBarContent={
       <>
