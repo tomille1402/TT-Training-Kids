@@ -1,4 +1,4 @@
-// === TTC-App · Version 472 · erstellt 21.09.2026 ===
+// === TTC-App · Version 473 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "472";
+const APP_VERSION = "473";
 const APP_DATUM   = "21.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1427,13 +1427,31 @@ function parseBilanzZeilen(zeilen, basis){
   return spieler;
 }
 
+// Mannschaftsfilter der Historie. Neben einzelnen Mannschaften gibt es zwei
+// Sammel-Auspraegungen (V473): alle Erwachsenen- und alle Nachwuchsmannschaften.
+const HISTORIE_FILTER_ERW = "__erwachsene";
+const HISTORIE_FILTER_NW  = "__nachwuchs";
+// Nachwuchs = Mannschaften, deren Name mit Jungen, Mädchen, Schüler, männliche
+// Jugend oder weibliche Jugend beginnt. Alles andere zählt zu den Erwachsenen.
+function istNachwuchsTeamName(team){
+  const n=String(team||"").trim().toLowerCase();
+  return ["jungen","mädchen","maedchen","schüler","schueler",
+          "männliche jugend","maennliche jugend","weibliche jugend"].some(p=>n.startsWith(p));
+}
+function teamPasstZuFilter(team, filter){
+  if(!filter) return true;
+  if(filter===HISTORIE_FILTER_ERW) return !istNachwuchsTeamName(team);
+  if(filter===HISTORIE_FILTER_NW)  return istNachwuchsTeamName(team);
+  return team===filter;
+}
+
 // Bilanzsätze eines gespeicherten Personeneintrags, gefiltert nach Mannschaft.
 // Versteht auch die alte Ablage ohne Mannschaftszuordnung (V458/V459).
 function bilanzenDesEintrags(eintrag, mannschaft){
   if(!eintrag) return [];
   if(eintrag.teams){
     return Object.entries(eintrag.teams)
-      .filter(([t])=> !mannschaft || t===mannschaft)
+      .filter(([t])=> teamPasstZuFilter(t, mannschaft))
       .map(([,b])=>b);
   }
   return mannschaft ? [] : [eintrag];
@@ -1479,7 +1497,7 @@ function historieProSaison(store, schluessel, mannschaft){
     if(!proSaison[datei.saison]){ proSaison[datei.saison]=leereBilanz(e.name); proSaison[datei.saison].teams=new Set(); }
     if(e.teams){
       for(const [team,b] of Object.entries(e.teams)){
-        if(mannschaft && team!==mannschaft) continue;
+        if(!teamPasstZuFilter(team, mannschaft)) continue;
         bilanzAddieren(proSaison[datei.saison], b);
         proSaison[datei.saison].teams.add(team);
       }
@@ -2400,41 +2418,47 @@ function historieIstAktiv(p){ return p?.status!=="passiv"; }
 function saldoFarbe(n){ return n>0 ? "#10b981" : (n<0 ? "#ef4444" : "var(--text4)"); }
 function saldoText(n){ return n>0 ? `+${n}` : String(n); }
 
+// Spalten der Vereins-Übersicht (V473). grau = hervorgehobene Kennzahl-Spalte.
 const HISTORIE_SPALTEN=[
-  {key:"name",    label:"Name",                  txt:true},
-  {key:"gesamtA", label:"Einzel/Doppel",         hint:"Anzahl Einsätze"},
-  {key:"einzelA", label:"Einzel",                hint:"Anzahl Einzel-Einsätze"},
-  {key:"einzelG", label:"Einzel +"},
-  {key:"einzelV", label:"Einzel −"},
-  {key:"doppelG", label:"Doppel +"},
-  {key:"doppelV", label:"Doppel −"},
-  {key:"summeG",  label:"Gesamt +"},
-  {key:"summeV",  label:"Gesamt −"},
-  {key:"saldo",   label:"Saldo", hint:"gewonnen minus verloren"},
+  {key:"name",    label:"Name", txt:true},
+  {key:"gesamtA", label:"Anzahl Spiele", hint:"Einsätze im Einzel und Doppel", grau:true, fett:true},
+  {key:"einzelA", label:"Anzahl Einzel", hint:"davon Einsätze im Einzel"},
+  {key:"einzelG", label:"Einzel +", farbe:"g"},
+  {key:"einzelV", label:"Einzel −", farbe:"v"},
+  {key:"saldoE",  label:"Saldo Einzel", hint:"Einzel gewonnen minus verloren", saldo:true, grau:true},
+  {key:"doppelG", label:"Doppel +", farbe:"g"},
+  {key:"doppelV", label:"Doppel −", farbe:"v"},
+  {key:"summeG",  label:"Gesamt +", farbe:"g", fett:true, grau:true},
+  {key:"summeV",  label:"Gesamt −", farbe:"v", fett:true},
+  {key:"saldo",   label:"Saldo Gesamt", hint:"gewonnen minus verloren", saldo:true, grau:true},
 ];
 // Baut die Tabellenzeilen aus Spielerstamm und Bilanzablage.
 function historieZeilen(players, bilanzen){
   return (players||[]).map(p=>{
     const b=bilanzen[historieKeyAusPlayer(p)]||leereBilanz();
+    const summeG=b.einzelG+b.doppelG, summeV=b.einzelV+b.doppelV;
     return {
       id:p.id, person:p,
       name:`${p.firstName||""} ${p.lastName||""}`.trim() + (p._ehemalig?" (ehem.)":""),
       gesamtA:b.einsaetze, einzelA:b.einzelEinsaetze,
-      einzelG:b.einzelG, einzelV:b.einzelV,
+      einzelG:b.einzelG, einzelV:b.einzelV, saldoE:b.einzelG-b.einzelV,
       doppelG:b.doppelG, doppelV:b.doppelV,
-      summeG:b.einzelG+b.doppelG, summeV:b.einzelV+b.doppelV,
-      saldo:(b.einzelG+b.doppelG)-(b.einzelV+b.doppelV),
-      hatDaten:(b.einsaetze||0)>0,
+      summeG, summeV, saldo:summeG-summeV,
+      // Hat die Person in der gewählten Auswahl überhaupt gespielt?
+      hatDaten:(b.einsaetze||0)>0 || summeG+summeV>0,
     };
   });
 }
 
-// Sortierbare Tabelle, gemeinsam genutzt von Vereins- und Admin-Übersicht.
+// Sortierbare Tabelle. Feste Spaltenaufteilung: Die Namensspalte ist 16 Zeichen
+// breit, alle Zahlenspalten teilen sich den Rest zu gleichen Teilen. So entsteht auf
+// dem iPad keine grosse Luecke zwischen Name und erster Zahlenspalte. Lange
+// Ueberschriften brechen um, die Zahlen stehen mittig unter ihnen.
 function HistorieTabelle({zeilen}){
   const [sortKey,setSortKey]=useState("gesamtA");
   const [absteigend,setAbsteigend]=useState(true);
   const sortiert=[...zeilen].sort((a,b)=>{
-    const sp=HISTORIE_SPALTEN.find(s=>s.key===sortKey);
+    const sp=HISTORIE_SPALTEN.find(x=>x.key===sortKey);
     const v = sp?.txt ? String(a[sortKey]||"").localeCompare(String(b[sortKey]||""))
                       : (Number(a[sortKey])||0)-(Number(b[sortKey])||0);
     return absteigend ? -v : v;
@@ -2443,45 +2467,49 @@ function HistorieTabelle({zeilen}){
     if(key===sortKey) setAbsteigend(x=>!x);
     else { setSortKey(key); setAbsteigend(key!=="name"); }
   }
+  const GRAU="var(--bg3)";
   // Kopfzeile oben und Namensspalte links bleiben beim Scrollen stehen. Dafür
-  // scrollt die Tabelle in einem eigenen Rahmen (beide Richtungen) — sonst hätte
-  // „sticky" keinen Bezugspunkt. borderCollapse:"separate" ist nötig, weil
-  // zusammengefasste Rahmen an fixierten Zellen in manchen Browsern verschwinden.
-  const th={padding:"6px 7px",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",
-    fontSize:10,fontWeight:800,color:"var(--text3)",textAlign:"right",
+  // scrollt die Tabelle in einem eigenen Rahmen; borderCollapse:"separate" ist
+  // nötig, weil zusammengefasste Rahmen an fixierten Zellen verschwinden können.
+  const th={padding:"6px 4px",whiteSpace:"normal",lineHeight:1.2,cursor:"pointer",userSelect:"none",
+    fontSize:10,fontWeight:800,textAlign:"center",verticalAlign:"bottom",
     borderBottom:"1px solid var(--border2)",background:"var(--bg2)",
     position:"sticky",top:0,zIndex:2};
-  const td={padding:"6px 7px",whiteSpace:"nowrap",textAlign:"right",fontSize:12,borderBottom:"1px solid var(--border)"};
-  // Namensspalte: höchstens 16 Zeichen breit, längere Namen brechen um.
-  const nameTh={...th, left:0, zIndex:3, textAlign:"left", whiteSpace:"normal",
-    width:"16ch", minWidth:"16ch", maxWidth:"16ch"};
-  const nameTd={...td, position:"sticky", left:0, zIndex:1, background:"var(--bg2)",
-    textAlign:"left", fontWeight:700, color:"var(--text)", whiteSpace:"normal",
-    overflowWrap:"anywhere", width:"16ch", minWidth:"16ch", maxWidth:"16ch",
-    borderRight:"1px solid var(--border2)"};
+  const td={padding:"6px 4px",whiteSpace:"nowrap",textAlign:"center",fontSize:12,
+    borderBottom:"1px solid var(--border)"};
+  const nameTh={...th,left:0,zIndex:3,textAlign:"left",verticalAlign:"bottom"};
+  const nameTd={...td,position:"sticky",left:0,zIndex:1,background:"var(--bg2)",
+    textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",
+    overflowWrap:"anywhere",borderRight:"1px solid var(--border2)"};
+  const zelle=(sp,r)=>{
+    const v=r[sp.key];
+    let farbe="var(--text)";
+    if(sp.farbe==="g") farbe="#10b981";
+    if(sp.farbe==="v") farbe="#ef4444";
+    if(sp.saldo) farbe=saldoFarbe(v);
+    return <td key={sp.key} style={{...td,color:farbe,fontWeight:(sp.fett||sp.saldo)?800:400,
+      background:sp.grau?GRAU:undefined}}>{sp.saldo?saldoText(v):v}</td>;
+  };
   if(zeilen.length===0) return <div style={{fontSize:12,color:"var(--text4)",padding:"14px 2px"}}>
-    Keine Personen für diese Auswahl.
+    Keine Personen mit Einsätzen für diese Auswahl.
   </div>;
   return <div style={{overflow:"auto",maxHeight:"70vh"}}>
-    <table style={{borderCollapse:"separate",borderSpacing:0,width:"100%",minWidth:640}}>
+    <table style={{borderCollapse:"separate",borderSpacing:0,width:"100%",minWidth:640,tableLayout:"fixed"}}>
+      <colgroup>
+        <col style={{width:"16ch"}}/>
+        {HISTORIE_SPALTEN.slice(1).map(sp=><col key={sp.key}/>)}
+      </colgroup>
       <thead><tr>
-        {HISTORIE_SPALTEN.map(s=><th key={s.key} onClick={()=>klick(s.key)} title={s.hint||"Sortieren"}
-          style={{...(s.txt?nameTh:th), color:sortKey===s.key?TTC_ROT:"var(--text3)"}}>
-          {s.label}{sortKey===s.key?(absteigend?" ▼":" ▲"):""}
+        {HISTORIE_SPALTEN.map(sp=><th key={sp.key} onClick={()=>klick(sp.key)} title={sp.hint||"Sortieren"}
+          style={{...(sp.txt?nameTh:th), color:sortKey===sp.key?TTC_ROT:"var(--text3)",
+            background:sp.grau?GRAU:(sp.txt?"var(--bg2)":th.background)}}>
+          {sp.label}{sortKey===sp.key?(absteigend?" ▼":" ▲"):""}
         </th>)}
       </tr></thead>
       <tbody>
-        {sortiert.map(r=><tr key={r.id} style={{opacity:r.hatDaten?1:0.55}}>
+        {sortiert.map(r=><tr key={r.id}>
           <td style={nameTd}>{r.name}</td>
-          <td style={{...td,fontWeight:800}}>{r.gesamtA}</td>
-          <td style={td}>{r.einzelA}</td>
-          <td style={{...td,color:"#10b981"}}>{r.einzelG}</td>
-          <td style={{...td,color:"#ef4444"}}>{r.einzelV}</td>
-          <td style={{...td,color:"#10b981"}}>{r.doppelG}</td>
-          <td style={{...td,color:"#ef4444"}}>{r.doppelV}</td>
-          <td style={{...td,color:"#10b981",fontWeight:800}}>{r.summeG}</td>
-          <td style={{...td,color:"#ef4444",fontWeight:800}}>{r.summeV}</td>
-          <td style={{...td,color:saldoFarbe(r.saldo),fontWeight:800}}>{saldoText(r.saldo)}</td>
+          {HISTORIE_SPALTEN.slice(1).map(sp=>zelle(sp,r))}
         </tr>)}
       </tbody>
     </table>
@@ -2501,7 +2529,7 @@ function HistorieEigeneView({ myPlayer }){
 
   const schluessel=historieKeyAusPlayer(myPlayer);
   const mannschaften=historieMannschaftenDerPerson(store, schluessel);
-  const mannschaftAktiv=mannschaften.includes(mannschaft)?mannschaft:"";
+  const mannschaftAktiv=(mannschaft===HISTORIE_FILTER_ERW||mannschaft===HISTORIE_FILTER_NW||mannschaften.includes(mannschaft))?mannschaft:"";
   const alle=historieProSaison(store, schluessel, mannschaftAktiv);
   const saisons=alle.map(([s])=>s);
   const saisonAktiv=saisons.includes(saison)?saison:"";
@@ -2524,6 +2552,8 @@ function HistorieEigeneView({ myPlayer }){
     {(mannschaften.length>0||saisons.length>0) && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
       {mannschaften.length>0 && <select value={mannschaftAktiv} onChange={e=>setMannschaft(e.target.value)} style={sel}>
         <option value="">alle Mannschaften</option>
+        {mannschaften.some(t=>!istNachwuchsTeamName(t)) && <option value={HISTORIE_FILTER_ERW}>alle Erwachsenen-Mannschaften</option>}
+        {mannschaften.some(t=>istNachwuchsTeamName(t))  && <option value={HISTORIE_FILTER_NW}>alle Nachwuchs-Mannschaften</option>}
         {mannschaften.map(t=><option key={t} value={t}>{t}</option>)}
       </select>}
       {saisons.length>0 && <select value={saisonAktiv} onChange={e=>setSaison(e.target.value)} style={sel}>
@@ -2581,48 +2611,28 @@ function HistorieEigeneView({ myPlayer }){
   </div>;
 }
 
-// 2) Vereins-Übersicht: aktive Personen derselben Funktion wie der Betrachter.
-function HistorieVereinView({ players, myPlayer }){
+// 2) „Historie Spiele Verein" — EINE Übersicht für Admin, Erwachsene und Spieler
+// (V473). Aufbau und Filter sind überall gleich; nur die Voreinstellung des
+// Mannschaftsfilters hängt von der Ansicht ab:
+//   Erwachsenen-Ansicht → alle Erwachsenen-Mannschaften
+//   Spieler-Ansicht     → alle Nachwuchs-Mannschaften
+//   Admin-Ansicht       → alle Mannschaften
+// Personen ohne einen einzigen Einsatz in der gewählten Auswahl erscheinen nicht.
+function HistorieVereinView({ players, modus="admin" }){
   const {store,laedt}=useHistorieStore();
-  const [mannschaft,setMannschaft]=useState("");
-  if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
-  // Erwachsene sehen Erwachsene, Nachwuchsspieler sehen den Nachwuchs.
-  const alsErwachsener = !!myPlayer?.roles?.erwachsene;
-  const kreis=(players||[]).filter(p=>
-    historieIstAktiv(p) && (alsErwachsener ? !!p?.roles?.erwachsene : !!p?.roles?.player));
-  const mannschaften=historieMannschaften(store,"");
-  const zeilen=historieZeilen(kreis, historieAggregieren(store,"",mannschaft));
-  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele Verein</div>
-    <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
-      {alsErwachsener?"Erwachsene":"Nachwuchs"} · alle erfassten Saisons · Spaltenüberschrift antippen zum Sortieren
-    </div>
-    {mannschaften.length>0 && <div style={{marginBottom:12}}>
-      <select value={mannschaft} onChange={e=>setMannschaft(e.target.value)}
-        style={{padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
-          background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-        <option value="">alle Mannschaften</option>
-        {mannschaften.map(t=><option key={t} value={t}>{t}</option>)}
-      </select>
-    </div>}
-    <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
-      <HistorieTabelle zeilen={zeilen}/>
-    </div>
-  </div>;
-}
-
-// 4) Admin-Übersicht mit Filtern für Aktivität, Funktion und Saison.
-function HistorieAdminView({ players }){
-  const {store,laedt}=useHistorieStore();
+  const startFilter = modus==="erwachsene" ? HISTORIE_FILTER_ERW
+                    : modus==="spieler"    ? HISTORIE_FILTER_NW : "";
   const [nurAktive,setNurAktive]=useState(true);
   const [gruppe,setGruppe]=useState("alle");
   const [saison,setSaison]=useState("");
-  const [mannschaft,setMannschaft]=useState("");
+  const [mannschaft,setMannschaft]=useState(startFilter);
   if(laedt) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>Lädt…</div>;
+
   const saisons=historieSaisons(store);
   const mannschaften=historieMannschaften(store, saison);
-  // Bei Saisonwechsel kann die gewählte Mannschaft wegfallen – dann gilt wieder „alle".
-  const mannschaftAktiv = mannschaften.includes(mannschaft) ? mannschaft : "";
+  // Einzelne Mannschaft, die es in der gewählten Saison nicht gibt → wieder „alle".
+  const mannschaftAktiv = (!mannschaft || mannschaft===HISTORIE_FILTER_ERW || mannschaft===HISTORIE_FILTER_NW
+    || mannschaften.includes(mannschaft)) ? mannschaft : "";
   const bilanzen=historieAggregieren(store, saison, mannschaftAktiv);
   // Ehemalige: stehen in den Bilanzen, aber nicht mehr im Spielerstamm. Sie gelten
   // als passiv und erscheinen deshalb nur, wenn Inaktive eingeblendet sind.
@@ -2630,34 +2640,35 @@ function HistorieAdminView({ players }){
   const kreis=alle.filter(p=>{
     if(nurAktive && !historieIstAktiv(p)) return false;
     if(gruppe!=="alle" && historieGruppeVon(p)!==gruppe) return false;
-    if(gruppe==="alle" && historieGruppeVon(p)==="Sonstige") return false;
     return true;
   });
-  const zeilen=historieZeilen(kreis, bilanzen);
+  const zeilen=historieZeilen(kreis, bilanzen).filter(r=>r.hatDaten);
   const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
     background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
   return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele (alle)</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Historie Spiele Verein</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
-      Spaltenüberschrift antippen zum Sortieren
+      {zeilen.length} {zeilen.length===1?"Person":"Personen"} · Spaltenüberschrift antippen zum Sortieren
     </div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <select value={mannschaftAktiv} onChange={e=>setMannschaft(e.target.value)} style={sel}>
+        <option value="">alle Mannschaften</option>
+        <option value={HISTORIE_FILTER_ERW}>alle Erwachsenen-Mannschaften</option>
+        <option value={HISTORIE_FILTER_NW}>alle Nachwuchs-Mannschaften</option>
+        {mannschaften.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>
+      <select value={saison} onChange={e=>setSaison(e.target.value)} style={sel}>
+        <option value="">alle Saisons</option>
+        {saisons.map(x=><option key={x} value={x}>{x}</option>)}
+      </select>
       <select value={gruppe} onChange={e=>setGruppe(e.target.value)} style={sel}>
         <option value="alle">alle Funktionen</option>
         <option value="Herren">Herren</option>
         <option value="Damen">Damen</option>
         <option value="Nachwuchs">Nachwuchs</option>
       </select>
-      <select value={saison} onChange={e=>setSaison(e.target.value)} style={sel}>
-        <option value="">alle Saisons</option>
-        {saisons.map(s=><option key={s} value={s}>{s}</option>)}
-      </select>
-      <select value={mannschaftAktiv} onChange={e=>setMannschaft(e.target.value)} style={sel}>
-        <option value="">alle Mannschaften</option>
-        {mannschaften.map(t=><option key={t} value={t}>{t}</option>)}
-      </select>
-      <button onClick={()=>setNurAktive(a=>!a)} style={{...sel,cursor:"pointer",
-        background:nurAktive?TTC_ROT:"var(--bg2)",color:nurAktive?"#fff":"var(--text3)",border:"1px solid var(--border2)"}}>
+      <button onClick={()=>setNurAktive(x=>!x)} style={{...sel,cursor:"pointer",
+        background:nurAktive?TTC_ROT:"var(--bg2)",color:nurAktive?"#fff":"var(--text3)"}}>
         {nurAktive?"nur Aktive":"Aktive + Inaktive"}
       </button>
     </div>
@@ -2665,15 +2676,16 @@ function HistorieAdminView({ players }){
       <HistorieTabelle zeilen={zeilen}/>
     </div>
     <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
-      Hat eine Person mehrere Funktionen, zählt „Erwachsene" — Herren und Damen ergeben sich
-      daraus zusammen mit dem Geschlecht, Nachwuchs aus der Funktion „Spieler".
-      Ausgegraute Zeilen haben in der gewählten Saison keine Bilanz.
-      Mit „(ehem.)" gekennzeichnete Personen kommen in den Bilanzen vor, stehen aber nicht
-      im Spielerstamm — meist Ehemalige aus der Zeit vor der App. Sie gelten als passiv und
-      erscheinen nur bei „Aktive + Inaktive"; ihre Einordnung ergibt sich aus der Mannschaft.
+      Nachwuchs-Mannschaften sind alle, deren Name mit Jungen, Mädchen, Schüler, männliche
+      oder weibliche Jugend beginnt; alle übrigen zählen zu den Erwachsenen.
+      Hat eine Person mehrere Funktionen, zählt „Erwachsene". Mit „(ehem.)" gekennzeichnete
+      Personen stehen nicht im Spielerstamm — meist Ehemalige aus der Zeit vor der App; sie
+      gelten als passiv und erscheinen nur bei „Aktive + Inaktive".
     </div>
   </div>;
 }
+// Admin-Einstieg: dieselbe Übersicht mit Voreinstellung „alle Mannschaften".
+function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
 
 // Upload der Bilanzübersichten (Verwaltung → Wettkampf).
 function HistorieSpieleUpload({ showToast }){
@@ -7198,14 +7210,14 @@ const TR_HOME_GRUPPEN = [
   // Vormals „Spieler & Gruppe" – alphabetisch.
   { titel:"Spieler & Statistiken", items:[
     { key:"geburtstage", label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
-    { key:"historieadmin", label:"Historie Spiele", icon:"📊", sub:"Bilanzen aller Personen" },
+    { key:"historieadmin", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",         label:"QTTR-Werte",   icon:"📊", sub:"Ranglistenwerte" },
     { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
   ]},
   // Alphabetisch; Schläger und Eltern hierher verschoben.
   { titel:"Verein & Verwaltung", items:[
-    { key:"bestellungen",     label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
-    { key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", sub:"Alle Bestellungen" },
+    { key:"bestellungen",     label:"Bestellung",icon:"🛒", sub:"Vereinsartikel" },
+    { key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦", sub:"Alle Bestellungen" },
     { key:"eltern",           label:"Eltern",      icon:"👨‍👩‍👧", sub:"Kontakte" },
     { key:"halleninfo",       label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"kalender",         label:"Kalender",    icon:"📅", sub:"Abo & Export" },
@@ -7381,7 +7393,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"ttr",          label:"QTTR-Werte",    icon:"📊"},
-    {key:"historieadmin", label:"Historie Spiele", icon:"📊"},
+    {key:"historieadmin", label:"Historie Verein", icon:"📊"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"spiellokale",  label:"Spiellokale",   icon:"🏟️"},
     {key:"termine",      label:"Termine",       icon:"📌"},
@@ -7389,8 +7401,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"einsaetze",    label:"Einsätze",      icon:"🗓️"},
     {key:"schlaeger",    label:"Schläger",      icon:"🏓"},
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
-    {key:"bestellungen", label:"Bestellungen",  icon:"🛒"},
-    {key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", superAdminOnly:true},
+    {key:"bestellungen", label:"Bestellung",    icon:"🛒"},
+    {key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦", superAdminOnly:true},
     {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
@@ -13920,7 +13932,7 @@ const SP_HOME_GRUPPEN = [
   ]},
   // Alphabetisch.
   { titel:"Verein & mehr", items:[
-    { key:"bestellungen",   label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
+    { key:"bestellungen",   label:"Bestellung",icon:"🛒", sub:"Vereinsartikel" },
     { key:"halleninfo",     label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
     { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
@@ -14136,7 +14148,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"termine",label:"Termine",icon:"📌"},
     {key:"kalender",label:"Kalender",icon:"📅"},
     {key:"einsaetze",label:"Einsätze",icon:"🗓️"},
-    {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
+    {key:"bestellungen",label:"Bestellung",icon:"🛒"},
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
   // Punkt 6: Anfänger/Gast sehen die Wettkampf-Reiter noch nicht; Gast zusätzlich
@@ -14473,7 +14485,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
-    {activeTab==="historieverein"&&<HistorieVereinView players={players} myPlayer={myPlayer}/>}
+    {activeTab==="historieverein"&&<HistorieVereinView players={players} modus="spieler"/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
@@ -22562,8 +22574,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"erfolge",label:"Erfolge",icon:"🏅"},
     {key:"ehrungen",label:"Ehrungen",icon:"🌟"},
     {key:"geburtstage",label:"Geburtstage",icon:"🎂"},
-    {key:"bestellungen",label:"Bestellungen",icon:"🛒"},
-    ...(isMF?[{key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦"}]:[]),
+    {key:"bestellungen",label:"Bestellung",icon:"🛒"},
+    ...(isMF?[{key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
@@ -22653,7 +22665,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurErwachsene={true} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
-    {activeTab==="historieverein"&&<HistorieVereinView players={players} myPlayer={myPlayer}/>}
+    {activeTab==="historieverein"&&<HistorieVereinView players={players} modus="erwachsene"/>}
   </div>;
 }
 
