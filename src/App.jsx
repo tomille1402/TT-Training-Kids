@@ -1,4 +1,4 @@
-// === TTC-App · Version 468 · erstellt 21.09.2026 ===
+// === TTC-App · Version 470 · erstellt 21.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "468";
+const APP_VERSION = "470";
 const APP_DATUM   = "21.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -7140,9 +7140,52 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
   </div>;
 }
 
+// Ordnet die Reiter der oberen Leiste in derselben Reihenfolge wie die Kacheln der
+// Startseite und markiert die Abschnitte für die Schattierung:
+//  - "home" bleibt vorn,
+//  - danach die Reiter in Kachelreihenfolge (Abschnitt für Abschnitt),
+//  - Reiter ohne Kachel folgen am Ende in ihrer bisherigen Reihenfolge.
+// Jeder zweite Abschnitt bekommt einen Farbschleier in der Vereinsfarbe, der erste
+// Reiter eines Abschnitts eine Trennlinie – so sind die Abschnitte auch in der
+// schmalen Leiste erkennbar, ohne Platz für Überschriften zu brauchen.
+function tabsNachKacheln(tabs, gruppen){
+  const pos={};
+  (gruppen||[]).forEach((g,gi)=>(g.items||[]).forEach((it,ii)=>{
+    if(!(it.key in pos)) pos[it.key]={gi,ii};
+  }));
+  const home=[], zugeordnet=[], rest=[];
+  for(const t of (tabs||[])){
+    if(t.key==="home") home.push(t);
+    else if(pos[t.key]) zugeordnet.push({...t, _gi:pos[t.key].gi, _ii:pos[t.key].ii});
+    else rest.push(t);
+  }
+  zugeordnet.sort((a,b)=> a._gi-b._gi || a._ii-b._ii);
+  let vorher=null;
+  const markiert=zugeordnet.map(t=>{
+    const start=t._gi!==vorher; vorher=t._gi;
+    return {...t, _schattiert:t._gi%2===0, _abschnittStart:start, _abschnitt:gruppen[t._gi]?.titel||""};
+  });
+  const restMarkiert=rest.map((t,i)=>({...t, _abschnittStart:i===0&&markiert.length>0, _abschnitt:"Weitere"}));
+  return [...home, ...markiert, ...restMarkiert];
+}
+// Hintergrund eines Reiters: aktiv kräftiger getönt, sonst Abschnittsschleier.
+function reiterHintergrund(t, aktiv){
+  if(aktiv) return "var(--club-22)";
+  return t._schattiert ? "var(--club-12)" : "transparent";
+}
+
 // Thematische Gruppierung der Trainer-Bereiche für die Kachel-Startseite.
 // Es werden nur Kacheln gezeigt, deren Reiter für die Person verfügbar ist.
 const TR_HOME_GRUPPEN = [
+  // Wettkampf vorn (V469). Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
+  { titel:"Wettkampf", items:[
+    { key:"spielplan",   label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
+    { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"aufstellung", label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"turniere",    label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
+    { key:"spiellokale", label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
+  ]},
   { titel:"Training", items:[
     { key:"zeiten",       label:"Zeiten",        icon:"🕒", sub:"Trainingszeiten" },
     { key:"training",     label:"Training",      icon:"📅", sub:"Trainingstage" },
@@ -7152,30 +7195,24 @@ const TR_HOME_GRUPPEN = [
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Spielernotizen" },
     { key:"urkunden",     label:"Urkunden",      icon:"📜", sub:"Auszeichnungen" },
   ]},
-  { titel:"Spieler & Gruppe", items:[
-    { key:"eltern",      label:"Eltern",       icon:"👨‍👩‍👧", sub:"Kontakte" },
-    { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
+  // Vormals „Spieler & Gruppe" – alphabetisch.
+  { titel:"Spieler & Statistiken", items:[
     { key:"geburtstage", label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
-    { key:"schlaeger",   label:"Schläger",     icon:"🏓", sub:"Material" },
-  ]},
-  { titel:"Wettkampf", items:[
-    { key:"spielplan",   label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
-    { key:"spiellokale", label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
-    { key:"aufstellung", label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
-    { key:"spielbetrieb",label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
-    { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
-    { key:"turniere",    label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
-    { key:"ttr",         label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
     { key:"historieadmin", label:"Historie Spiele", icon:"📊", sub:"Bilanzen aller Personen" },
+    { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
+    { key:"ttr",         label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
   ]},
+  // Alphabetisch; Schläger und Eltern hierher verschoben.
   { titel:"Verein & Verwaltung", items:[
-    { key:"termine",          label:"Termine",     icon:"📌", sub:"Vereinstermine" },
-    { key:"kalender",         label:"Kalender",    icon:"📅", sub:"Abo & Export" },
-    { key:"halleninfo",       label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"bestellungen",     label:"Bestellungen",icon:"🛒", sub:"Vereinsartikel" },
     { key:"bestelluebersicht",label:"Bestellungen Übersicht",icon:"📦", sub:"Alle Bestellungen" },
-    { key:"meineverwaltung",  label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
+    { key:"eltern",           label:"Eltern",      icon:"👨‍👩‍👧", sub:"Kontakte" },
+    { key:"halleninfo",       label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
+    { key:"kalender",         label:"Kalender",    icon:"📅", sub:"Abo & Export" },
+    { key:"schlaeger",        label:"Schläger",    icon:"🏓", sub:"Material" },
+    { key:"termine",          label:"Termine",     icon:"📌", sub:"Vereinstermine" },
     { key:"verwaltung",       label:"Verwaltung",  icon:"⚙️", sub:"App-Verwaltung" },
+    { key:"meineverwaltung",  label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
   ]},
 ];
 
@@ -7183,6 +7220,7 @@ const TR_HOME_GRUPPEN = [
 // verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
 function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const aufSpieler = useAufstellungSpieler();
 
   const oeffne = (key) => { try{ window.scrollTo({top:0,left:0,behavior:"auto"}); }catch(e){} onOpen(key); };
 
@@ -7261,14 +7299,12 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
         ⚠️ wird verlegt
       </div>}
       <SpiellokalHinweis spiel={s} vereine={spiellokaleListe} aufRot={rot}/>
-      {(betreuerText||fahrerText) && <div style={{fontSize:11,color:labelFarbe,marginTop:6,lineHeight:1.4}}>
-        {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
-        {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
-      </div>}
+      <SpielPersonenZeilen betreuerText={betreuerText} fahrerText={fahrerText}
+        aufstellung={nominierteGeordnet(e, players, aufSpieler, s)} farbe={labelFarbe}/>
       <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,marginTop:12}}>
         {heim&&berichtUrl&&<a href={berichtUrl} target="_blank" rel="noopener noreferrer"
           style={{display:"inline-flex",alignItems:"center",gap:5,background:rot?"#fff":"var(--bg2)",
-            color:rot?TTC_ROT:"var(--text)",fontSize:12,fontWeight:700,padding:"7px 11px",borderRadius:9,textDecoration:"none"}}>📝 Spielbericht</a>}
+            color:rot?TTC_ROT:"var(--text)",fontSize:12,fontWeight:700,padding:"7px 11px",borderRadius:9,textDecoration:"none"}}>📝 Digitaler Spielbericht</a>}
         {spielplanUrl&&<a href={spielplanUrl} target="_blank" rel="noopener noreferrer"
           title="Mannschaftsspielplan auf myTischtennis.de öffnen"
           style={{display:"inline-flex",alignItems:"center",gap:6,borderRadius:9,padding:"5px 10px",
@@ -7591,19 +7627,20 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       top:hideHeader?"var(--rsw-height)":"calc(62px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:96,
       overflowX:"auto",overflowY:"hidden"}}>
-      {TABS.map(t=>{
+      {tabsNachKacheln(TABS,TR_HOME_GRUPPEN).map(t=>{
         // Aktiver Reiter durchgehend in der Vereinsfarbe (Farbschema der Verwaltung),
         // dazu ein leicht getoenter Hintergrund. Der fixierte Home-Reiter braucht einen
         // deckenden Grund, damit der scrollende Inhalt nicht durchscheint – daher der
         // Farbschleier als Verlaufsebene ueber var(--bg).
         const aktiv = activeTab===t.key;
         const istHome = t.key==="home";
-        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{
         flexShrink:0,flex:istHome?"0 0 auto":1,padding:"10px 4px",
         background: istHome
           ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)")
-          : (aktiv?"var(--club-12)":"transparent"),
+          : reiterHintergrund(t, aktiv),
         border:"none",
+        ...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),
         ...(istHome?{position:"sticky",left:0,zIndex:2,minWidth:56,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
         borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,
         color:aktiv?TTC_ROT:"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer",
@@ -13857,6 +13894,18 @@ function GeburtstageTab({players,showToast}) {
 // Thematische Gruppierung der Spieler-Bereiche für die Kachel-Startseite.
 // Es werden nur Kacheln gezeigt, deren Reiter für die Gruppe der Person verfügbar ist.
 const SP_HOME_GRUPPEN = [
+  // Wettkampf vorn (V469). Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
+  { titel:"Wettkampf", items:[
+    { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
+    { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
+    { key:"ttr",         label:"TTR",         icon:"📊", sub:"Ranglistenwerte" },
+    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
+    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
+    { key:"spiellokale", label:"Spiellokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
+  ]},
   { titel:"Mein Training", items:[
     { key:"zeiten",       label:"Zeiten",        icon:"🕒", sub:"Trainingszeiten" },
     { key:"stats",        label:"Meine Stats",   icon:"⭐", sub:"Übungen & Sterne" },
@@ -13865,17 +13914,6 @@ const SP_HOME_GRUPPEN = [
     { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Trainingsbeteiligung" },
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Für das Training" },
     { key:"erfolge",      label:"Erfolge",       icon:"🏅", sub:"Meine Erfolge" },
-  ]},
-  { titel:"Wettkampf", items:[
-    { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
-    { key:"spiellokale", label:"Spiellokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
-    { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
-    { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
-    { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
-    { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
-    { key:"ttr",         label:"TTR",         icon:"📊", sub:"Ranglistenwerte" },
-    { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
-    { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
   ]},
   { titel:"Verein & mehr", items:[
     { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
@@ -13888,7 +13926,8 @@ const SP_HOME_GRUPPEN = [
 
 // Kachel-Startseite der Spieler-Ansicht — analog zu ErwachseneHome, aber mit den
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
-function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
+function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
+  const aufSpieler = useAufstellungSpieler();
   const halleninfoNeu = useHalleninfoNeuCount();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
@@ -13992,13 +14031,11 @@ function SpielerHome({ myPlayer, onOpen, verfuegbar }) {
             ⚠️ wird verlegt
           </div>}
           <SpiellokalHinweis spiel={naechstes} vereine={spiellokaleListe} aufRot={true}/>
-          {(betreuerText || fahrerText) && <div style={{fontSize:11, color:"var(--club-hell, #ffd7dd)", marginTop:6, lineHeight:1.4}}>
-            {betreuerText && <div>👤 Betreuer: {betreuerText}</div>}
-            {fahrerText && <div>🚗 Fahrer: {fahrerText}</div>}
-          </div>}
+          <SpielPersonenZeilen betreuerText={betreuerText} fahrerText={fahrerText}
+            aufstellung={nominierteGeordnet(einsatz, players, aufSpieler, naechstes)} farbe="var(--club-hell, #ffd7dd)"/>
           <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
             {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
-              style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT, fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Spielbericht</a>}
+              style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT, fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Digitaler Spielbericht</a>}
             {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer" title="Mannschaftsspielplan auf myTischtennis.de öffnen"
               style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a", fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
               <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
@@ -14188,11 +14225,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       top:hideHeader?"var(--rsw-height)":"calc(70px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
-      {TABS.map(t=>{
+      {tabsNachKacheln(TABS,SP_HOME_GRUPPEN).map(t=>{
         // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
         const aktiv = activeTab===t.key;
         const istHome = t.key==="home";
-        return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flexShrink:0,padding:"8px 10px",background:istHome?(aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)"):(aktiv?"var(--club-12)":"transparent"),border:"none",...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,color:aktiv?TTC_ROT:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{flexShrink:0,padding:"8px 10px",background:istHome?(aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)"):reiterHintergrund(t, aktiv),border:"none",...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,color:aktiv?TTC_ROT:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
           <span style={{fontSize:15}}>{t.icon}</span>
           <span>{t.label}</span>
         </button>;
@@ -14201,7 +14238,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── STATS ── */}
     <div style={{height:hideHeader?40:114}}/>
-    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
+    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -17244,6 +17281,79 @@ function useSpiellokale(){
 
 
 
+// Symbole der Routenplaner (vom Verein bereitgestellt, V470). Als PNG mit
+// transparenten, abgerundeten Ecken aufbereitet – die Originale sind JPGs mit weissen
+// Ecken, die auf dunklen Kacheln als helle Zacken sichtbar waeren.
+const ICON_GOOGLE_MAPS = "data:image/png;base64,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";
+const ICON_APPLE_KARTEN = "data:image/png;base64,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";
+
+// Aufstellung der laufenden Saison (fuer die Reihenfolge der Nominierten).
+const AKTUELLE_AUFSTELLUNG_ID = "aufstellung_2026_2027_V";
+function useAufstellungSpieler(){
+  const [liste,setListe]=useState(AUFSTELLUNG_DATA[AKTUELLE_AUFSTELLUNG_ID]||[]);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config",AKTUELLE_AUFSTELLUNG_ID), snap=>{
+      const d=snap.exists()&&(snap.data().spieler||[]).length>0
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[AKTUELLE_AUFSTELLUNG_ID]||[]);
+      setListe(d);
+    },()=>{});
+    return u;
+  },[]);
+  return liste;
+}
+
+// Final nominierte Spieler eines Spiels (Reiter Einsaetze, Stern) in der richtigen
+// Reihenfolge: zuerst die Spieler der spielenden Mannschaft nach ihrem Rang dort
+// (3.1, 3.2 …), danach Ersatzspieler aus anderen Mannschaften nach ihrem eigenen
+// Rang – Ersatz aus Erwachsenenmannschaften vor Ersatz, der nur einen Jugendrang hat.
+// Ohne diese Stufen wuerde z. B. ein Nachwuchsspieler mit Rang "1.2" in seiner
+// Jugendmannschaft vor Stammspielern oder Erwachsenen-Ersatz landen.
+function nominierteGeordnet(einsatz, players, aufSpieler, spiel){
+  const ids=Array.isArray(einsatz?._nominiert)?einsatz._nominiert:[];
+  if(!ids.length) return [];
+  const spielTeam=spiel ? (SPIELPLAN_TO_AUFSTELLUNG[spiel.mannschaft]||spiel.mannschaft) : "";
+  const rv=(r)=>{ const m=String(r||"").split("."); return m.length===2?parseInt(m[0],10)*100+parseInt(m[1],10):9999; };
+  const liste=ids.map((id,idx)=>{
+    const p=(players||[]).find(x=>x.id===id);
+    if(!p) return null;
+    let rang=spielTeam ? rangOfPlayerInTeam(p, spielTeam, aufSpieler||[]) : "";
+    const imTeam=!!rang;
+    let ausErwachsenen=false;
+    if(!rang){
+      // eigene Mannschaft: bei Erwachsenen die tiefste (hoechste Nummer), sonst die erste
+      const eigene=teamsOfPlayer(p, aufSpieler||[]);
+      let best=-1;
+      for(const t of eigene){
+        if(istErwachsenenMannschaft(t) && ERW_NUM[normAufName(t)]>best){
+          best=ERW_NUM[normAufName(t)]; rang=rangOfPlayerInTeam(p,t,aufSpieler||[]); ausErwachsenen=true;
+        }
+      }
+      if(!rang && eigene[0]) rang=rangOfPlayerInTeam(p,eigene[0],aufSpieler||[]);
+    }
+    return {name:`${p.firstName||""} ${p.lastName||""}`.trim(), imTeam, ausErwachsenen, rang, idx};
+  }).filter(Boolean);
+  // Reihenfolge: Stammspieler der spielenden Mannschaft · Ersatz aus Erwachsenen-
+  // mannschaften · Ersatz nur mit Jugendrang – jeweils nach Rang.
+  const stufe=(x)=> x.imTeam ? 0 : (x.ausErwachsenen ? 1 : 2);
+  liste.sort((x,y)=> stufe(x)-stufe(y) || rv(x.rang)-rv(y.rang) || x.idx-y.idx);
+  return liste.map(x=>x.name);
+}
+
+// Betreuer, Fahrer und Aufstellung in den Spielkacheln. Betreuer und Fahrer stehen
+// nebeneinander und brechen nur um, wenn der Platz nicht reicht (Handy).
+function SpielPersonenZeilen({ betreuerText, fahrerText, aufstellung, farbe }){
+  const hatBF = !!(betreuerText||fahrerText);
+  const hatAuf = (aufstellung||[]).length>0;
+  if(!hatBF && !hatAuf) return null;
+  return <div style={{fontSize:11,color:farbe,marginTop:6,lineHeight:1.45}}>
+    {hatBF && <div style={{display:"flex",flexWrap:"wrap",columnGap:16,rowGap:2}}>
+      {betreuerText && <span>👤 Betreuer: {betreuerText}</span>}
+      {fahrerText && <span>🚗 Fahrer: {fahrerText}</span>}
+    </div>}
+    {hatAuf && <div style={{marginTop:hatBF?2:0}}>📋 Aufstellung: {aufstellung.join(", ")}</div>}
+  </div>;
+}
+
 // Spiellokal-Hinweis fuer Spielankuendigungen: Name, Anschrift und Routenplaner-Links.
 // aufRot=true fuer die rote Hero-Kachel (helle Schrift), sonst neutrale Farben.
 function SpiellokalHinweis({ spiel, vereine, aufRot=false }){
@@ -17254,23 +17364,26 @@ function SpiellokalHinweis({ spiel, vereine, aufRot=false }){
   const chip = aufRot
     ? {background:"#ffffff",color:"#1a2b4a",border:"none"}
     : {background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"};
-  return <div style={{marginTop:8}}>
-    <div style={{fontSize:11,color:labelFarbe,lineHeight:1.4}}>
-      🏟️ {lok.name||"Spiellokal"}
+  // Hallenname und Anschrift in einer Zeile, durch Komma getrennt; die beiden
+  // Routen-Schalter rechts daneben. Reicht die Breite nicht (Handy), rutschen die
+  // Schalter rechtsbuendig in die naechste Zeile.
+  const adresse = lokalAdresse(lok);
+  return <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+    <div style={{fontSize:11,color:labelFarbe,lineHeight:1.4,flex:"1 1 200px",minWidth:0}}>
+      🏟️ {lok.name||"Spiellokal"}{adresse?`, ${adresse}`:""}
     </div>
-    {lokalAdresse(lok)&&<div style={{fontSize:11,color:labelFarbe,lineHeight:1.4}}>{lokalAdresse(lok)}</div>}
-    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+    <div style={{display:"flex",gap:6,flexShrink:0,marginLeft:"auto"}}>
       <a href={googleMapsUrl(lok)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
          title="Route mit Google Maps"
          style={{display:"inline-flex",alignItems:"center",gap:4,borderRadius:8,padding:"4px 9px",
            fontSize:11,fontWeight:700,textDecoration:"none",...chip}}>
-        <span style={{fontSize:12}}>📍</span> Google
+        <img src={ICON_GOOGLE_MAPS} alt="" style={{width:16,height:16,display:"block"}}/> Google
       </a>
       <a href={appleMapsUrl(lok)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
          title="Route mit Apple Karten"
          style={{display:"inline-flex",alignItems:"center",gap:4,borderRadius:8,padding:"4px 9px",
            fontSize:11,fontWeight:700,textDecoration:"none",...chip}}>
-        <span style={{fontSize:12}}>🍎</span> Apple
+        <img src={ICON_APPLE_KARTEN} alt="" style={{width:16,height:16,display:"block"}}/> Apple
       </a>
     </div>
   </div>;
@@ -22157,19 +22270,20 @@ try{ setzeFarbschema("rot"); }catch(e){}
 // Reihenfolge/Untertitel sind bewusst knapp; die Kacheln springen in die
 // bestehenden Reiter (Unterseiten bleiben unverändert).
 const EW_HOME_GRUPPEN = [
-  { titel:"Training", items:[
-    { key:"zeiten",       label:"Zeiten",       icon:"🕒", sub:"Trainingszeiten" },
-  ]},
+  // Wettkampf vorn (V469). Einsätze direkt hinter dem Spielplan, Spiellokale am Ende.
   { titel:"Wettkampf", items:[
     { key:"spielplan",    label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
-    { key:"spiellokale",  label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
-    { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
     { key:"einsaetze",    label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
+    { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
     { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",     label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
     { key:"ttr",          label:"TTR",          icon:"📊", sub:"Ranglistenwerte" },
     { key:"historie",       label:"Eigene Historie Spiele", icon:"📈", sub:"Meine Bilanzen" },
     { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
+    { key:"spiellokale",  label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
+  ]},
+  { titel:"Training", items:[
+    { key:"zeiten",       label:"Zeiten",       icon:"🕒", sub:"Trainingszeiten" },
   ]},
   { titel:"Mein Bereich", items:[
     { key:"erfolge",      label:"Erfolge",      icon:"🏅", sub:"Meine Erfolge" },
@@ -22189,6 +22303,7 @@ const EW_HOME_GRUPPEN = [
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
 function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const halleninfoNeu = useHalleninfoNeuCount();
+  const aufSpieler = useAufstellungSpieler();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
   const [aufSpieler, setAufSpieler] = useState([]);
@@ -22326,6 +22441,10 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     const pinChipStyle = rot
       ? {background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55"}
       : {background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"};
+    // Betreuer/Fahrer (bei Nachwuchsspielen) und die final nominierte Aufstellung.
+    const einsatz = s ? (einsaetze[spielKeyFromSpiel(s)]||{}) : {};
+    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
+    const fahrerText = (!heim ? (einsatz._fahrer||"") : "");
 
     return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>
       <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}</div>
@@ -22336,16 +22455,18 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         ⚠️ wird verlegt
       </div>}
       <SpiellokalHinweis spiel={s} vereine={spiellokaleListe} aufRot={rot}/>
+      <SpielPersonenZeilen betreuerText={betreuerText} fahrerText={fahrerText}
+        aufstellung={nominierteGeordnet(einsatz, players, aufSpieler, s)} farbe={labelFarbe}/>
       <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
         {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
           style={{display:"inline-flex", alignItems:"center", gap:5, background:chipBg, color:berichtCol,
             fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>
-          📝 Spielbericht
+          📝 Digitaler Spielbericht
         </a>}
         {heim && !berichtUrl && <span
           style={{display:"inline-flex", alignItems:"center", gap:5, background:rot?"#ffffff33":"var(--bg2)", color:rot?"#fff":"var(--text3)",
             fontSize:12, fontWeight:600, padding:"7px 11px", borderRadius:9}}>
-          📝 Spielbericht folgt
+          📝 Digitaler Spielbericht folgt
         </span>}
         {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer"
           title="Mannschaftsspielplan auf myTischtennis.de öffnen"
@@ -22457,16 +22578,17 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
       paddingTop:inRSW?0:"var(--sat, 0px)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
-          {TABS.map(t=>{
+          {tabsNachKacheln(TABS,EW_HOME_GRUPPEN).map(t=>{
             // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
             const aktiv = activeTab===t.key;
             const istHome = t.key==="home";
-            return <button key={t.key} onClick={()=>setActiveTab(t.key)} style={{
+            return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{
             flexShrink:0,padding:"7px 8px",
             background: istHome
               ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg2)":"var(--bg2)")
-              : (aktiv?"var(--club-12)":"transparent"),
+              : reiterHintergrund(t, aktiv),
             border:"none",
+            ...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),
             ...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),
             borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,
             color:aktiv?TTC_ROT:"var(--text3)",
