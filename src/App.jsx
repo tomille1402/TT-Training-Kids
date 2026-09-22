@@ -1,4 +1,4 @@
-// === TTC-App · Version 476 · erstellt 22.09.2026 ===
+// === TTC-App · Version 477 · erstellt 22.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "476";
+const APP_VERSION = "477";
 const APP_DATUM   = "22.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -2814,6 +2814,8 @@ function HistorieSpieleUpload({ showToast, players=[] }){
   const [meldung,setMeldung]=useState("");
   const [excelLaeuft,setExcelLaeuft]=useState(false);
   const [excelMeldung,setExcelMeldung]=useState("");
+  // Saison-Rubriken der hinterlegten Daten: standardmäßig alle zugeklappt.
+  const [offeneSaisons,setOffeneSaisons]=useState({});
 
   // ── Manuelle Bilanzen (Excel) ── Jeder Upload ERSETZT alle bisher manuell
   // hochgeladenen Einträge vollständig; die Excel-Datei ist die führende Liste.
@@ -2929,80 +2931,107 @@ function HistorieSpieleUpload({ showToast, players=[] }){
     try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); }catch(e){}
   }
 
-  const eintraege=Object.entries(store.dateien||{}).filter(([,e])=>!e?.manuell).sort((a,b)=>b[0].localeCompare(a[0]));
-  const manuelle=Object.entries(store.dateien||{}).filter(([,e])=>e?.manuell).sort((a,b)=>b[0].localeCompare(a[0]));
+  const manuelle=Object.entries(store.dateien||{}).filter(([,e])=>e?.manuell);
+  // Hinterlegte Daten nach Saison gruppieren – je Saison eine Rubrik, die
+  // standardmäßig zugeklappt ist. Neueste Saison zuerst.
+  const proSaison={};
+  for(const [key,eintrag] of Object.entries(store.dateien||{})){
+    const sa=eintrag?.saison||"ohne Saison";
+    (proSaison[sa]=proSaison[sa]||[]).push([key,eintrag]);
+  }
+  const saisons=Object.keys(proSaison).sort((x,y)=>y.localeCompare(x));
+  const teamsVon=(eintrag)=>{
+    const t=new Set();
+    for(const sp of Object.values(eintrag?.spieler||{})) for(const n of Object.keys(sp?.teams||{})) t.add(n);
+    return [...t].sort((x,y)=>x.localeCompare(y,"de"));
+  };
+
+  const knopf=(farbe,disabled)=>({display:"block",padding:"10px 12px",borderRadius:9,textAlign:"center",
+    fontSize:12,fontWeight:800,color:disabled?"var(--text4)":"#fff",
+    background:disabled?"var(--bg3)":farbe, cursor:disabled?"wait":"pointer"});
+
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:12}}>
-    <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:6}}>📈 Historie Spiele</div>
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:10}}>📈 Historie Spiele</div>
+
+    {/* ── Manuelle Bilanzen (Excel) – steht bewusst oben, weil hier die gepflegte
+        Gesamtliste hochgeladen wird ── */}
+    <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:5}}>📗 Manuelle Bilanzen (Excel)</div>
     <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
-      Bilanzübersichten aus click-tt als PDF hochladen — mehrere Dateien auf einmal möglich.
-      Die Saison wird aus dem Dateinamen gelesen (z. B. „Bilanzuebersicht_2025_26_Herren"),
-      da sie im Dokument selbst nicht steht. Jede Datei ersetzt beim erneuten Hochladen nur
-      ihren eigenen Stand, die übrigen Dateien der Saison bleiben erhalten.
+      Für Saisons, die in den PDF-Dateien fehlen. Gelesen wird der Reiter „Bilanzen“ mit den
+      Spalten Saison, Mannschaft, Name (Vorname Nachname), Anzahl Spiele, Anzahl Einzel,
+      Einzel gewonnen/verloren und Doppel gewonnen/verloren; Salden und Summen berechnet die
+      App selbst. <b>Jeder Upload ersetzt alle bisher manuell hochgeladenen Einträge.</b>
+      Stehen Saison, Mannschaft und Person zugleich in einer PDF, gilt der Wert aus der Excel-Datei.
     </div>
-    {/* Bewusst OHNE accept-Filter: Die Dateien aus click-tt kommen haeufig ganz ohne
-        Endung an ("Bilanzuebersicht_2025_26_Herren"). Mit einem PDF-Filter graut der
-        Dateidialog sie dann aus und sie lassen sich nicht auswaehlen. Geprueft wird
-        stattdessen der Inhalt. Und: <label> statt Button mit programmatischem Klick –
-        so oeffnet der Dialog auf allen Geraeten zuverlaessig. */}
-    <label style={{display:"block",padding:"10px 12px",borderRadius:9,textAlign:"center",
-      fontSize:12,fontWeight:800,color:laeuft?"var(--text4)":"#fff",
-      background:laeuft?"var(--bg3)":TTC_ROT, cursor:laeuft?"wait":"pointer"}}>
-      {laeuft?"⏳ Wird gelesen…":"📎 Bilanzübersichten auswählen"}
-      <input type="file" multiple disabled={laeuft}
-        onChange={dateienVerarbeiten} style={{display:"none"}}/>
+    <label style={knopf("#15803d", excelLaeuft)}>
+      {excelLaeuft?"⏳ Wird gelesen…":"📗 Excel-Datei auswählen"}
+      <input type="file" disabled={excelLaeuft} onChange={excelVerarbeiten} style={{display:"none"}}/>
     </label>
-    {meldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{meldung}</div>}
-    {eintraege.length>0 && <div style={{marginTop:12}}>
-      <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",marginBottom:6,textTransform:"uppercase"}}>Hinterlegte Dateien</div>
-      {eintraege.map(([key,e])=><div key={key} style={{display:"flex",alignItems:"center",gap:8,
-        padding:"6px 9px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{e.saison} · {e.quelle}</div>
-          <div style={{fontSize:10,color:"var(--text4)"}}>
-            {Object.keys(e.spieler||{}).length} Personen
-            {(()=>{ const t=new Set(); for(const sp of Object.values(e.spieler||{})) for(const n of Object.keys(sp?.teams||{})) t.add(n);
-                    return t.size ? " · "+[...t].sort((a,b)=>a.localeCompare(b,"de")).join(", ") : ""; })()}
-          </div>
-        </div>
-        <button onClick={()=>eintragLoeschen(key)} title="entfernen" style={{background:"#ef444422",
-          border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",fontSize:12,padding:"4px 9px",cursor:"pointer"}}>🗑</button>
-      </div>)}
+    {excelMeldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{excelMeldung}</div>}
+    {manuelle.length>0 && <div style={{marginTop:8,textAlign:"right"}}>
+      <button onClick={manuelleLoeschen} style={{background:"#ef444422",border:"1px solid #ef444444",borderRadius:7,
+        color:"#ef4444",fontSize:11,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>🗑 alle manuellen Bilanzen entfernen</button>
     </div>}
 
-    {/* ── Zweiter Upload: manuell zusammengetragene Bilanzen (Excel) ── */}
+    {/* ── Bilanzübersichten aus click-tt (PDF) ── */}
     <div style={{marginTop:16,paddingTop:14,borderTop:"1px dashed var(--border2)"}}>
-      <div style={{fontSize:13,fontWeight:800,color:"var(--text2)",marginBottom:6}}>📗 Manuelle Bilanzen (Excel)</div>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text2)",marginBottom:5}}>📎 Bilanzübersichten (PDF)</div>
       <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
-        Für Saisons, die in den PDF-Dateien fehlen. Gelesen wird der Reiter „Bilanzen“ mit den
-        Spalten Saison, Mannschaft, Name (Vorname Nachname), Anzahl Spiele, Anzahl Einzel,
-        Einzel gewonnen/verloren und Doppel gewonnen/verloren; Salden und Summen berechnet die
-        App selbst. <b>Jeder Upload ersetzt alle bisher manuell hochgeladenen Einträge.</b>
-        Stehen Saison, Mannschaft und Person zugleich in einer PDF, gilt der Wert aus der Excel-Datei.
+        Bilanzübersichten aus click-tt hochladen — mehrere Dateien auf einmal möglich.
+        Die Saison wird aus dem Dateinamen gelesen (z. B. „Bilanzuebersicht_2025_26_Herren“),
+        da sie im Dokument selbst nicht steht. Jede Datei ersetzt beim erneuten Hochladen nur
+        ihren eigenen Stand, die übrigen Dateien der Saison bleiben erhalten.
       </div>
-      <label style={{display:"block",padding:"10px 12px",borderRadius:9,textAlign:"center",
-        fontSize:12,fontWeight:800,color:excelLaeuft?"var(--text4)":"#fff",
-        background:excelLaeuft?"var(--bg3)":"#15803d", cursor:excelLaeuft?"wait":"pointer"}}>
-        {excelLaeuft?"⏳ Wird gelesen…":"📗 Excel-Datei auswählen"}
-        <input type="file" disabled={excelLaeuft} onChange={excelVerarbeiten} style={{display:"none"}}/>
+      {/* Bewusst OHNE accept-Filter: Die Dateien aus click-tt kommen haeufig ganz ohne
+          Endung an. Mit einem PDF-Filter graut der Dateidialog sie aus. Geprueft wird
+          stattdessen der Inhalt. <label> statt Button mit programmatischem Klick –
+          so oeffnet der Dialog auf allen Geraeten zuverlaessig. */}
+      <label style={knopf(TTC_ROT, laeuft)}>
+        {laeuft?"⏳ Wird gelesen…":"📎 Bilanzübersichten auswählen"}
+        <input type="file" multiple disabled={laeuft} onChange={dateienVerarbeiten} style={{display:"none"}}/>
       </label>
-      {excelMeldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{excelMeldung}</div>}
-      {manuelle.length>0 && <div style={{marginTop:12}}>
-        <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-          <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",textTransform:"uppercase",flex:1}}>Manuell hinterlegt</div>
-          <button onClick={manuelleLoeschen} style={{background:"#ef444422",border:"1px solid #ef444444",borderRadius:7,
-            color:"#ef4444",fontSize:11,fontWeight:700,padding:"3px 9px",cursor:"pointer"}}>🗑 alle entfernen</button>
-        </div>
-        {manuelle.map(([key,e])=>{
-          const teams=new Set(); for(const sp of Object.values(e.spieler||{})) for(const n of Object.keys(sp?.teams||{})) teams.add(n);
-          return <div key={key} style={{padding:"6px 9px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
-            <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{e.saison} · {Object.keys(e.spieler||{}).length} Personen</div>
-            <div style={{fontSize:10,color:"var(--text4)"}}>
-              {[...teams].sort((a,b)=>a.localeCompare(b,"de")).join(", ")}{e.dateiname?` · aus „${e.dateiname}“`:""}
-            </div>
-          </div>;
-        })}
-      </div>}
+      {meldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{meldung}</div>}
     </div>
+
+    {/* ── Hinterlegte Daten: je Saison eine zugeklappte Rubrik ── */}
+    {saisons.length>0 && <div style={{marginTop:16,paddingTop:14,borderTop:"1px dashed var(--border2)"}}>
+      <div style={{fontSize:10,fontWeight:800,color:"var(--text4)",marginBottom:8,textTransform:"uppercase"}}>
+        Hinterlegte Daten ({saisons.length} {saisons.length===1?"Saison":"Saisons"})
+      </div>
+      {saisons.map(sa=>{
+        const liste=proSaison[sa].sort((x,y)=>String(x[1]?.quelle||"").localeCompare(String(y[1]?.quelle||""),"de"));
+        const offen=!!offeneSaisons[sa];
+        const personen=new Set();
+        liste.forEach(([,eintrag])=>Object.keys(eintrag?.spieler||{}).forEach(k=>personen.add(k)));
+        return <div key={sa} style={{border:"1px solid var(--border)",borderRadius:9,marginBottom:6,overflow:"hidden"}}>
+          <div onClick={()=>setOffeneSaisons(o=>({...o,[sa]:!o[sa]}))}
+            style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"var(--bg)",cursor:"pointer",userSelect:"none"}}>
+            <span style={{fontSize:11,color:"var(--text3)",transform:offen?"rotate(90deg)":"none",transition:"transform .15s"}}>▶</span>
+            <span style={{fontSize:12,fontWeight:800,color:"var(--text)"}}>{sa}</span>
+            <span style={{fontSize:10,color:"var(--text4)",marginLeft:"auto"}}>
+              {liste.length} {liste.length===1?"Datei":"Dateien"} · {personen.size} Personen
+            </span>
+          </div>
+          {offen && <div style={{padding:"8px 10px",background:"var(--bg2)"}}>
+            {liste.map(([key,eintrag])=><div key={key} style={{display:"flex",alignItems:"center",gap:8,
+              padding:"6px 9px",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>
+                  {eintrag?.manuell?"📗 ":"📎 "}{eintrag?.quelle||"—"}
+                </div>
+                <div style={{fontSize:10,color:"var(--text4)"}}>
+                  {Object.keys(eintrag?.spieler||{}).length} Personen
+                  {teamsVon(eintrag).length?" · "+teamsVon(eintrag).join(", "):""}
+                  {eintrag?.dateiname?` · aus „${eintrag.dateiname}“`:""}
+                </div>
+              </div>
+              <button onClick={()=>eintragLoeschen(key)} title="entfernen" style={{background:"#ef444422",
+                border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",fontSize:12,padding:"4px 9px",cursor:"pointer"}}>🗑</button>
+            </div>)}
+          </div>}
+        </div>;
+      })}
+    </div>}
   </div>;
 }
 
