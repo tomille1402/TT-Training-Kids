@@ -1,4 +1,4 @@
-// === TTC-App · Version 475 · erstellt 22.09.2026 ===
+// === TTC-App · Version 476 · erstellt 22.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "475";
+const APP_VERSION = "476";
 const APP_DATUM   = "22.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -10640,7 +10640,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         mfClickTT:     editPlayer.mfClickTT||[],
         mannschaftsfuehrerTeam: editPlayer.mannschaftsfuehrerTeam||"",
         ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true) ? {stammErsatz:editPlayer.stammErsatz||"Stammspieler"} : {} ),
-        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true) ? {betreuerNachwuchs:editPlayer.betreuerNachwuchs||"Nein"} : {} ),
+        ...( ((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true)
+             ? {betreuerNachwuchs:editPlayer.betreuerNachwuchs||"Nein",
+                fahrerNachwuchs:editPlayer.fahrerNachwuchs||"Nein"} : {} ),
         birthdate:     editPlayer.birthdate||"",
         trainingStart: editPlayer.trainingStart||"",
         trainingEnd:   editPlayer.trainingEnd||"",
@@ -11653,14 +11655,19 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </select>
               </div>}
 
-              {/* Betreuer Nachwuchs — für Personen mit Funktion Erwachsene oder Trainer */}
-              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true)&&<div style={{marginBottom:14}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Betreuer Nachwuchs</label>
-                <select value={editPlayer.betreuerNachwuchs||"Nein"} onChange={e=>setEditPlayer(prev=>({...prev,betreuerNachwuchs:e.target.value}))}
-                  style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
-                  <option value="Ja">Ja</option>
-                  <option value="Nein">Nein</option>
-                </select>
+              {/* Betreuer und Fahrer Nachwuchs — für Personen mit Funktion Erwachsene oder
+                  Trainer. Nebeneinander; auf schmalen Bildschirmen untereinander. */}
+              {((editPlayer.group||"Anfänger")==="Erwachsene"||editPlayer.roles?.erwachsene===true||editPlayer.roles?.trainer===true)&&
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+                {[["betreuerNachwuchs","Betreuer Nachwuchs"],["fahrerNachwuchs","Fahrer Nachwuchs"]].map(([feld,titel])=>
+                  <div key={feld} style={{flex:"1 1 160px",minWidth:0}}>
+                    <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>{titel}</label>
+                    <select value={editPlayer[feld]||"Nein"} onChange={e=>setEditPlayer(prev=>({...prev,[feld]:e.target.value}))}
+                      style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
+                      <option value="Ja">Ja</option>
+                      <option value="Nein">Nein</option>
+                    </select>
+                  </div>)}
               </div>}
 
               {/* Individueller Trainingszeitraum */}
@@ -18955,10 +18962,16 @@ function fahrerKandidaten(selTeam, players, aufSpieler){
       if(v||n) namen.add(`${v} ${n}`.trim());
     }
   }
-  // Zusätzlich alle Personen der Gruppe „Trainer" (nicht passiv) als Fahrer anbieten.
+  // Zusätzlich alle Personen mit Funktion Erwachsene oder Trainer, die in der
+  // Verwaltung „Fahrer Nachwuchs = Ja" gesetzt haben (V476). Die frühere Regel,
+  // nach der pauschal alle Personen der Gruppe „Trainer" auswählbar waren, ist
+  // damit abgelöst — auch Trainer brauchen jetzt das ausdrückliche „Ja".
   for(const p of (players||[])){
     if(p.status==="passiv") continue;
-    if(p.group!=="Trainer") continue;
+    const istTrainer = p.roles?.trainer===true || p.group==="Trainer";
+    const istErwachsene = p.roles?.erwachsene===true || p.group==="Erwachsene";
+    if(!istTrainer && !istErwachsene) continue;
+    if(p.fahrerNachwuchs!=="Ja") continue;
     const label=`${(p.firstName||"").trim()} ${(p.lastName||"").trim()}`.trim();
     if(label) namen.add(label);
   }
@@ -19404,7 +19417,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
             {feld("_fahrer",cur._fahrer,fahrerListe,"Fahrer 1 …")}
             {feld("_fahrer2",cur._fahrer2,fahrerListe,"Fahrer 2 …")}
           </div>
-          {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Keine Eltern- oder Trainer-Namen hinterlegt.</div>}
+          {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>
+            Keine Namen hinterlegt: weder Eltern der Kinder dieser Mannschaft noch Personen mit „Fahrer Nachwuchs = Ja".
+          </div>}
         </div>}
       </div>
     </div>;
