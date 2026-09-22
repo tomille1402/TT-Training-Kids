@@ -1,4 +1,4 @@
-// === TTC-App · Version 474 · erstellt 21.09.2026 ===
+// === TTC-App · Version 475 · erstellt 22.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "474";
-const APP_DATUM   = "21.09.2026";
+const APP_VERSION = "475";
+const APP_DATUM   = "22.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
 // (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
@@ -7501,7 +7501,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
     const spielplanUrl = team?teamLinks(team,(SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan:"";
     const e=einsaetze[spielKeyFromSpiel(s)]||{};
     const betreuerText=[e._betreuer1,e._betreuer2].filter(Boolean).join(", ");
-    const fahrerText=(!heim?(e._fahrer||""):"");
+    const fahrerText=(!heim?fahrerTextVon(e):"");
     const labelFarbe = rot?"var(--club-hell, #ffd7dd)":"var(--text3)";
     const titelFarbe = rot?"#fff":"var(--text)";
     const chip = rot?{background:"#fff",color:"#1a2b4a",border:"none"}
@@ -14232,7 +14232,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
   // Betreuer/Fahrer des nächsten Spiels aus den Einsätzen (Fahrer nur bei Auswärtsspielen).
   const einsatz = naechstes ? (einsaetze[spielKeyFromSpiel(naechstes)]||{}) : {};
   const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
-  const fahrerText = (!heim ? (einsatz._fahrer||"") : "");
+  const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
   const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
   const team = teamZuSpiel(naechstes);
   const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
@@ -18848,7 +18848,12 @@ function personAnzeigeName(player){
 }
 
 // Prüft, ob die Person als Betreuer (1 oder 2) dieses Spiels eingetragen ist.
-// einsaetzeData: {spielKey:{_betreuer1,_betreuer2,_fahrer}}. Vergleich normalisiert,
+// Fahrer eines Nachwuchsspiels. Seit V475 bis zu zwei Fahrer (_fahrer und _fahrer2),
+// analog zu den zwei Betreuern.
+function fahrerListeVon(ei){ return [ei?._fahrer, ei?._fahrer2].filter(Boolean); }
+function fahrerTextVon(ei){ return fahrerListeVon(ei).join(", "); }
+
+// einsaetzeData: {spielKey:{_betreuer1,_betreuer2,_fahrer,_fahrer2}}. Vergleich normalisiert,
 // damit Leerzeichen-/Punkt-Unterschiede nicht stören.
 function personIstBetreuer(player, spiel, einsaetzeData){
   if(!player||!spiel||!einsaetzeData) return false;
@@ -19027,8 +19032,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     const bf={};
     for(const k in quelle){
       const e=quelle[k]||{};
-      const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"";
-      if(b1||b2||f) bf[k]={b1,b2,f};
+      const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"", f2=e._fahrer2||"";
+      if(b1||b2||f||f2) bf[k]={b1,b2,f,f2};
     }
     return bf;
   }
@@ -19210,7 +19215,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
   }
   // Betreuer/Fahrer sind spiel-global (nicht pro Spieler). Gespeichert unter
-  // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_fahrer. Sofort speichern.
+  // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_fahrer/_fahrer2. Sofort speichern.
   async function setEinsatzFeld(spiel, feld, wert){
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
@@ -19392,11 +19397,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
             {istHeim&&feld("_betreuer2",cur._betreuer2,betreuerListe,"Betreuer 2 …")}
           </div>
         </div>
-        {/* Fahrer nur bei Auswärtsspielen */}
-        {!istHeim&&<div style={{flex:"1 1 160px",minWidth:0}}>
+        {/* Fahrer nur bei Auswärtsspielen – seit V475 bis zu zwei */}
+        {!istHeim&&<div style={{flex:"2 1 220px",minWidth:0}}>
           <div style={labelStyle}>🚗 Fahrer</div>
-          <div style={{display:"flex",gap:8}}>
-            {feld("_fahrer",cur._fahrer,fahrerListe,"Fahrer …")}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {feld("_fahrer",cur._fahrer,fahrerListe,"Fahrer 1 …")}
+            {feld("_fahrer2",cur._fahrer2,fahrerListe,"Fahrer 2 …")}
           </div>
           {fahrerListe.length===0&&<div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>Keine Eltern- oder Trainer-Namen hinterlegt.</div>}
         </div>}
@@ -19472,7 +19478,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       // Eingetragene Betreuer/Fahrer (für die kompakte Kopfanzeige, auch eingeklappt).
       const eiKopf=einsaetze[sk]||{};
       const betreuerKopf=[eiKopf._betreuer1,eiKopf._betreuer2].filter(Boolean);
-      const fahrerKopf=(spiel.ort!=="Heim" && eiKopf._fahrer)?eiKopf._fahrer:"";
+      const fahrerKopf=(spiel.ort!=="Heim")?fahrerTextVon(eiKopf):"";
       const tag=wochentagKurz(spiel.datum);
       // Welche Spieler-Zeilen werden gezeigt?
       // Admin/Trainer/MF (viewerCanEditAll): alle spielberechtigten.
@@ -20244,7 +20250,7 @@ function buildICS(options){
       if(ei._betreuer1) bfZeilen.push(`Betreuer 1: ${ei._betreuer1}`);
       if(ei._betreuer2) bfZeilen.push(`Betreuer 2: ${ei._betreuer2}`);
     } else {
-      if(ei._fahrer)    bfZeilen.push(`Fahrer: ${ei._fahrer}`);
+      if(fahrerTextVon(ei)) bfZeilen.push(`Fahrer: ${fahrerTextVon(ei)}`);
       if(ei._betreuer1) bfZeilen.push(`Betreuer: ${ei._betreuer1}`);
     }
     // Haupttext mit " · " verbinden; Betreuer/Fahrer danach je auf eigener Zeile.
@@ -21334,7 +21340,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   const fahrerVon=(s)=>{
     if(!istNachwuchsTeam(s.mannschaft) || s.ort==="Heim") return "";
     const ei=einsaetzeData[spielKeyVon(s)]||{};
-    return ei._fahrer||"";
+    return fahrerTextVon(ei);
   };
   // Zeitraum-Filter: "alle" (Default-Fallback), "alt" (gestern und älter),
   // "neu" (ab heute). Datum liegt als ISO YYYY-MM-DD vor; Vergleich per String.
@@ -22668,7 +22674,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     // Betreuer/Fahrer (bei Nachwuchsspielen) und die final nominierte Aufstellung.
     const einsatz = s ? (einsaetze[spielKeyFromSpiel(s)]||{}) : {};
     const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
-    const fahrerText = (!heim ? (einsatz._fahrer||"") : "");
+    const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
 
     return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>
       <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}</div>
