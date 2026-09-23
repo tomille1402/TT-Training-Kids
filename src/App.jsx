@@ -1,4 +1,4 @@
-// === TTC-App · Version 479 · erstellt 23.09.2026 ===
+// === TTC-App · Version 480 · erstellt 23.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "479";
+const APP_VERSION = "480";
 const APP_DATUM   = "23.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1050,22 +1050,27 @@ function turnierIdAusHerkunft(h){
 // Darf ein Turniererfolg gezeigt bzw. exportiert werden? Manuell erfasste Erfolge
 // (ohne Herkunft) und solche, deren Turnier nicht mehr auffindbar ist, bleiben
 // sichtbar – bestehende Eintraege sollen nicht verloren gehen.
-function erfolgAusAbgeschlossenemTurnier(erfolg, turniere){
+function erfolgAusAbgeschlossenemTurnier(erfolg, turniere, streng=false){
   const tid=turnierIdAusHerkunft(erfolg?.herkunft);
   if(!tid) return true;
   const t=(turniere||[]).find(x=>x.id===tid || x.name===tid);
-  if(!t) return true;
+  // streng (Export, V480): Erfolge aus geloeschten Turnieren sind verwaist und
+  // werden nicht mehr ausgegeben. In der Anzeige bleiben sie sichtbar, damit sie
+  // nicht unbemerkt aus den Spielerprofilen verschwinden.
+  if(!t) return !streng;
   return turnierStatusVon(t)==="Abgeschlossen";
 }
 // Turniere geladen halten (fuer die Sichtbarkeit der Erfolge).
 function useTurniereListe(){
   const [liste,setListe]=useState([]);
+  const [geladen,setGeladen]=useState(false);
   useEffect(()=>{
     const u=onSnapshot(collection(db,"turniere"),
-      snap=>setListe(snap.docs.map(d=>({id:d.id,...d.data()}))), ()=>{});
+      snap=>{ setListe(snap.docs.map(d=>({id:d.id,...d.data()}))); setGeladen(true); },
+      ()=>setGeladen(true));
     return u;
   },[]);
-  return liste;
+  return {turniere:liste, geladen};
 }
 
 const TURNIER_SICHTBAR_ROLLEN = [
@@ -1626,14 +1631,14 @@ async function ladeExcelJsLib(){
 }
 
 // Alle Turniererfolge aller Personen als Zeilen (Kopfzeile zuerst).
-function turniererfolgeZeilen(players, turniere){
+function turniererfolgeZeilen(players, turniere, streng=false){
   const zeilen=[TURNIER_SPALTEN.map(s=>s.kopf)];
   const sortiert=[...(players||[])].sort((a,b)=>
     String(a.lastName||"").localeCompare(String(b.lastName||""),"de") ||
     String(a.firstName||"").localeCompare(String(b.firstName||""),"de"));
   for(const p of sortiert){
     const liste=(Array.isArray(p.tournaments)?p.tournaments:[])
-      .filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere));
+      .filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere, streng));
     for(const t of [...liste].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")))){
       zeilen.push(TURNIER_SPALTEN.map(s=>{
         if(s.feld==="_id")       return p.id||"";
@@ -1678,6 +1683,7 @@ function parseTurniererfolgeZeilen(rows, players){
 
   const nameKey=(v,n)=>norm(`${v} ${n}`).replace(/[^a-zäöüß ]/g,"");
   const proPerson=new Map();
+  const extern=new Map();
   let zeilen=0;
   rows.slice(kopfIdx+1).forEach((r,i)=>{
     const zeile=kopfIdx+2+i;
@@ -1689,7 +1695,6 @@ function parseTurniererfolgeZeilen(rows, players){
     let p=id ? (players||[]).find(x=>x.id===id) : null;
     if(!p && (vorname||nachname))
       p=(players||[]).find(x=>nameKey(x.firstName,x.lastName)===nameKey(vorname,nachname));
-    if(!p){ hinweise.push(`Zeile ${zeile}: Person nicht gefunden (${[vorname,nachname].filter(Boolean).join(" ")||id||"ohne Angabe"}) – übersprungen`); return; }
     const hol=(feld)=> idx[feld]>=0 ? r[idx[feld]] : "";
     const datum=turnierDatumNorm(hol("date"));
     const jahrRoh=String(hol("year")??"").trim();
@@ -1707,11 +1712,20 @@ function parseTurniererfolgeZeilen(rows, players){
     if(!eintrag.name && !eintrag.place && !eintrag.date){
       hinweise.push(`Zeile ${zeile}: weder Turniername noch Platz oder Datum – übersprungen`); return;
     }
-    if(!proPerson.has(p.id)) proPerson.set(p.id, []);
-    proPerson.get(p.id).push(eintrag);
+    if(p){
+      if(!proPerson.has(p.id)) proPerson.set(p.id, []);
+      proPerson.get(p.id).push(eintrag);
+    } else {
+      // Person nicht im Spielerstamm (historische Mitglieder, Ausgetretene): eigener
+      // Datensatz, damit ihre Erfolge in den Statistiken nicht verloren gehen (V480).
+      if(!vorname && !nachname){ hinweise.push(`Zeile ${zeile}: ohne Namen – übersprungen`); return; }
+      const key=historieKey(nachname, vorname);
+      if(!extern.has(key)) extern.set(key, {vorname, nachname, erfolge:[]});
+      extern.get(key).erfolge.push(eintrag);
+    }
     zeilen++;
   });
-  return {proPerson, zeilen, hinweise};
+  return {proPerson, extern, zeilen, hinweise};
 }
 
 // ─── Manuelle Bilanzen per Excel (V474) ──────────────────────────────────────
@@ -3034,20 +3048,232 @@ function HistorieVereinView({ players, modus="admin" }){
 // Admin-Einstieg: dieselbe Übersicht mit Voreinstellung „alle Mannschaften".
 function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HISTORIE VEREINSMEISTERSCHAFTEN (V480)
+// ═══════════════════════════════════════════════════════════════════════════
+// Quelle sind die Turniererfolge: die am Spieler gespeicherten (players.tournaments)
+// und zusätzlich die beim Import nicht zuordenbaren Personen aus
+// config/turniererfolge_extern — historische Mitglieder, die es in der App nicht
+// (mehr) gibt. Passive Personen zählen selbstverständlich mit.
+
+// Personen, die beim Import keiner Person in der App zugeordnet werden konnten.
+function useTurniererfolgeExtern(){
+  const [store,setStore]=useState({personen:{}});
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","turniererfolge_extern"),
+      snap=>setStore(snap.exists()?{personen:(snap.data().personen||{})}:{personen:{}}), ()=>{});
+    return u;
+  },[]);
+  return store;
+}
+
+// Ist die Konkurrenz eine Nachwuchs-Konkurrenz?
+function vmIstNachwuchsKonkurrenz(konk){
+  const k=String(konk||"").toLowerCase();
+  return /nachwuchs|jugend|schüler|schueler|jungen|mädchen|maedchen|knaben/.test(k);
+}
+// Rangfolge der Nachwuchsklassen — je höher, desto älter die Klasse. Wird gebraucht,
+// weil je Jahr nur die höchste gespielte Klasse als Vereinsmeister zählt.
+// Eine Zahl im Namen ("Jungen 15", "Jugend 13") gibt direkt den Rang.
+function vmKlasseRang(konk){
+  const k=String(konk||"").toLowerCase();
+  const m=/(\d{1,2})/.exec(k);
+  if(m) return Number(m[1]);
+  if(/jugend/.test(k)) return 18;
+  if(/schüler|schueler/.test(k)){
+    if(/\ba\b/.test(k)) return 15;
+    if(/\bb\b/.test(k)) return 13;
+    if(/\bc\b/.test(k)) return 11;
+    return 15;
+  }
+  if(/jungen|mädchen|maedchen/.test(k)) return 14;
+  if(/nachwuchs/.test(k)) return 13;
+  return 0;
+}
+
+const VM_KATEGORIEN = [
+  { key:"herrenA",   label:"Herren A",
+    test:(e)=>e.disziplin==="Einzel" && /^herren\s*a$/i.test(e.konkurrenz) },
+  { key:"herrenB",   label:"Herren B",
+    test:(e)=>e.disziplin==="Einzel" && /^herren\s*b$/i.test(e.konkurrenz) },
+  { key:"erwDoppel", label:"Erwachsene Doppel",
+    test:(e)=>e.disziplin==="Doppel" && !vmIstNachwuchsKonkurrenz(e.konkurrenz) },
+  { key:"nwDoppel",  label:"Nachwuchs Doppel",
+    test:(e)=>e.disziplin==="Doppel" && vmIstNachwuchsKonkurrenz(e.konkurrenz) },
+  { key:"nwEinzel",  label:"Nachwuchs Einzel",
+    test:(e)=>e.disziplin==="Einzel" && vmIstNachwuchsKonkurrenz(e.konkurrenz),
+    nurHoechsteKlasse:true },
+];
+
+// Alle Erfolge der Vereinsmeisterschaften aus beiden Quellen, vereinheitlicht.
+// Feldnamen beachten: intern heißt konkurrenz = Disziplin und altersklasse = Konkurrenz.
+function vmErfolgeSammeln(players, externStore){
+  const liste=[];
+  const nimm=(t, person, extern)=>{
+    if(!/^vereinsmeisterschaft/i.test(String(t?.name||""))) return;
+    const jahr=String(t.year||"").trim() || String(t.date||"").slice(0,4);
+    if(!jahr) return;
+    liste.push({
+      jahr, person,
+      platz: String(t.place??"").trim(),
+      platzNr: Number(String(t.place??"").replace(/[^\d]/g,"")) || 999,
+      disziplin: String(t.konkurrenz||"").trim(),
+      konkurrenz: String(t.altersklasse||"").trim(),
+      turnier: String(t.name||"").trim(),
+      extern,
+    });
+  };
+  for(const p of (players||[]))
+    for(const t of (p.tournaments||[]))
+      nimm(t, `${p.firstName||""} ${p.lastName||""}`.trim(), false);
+  for(const e of Object.values(externStore?.personen||{}))
+    for(const t of (e.erfolge||[]))
+      nimm(t, `${e.vorname||""} ${e.nachname||""}`.trim(), true);
+  return liste;
+}
+
+// Erfolge einer Kategorie, nach Jahr gruppiert. Bei „Nachwuchs Einzel" bleibt je
+// Jahr nur die höchste gespielte Klasse übrig.
+function vmNachJahr(erfolge, kategorie){
+  const passend=erfolge.filter(kategorie.test);
+  const proJahr={};
+  for(const e of passend) (proJahr[e.jahr]=proJahr[e.jahr]||[]).push(e);
+  const jahre=Object.keys(proJahr).sort((a,b)=>b.localeCompare(a));   // absteigend
+  return jahre.map(jahr=>{
+    let eintraege=proJahr[jahr];
+    if(kategorie.nurHoechsteKlasse){
+      const max=Math.max(...eintraege.map(e=>vmKlasseRang(e.konkurrenz)));
+      eintraege=eintraege.filter(e=>vmKlasseRang(e.konkurrenz)===max);
+    }
+    eintraege=[...eintraege].sort((a,b)=>
+      a.platzNr-b.platzNr || a.person.localeCompare(b.person,"de"));
+    return {jahr, eintraege};
+  });
+}
+// Platzierungen eines Jahres zusammenfassen: je Platz die beteiligten Personen
+// (beim Doppel stehen beide Partner in eigenen Zeilen).
+function vmPlaetzeGruppiert(eintraege){
+  const proPlatz={};
+  for(const e of eintraege) (proPlatz[e.platz||"—"]=proPlatz[e.platz||"—"]||[]).push(e);
+  return Object.entries(proPlatz)
+    .sort((a,b)=>(Number(a[0])||999)-(Number(b[0])||999))
+    .map(([platz,liste])=>({
+      platz,
+      personen:liste.map(x=>x.person).filter(Boolean),
+      konkurrenz:[...new Set(liste.map(x=>x.konkurrenz).filter(Boolean))].join(", "),
+    }));
+}
+
+// Kachel/Reiter „Historie Vereinsmeisterschaften": Meisterliste und alle Platzierungen.
+function VereinsmeisterHistorie({ players=[] }){
+  const extern=useTurniererfolgeExtern();
+  const [sicht,setSicht]=useState("meister");      // meister | platzierungen
+  const [katKey,setKatKey]=useState(VM_KATEGORIEN[0].key);
+
+  const alle=vmErfolgeSammeln(players, extern);
+  const kategorie=VM_KATEGORIEN.find(k=>k.key===katKey)||VM_KATEGORIEN[0];
+  const jahre=vmNachJahr(alle, kategorie);
+  const anzahlPersonen=new Set(alle.map(e=>e.person)).size;
+
+  const kachel={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12,marginBottom:12};
+  const reiter=(aktiv)=>({padding:"7px 12px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
+    cursor:"pointer",background:aktiv?TTC_ROT:"var(--bg3)",color:aktiv?"#fff":"var(--text3)"});
+  const katBtn=(aktiv)=>({padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",
+    background:aktiv?"var(--club-22)":"var(--bg2)",border:`1px solid ${aktiv?TTC_ROT:"var(--border2)"}`,
+    color:aktiv?TTC_ROT:"var(--text3)",whiteSpace:"nowrap"});
+
+  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Historie Vereinsmeisterschaften</div>
+    <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
+      {jahre.length} {jahre.length===1?"Jahr":"Jahre"} · {anzahlPersonen} Personen insgesamt erfasst
+    </div>
+
+    <div style={{display:"flex",gap:8,marginBottom:10}}>
+      <button onClick={()=>setSicht("meister")}      style={reiter(sicht==="meister")}>🥇 Vereinsmeister</button>
+      <button onClick={()=>setSicht("platzierungen")} style={reiter(sicht==="platzierungen")}>📋 Alle Platzierungen</button>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      {VM_KATEGORIEN.map(k=>
+        <button key={k.key} onClick={()=>setKatKey(k.key)} style={katBtn(k.key===katKey)}>{k.label}</button>)}
+    </div>
+
+    {kategorie.nurHoechsteKlasse && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10,lineHeight:1.6}}>
+      Je Jahr ist die höchste gespielte Klasse ausgewertet; sie steht hinter der Jahreszahl.
+    </div>}
+
+    {jahre.length===0
+      ? <div style={{...kachel,fontSize:12,color:"var(--text3)"}}>
+          Für „{kategorie.label}“ sind keine Ergebnisse hinterlegt.
+        </div>
+      : sicht==="meister"
+        ? <div style={kachel}>
+            {jahre.map(({jahr,eintraege})=>{
+              const sieger=eintraege.filter(e=>e.platzNr===1);
+              if(!sieger.length) return null;
+              const klasse=[...new Set(sieger.map(e=>e.konkurrenz).filter(Boolean))].join(", ");
+              return <div key={jahr} style={{display:"flex",alignItems:"baseline",gap:10,
+                padding:"7px 2px",borderBottom:"1px solid var(--border)"}}>
+                <div style={{fontSize:13,fontWeight:800,color:TTC_ROT,minWidth:44}}>{jahr}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
+                    {sieger.map(e=>e.person).join(" / ")}
+                  </div>
+                  {kategorie.nurHoechsteKlasse && klasse &&
+                    <div style={{fontSize:10,color:"var(--text4)"}}>{klasse}</div>}
+                </div>
+              </div>;
+            })}
+          </div>
+        : <div>
+            {jahre.map(({jahr,eintraege})=>
+              <div key={jahr} style={kachel}>
+                <div style={{fontSize:13,fontWeight:800,color:TTC_ROT,marginBottom:7}}>
+                  {jahr}
+                  {kategorie.nurHoechsteKlasse && (()=>{ 
+                    const k=[...new Set(eintraege.map(e=>e.konkurrenz).filter(Boolean))].join(", ");
+                    return k ? <span style={{fontSize:10,fontWeight:600,color:"var(--text4)",marginLeft:8}}>{k}</span> : null;
+                  })()}
+                </div>
+                {vmPlaetzeGruppiert(eintraege).map(({platz,personen,konkurrenz})=>
+                  <div key={platz} style={{display:"flex",alignItems:"baseline",gap:10,padding:"4px 0",
+                    borderBottom:"1px solid var(--border)"}}>
+                    <div style={{fontSize:12,fontWeight:800,minWidth:34,
+                      color:platz==="1"?"#f59e0b":platz==="2"?"#9ca3af":platz==="3"?"#b45309":"var(--text3)"}}>
+                      {platz}.
+                    </div>
+                    <div style={{flex:1,minWidth:0,fontSize:12,color:"var(--text)"}}>
+                      {personen.join(" / ")}
+                      {!kategorie.nurHoechsteKlasse && konkurrenz && konkurrenz!==kategorie.label &&
+                        <span style={{fontSize:10,color:"var(--text4)",marginLeft:6}}>{konkurrenz}</span>}
+                    </div>
+                  </div>)}
+              </div>)}
+          </div>}
+
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
+      Grundlage sind die Turniererfolge aller Personen – auch passiver und solcher, die nicht
+      mehr im Spielerstamm stehen und beim Import der Datei „Turniererfolge“ gesondert
+      übernommen wurden.
+    </div>
+  </div>;
+}
+
 // Export und Import der Turniererfolge (Verwaltung → Uploads).
 function TurniererfolgeExportImport({ players=[], showToast }){
-  const turniere=useTurniereListe();
+  const {turniere,geladen:turniereGeladen}=useTurniereListe();
   const [exportLaeuft,setExportLaeuft]=useState(false);
   const [importLaeuft,setImportLaeuft]=useState(false);
   const [meldung,setMeldung]=useState("");
 
   // Gezaehlt und exportiert werden nur Erfolge aus abgeschlossenen Turnieren.
+  // Solange die Turniere noch nicht geladen sind, nicht streng filtern – sonst
+  // waeren kurzzeitig alle automatisch uebertragenen Erfolge ausgeblendet.
   const anzahlErfolge=(players||[]).reduce((n,p)=>
-    n+((p.tournaments||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere)).length),0);
+    n+((p.tournaments||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere,turniereGeladen)).length),0);
 
   async function exportieren(){
     setExportLaeuft(true); setMeldung("");
-    const zeilen=turniererfolgeZeilen(players, turniere);
+    const zeilen=turniererfolgeZeilen(players, turniere, turniereGeladen);
     const datum=new Date().toLocaleDateString("sv");
     const dateiname=`Turniererfolge_${datum.replace(/-/g,"_")}.xlsx`;
     try{
@@ -3108,19 +3334,30 @@ function TurniererfolgeExportImport({ players=[], showToast }){
       if(erg.fehler){ setMeldung(`${file.name}: ${erg.fehler}`); setImportLaeuft(false); return; }
       if(!erg.zeilen){ setMeldung(`${file.name}: keine auswertbaren Zeilen gefunden.`); setImportLaeuft(false); return; }
       if(!window.confirm(
-        `${erg.zeilen} Turniererfolg(e) für ${erg.proPerson.size} Person(en) einlesen?\n\n`+
-        `Bei diesen Personen werden die bisherigen Turniererfolge vollständig ersetzt. `+
-        `Personen, die in der Datei nicht vorkommen, bleiben unverändert.`)){ setImportLaeuft(false); return; }
+        `${erg.zeilen} Turniererfolg(e) einlesen?\n\n`+
+        `${erg.proPerson.size} Person(en) aus dem Spielerstamm: bisherige Turniererfolge werden vollständig ersetzt. `+
+        `Personen, die in der Datei nicht vorkommen, bleiben unverändert.\n\n`+
+        `${erg.extern.size} Person(en) sind nicht im Spielerstamm (frühere Mitglieder). Ihre Erfolge werden `+
+        `gesondert gespeichert und in den Statistiken mitgezählt.`)){ setImportLaeuft(false); return; }
       let ok=0, fehler=0;
       for(const [playerId, liste] of erg.proPerson){
         try{ await updateDoc(doc(db,"players",playerId),{tournaments:liste}); ok++; }
         catch(err){ fehler++; }
       }
+      // Externe Personen komplett ersetzen – die Datei ist die führende Liste.
+      let externFehler="";
+      try{
+        const personen={};
+        for(const [key,e] of erg.extern) personen[key]=e;
+        await setDoc(doc(db,"config","turniererfolge_extern"),{personen,lastUpdated:Date.now()});
+      }catch(err){ externFehler="Speichern der Personen außerhalb des Spielerstamms fehlgeschlagen: "+(err?.message||"unbekannt"); }
       setMeldung([
         `${erg.zeilen} Turniererfolg(e) aus Reiter „${blatt}“ eingelesen.`,
-        `${ok} Person(en) aktualisiert${fehler?`, ${fehler} fehlgeschlagen`:""}.`,
+        `${ok} Person(en) im Spielerstamm aktualisiert${fehler?`, ${fehler} fehlgeschlagen`:""}.`,
+        `${erg.extern.size} Person(en) außerhalb des Spielerstamms gespeichert.`,
+        externFehler,
         ...erg.hinweise,
-      ].join("\n"));
+      ].filter(Boolean).join("\n"));
       if(ok) showToast?.("Turniererfolge importiert","🏆");
     }catch(err){
       setMeldung(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
@@ -3133,6 +3370,7 @@ function TurniererfolgeExportImport({ players=[], showToast }){
       Alle Turniererfolge aller Personen als Excel-Datei – je Zeile ein Erfolg, mit genau den
       Feldern aus der Verwaltung: Typ, Turniername, Platz, Disziplin, Konkurrenz, Datum und Jahr.
       Enthalten sind nur Erfolge aus Turnieren im Status „Abgeschlossen“ sowie manuell erfasste Erfolge.
+      Erfolge aus inzwischen gelöschten Turnieren bleiben außen vor.
       Die Kopfzeile ist fixiert und über alle Spalten filterbar, alle Felder haben einen Rahmen.
       Die Spalten Spieler-ID, Vorname und Nachname ordnen jede Zeile ihrer Person zu; „Herkunft“
       kennzeichnet Erfolge, die beim Abschluss eines Vereinsturniers automatisch übertragen wurden –
@@ -7799,6 +8037,7 @@ const TR_HOME_GRUPPEN = [
     { key:"historieadmin", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",         label:"QTTR-Werte",   icon:"📊", sub:"Ranglistenwerte" },
     { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
+    { key:"vmhistorie",  label:"Vereins-meister-schaften", icon:"🏆", sub:"Meister & Platzierungen" },
   ]},
   // Alphabetisch; Schläger und Eltern hierher verschoben.
   { titel:"Verein & Verwaltung", items:[
@@ -7952,7 +8191,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
@@ -7980,6 +8219,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"aufstellung",  label:"Aufstellung",   icon:"📋"},
     {key:"ttr",          label:"QTTR-Werte",    icon:"📊"},
     {key:"historieadmin", label:"Historie Verein", icon:"📊"},
+    {key:"vmhistorie",   label:"Vereinsmeister", icon:"🏆"},
     {key:"spielplan",    label:"Spielplan",     icon:"📅"},
     {key:"spiellokale",  label:"Spiellokale",   icon:"🏟️"},
     {key:"termine",      label:"Termine",       icon:"📌"},
@@ -8437,6 +8677,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historieadmin"&&<HistorieAdminView players={players}/>}
+    {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null);}}/>}
 
     <style>{`
@@ -14524,6 +14765,7 @@ const SP_HOME_GRUPPEN = [
     { key:"historie",       label:"Historie Spiele",        icon:"📈", sub:"Meine Bilanzen" },
     { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",            label:"QTTR-Werte",             icon:"📊", sub:"Ranglistenwerte" },
+    { key:"vmhistorie",     label:"Vereins-meister-schaften", icon:"🏆", sub:"Meister & Platzierungen" },
   ]},
   // Alphabetisch.
   { titel:"Verein & mehr", items:[
@@ -14666,7 +14908,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
@@ -14738,6 +14980,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {key:"ttr",label:"QTTR-Werte",icon:"📊"},
     {key:"historie",label:"Historie Spiele",icon:"📈"},
     {key:"historieverein",label:"Historie Verein",icon:"📊"},
+    {key:"vmhistorie",label:"Vereinsmeister",icon:"🏆"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
@@ -15081,6 +15324,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
     {activeTab==="historieverein"&&<HistorieVereinView players={players} modus="spieler"/>}
+    {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} vorauswahlPlayer={myPlayer} myPlayer={myPlayer} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players} vorauswahlPlayer={myPlayer} istErwachseneView={false}/>}
@@ -22915,6 +23159,7 @@ const EW_HOME_GRUPPEN = [
     { key:"historie",       label:"Historie Spiele",        icon:"📈", sub:"Meine Bilanzen" },
     { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",            label:"QTTR-Werte",             icon:"📊", sub:"Ranglistenwerte" },
+    { key:"vmhistorie",     label:"Vereins-meister-schaften", icon:"🏆", sub:"Meister & Platzierungen" },
     { key:"meineverwaltung",label:"Verwaltung",             icon:"🗂️", sub:"Meine Daten" },
   ]},
   // Alphabetisch.
@@ -23139,7 +23384,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
@@ -23177,6 +23422,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {key:"ttr",label:"QTTR-Werte",icon:"📊"},
     {key:"historie",label:"Historie Spiele",icon:"📈"},
     {key:"historieverein",label:"Historie Verein",icon:"📊"},
+    {key:"vmhistorie",label:"Vereinsmeister",icon:"🏆"},
     {key:"spielplan",label:"Spielplan",icon:"📅"},
     {key:"spiellokale",label:"Spiellokale",icon:"🏟️"},
     {key:"termine",label:"Termine",icon:"📌"},
@@ -23277,6 +23523,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historie"&&<HistorieEigeneView myPlayer={myPlayer}/>}
     {activeTab==="historieverein"&&<HistorieVereinView players={players} modus="erwachsene"/>}
+    {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
   </div>;
 }
 
