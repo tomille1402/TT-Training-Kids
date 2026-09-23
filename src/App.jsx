@@ -1,4 +1,4 @@
-// === TTC-App · Version 478 · erstellt 22.09.2026 ===
+// === TTC-App · Version 479 · erstellt 23.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "478";
-const APP_DATUM   = "22.09.2026";
+const APP_VERSION = "479";
+const APP_DATUM   = "23.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
 // (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
@@ -1033,6 +1033,41 @@ const TURNIER_NAMEN = ["Vereinsmeisterschaften","Saisonabschluss-Turnier","Brett
 const TURNIER_ARTEN = ["Gruppen","einfaches KO-System","doppeltes KO-System","gemischt","Schweizer System"];
 // Funktionen (Rollen), für die ein Turnier sichtbar geschaltet werden kann.
 // Standard ist leer = für niemanden sichtbar (außer Admin/Trainer, die immer Zugriff haben).
+// Status eines Turniers (V479). Ergebnisse zaehlen nur bei „Abgeschlossen":
+// Sie erscheinen dann im Export der Turniererfolge und bei Spielern/Erwachsenen.
+const TURNIER_STATUS = ["Abgeschlossen","Geplant","Test"];
+// Altbestaende ohne Feld gelten als abgeschlossen – sonst wuerden bereits
+// uebertragene Erfolge nach dem Update schlagartig verschwinden.
+function turnierStatusVon(t){
+  const v=String(t?.status||"").trim();
+  return TURNIER_STATUS.includes(v) ? v : "Abgeschlossen";
+}
+// Turnier-ID aus der Herkunft eines Erfolgs ("auto:<turnierId>:<konkKey>").
+function turnierIdAusHerkunft(h){
+  const m=String(h||"").match(/^auto:(.+):[^:]+$/);
+  return m?m[1]:"";
+}
+// Darf ein Turniererfolg gezeigt bzw. exportiert werden? Manuell erfasste Erfolge
+// (ohne Herkunft) und solche, deren Turnier nicht mehr auffindbar ist, bleiben
+// sichtbar – bestehende Eintraege sollen nicht verloren gehen.
+function erfolgAusAbgeschlossenemTurnier(erfolg, turniere){
+  const tid=turnierIdAusHerkunft(erfolg?.herkunft);
+  if(!tid) return true;
+  const t=(turniere||[]).find(x=>x.id===tid || x.name===tid);
+  if(!t) return true;
+  return turnierStatusVon(t)==="Abgeschlossen";
+}
+// Turniere geladen halten (fuer die Sichtbarkeit der Erfolge).
+function useTurniereListe(){
+  const [liste,setListe]=useState([]);
+  useEffect(()=>{
+    const u=onSnapshot(collection(db,"turniere"),
+      snap=>setListe(snap.docs.map(d=>({id:d.id,...d.data()}))), ()=>{});
+    return u;
+  },[]);
+  return liste;
+}
+
 const TURNIER_SICHTBAR_ROLLEN = [
   ["player","Spieler"],["erwachsene","Erwachsene"],
   ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],
@@ -1591,13 +1626,14 @@ async function ladeExcelJsLib(){
 }
 
 // Alle Turniererfolge aller Personen als Zeilen (Kopfzeile zuerst).
-function turniererfolgeZeilen(players){
+function turniererfolgeZeilen(players, turniere){
   const zeilen=[TURNIER_SPALTEN.map(s=>s.kopf)];
   const sortiert=[...(players||[])].sort((a,b)=>
     String(a.lastName||"").localeCompare(String(b.lastName||""),"de") ||
     String(a.firstName||"").localeCompare(String(b.firstName||""),"de"));
   for(const p of sortiert){
-    const liste=Array.isArray(p.tournaments)?p.tournaments:[];
+    const liste=(Array.isArray(p.tournaments)?p.tournaments:[])
+      .filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere));
     for(const t of [...liste].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")))){
       zeilen.push(TURNIER_SPALTEN.map(s=>{
         if(s.feld==="_id")       return p.id||"";
@@ -2253,11 +2289,29 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
             : <>Noch keine Turniere angelegt.{darfAnlegen?" Lege mit „+ Neues Turnier“ das erste an.":""}</>}
         </div>
       : <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {sichtbareTurniere.map(t=>(
+          {TURNIER_STATUS.map(st=>{
+            const gruppe=sichtbareTurniere
+              .filter(t=>turnierStatusVon(t)===st)
+              .sort((a,b)=>String(b.datum||"").localeCompare(String(a.datum||"")));
+            if(!gruppe.length) return null;
+            const farbe = st==="Abgeschlossen" ? "#10b981" : st==="Geplant" ? "#3b82f6" : "#f59e0b";
+            return <div key={st} style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                <span style={{fontSize:11,fontWeight:800,color:farbe,textTransform:"uppercase",letterSpacing:0.3}}>{st}</span>
+                <span style={{fontSize:10,color:"var(--text4)"}}>({gruppe.length})</span>
+                <div style={{flex:1,height:1,background:"var(--border)"}}/>
+              </div>
+              {gruppe.map(t=>(
             <div key={t.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14}}>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div onClick={()=>setSelId(t.id)} style={{cursor:"pointer"}}>
-                  <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{t.name}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                    <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{t.name}</div>
+                    {(()=>{ const st=turnierStatusVon(t);
+                      const f = st==="Abgeschlossen" ? "#10b981" : st==="Geplant" ? "#3b82f6" : "#f59e0b";
+                      return <span style={{fontSize:9,fontWeight:800,color:f,background:f+"18",
+                        border:`1px solid ${f}44`,borderRadius:5,padding:"1px 6px",textTransform:"uppercase"}}>{st}</span>; })()}
+                  </div>
                   <div style={{fontSize:11,color:"var(--text3)",marginTop:3}}>
                     {t.datum?deDatumT(t.datum):"ohne Datum"} · {(()=>{
                       const arten=[...new Set((t.konkurrenzen||[]).map(k=>k.art||t.art).filter(Boolean))];
@@ -2278,6 +2332,8 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
               </div>
             </div>
           ))}
+            </div>;
+          })}
         </div>}
   </div>;
 }
@@ -2288,7 +2344,7 @@ function miniBtn(color){ return {padding:"5px 9px",background:color+"18",border:
 // ─── Turnier-Formular (Anlegen/Bearbeiten) ──────────────────────────────────
 function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
   const leer={
-    name:TURNIER_NAMEN[0], datum:"", art:TURNIER_ARTEN[0], anzahlTische:6, sichtbarFuer:[],
+    name:TURNIER_NAMEN[0], status:"Geplant", datum:"", art:TURNIER_ARTEN[0], anzahlTische:6, sichtbarFuer:[],
     schiedsrichterAktiv:false, schiedsrichter:[],   // P4: Schiedsrichter turnierweit
     konkurrenzen:[], // [{key, name, anzahlGruppen, vorgabe, vorgabeArt, diffQTTR, maxVorgabe, teilnehmer:[], gruppen:[], spiele:[]}]
   };
@@ -2344,6 +2400,9 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
     </div>
 
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {/* Name und Status nebeneinander; auf schmalen Bildschirmen untereinander */}
+      <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+      <div style={{flex:"2 1 220px",minWidth:0}}>
       <Feld label="Name Turnier">
         <select value={eigenerName?"__eigen__":t.name}
           onChange={e=>{
@@ -2357,6 +2416,18 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
           placeholder="Turniername eingeben" autoFocus
           style={{...selT2,marginTop:6,display:"block",width:"100%"}}/>}
       </Feld>
+      </div>
+      <div style={{flex:"1 1 160px",minWidth:0}}>
+      <Feld label="Status Turnier">
+        <select value={turnierStatusVon(t)} onChange={e=>set("status",e.target.value)} style={selT2}>
+          {TURNIER_STATUS.map(x=><option key={x} value={x}>{x}</option>)}
+        </select>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:4,lineHeight:1.5}}>
+          Nur bei „Abgeschlossen“ erscheinen die Ergebnisse bei Spielern und Erwachsenen sowie im Export.
+        </div>
+      </Feld>
+      </div>
+      </div>
       <Feld label="Urkunden-Einleitung">
         <select value={t.urkundeAnrede||"Bei den"} onChange={e=>set("urkundeAnrede",e.target.value)} style={selT2}>
           <option value="Bei den">Bei den … (z. B. „Bei den Vereinsmeisterschaften")</option>
@@ -2965,15 +3036,18 @@ function HistorieAdminView({ players }){ return <HistorieVereinView players={pla
 
 // Export und Import der Turniererfolge (Verwaltung → Uploads).
 function TurniererfolgeExportImport({ players=[], showToast }){
+  const turniere=useTurniereListe();
   const [exportLaeuft,setExportLaeuft]=useState(false);
   const [importLaeuft,setImportLaeuft]=useState(false);
   const [meldung,setMeldung]=useState("");
 
-  const anzahlErfolge=(players||[]).reduce((n,p)=>n+((p.tournaments||[]).length),0);
+  // Gezaehlt und exportiert werden nur Erfolge aus abgeschlossenen Turnieren.
+  const anzahlErfolge=(players||[]).reduce((n,p)=>
+    n+((p.tournaments||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere)).length),0);
 
   async function exportieren(){
     setExportLaeuft(true); setMeldung("");
-    const zeilen=turniererfolgeZeilen(players);
+    const zeilen=turniererfolgeZeilen(players, turniere);
     const datum=new Date().toLocaleDateString("sv");
     const dateiname=`Turniererfolge_${datum.replace(/-/g,"_")}.xlsx`;
     try{
@@ -3058,6 +3132,7 @@ function TurniererfolgeExportImport({ players=[], showToast }){
     <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
       Alle Turniererfolge aller Personen als Excel-Datei – je Zeile ein Erfolg, mit genau den
       Feldern aus der Verwaltung: Typ, Turniername, Platz, Disziplin, Konkurrenz, Datum und Jahr.
+      Enthalten sind nur Erfolge aus Turnieren im Status „Abgeschlossen“ sowie manuell erfasste Erfolge.
       Die Kopfzeile ist fixiert und über alle Spalten filterbar, alle Felder haben einen Rahmen.
       Die Spalten Spieler-ID, Vorname und Nachname ordnen jede Zeile ihrer Person zu; „Herkunft“
       kennzeichnet Erfolge, die beim Abschluss eines Vereinsturniers automatisch übertragen wurden –
@@ -15067,6 +15142,8 @@ function ErfolgeTab({player, hideTraining=false}) {
     if(!tid) return true;                                  // manuell erfasst → sichtbar
     const turnier=turniereAlle.find(x=>x.id===tid || x.name===tid);
     if(!turnier) return true;                              // Turnier nicht (mehr) auffindbar → sichtbar
+    // Seit V479: Ergebnisse erscheinen erst, wenn das Turnier abgeschlossen ist.
+    if(turnierStatusVon(turnier)!=="Abgeschlossen") return false;
     const fuer=turnier.sichtbarFuer||[];
     if(fuer.length===0) return false;                      // für niemanden freigegeben
     return fuer.some(rk=>meineRollenEff[rk]===true);       // passende Funktion?
