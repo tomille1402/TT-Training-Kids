@@ -1,4 +1,4 @@
-// === TTC-App · Version 477 · erstellt 22.09.2026 ===
+// === TTC-App · Version 478 · erstellt 22.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "477";
+const APP_VERSION = "478";
 const APP_DATUM   = "22.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1522,6 +1522,162 @@ function historieProSaison(store, schluessel, mannschaft){
     .map(([s,b])=>[s,{...b, teams:[...(b.teams||[])].sort((x,y)=>x.localeCompare(y,"de"))}])
     .sort((a,b)=>b[0].localeCompare(a[0]));
 }
+// Datei im Browser herunterladen (temporärer Blob-Link, target=_blank, damit die
+// App auf Mobilgeräten nicht neu startet).
+function dateiHerunterladen(blob, dateiname){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=dateiname; a.target="_blank"; a.rel="noopener noreferrer";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TURNIERERFOLGE — Export und Import als Excel-Datei (V478)
+// ═══════════════════════════════════════════════════════════════════════════
+// Je Zeile ein Turniererfolg einer Person. Die Spalten entsprechen genau den
+// Feldern, die in der Verwaltung je Erfolg gepflegt werden. „Herkunft" ist eine
+// interne Kennung: Erfolge, die beim Abschluss einer Vereinsturnier-Konkurrenz
+// automatisch übertragen wurden, tragen sie. Sie wird mit exportiert und beim
+// Import zurückgeschrieben, damit ein erneuter Turnierabschluss denselben Eintrag
+// aktualisiert statt ihn zu verdoppeln.
+
+const TURNIER_TYP_LABEL = {
+  vereinsintern:  "Vereinsintern",
+  extern_kreis:   "Extern – Kreis",
+  extern_bezirk:  "Extern – Bezirk",
+  extern_verband: "Extern – Verband (Hessen)",
+};
+// Import versteht sowohl die Beschriftung als auch den internen Wert.
+function turnierTypAusText(v){
+  const t=String(v??"").trim().toLowerCase();
+  if(!t) return "vereinsintern";
+  for(const [key,label] of Object.entries(TURNIER_TYP_LABEL)){
+    if(t===key || t===label.toLowerCase()) return key;
+  }
+  if(t.includes("kreis"))   return "extern_kreis";
+  if(t.includes("bezirk"))  return "extern_bezirk";
+  if(t.includes("verband")||t.includes("hessen")) return "extern_verband";
+  return "vereinsintern";
+}
+
+const TURNIER_SPALTEN = [
+  {kopf:"Spieler-ID",  feld:"_id",          breite:24},
+  {kopf:"Vorname",     feld:"_vorname",     breite:16},
+  {kopf:"Nachname",    feld:"_nachname",    breite:18},
+  {kopf:"Typ",         feld:"type",         breite:24},
+  {kopf:"Turniername", feld:"name",         breite:30},
+  {kopf:"Platz",       feld:"place",        breite:8},
+  {kopf:"Disziplin",   feld:"konkurrenz",   breite:16},
+  {kopf:"Konkurrenz",  feld:"altersklasse", breite:18},
+  {kopf:"Datum",       feld:"date",         breite:12},
+  {kopf:"Jahr",        feld:"year",         breite:8},
+  {kopf:"Herkunft",    feld:"herkunft",     breite:30},
+];
+
+// ExcelJS bei Bedarf nachladen. Nötig, weil die frei verfügbare Fassung von
+// SheetJS keine Zellformate schreibt — Rahmen, fixierte Kopfzeile und Filter
+// wären damit nicht möglich.
+async function ladeExcelJsLib(){
+  if(window.ExcelJS) return window.ExcelJS;
+  await new Promise((res,rej)=>{
+    const sc=document.createElement("script");
+    sc.src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
+    sc.onload=res; sc.onerror=()=>rej(new Error("ExcelJS konnte nicht geladen werden."));
+    document.head.appendChild(sc);
+  });
+  if(!window.ExcelJS) throw new Error("ExcelJS nicht verfügbar.");
+  return window.ExcelJS;
+}
+
+// Alle Turniererfolge aller Personen als Zeilen (Kopfzeile zuerst).
+function turniererfolgeZeilen(players){
+  const zeilen=[TURNIER_SPALTEN.map(s=>s.kopf)];
+  const sortiert=[...(players||[])].sort((a,b)=>
+    String(a.lastName||"").localeCompare(String(b.lastName||""),"de") ||
+    String(a.firstName||"").localeCompare(String(b.firstName||""),"de"));
+  for(const p of sortiert){
+    const liste=Array.isArray(p.tournaments)?p.tournaments:[];
+    for(const t of [...liste].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")))){
+      zeilen.push(TURNIER_SPALTEN.map(s=>{
+        if(s.feld==="_id")       return p.id||"";
+        if(s.feld==="_vorname")  return p.firstName||"";
+        if(s.feld==="_nachname") return p.lastName||"";
+        if(s.feld==="type")      return TURNIER_TYP_LABEL[t.type||"vereinsintern"]||t.type||"";
+        if(s.feld==="year")      return t.year||String(t.date||"").slice(0,4)||"";
+        return t[s.feld]??"";
+      }));
+    }
+  }
+  return zeilen;
+}
+
+// Datum aus der Excel-Zelle in JJJJ-MM-TT. Versteht echte Excel-Daten (Date),
+// ISO-Texte und die deutsche Schreibweise TT.MM.JJJJ.
+function turnierDatumNorm(v){
+  if(v instanceof Date && !isNaN(v)){
+    const p=(n)=>String(n).padStart(2,"0");
+    return `${v.getFullYear()}-${p(v.getMonth()+1)}-${p(v.getDate())}`;
+  }
+  const t=String(v??"").trim();
+  if(!t) return "";
+  let m=/^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m=/^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(t);
+  if(m) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  return t;
+}
+
+// Wertet die Zeilen der Import-Datei aus. Rückgabe:
+// { proPerson: Map<playerId, Erfolg[]>, zeilen, hinweise:[…] } oder { fehler }.
+function parseTurniererfolgeZeilen(rows, players){
+  const hinweise=[];
+  const norm=(x)=>String(x??"").toLowerCase().replace(/\s+/g," ").trim();
+  const kopfIdx=(rows||[]).findIndex(r=>(r||[]).some(c=>norm(c)==="turniername"));
+  if(kopfIdx<0) return {fehler:"Keine Kopfzeile mit „Turniername“ gefunden."};
+  const kopf=(rows[kopfIdx]||[]).map(norm);
+  const idx={};
+  for(const s of TURNIER_SPALTEN) idx[s.feld]=kopf.indexOf(norm(s.kopf));
+  if(idx.name<0) return {fehler:"Spalte „Turniername“ fehlt."};
+
+  const nameKey=(v,n)=>norm(`${v} ${n}`).replace(/[^a-zäöüß ]/g,"");
+  const proPerson=new Map();
+  let zeilen=0;
+  rows.slice(kopfIdx+1).forEach((r,i)=>{
+    const zeile=kopfIdx+2+i;
+    if(!r || r.every(c=>c===null||c===undefined||String(c).trim()==="")) return;
+    const id=idx._id>=0 ? String(r[idx._id]??"").trim() : "";
+    const vorname=idx._vorname>=0 ? String(r[idx._vorname]??"").trim() : "";
+    const nachname=idx._nachname>=0 ? String(r[idx._nachname]??"").trim() : "";
+    // Zuordnung zuerst über die Spieler-ID, sonst über Vor- und Nachname.
+    let p=id ? (players||[]).find(x=>x.id===id) : null;
+    if(!p && (vorname||nachname))
+      p=(players||[]).find(x=>nameKey(x.firstName,x.lastName)===nameKey(vorname,nachname));
+    if(!p){ hinweise.push(`Zeile ${zeile}: Person nicht gefunden (${[vorname,nachname].filter(Boolean).join(" ")||id||"ohne Angabe"}) – übersprungen`); return; }
+    const hol=(feld)=> idx[feld]>=0 ? r[idx[feld]] : "";
+    const datum=turnierDatumNorm(hol("date"));
+    const jahrRoh=String(hol("year")??"").trim();
+    const eintrag={
+      type: turnierTypAusText(hol("type")),
+      name: String(hol("name")??"").trim(),
+      place: String(hol("place")??"").trim(),
+      konkurrenz: String(hol("konkurrenz")??"").trim(),
+      altersklasse: String(hol("altersklasse")??"").trim(),
+      date: datum,
+      year: jahrRoh || datum.slice(0,4),
+    };
+    const herkunft=String(hol("herkunft")??"").trim();
+    if(herkunft) eintrag.herkunft=herkunft;   // nur setzen, wenn vorhanden
+    if(!eintrag.name && !eintrag.place && !eintrag.date){
+      hinweise.push(`Zeile ${zeile}: weder Turniername noch Platz oder Datum – übersprungen`); return;
+    }
+    if(!proPerson.has(p.id)) proPerson.set(p.id, []);
+    proPerson.get(p.id).push(eintrag);
+    zeilen++;
+  });
+  return {proPerson, zeilen, hinweise};
+}
+
 // ─── Manuelle Bilanzen per Excel (V474) ──────────────────────────────────────
 // Reiter „Bilanzen", Kopfzeile mit Saison · Mannschaft · Name · Anzahl Spiele ·
 // Anzahl Einzel · Einzel gewonnen · Einzel verloren · Doppel gewonnen · Doppel verloren.
@@ -2806,6 +2962,124 @@ function HistorieVereinView({ players, modus="admin" }){
 }
 // Admin-Einstieg: dieselbe Übersicht mit Voreinstellung „alle Mannschaften".
 function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
+
+// Export und Import der Turniererfolge (Verwaltung → Uploads).
+function TurniererfolgeExportImport({ players=[], showToast }){
+  const [exportLaeuft,setExportLaeuft]=useState(false);
+  const [importLaeuft,setImportLaeuft]=useState(false);
+  const [meldung,setMeldung]=useState("");
+
+  const anzahlErfolge=(players||[]).reduce((n,p)=>n+((p.tournaments||[]).length),0);
+
+  async function exportieren(){
+    setExportLaeuft(true); setMeldung("");
+    const zeilen=turniererfolgeZeilen(players);
+    const datum=new Date().toLocaleDateString("sv");
+    const dateiname=`Turniererfolge_${datum.replace(/-/g,"_")}.xlsx`;
+    try{
+      const ExcelJS=await ladeExcelJsLib();
+      const wb=new ExcelJS.Workbook();
+      const ws=wb.addWorksheet("Turniererfolge");
+      zeilen.forEach(z=>ws.addRow(z));
+      TURNIER_SPALTEN.forEach((s,i)=>{ ws.getColumn(i+1).width=s.breite; });
+      // Kopfzeile fixieren und über alle Spalten filterbar machen
+      ws.views=[{state:"frozen", ySplit:1}];
+      ws.autoFilter={from:{row:1,column:1}, to:{row:1,column:TURNIER_SPALTEN.length}};
+      // Rahmen um jede Zelle, Kopfzeile fett und hinterlegt
+      const rahmen={top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"}};
+      ws.eachRow({includeEmpty:false},(row,nr)=>{
+        row.eachCell({includeEmpty:true},(zelle)=>{
+          zelle.border=rahmen;
+          if(nr===1){
+            zelle.font={bold:true};
+            zelle.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE9ECEF"}};
+            zelle.alignment={vertical:"middle"};
+          }
+        });
+      });
+      const blob=new Blob([await wb.xlsx.writeBuffer()],
+        {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      dateiHerunterladen(blob, dateiname);
+      setMeldung(`${zeilen.length-1} Turniererfolg(e) exportiert.`);
+    }catch(err){
+      // Rückfallebene ohne Formatierung: besser eine einfache Datei als gar keine.
+      try{
+        const XLSX=await ladeXlsxLib();
+        const ws=XLSX.utils.aoa_to_sheet(zeilen);
+        ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:0,c:TURNIER_SPALTEN.length-1}})};
+        ws["!cols"]=TURNIER_SPALTEN.map(s=>({wch:s.breite}));
+        const wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,"Turniererfolge");
+        const ab=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+        dateiHerunterladen(new Blob([ab],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), dateiname);
+        setMeldung(`${zeilen.length-1} Turniererfolg(e) exportiert – allerdings ohne Rahmen und fixierte Kopfzeile, weil die Formatierungs-Bibliothek nicht geladen werden konnte (${err?.message||"unbekannt"}).`);
+      }catch(err2){
+        setMeldung("Export fehlgeschlagen: "+(err2?.message||"unbekannt"));
+      }
+    }
+    setExportLaeuft(false);
+  }
+
+  async function importieren(e){
+    const file=(e.target.files||[])[0];
+    e.target.value="";
+    if(!file) return;
+    setImportLaeuft(true); setMeldung("");
+    try{
+      const XLSX=await ladeXlsxLib();
+      const wb=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true});
+      const blatt=wb.SheetNames.includes("Turniererfolge")?"Turniererfolge":wb.SheetNames[0];
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[blatt],{header:1,defval:null,raw:false,cellDates:true});
+      const erg=parseTurniererfolgeZeilen(rows, players);
+      if(erg.fehler){ setMeldung(`${file.name}: ${erg.fehler}`); setImportLaeuft(false); return; }
+      if(!erg.zeilen){ setMeldung(`${file.name}: keine auswertbaren Zeilen gefunden.`); setImportLaeuft(false); return; }
+      if(!window.confirm(
+        `${erg.zeilen} Turniererfolg(e) für ${erg.proPerson.size} Person(en) einlesen?\n\n`+
+        `Bei diesen Personen werden die bisherigen Turniererfolge vollständig ersetzt. `+
+        `Personen, die in der Datei nicht vorkommen, bleiben unverändert.`)){ setImportLaeuft(false); return; }
+      let ok=0, fehler=0;
+      for(const [playerId, liste] of erg.proPerson){
+        try{ await updateDoc(doc(db,"players",playerId),{tournaments:liste}); ok++; }
+        catch(err){ fehler++; }
+      }
+      setMeldung([
+        `${erg.zeilen} Turniererfolg(e) aus Reiter „${blatt}“ eingelesen.`,
+        `${ok} Person(en) aktualisiert${fehler?`, ${fehler} fehlgeschlagen`:""}.`,
+        ...erg.hinweise,
+      ].join("\n"));
+      if(ok) showToast?.("Turniererfolge importiert","🏆");
+    }catch(err){
+      setMeldung(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
+    }
+    setImportLaeuft(false);
+  }
+
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
+      Alle Turniererfolge aller Personen als Excel-Datei – je Zeile ein Erfolg, mit genau den
+      Feldern aus der Verwaltung: Typ, Turniername, Platz, Disziplin, Konkurrenz, Datum und Jahr.
+      Die Kopfzeile ist fixiert und über alle Spalten filterbar, alle Felder haben einen Rahmen.
+      Die Spalten Spieler-ID, Vorname und Nachname ordnen jede Zeile ihrer Person zu; „Herkunft“
+      kennzeichnet Erfolge, die beim Abschluss eines Vereinsturniers automatisch übertragen wurden –
+      bitte unverändert lassen.
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button onClick={exportieren} disabled={exportLaeuft} style={{flex:"1 1 180px",padding:"10px 12px",
+        borderRadius:9,border:"none",fontSize:12,fontWeight:800,
+        background:exportLaeuft?"var(--bg3)":"#15803d", color:exportLaeuft?"var(--text4)":"#fff",
+        cursor:exportLaeuft?"wait":"pointer"}}>
+        {exportLaeuft?"⏳ Wird erstellt…":`⬇️ Export (${anzahlErfolge})`}
+      </button>
+      <label style={{flex:"1 1 180px",padding:"10px 12px",borderRadius:9,textAlign:"center",
+        fontSize:12,fontWeight:800,color:importLaeuft?"var(--text4)":"#fff",
+        background:importLaeuft?"var(--bg3)":TTC_ROT, cursor:importLaeuft?"wait":"pointer"}}>
+        {importLaeuft?"⏳ Wird gelesen…":"⬆️ Import"}
+        <input type="file" disabled={importLaeuft} onChange={importieren} style={{display:"none"}}/>
+      </label>
+    </div>
+    {meldung && <div style={{fontSize:11,color:"var(--text3)",marginTop:10,whiteSpace:"pre-line",lineHeight:1.6}}>{meldung}</div>}
+  </div>;
+}
 
 // Upload der Bilanzübersichten (Verwaltung → Wettkampf).
 function HistorieSpieleUpload({ showToast, players=[] }){
@@ -12258,12 +12532,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         spielplan:        <SpielplanUpload abschnitt="spielplan" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         historie:         <HistorieSpieleUpload showToast={showToast} players={players}/>,
+        turniererfolge:   <TurniererfolgeExportImport players={players} showToast={showToast}/>,
       };
       const abschnitte = [
         {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
         {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
         {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
         {k:"historie",         icon:"📈", label:"Historie Spiele (Bilanzen)"},
+        {k:"turniererfolge",   icon:"🏆", label:"Turniererfolge (Export/Import)"},
         {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
         {k:"personen",         icon:"👥", label:"Personen Export/Import"},
         {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
