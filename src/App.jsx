@@ -1,4 +1,4 @@
-// === TTC-App · Version 482 · erstellt 24.09.2026 ===
+// === TTC-App · Version 483 · erstellt 24.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "482";
+const APP_VERSION = "483";
 const APP_DATUM = "24.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1663,11 +1663,19 @@ function turniererfolgeZeilen(players, turniere, streng=false, externStore=null)
         if(s.feld==="type")      return TURNIER_TYP_LABEL[t.type||"vereinsintern"]||t.type||"";
         if(s.feld==="year")      return t.year||String(t.date||"").slice(0,4)||"";
         if(s.feld==="partner")   return partnerName(t, p.id);
+        if(s.feld==="date")      return turnierDatumDE(t.date);   // V483: TT.MM.JJJJ
         return t[s.feld]??"";
       }));
     }
   }
   return zeilen;
+}
+
+// Datum für den Export als TT.MM.JJJJ (V483). Gespeichert bleibt JJJJ-MM-TT;
+// der Import versteht beide Schreibweisen. Andere Inhalte bleiben unverändert.
+function turnierDatumDE(v){
+  const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||""));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(v||"");
 }
 
 // Datum aus der Excel-Zelle in JJJJ-MM-TT. Versteht echte Excel-Daten (Date),
@@ -8202,6 +8210,14 @@ function reiterHintergrund(t, aktiv){
   return t._schattiert ? "var(--club-12)" : "transparent";
 }
 
+// Kachelname mit Trennstellen (V483): Ein Bindestrich zwischen zwei Kleinbuchstaben
+// („Verwal-tung") wird als weiches Trennzeichen ausgegeben. Der Name trennt dann genau
+// dort, wenn er nicht in die Kachel passt – mit Trennstrich am Zeilenende. Passt er,
+// erscheint er ungetrennt („Verwaltung").
+function kachelLabel(label){
+  return String(label||"").replace(/([a-zäöüß])-([a-zäöüß])/g,"$1\u00AD$2");
+}
+
 // Thematische Gruppierung der Trainer-Bereiche für die Kachel-Startseite.
 // Es werden nur Kacheln gezeigt, deren Reiter für die Person verfügbar ist.
 const TR_HOME_GRUPPEN = [
@@ -8209,10 +8225,10 @@ const TR_HOME_GRUPPEN = [
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
     { key:"einsaetze",   label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
-    { key:"aufstellung", label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
-    { key:"spielbetrieb",label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"aufstellung", label:"Auf-stellung",  icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spiel-betrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",    label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
-    { key:"spiellokale", label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
+    { key:"spiellokale", label:"Spiel-lokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
   ]},
   { titel:"Training", items:[
     { key:"zeiten",       label:"Zeiten",        icon:"🕒", sub:"Trainingszeiten" },
@@ -8225,10 +8241,10 @@ const TR_HOME_GRUPPEN = [
   ]},
   // Vormals „Spieler & Gruppe" – alphabetisch.
   { titel:"Spieler & Statistiken", items:[
-    { key:"geburtstage", label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
+    { key:"geburtstage", label:"Geburts-tage",  icon:"🎂", sub:"Wer feiert bald" },
     { key:"historieadmin", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",         label:"QTTR-Werte",   icon:"📊", sub:"Ranglistenwerte" },
-    { key:"rangliste",   label:"Rangliste",    icon:"🏆", sub:"Sterne-Ranking" },
+    { key:"rangliste",   label:"Rangliste Übungen",    icon:"🏆", sub:"Sterne-Ranking" },
     { key:"vmhistorie",  label:"Vereins-meister-schaften", icon:"🏆", sub:"Meister & Platzierungen" },
   ]},
   // Alphabetisch; Schläger und Eltern hierher verschoben.
@@ -8236,12 +8252,12 @@ const TR_HOME_GRUPPEN = [
     { key:"bestellungen",     label:"Bestellung",icon:"🛒", sub:"Vereinsartikel" },
     { key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦", sub:"Alle Bestellungen" },
     { key:"eltern",           label:"Eltern",      icon:"👨‍👩‍👧", sub:"Kontakte" },
-    { key:"halleninfo",       label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
+    { key:"halleninfo",       label:"Hallen-info",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"kalender",         label:"Kalender",    icon:"📅", sub:"Abo & Export" },
     { key:"schlaeger",        label:"Schläger",    icon:"🏓", sub:"Material" },
     { key:"termine",          label:"Termine",     icon:"📌", sub:"Vereinstermine" },
-    { key:"verwaltung",       label:"Verwaltung",  icon:"⚙️", sub:"App-Verwaltung" },
-    { key:"meineverwaltung",  label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
+    { key:"verwaltung",       label:"Verwal-tung",  icon:"⚙️", sub:"App-Verwaltung" },
+    { key:"meineverwaltung",  label:"Verwal-tung",  icon:"🗂️", sub:"Meine Daten" },
   ]},
 ];
 
@@ -8351,7 +8367,8 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
     .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
     .filter(g => g.items.length>0);
 
-  return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
+  // V483: Seite endet direkt unter der letzten Kachelgruppe – kein Leerraum darunter.
+  return <div style={{padding:"12px 12px 12px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
     {nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
 
@@ -8370,7 +8387,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
       </div>}
     </div>}
 
-    {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
+    {gruppen.map((g,gi) => <div key={g.titel} style={{marginBottom:gi===gruppen.length-1?0:18}}>
       <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
         <span style={{width:9, height:9, borderRadius:2, background:TTC_ROT, display:"inline-block"}}/>
         <span style={{fontSize:13, fontWeight:700, color:"var(--text2)", letterSpacing:".02em"}}>{g.titel}</span>
@@ -8383,7 +8400,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
@@ -8552,7 +8569,9 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return result;
   }
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80}}>
+  // V483: Auf der Kachel-Startseite keine Mindesthöhe und kein Polster unten – die Seite
+  // endet direkt unter den Kacheln und lässt sich nicht ins Leere scrollen.
+  return <div style={{minHeight:activeTab==="home"?"auto":"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:activeTab==="home"?0:80}}>
     {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
@@ -14944,15 +14963,15 @@ const SP_HOME_GRUPPEN = [
   { titel:"Wettkampf", items:[
     { key:"spielplan",   label:"Spielplan",   icon:"📅", sub:"Spiele & Termine" },
     { key:"einsaetze",   label:"Einsätze",    icon:"🗓️", sub:"Zu-/Absagen" },
-    { key:"aufstellung", label:"Aufstellung", icon:"📋", sub:"Mannschaften" },
-    { key:"spielbetrieb",label:"Spielbetrieb",icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"aufstellung", label:"Auf-stellung", icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb",label:"Spiel-betrieb",icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",    label:"Turniere",    icon:"🏆", sub:"Vereinsturniere" },
-    { key:"spiellokale", label:"Spiellokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
+    { key:"spiellokale", label:"Spiel-lokale", icon:"🏟️", sub:"Hallen & Anfahrt" },
   ]},
   { titel:"Mein Training", items:[
     { key:"zeiten",       label:"Zeiten",        icon:"🕒", sub:"Trainingszeiten" },
     { key:"stats",        label:"Meine Stats",   icon:"⭐", sub:"Übungen & Sterne" },
-    { key:"ranking",      label:"Rangliste",     icon:"🏆", sub:"In meiner Gruppe" },
+    { key:"ranking",      label:"Rangliste Übungen",     icon:"🏆", sub:"In meiner Gruppe" },
     { key:"training",     label:"Training",      icon:"📅", sub:"Meine Trainingstage" },
     { key:"teilnahme",    label:"Teilnahme",     icon:"📊", sub:"Trainingsbeteiligung" },
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Für das Training" },
@@ -14968,10 +14987,10 @@ const SP_HOME_GRUPPEN = [
   // Alphabetisch.
   { titel:"Verein & mehr", items:[
     { key:"bestellungen",   label:"Bestellung",icon:"🛒", sub:"Vereinsartikel" },
-    { key:"halleninfo",     label:"Halleninfo",  icon:"📣", sub:"Infos aus der Halle" },
+    { key:"halleninfo",     label:"Hallen-info",  icon:"📣", sub:"Infos aus der Halle" },
     { key:"kalender",       label:"Kalender",    icon:"📅", sub:"Abo & Export" },
     { key:"termine",        label:"Termine",     icon:"📌", sub:"Vereinstermine" },
-    { key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", sub:"Meine Daten" },
+    { key:"meineverwaltung",label:"Verwal-tung",  icon:"🗂️", sub:"Meine Daten" },
   ]},
 ];
 
@@ -15106,7 +15125,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
@@ -15625,8 +15644,12 @@ function ErfolgeTab({player, hideTraining=false}) {
   const earnedBeg = BEGINNER_AWARDS.filter(a=>beginnerStars>=a.stars);
   const earnedAdv = ADVANCED_AWARDS.filter(a=>totalStars>=a.stars);
 
-  // Turniere sortiert absteigend nach Datum
-  const allTournaments=[...(player.tournaments||[])].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  // V483: absteigend nach Jahr der Veranstaltung, innerhalb eines Jahres absteigend
+  // nach Datum (Einträge ohne Datum am Ende des Jahres).
+  const jahrVon=(t)=>String(t.year||String(t.date||"").slice(0,4)||"").trim();
+  const allTournaments=[...(player.tournaments||[])].sort((a,b)=>
+    jahrVon(b).localeCompare(jahrVon(a)) ||
+    String(b.date||"").localeCompare(String(a.date||"")));
   // Vereinsinterne Erfolge: nur anzeigen, wenn das zugehörige Turnier für die
   // Funktion der Person sichtbar geschaltet ist (Punkt: Sichtbarkeit je Funktion).
   const vereinsTurniere = allTournaments.filter(t=>t.type==="vereinsintern" && erfolgSichtbar(t));
@@ -23342,10 +23365,10 @@ const EW_HOME_GRUPPEN = [
   { titel:"Wettkampf", items:[
     { key:"spielplan",    label:"Spielplan",    icon:"📅", sub:"Spiele & Termine" },
     { key:"einsaetze",    label:"Einsätze",     icon:"🗓️", sub:"Zu-/Absagen" },
-    { key:"aufstellung",  label:"Aufstellung",  icon:"📋", sub:"Mannschaften" },
-    { key:"spielbetrieb", label:"Spielbetrieb", icon:"📋", sub:"Ligen & Tabellen" },
+    { key:"aufstellung",  label:"Auf-stellung",  icon:"📋", sub:"Mannschaften" },
+    { key:"spielbetrieb", label:"Spiel-betrieb", icon:"📋", sub:"Ligen & Tabellen" },
     { key:"turniere",     label:"Turniere",     icon:"🏆", sub:"Vereinsturniere" },
-    { key:"spiellokale",  label:"Spiellokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
+    { key:"spiellokale",  label:"Spiel-lokale",  icon:"🏟️", sub:"Hallen & Anfahrt" },
   ]},
   { titel:"Training", items:[
     { key:"zeiten",       label:"Zeiten",       icon:"🕒", sub:"Trainingszeiten" },
@@ -23358,12 +23381,12 @@ const EW_HOME_GRUPPEN = [
     { key:"historieverein", label:"Historie Spiele Verein", icon:"📊", sub:"Bilanzen im Verein" },
     { key:"ttr",            label:"QTTR-Werte",             icon:"📊", sub:"Ranglistenwerte" },
     { key:"vmhistorie",     label:"Vereins-meister-schaften", icon:"🏆", sub:"Meister & Platzierungen" },
-    { key:"meineverwaltung",label:"Verwaltung",             icon:"🗂️", sub:"Meine Daten" },
+    { key:"meineverwaltung",label:"Verwal-tung",             icon:"🗂️", sub:"Meine Daten" },
   ]},
   // Alphabetisch.
   { titel:"Verein", items:[
-    { key:"geburtstage",  label:"Geburtstage",  icon:"🎂", sub:"Wer feiert bald" },
-    { key:"halleninfo",   label:"Halleninfo",   icon:"📣", sub:"Infos aus der Halle" },
+    { key:"geburtstage",  label:"Geburts-tage",  icon:"🎂", sub:"Wer feiert bald" },
+    { key:"halleninfo",   label:"Hallen-info",   icon:"📣", sub:"Infos aus der Halle" },
     { key:"kalender",     label:"Kalender",     icon:"📅", sub:"Abo & Export" },
     { key:"termine",      label:"Termine",      icon:"📌", sub:"Vereinstermine" },
   ]},
@@ -23582,7 +23605,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         }}>
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
-            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere"}}>{it.label}</span>
+            <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
             {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
