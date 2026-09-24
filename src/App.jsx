@@ -1,4 +1,4 @@
-// === TTC-App · Version 483 · erstellt 24.09.2026 ===
+// === TTC-App · Version 484 · erstellt 24.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "483";
+const APP_VERSION = "484";
 const APP_DATUM = "24.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1653,20 +1653,34 @@ function turniererfolgeZeilen(players, turniere, streng=false, externStore=null)
     const pp=pid ? (players||[]).find(x=>x.id===pid) : null;
     return pp ? `${pp.firstName||""} ${pp.lastName||""}`.trim() : "";
   };
-  for(const p of personen){
-    const liste=p.erfolge.filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere, streng));
-    for(const t of [...liste].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")))){
-      zeilen.push(TURNIER_SPALTEN.map(s=>{
-        if(s.feld==="_id")       return p.id;
-        if(s.feld==="_vorname")  return p.vorname;
-        if(s.feld==="_nachname") return p.nachname;
-        if(s.feld==="type")      return TURNIER_TYP_LABEL[t.type||"vereinsintern"]||t.type||"";
-        if(s.feld==="year")      return t.year||String(t.date||"").slice(0,4)||"";
-        if(s.feld==="partner")   return partnerName(t, p.id);
-        if(s.feld==="date")      return turnierDatumDE(t.date);   // V483: TT.MM.JJJJ
-        return t[s.feld]??"";
-      }));
+  // V484: Alle Zeilen gemeinsam sortieren – absteigend nach Jahr, Datum, Konkurrenz und
+  // Disziplin, danach aufsteigend nach Platz (dann Nachname, Vorname).
+  const eintraege=[];
+  for(const p of personen)
+    for(const t of p.erfolge.filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere, streng))){
+      const datum=turnierDatumNorm(t.date);
+      eintraege.push({p, t, datum,
+        jahr:String(t.year||"").trim() || (/^\d{4}/.test(datum)?datum.slice(0,4):""),
+        platz:Number(String(t.place??"").replace(/[^\d]/g,"")) || 9999});
     }
+  const ab=(a,b)=>String(b||"").localeCompare(String(a||""),"de",{numeric:true});
+  eintraege.sort((a,b)=>
+    ab(a.jahr,b.jahr) || ab(a.datum,b.datum) ||
+    ab(a.t.altersklasse,b.t.altersklasse) || ab(a.t.konkurrenz,b.t.konkurrenz) ||
+    a.platz-b.platz ||
+    String(a.p.nachname).localeCompare(String(b.p.nachname),"de") ||
+    String(a.p.vorname).localeCompare(String(b.p.vorname),"de"));
+  for(const {p,t,jahr} of eintraege){
+    zeilen.push(TURNIER_SPALTEN.map(s=>{
+      if(s.feld==="_id")       return p.id;
+      if(s.feld==="_vorname")  return p.vorname;
+      if(s.feld==="_nachname") return p.nachname;
+      if(s.feld==="type")      return TURNIER_TYP_LABEL[t.type||"vereinsintern"]||t.type||"";
+      if(s.feld==="year")      return jahr;
+      if(s.feld==="partner")   return partnerName(t, p.id);
+      if(s.feld==="date")      return turnierDatumDE(t.date);   // TT.MM.JJJJ
+      return t[s.feld]??"";
+    }));
   }
   return zeilen;
 }
@@ -1674,23 +1688,42 @@ function turniererfolgeZeilen(players, turniere, streng=false, externStore=null)
 // Datum für den Export als TT.MM.JJJJ (V483). Gespeichert bleibt JJJJ-MM-TT;
 // der Import versteht beide Schreibweisen. Andere Inhalte bleiben unverändert.
 function turnierDatumDE(v){
-  const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||""));
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(v||"");
+  const n=turnierDatumNorm(v);          // V484: auch Altwerte wie „9/23/26" umwandeln
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(n);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(n||"");
 }
 
 // Datum aus der Excel-Zelle in JJJJ-MM-TT. Versteht echte Excel-Daten (Date),
 // ISO-Texte und die deutsche Schreibweise TT.MM.JJJJ.
 function turnierDatumNorm(v){
-  if(v instanceof Date && !isNaN(v)){
-    const p=(n)=>String(n).padStart(2,"0");
-    return `${v.getFullYear()}-${p(v.getMonth()+1)}-${p(v.getDate())}`;
+  const p=(n)=>String(n).padStart(2,"0");
+  const iso=(y,m,d)=>{
+    y=Number(y); m=Number(m); d=Number(d);
+    if(!(m>=1&&m<=12&&d>=1&&d<=31&&y>=1900&&y<=2100)) return "";
+    return `${y}-${p(m)}-${p(d)}`;
+  };
+  // Zweistellige Jahre: bis zum laufenden Jahr → 20xx, sonst 19xx (Ergebnisse reichen bis 1969 zurück).
+  const jahr4=(y)=>{ y=String(y); if(y.length!==2) return y;
+    const jetzt=new Date().getFullYear()%100; return Number(y)<=jetzt ? `20${y}` : `19${y}`; };
+  if(v instanceof Date && !isNaN(v)) return iso(v.getFullYear(), v.getMonth()+1, v.getDate());
+  if(v && typeof v==="object" && typeof v.seconds==="number"){   // Firestore-Timestamp
+    const d=new Date(v.seconds*1000); return iso(d.getFullYear(), d.getMonth()+1, d.getDate());
+  }
+  if(typeof v==="number" && v>20000 && v<80000){                 // Excel-Seriennummer
+    const d=new Date(Math.round((v-25569)*86400000)); return iso(d.getUTCFullYear(), d.getUTCMonth()+1, d.getUTCDate());
   }
   const t=String(v??"").trim();
   if(!t) return "";
-  let m=/^(\d{4})-(\d{2})-(\d{2})/.exec(t);
-  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m=/^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(t);
-  if(m) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  let m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
+  if(m) return iso(m[1],m[2],m[3]) || t;
+  m=/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})\b/.exec(t);                // TT.MM.JJJJ / TT.MM.JJ
+  if(m) return iso(jahr4(m[3]),m[2],m[1]) || t;
+  // V484: M/T/JJ bzw. M/T/JJJJ – so liefert die Excel-Bibliothek Datumszellen mit
+  // US-Standardformat. Solche Werte kamen beim Import unverändert in die Daten und
+  // wurden deshalb auch nicht als TT.MM.JJJJ exportiert.
+  m=/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/.exec(t);
+  if(m) return iso(jahr4(m[3]),m[1],m[2]) || iso(jahr4(m[3]),m[2],m[1]) || t;
+  if(/^\d{5}(\.\d+)?$/.test(t)) return turnierDatumNorm(Number(t));
   return t;
 }
 
@@ -3138,7 +3171,8 @@ function vmErfolgeSammeln(players, externStore){
   const liste=[];
   const nimm=(t, person, extern)=>{
     if(!/^vereinsmeisterschaft/i.test(String(t?.name||""))) return;
-    const jahr=String(t.year||"").trim() || String(t.date||"").slice(0,4);
+    const d=turnierDatumNorm(t.date);
+    const jahr=String(t.year||"").trim() || (/^\d{4}-/.test(d)?d.slice(0,4):"");
     if(!jahr) return;
     liste.push({
       jahr, person,
@@ -3348,7 +3382,7 @@ function VereinsmeisterHistorie({ players=[] }){
       <div style={{fontSize:12,fontWeight:800,minWidth:34,color:platzFarbe(z.platz)}}>{z.platz}.</div>
       <div style={{flex:1,minWidth:0,fontSize:12,color:"var(--text)"}}>
         {z.personen.join(" / ")}
-        {zeigeKonk && z.konkurrenz && z.konkurrenz!==platzKat.label &&
+        {zeigeKonk && z.konkurrenz && z.konkurrenz!==platzKat.label && !/^offen$/i.test(z.konkurrenz.trim()) &&
           <span style={{fontSize:10,color:"var(--text4)",marginLeft:6}}>{z.konkurrenz}</span>}
       </div>
     </div>;
@@ -15646,10 +15680,11 @@ function ErfolgeTab({player, hideTraining=false}) {
 
   // V483: absteigend nach Jahr der Veranstaltung, innerhalb eines Jahres absteigend
   // nach Datum (Einträge ohne Datum am Ende des Jahres).
-  const jahrVon=(t)=>String(t.year||String(t.date||"").slice(0,4)||"").trim();
+  const datumVon=(t)=>{ const d=turnierDatumNorm(t.date); return /^\d{4}-/.test(d)?d:""; };
+  const jahrVon=(t)=>String(t.year||datumVon(t).slice(0,4)||"").trim();
   const allTournaments=[...(player.tournaments||[])].sort((a,b)=>
     jahrVon(b).localeCompare(jahrVon(a)) ||
-    String(b.date||"").localeCompare(String(a.date||"")));
+    datumVon(b).localeCompare(datumVon(a)));
   // Vereinsinterne Erfolge: nur anzeigen, wenn das zugehörige Turnier für die
   // Funktion der Person sichtbar geschaltet ist (Punkt: Sichtbarkeit je Funktion).
   const vereinsTurniere = allTournaments.filter(t=>t.type==="vereinsintern" && erfolgSichtbar(t));
@@ -15665,10 +15700,11 @@ function ErfolgeTab({player, hideTraining=false}) {
   function TournamentBadge({t}) {
     const placeN=parseInt(t.place||"99");
     const color=placeN===1?"#ffd700":placeN===2?"#b8b8b8":placeN===3?"#cd7f32":"#6b7280";
-    const year=t.year||t.date?.slice(0,4)||"";
+    const datumISO=turnierDatumNorm(t.date);
+    const year=t.year||(/^\d{4}-/.test(datumISO)?datumISO.slice(0,4):"");
     const line1=[t.name,year].filter(Boolean).join(" ");
     const line2=[t.altersklasse,t.konkurrenz,t.partner?`mit ${t.partner}`:""].filter(Boolean).join(" – ");
-    const line3=t.date?formatDateDE(t.date):"";
+    const line3=t.date?turnierDatumDE(t.date):"";
     return <div style={{background:"var(--bg2)",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
       <div style={{flex:1,minWidth:0}}>
