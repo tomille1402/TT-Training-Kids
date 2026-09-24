@@ -1,4 +1,4 @@
-// === TTC-App · Version 484 · erstellt 24.09.2026 ===
+// === TTC-App · Version 485 · erstellt 24.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "484";
+const APP_VERSION = "485";
 const APP_DATUM = "24.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -10111,7 +10111,7 @@ function PersonenUebersicht({players}) {
 
   // Betreuungs-Zählung: Anzahl der Nachwuchsspiele der AKTUELLEN Saison, bei denen die
   // Person als Betreuer (1 oder 2) eingetragen ist. Quelle ist das öffentliche
-  // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,f}}}),
+  // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,f,f2}}}),
   // das nur für Nachwuchsspiele Einträge enthält.
   const AKTUELLE_SAISON = "spielplan_2026_2027";
   const [betreuerDaten,setBetreuerDaten]=useState(null);
@@ -16923,7 +16923,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                       {istNeu && <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#3b82f6",borderRadius:6,padding:"1px 6px",letterSpacing:0.4,flexShrink:0}}>NEU</span>}
                       <span>{n.titel}</span>
                     </div>
-                    <div style={{fontSize:13,color:"var(--text2)"}}>{n.text}</div>
+                    <div style={{fontSize:13,color:"var(--text2)",whiteSpace:"pre-line"}}>{n.text}</div>
                     {(()=>{
                       // Zeitstempel der Meldung: bevorzugt ts (ms), sonst erstellt (Datum).
                       let d=null;
@@ -20122,6 +20122,14 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     // aus dem der Kalender-Abo-Feed (Netlify-Function) ohne Login liest.
     // Doc: config/betreuerFahrer_{saison}. Ein Fehler hier wird gemeldet, damit ein
     // fehlendes Regel-Deployment o.ä. nicht unbemerkt bleibt.
+    // V485: Bereits verschickte Erinnerungen hinter der Glocke sofort auf den neuen
+    // Stand bringen (z. B. zweiter Fahrer nachgetragen). Kein erneuter Push.
+    if(/^_(betreuer|fahrer)/.test(feld)){
+      try{
+        fetch("/.netlify/functions/nachrichtaktualisieren",{method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({spielKey:sk})}).catch(()=>{});
+      }catch(e){}
+    }
     try {
       const bf=buildBetreuerFahrerSpiegel(updated);
       await setDoc(doc(db,"config",`betreuerFahrer_${selSeasonId}`),{data:bf,lastUpdated:Date.now()});
