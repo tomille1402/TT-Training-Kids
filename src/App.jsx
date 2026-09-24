@@ -1,4 +1,4 @@
-// === TTC-App · Version 480 · erstellt 23.09.2026 ===
+// === TTC-App · Version 482 · erstellt 24.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "480";
-const APP_DATUM   = "23.09.2026";
+const APP_VERSION = "482";
+const APP_DATUM = "24.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
 // (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
@@ -1610,6 +1610,7 @@ const TURNIER_SPALTEN = [
   {kopf:"Platz",       feld:"place",        breite:8},
   {kopf:"Disziplin",   feld:"konkurrenz",   breite:16},
   {kopf:"Konkurrenz",  feld:"altersklasse", breite:18},
+  {kopf:"Partner",     feld:"partner",      breite:24},   // V482: Doppelpartner „Vorname Nachname"
   {kopf:"Datum",       feld:"date",         breite:12},
   {kopf:"Jahr",        feld:"year",         breite:8},
   {kopf:"Herkunft",    feld:"herkunft",     breite:30},
@@ -1631,21 +1632,37 @@ async function ladeExcelJsLib(){
 }
 
 // Alle Turniererfolge aller Personen als Zeilen (Kopfzeile zuerst).
-function turniererfolgeZeilen(players, turniere, streng=false){
+// V482: Enthält auch die Personen außerhalb des Spielerstamms (config/turniererfolge_extern,
+// ohne Spieler-ID) – der Import ersetzt diese Liste vollständig, ein Export ohne sie würde
+// beim Wiedereinlesen alle historischen Personen löschen. Die Spalte „Partner" ist mit dem
+// gespeicherten Partner gefüllt, bei automatisch übertragenen Doppeln sonst mit dem
+// Partner aus dem Turnier.
+function turniererfolgeZeilen(players, turniere, streng=false, externStore=null){
   const zeilen=[TURNIER_SPALTEN.map(s=>s.kopf)];
-  const sortiert=[...(players||[])].sort((a,b)=>
-    String(a.lastName||"").localeCompare(String(b.lastName||""),"de") ||
-    String(a.firstName||"").localeCompare(String(b.firstName||""),"de"));
-  for(const p of sortiert){
-    const liste=(Array.isArray(p.tournaments)?p.tournaments:[])
-      .filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere, streng));
+  const personen=[
+    ...(players||[]).map(p=>({id:p.id||"", vorname:p.firstName||"", nachname:p.lastName||"",
+      erfolge:Array.isArray(p.tournaments)?p.tournaments:[]})),
+    ...Object.values(externStore?.personen||{}).map(e=>({id:"", vorname:e.vorname||"", nachname:e.nachname||"",
+      erfolge:Array.isArray(e.erfolge)?e.erfolge:[]})),
+  ].sort((a,b)=>
+    String(a.nachname).localeCompare(String(b.nachname),"de") ||
+    String(a.vorname).localeCompare(String(b.vorname),"de"));
+  const partnerName=(t,id)=>{
+    if(String(t.partner||"").trim()) return String(t.partner).trim();
+    const pid=vmDoppelPartner({spielerId:id, herkunft:t.herkunft}, turniere);
+    const pp=pid ? (players||[]).find(x=>x.id===pid) : null;
+    return pp ? `${pp.firstName||""} ${pp.lastName||""}`.trim() : "";
+  };
+  for(const p of personen){
+    const liste=p.erfolge.filter(t=>erfolgAusAbgeschlossenemTurnier(t, turniere, streng));
     for(const t of [...liste].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")))){
       zeilen.push(TURNIER_SPALTEN.map(s=>{
-        if(s.feld==="_id")       return p.id||"";
-        if(s.feld==="_vorname")  return p.firstName||"";
-        if(s.feld==="_nachname") return p.lastName||"";
+        if(s.feld==="_id")       return p.id;
+        if(s.feld==="_vorname")  return p.vorname;
+        if(s.feld==="_nachname") return p.nachname;
         if(s.feld==="type")      return TURNIER_TYP_LABEL[t.type||"vereinsintern"]||t.type||"";
         if(s.feld==="year")      return t.year||String(t.date||"").slice(0,4)||"";
+        if(s.feld==="partner")   return partnerName(t, p.id);
         return t[s.feld]??"";
       }));
     }
@@ -1709,6 +1726,8 @@ function parseTurniererfolgeZeilen(rows, players){
     };
     const herkunft=String(hol("herkunft")??"").trim();
     if(herkunft) eintrag.herkunft=herkunft;   // nur setzen, wenn vorhanden
+    const partner=String(hol("partner")??"").trim();
+    if(partner) eintrag.partner=partner;      // V482: Doppelpartner, nur wenn angegeben
     if(!eintrag.name && !eintrag.place && !eintrag.date){
       hinweise.push(`Zeile ${zeile}: weder Turniername noch Platz oder Datum – übersprungen`); return;
     }
@@ -3049,7 +3068,7 @@ function HistorieVereinView({ players, modus="admin" }){
 function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HISTORIE VEREINSMEISTERSCHAFTEN (V480)
+// HISTORIE VEREINSMEISTERSCHAFTEN (V480, V481)
 // ═══════════════════════════════════════════════════════════════════════════
 // Quelle sind die Turniererfolge: die am Spieler gespeicherten (players.tournaments)
 // und zusätzlich die beim Import nicht zuordenbaren Personen aus
@@ -3120,12 +3139,19 @@ function vmErfolgeSammeln(players, externStore){
       disziplin: String(t.konkurrenz||"").trim(),
       konkurrenz: String(t.altersklasse||"").trim(),
       turnier: String(t.name||"").trim(),
+      herkunft: String(t.herkunft||""),
+      partner: String(t.partner||"").trim(),
+      spielerId,
       extern,
     });
   };
-  for(const p of (players||[]))
+  let spielerId=null;
+  for(const p of (players||[])){
+    spielerId=p.id||null;
     for(const t of (p.tournaments||[]))
       nimm(t, `${p.firstName||""} ${p.lastName||""}`.trim(), false);
+  }
+  spielerId=null;
   for(const e of Object.values(externStore?.personen||{}))
     for(const t of (e.erfolge||[]))
       nimm(t, `${e.vorname||""} ${e.nachname||""}`.trim(), true);
@@ -3150,30 +3176,155 @@ function vmNachJahr(erfolge, kategorie){
     return {jahr, eintraege};
   });
 }
-// Platzierungen eines Jahres zusammenfassen: je Platz die beteiligten Personen
-// (beim Doppel stehen beide Partner in eigenen Zeilen).
-function vmPlaetzeGruppiert(eintraege){
+// Doppelpartner einer automatisch übertragenen Platzierung aus dem Turnier ermitteln (V481).
+// Herkunft „auto:<Turnier-ID>:<Konkurrenz-Key>" → Team der Konkurrenz → der andere Spieler.
+// Bei importierten Altdaten ohne Herkunft ist kein Partner bekannt (Rückgabe null).
+function vmDoppelPartner(e, turniere){
+  if(!e?.spielerId) return null;
+  const m=String(e.herkunft||"").match(/^auto:(.+):([^:]+)$/);
+  if(!m) return null;
+  const t=(turniere||[]).find(x=>x.id===m[1] || x.name===m[1]);
+  const k=(t?.konkurrenzen||[]).find(x=>x.key===m[2]);
+  const tm=(k?.doppelTeams||[]).find(x=>x.s1===e.spielerId || x.s2===e.spielerId);
+  if(!tm) return null;
+  return (tm.s1===e.spielerId ? tm.s2 : tm.s1) || null;
+}
+
+// Namen vergleichbar machen: Groß-/Kleinschreibung, Satzzeichen und Reihenfolge
+// egal – „Max Muster" und „Muster, Max" gelten als dieselbe Person (V482).
+function vmNamensKey(name){
+  return String(name||"").toLowerCase().replace(/[^a-zäöüß\s-]/g," ")
+    .split(/\s+/).filter(Boolean).sort().join(" ");
+}
+
+// Platzierungen einer Konkurrenz in Anzeigezeilen zerlegen (V481): Jede Person bzw.
+// jedes Doppelpaar bekommt eine eigene Zeile – auch bei geteilten Plätzen (z. B.
+// zweimal Platz 3). Beim Doppel werden die Partner über das Turnier zugeordnet;
+// bleiben auf einem Platz genau zwei Personen ohne bekannten Partner übrig, sind sie
+// zwangsläufig ein Paar. Mehr als zwei ungeklärte Personen stehen einzeln, damit
+// keine falschen Paare angezeigt werden.
+function vmPlatzZeilen(eintraege, istDoppel, turniere){
   const proPlatz={};
   for(const e of eintraege) (proPlatz[e.platz||"—"]=proPlatz[e.platz||"—"]||[]).push(e);
-  return Object.entries(proPlatz)
-    .sort((a,b)=>(Number(a[0])||999)-(Number(b[0])||999))
-    .map(([platz,liste])=>({
-      platz,
-      personen:liste.map(x=>x.person).filter(Boolean),
-      konkurrenz:[...new Set(liste.map(x=>x.konkurrenz).filter(Boolean))].join(", "),
-    }));
+  const zeilen=[];
+  for(const [platz,liste] of Object.entries(proPlatz)){
+    const platzNr=Number(platz)||999;
+    const zeile=(xs)=>zeilen.push({platz, platzNr,
+      personen:xs.map(x=>x.person).filter(Boolean),
+      konkurrenz:[...new Set(xs.map(x=>x.konkurrenz).filter(Boolean))].join(", ")});
+    if(!istDoppel){ liste.forEach(e=>zeile([e])); continue; }
+    let rest=[...liste];
+    // a) Gespeicherter Partner (Spalte „Partner" der Turniererfolge, V482). Steht der
+    //    Partner selbst nicht auf diesem Platz (z. B. weil für ihn kein Erfolg erfasst
+    //    ist), wird sein Name trotzdem mit angezeigt.
+    for(const e of liste){
+      if(!rest.includes(e) || !e.partner) continue;
+      const pk=vmNamensKey(e.partner);
+      const partner=rest.find(x=>x!==e && vmNamensKey(x.person)===pk);
+      if(partner){ zeile([e,partner]); rest=rest.filter(x=>x!==e && x!==partner); }
+      else { zeile([e,{person:e.partner,konkurrenz:e.konkurrenz}]); rest=rest.filter(x=>x!==e); }
+    }
+    // b) Partner aus dem Turnier (automatisch übertragene Platzierungen).
+    for(const e of liste){
+      if(!rest.includes(e)) continue;
+      const pid=vmDoppelPartner(e, turniere);
+      const partner=pid ? rest.find(x=>x!==e && x.spielerId===pid) : null;
+      if(partner){ zeile([e,partner]); rest=rest.filter(x=>x!==e && x!==partner); }
+    }
+    if(rest.length===2) zeile(rest);
+    else rest.forEach(e=>zeile([e]));
+  }
+  return zeilen.sort((a,b)=>a.platzNr-b.platzNr ||
+    String(a.personen[0]||"").localeCompare(String(b.personen[0]||""),"de"));
+}
+
+// Nachwuchs in „Alle Platzierungen" (V481): drei getrennte Gruppen, jede mit ihren
+// einzelnen Konkurrenzen. Weiblich wird am Namen erkannt (Mädchen, weibliche Jugend,
+// Schülerinnen); alle übrigen Nachwuchs-Einzel zählen als männlich.
+function vmIstWeiblichKonkurrenz(konk){
+  return /mädchen|maedchen|weiblich|schülerinnen|schuelerinnen|damen/i.test(String(konk||""));
+}
+const VM_NW_GRUPPEN = [
+  { key:"m", label:"Einzel männlich", titel:"Einzel männlicher Nachwuchs", doppel:false,
+    test:(e)=>e.disziplin==="Einzel" && vmIstNachwuchsKonkurrenz(e.konkurrenz) && !vmIstWeiblichKonkurrenz(e.konkurrenz) },
+  { key:"w", label:"Einzel weiblich", titel:"Einzel weiblicher Nachwuchs", doppel:false,
+    test:(e)=>e.disziplin==="Einzel" && vmIstNachwuchsKonkurrenz(e.konkurrenz) && vmIstWeiblichKonkurrenz(e.konkurrenz) },
+  { key:"d", label:"Doppel", titel:"Doppel Nachwuchs", doppel:true,
+    test:(e)=>e.disziplin==="Doppel" && vmIstNachwuchsKonkurrenz(e.konkurrenz) },
+];
+// Schlüssel einer einzelnen Konkurrenz (Groß-/Kleinschreibung und Leerzeichen egal).
+const vmKonkKey=(k)=>String(k||"").toLowerCase().replace(/\s+/g," ").trim();
+
+// Die einzelnen Konkurrenzen einer Nachwuchs-Gruppe: älteste Klasse zuerst.
+function vmNwKonkurrenzen(erfolge, gruppe){
+  const map=new Map();
+  for(const e of erfolge.filter(gruppe.test)){
+    const key=vmKonkKey(e.konkurrenz);
+    if(!map.has(key)) map.set(key, e.konkurrenz || "ohne Konkurrenz");
+  }
+  return [...map.entries()].map(([key,label])=>({key,label}))
+    .sort((a,b)=>vmKlasseRang(b.label)-vmKlasseRang(a.label) || a.label.localeCompare(b.label,"de"));
 }
 
 // Kachel/Reiter „Historie Vereinsmeisterschaften": Meisterliste und alle Platzierungen.
 function VereinsmeisterHistorie({ players=[] }){
   const extern=useTurniererfolgeExtern();
+  const {turniere}=useTurniereListe();
   const [sicht,setSicht]=useState("meister");      // meister | platzierungen
-  const [katKey,setKatKey]=useState(VM_KATEGORIEN[0].key);
+  const [katKey,setKatKey]=useState(VM_KATEGORIEN[0].key);        // Sicht „Vereinsmeister"
+  const [platzKatKey,setPlatzKatKey]=useState(VM_KATEGORIEN[0].key); // Sicht „Alle Platzierungen"
+  // Nachwuchs-Auswahl: "alle" | "g:<gruppe>" | "k:<gruppe>:<konkurrenz>"
+  const [nwAuswahl,setNwAuswahl]=useState("alle");
 
   const alle=vmErfolgeSammeln(players, extern);
+  const anzahlPersonen=new Set(alle.map(e=>e.person)).size;
+
+  // Sicht „Vereinsmeister": unverändert fünf Kategorien.
   const kategorie=VM_KATEGORIEN.find(k=>k.key===katKey)||VM_KATEGORIEN[0];
   const jahre=vmNachJahr(alle, kategorie);
-  const anzahlPersonen=new Set(alle.map(e=>e.person)).size;
+
+  // Sicht „Alle Platzierungen": Erwachsenen-Kategorien plus ein Schalter „Nachwuchs".
+  const PLATZ_KATEGORIEN=[...VM_KATEGORIEN.filter(k=>!/^nw/.test(k.key)), {key:"nachwuchs", label:"Nachwuchs"}];
+  const platzKat=PLATZ_KATEGORIEN.find(k=>k.key===platzKatKey)||PLATZ_KATEGORIEN[0];
+  const istNw=platzKat.key==="nachwuchs";
+  const nwGruppen=VM_NW_GRUPPEN.map(g=>({...g, konkurrenzen:vmNwKonkurrenzen(alle,g)}))
+    .filter(g=>g.konkurrenzen.length);
+
+  // Abschnitte der Platzierungs-Sicht: [{titel, doppel, jahre:[{jahr, bloecke:[{konkurrenz, zeilen}]}]}]
+  let abschnitte=[];
+  if(!istNw){
+    const erw=vmNachJahr(alle, platzKat);
+    const doppel=platzKat.key==="erwDoppel";
+    abschnitte=[{titel:"", doppel, mehrereKonk:false,
+      jahre:erw.map(({jahr,eintraege})=>({jahr, bloecke:[{konkurrenz:"", zeilen:vmPlatzZeilen(eintraege,doppel,turniere)}]}))}];
+  } else {
+    const [art,gKey,...kTeile]=nwAuswahl.split(":");
+    const kKey=kTeile.join(":");
+    const gewaehlt=nwGruppen.filter(g=>art==="alle" || g.key===gKey);
+    abschnitte=gewaehlt.map(g=>{
+      const konks=g.konkurrenzen.filter(k=>art!=="k" || k.key===kKey);
+      const rang=new Map(konks.map((k,i)=>[k.key,i]));
+      const passend=alle.filter(e=>g.test(e) && rang.has(vmKonkKey(e.konkurrenz)));
+      const proJahr={};
+      for(const e of passend){
+        const j=(proJahr[e.jahr]=proJahr[e.jahr]||{});
+        (j[vmKonkKey(e.konkurrenz)]=j[vmKonkKey(e.konkurrenz)]||[]).push(e);
+      }
+      const jahreG=Object.keys(proJahr).sort((a,b)=>b.localeCompare(a)).map(jahr=>({
+        jahr,
+        bloecke:Object.entries(proJahr[jahr])
+          .sort((a,b)=>rang.get(a[0])-rang.get(b[0]))
+          .map(([key,eintraege])=>({
+            konkurrenz:konks.find(k=>k.key===key)?.label||eintraege[0].konkurrenz,
+            zeilen:vmPlatzZeilen(eintraege, g.doppel, turniere),
+          })),
+      }));
+      return {titel:g.titel, doppel:g.doppel, mehrereKonk:konks.length>1, jahre:jahreG};
+    }).filter(a=>a.jahre.length);
+  }
+  const anzahlJahre = sicht==="meister"
+    ? jahre.length
+    : new Set(abschnitte.flatMap(a=>a.jahre.map(j=>j.jahr))).size;
 
   const kachel={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:12,marginBottom:12};
   const reiter=(aktiv)=>({padding:"7px 12px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
@@ -3181,32 +3332,43 @@ function VereinsmeisterHistorie({ players=[] }){
   const katBtn=(aktiv)=>({padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",
     background:aktiv?"var(--club-22)":"var(--bg2)",border:`1px solid ${aktiv?TTC_ROT:"var(--border2)"}`,
     color:aktiv?TTC_ROT:"var(--text3)",whiteSpace:"nowrap"});
+  const platzFarbe=(platz)=>platz==="1"?"#f59e0b":platz==="2"?"#9ca3af":platz==="3"?"#b45309":"var(--text3)";
+
+  const platzZeile=(z,i,zeigeKonk)=>
+    <div key={`${z.platz}_${i}`} style={{display:"flex",alignItems:"baseline",gap:10,padding:"4px 0",
+      borderBottom:"1px solid var(--border)"}}>
+      <div style={{fontSize:12,fontWeight:800,minWidth:34,color:platzFarbe(z.platz)}}>{z.platz}.</div>
+      <div style={{flex:1,minWidth:0,fontSize:12,color:"var(--text)"}}>
+        {z.personen.join(" / ")}
+        {zeigeKonk && z.konkurrenz && z.konkurrenz!==platzKat.label &&
+          <span style={{fontSize:10,color:"var(--text4)",marginLeft:6}}>{z.konkurrenz}</span>}
+      </div>
+    </div>;
 
   return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🏆 Historie Vereinsmeisterschaften</div>
     <div style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>
-      {jahre.length} {jahre.length===1?"Jahr":"Jahre"} · {anzahlPersonen} Personen insgesamt erfasst
+      {anzahlJahre} {anzahlJahre===1?"Jahr":"Jahre"} · {anzahlPersonen} Personen insgesamt erfasst
     </div>
 
     <div style={{display:"flex",gap:8,marginBottom:10}}>
       <button onClick={()=>setSicht("meister")}      style={reiter(sicht==="meister")}>🥇 Vereinsmeister</button>
       <button onClick={()=>setSicht("platzierungen")} style={reiter(sicht==="platzierungen")}>📋 Alle Platzierungen</button>
     </div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
-      {VM_KATEGORIEN.map(k=>
-        <button key={k.key} onClick={()=>setKatKey(k.key)} style={katBtn(k.key===katKey)}>{k.label}</button>)}
-    </div>
 
-    {kategorie.nurHoechsteKlasse && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10,lineHeight:1.6}}>
-      Je Jahr ist die höchste gespielte Klasse ausgewertet; sie steht hinter der Jahreszahl.
-    </div>}
-
-    {jahre.length===0
-      ? <div style={{...kachel,fontSize:12,color:"var(--text3)"}}>
-          Für „{kategorie.label}“ sind keine Ergebnisse hinterlegt.
-        </div>
-      : sicht==="meister"
-        ? <div style={kachel}>
+    {sicht==="meister" ? <>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        {VM_KATEGORIEN.map(k=>
+          <button key={k.key} onClick={()=>setKatKey(k.key)} style={katBtn(k.key===katKey)}>{k.label}</button>)}
+      </div>
+      {kategorie.nurHoechsteKlasse && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10,lineHeight:1.6}}>
+        Je Jahr ist die höchste gespielte Klasse ausgewertet; sie steht unter dem Namen.
+      </div>}
+      {jahre.length===0
+        ? <div style={{...kachel,fontSize:12,color:"var(--text3)"}}>
+            Für „{kategorie.label}“ sind keine Ergebnisse hinterlegt.
+          </div>
+        : <div style={kachel}>
             {jahre.map(({jahr,eintraege})=>{
               const sieger=eintraege.filter(e=>e.platzNr===1);
               if(!sieger.length) return null;
@@ -3215,45 +3377,69 @@ function VereinsmeisterHistorie({ players=[] }){
                 padding:"7px 2px",borderBottom:"1px solid var(--border)"}}>
                 <div style={{fontSize:13,fontWeight:800,color:TTC_ROT,minWidth:44}}>{jahr}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
-                    {sieger.map(e=>e.person).join(" / ")}
-                  </div>
+                  {(/Doppel/.test(kategorie.label)
+                    ? vmPlatzZeilen(sieger,true,turniere).map(z=>z.personen.join(" / "))
+                    : sieger.map(e=>e.person)).map((n,i)=>
+                    <div key={i} style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{n}</div>)}
                   {kategorie.nurHoechsteKlasse && klasse &&
                     <div style={{fontSize:10,color:"var(--text4)"}}>{klasse}</div>}
                 </div>
               </div>;
             })}
+          </div>}
+    </> : <>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:istNw?8:12}}>
+        {PLATZ_KATEGORIEN.map(k=>
+          <button key={k.key} onClick={()=>setPlatzKatKey(k.key)} style={katBtn(k.key===platzKat.key)}>{k.label}</button>)}
+      </div>
+
+      {istNw && nwGruppen.length>0 && <div style={{...kachel,padding:10}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          <button onClick={()=>setNwAuswahl("alle")} style={katBtn(nwAuswahl==="alle")}>Alle Konkurrenzen</button>
+        </div>
+        {nwGruppen.map(g=>
+          <div key={g.key} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",
+            padding:"6px 0",borderTop:"1px solid var(--border)"}}>
+            <button onClick={()=>setNwAuswahl(`g:${g.key}`)}
+              style={{...katBtn(nwAuswahl===`g:${g.key}`),fontWeight:800}}>{g.label}</button>
+            {g.konkurrenzen.map(k=>
+              <button key={k.key} onClick={()=>setNwAuswahl(`k:${g.key}:${k.key}`)}
+                style={katBtn(nwAuswahl===`k:${g.key}:${k.key}`)}>{k.label}</button>)}
+          </div>)}
+      </div>}
+
+      {abschnitte.length===0 || abschnitte.every(a=>a.jahre.length===0)
+        ? <div style={{...kachel,fontSize:12,color:"var(--text3)"}}>
+            Für „{platzKat.label}“ sind keine Ergebnisse hinterlegt.
           </div>
-        : <div>
-            {jahre.map(({jahr,eintraege})=>
+        : abschnitte.map((a,ai)=>
+          <div key={a.titel||ai}>
+            {a.titel && <div style={{fontSize:14,fontWeight:800,color:"var(--text)",margin:"4px 2px 8px"}}>
+              {a.titel}
+            </div>}
+            {a.jahre.map(({jahr,bloecke})=>
               <div key={jahr} style={kachel}>
                 <div style={{fontSize:13,fontWeight:800,color:TTC_ROT,marginBottom:7}}>
                   {jahr}
-                  {kategorie.nurHoechsteKlasse && (()=>{ 
-                    const k=[...new Set(eintraege.map(e=>e.konkurrenz).filter(Boolean))].join(", ");
-                    return k ? <span style={{fontSize:10,fontWeight:600,color:"var(--text4)",marginLeft:8}}>{k}</span> : null;
-                  })()}
+                  {istNw && !a.mehrereKonk && bloecke[0]?.konkurrenz &&
+                    <span style={{fontSize:10,fontWeight:600,color:"var(--text4)",marginLeft:8}}>{bloecke[0].konkurrenz}</span>}
                 </div>
-                {vmPlaetzeGruppiert(eintraege).map(({platz,personen,konkurrenz})=>
-                  <div key={platz} style={{display:"flex",alignItems:"baseline",gap:10,padding:"4px 0",
-                    borderBottom:"1px solid var(--border)"}}>
-                    <div style={{fontSize:12,fontWeight:800,minWidth:34,
-                      color:platz==="1"?"#f59e0b":platz==="2"?"#9ca3af":platz==="3"?"#b45309":"var(--text3)"}}>
-                      {platz}.
-                    </div>
-                    <div style={{flex:1,minWidth:0,fontSize:12,color:"var(--text)"}}>
-                      {personen.join(" / ")}
-                      {!kategorie.nurHoechsteKlasse && konkurrenz && konkurrenz!==kategorie.label &&
-                        <span style={{fontSize:10,color:"var(--text4)",marginLeft:6}}>{konkurrenz}</span>}
-                    </div>
+                {bloecke.map((b,bi)=>
+                  <div key={b.konkurrenz||bi} style={{marginTop:bi?10:0}}>
+                    {istNw && a.mehrereKonk &&
+                      <div style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:3}}>{b.konkurrenz}</div>}
+                    {b.zeilen.map((z,i)=>platzZeile(z,i,!istNw))}
                   </div>)}
               </div>)}
-          </div>}
+          </div>)}
+    </>}
 
     <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
       Grundlage sind die Turniererfolge aller Personen – auch passiver und solcher, die nicht
       mehr im Spielerstamm stehen und beim Import der Datei „Turniererfolge“ gesondert
-      übernommen wurden.
+      übernommen wurden. Geteilte Plätze stehen in eigenen Zeilen. Beim Doppel werden die
+      Partner über die Spalte „Partner“ der Turniererfolge oder über das Turnier zugeordnet;
+      ohne diese Angabe stehen mehr als zwei Personen auf demselben Platz einzeln.
     </div>
   </div>;
 }
@@ -3261,6 +3447,7 @@ function VereinsmeisterHistorie({ players=[] }){
 // Export und Import der Turniererfolge (Verwaltung → Uploads).
 function TurniererfolgeExportImport({ players=[], showToast }){
   const {turniere,geladen:turniereGeladen}=useTurniereListe();
+  const externStore=useTurniererfolgeExtern();   // V482: gehört mit in den Export
   const [exportLaeuft,setExportLaeuft]=useState(false);
   const [importLaeuft,setImportLaeuft]=useState(false);
   const [meldung,setMeldung]=useState("");
@@ -3269,11 +3456,13 @@ function TurniererfolgeExportImport({ players=[], showToast }){
   // Solange die Turniere noch nicht geladen sind, nicht streng filtern – sonst
   // waeren kurzzeitig alle automatisch uebertragenen Erfolge ausgeblendet.
   const anzahlErfolge=(players||[]).reduce((n,p)=>
-    n+((p.tournaments||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere,turniereGeladen)).length),0);
+    n+((p.tournaments||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere,turniereGeladen)).length),0)
+    + Object.values(externStore.personen||{}).reduce((n,e)=>
+    n+((e.erfolge||[]).filter(t=>erfolgAusAbgeschlossenemTurnier(t,turniere,turniereGeladen)).length),0);
 
   async function exportieren(){
     setExportLaeuft(true); setMeldung("");
-    const zeilen=turniererfolgeZeilen(players, turniere, turniereGeladen);
+    const zeilen=turniererfolgeZeilen(players, turniere, turniereGeladen, externStore);
     const datum=new Date().toLocaleDateString("sv");
     const dateiname=`Turniererfolge_${datum.replace(/-/g,"_")}.xlsx`;
     try{
@@ -3368,13 +3557,16 @@ function TurniererfolgeExportImport({ players=[], showToast }){
   return <div>
     <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.65,marginBottom:10}}>
       Alle Turniererfolge aller Personen als Excel-Datei – je Zeile ein Erfolg, mit genau den
-      Feldern aus der Verwaltung: Typ, Turniername, Platz, Disziplin, Konkurrenz, Datum und Jahr.
+      Feldern aus der Verwaltung: Typ, Turniername, Platz, Disziplin, Konkurrenz, Partner, Datum und Jahr.
+      Auch Personen außerhalb des Spielerstamms sind enthalten (ohne Spieler-ID).
       Enthalten sind nur Erfolge aus Turnieren im Status „Abgeschlossen“ sowie manuell erfasste Erfolge.
       Erfolge aus inzwischen gelöschten Turnieren bleiben außen vor.
       Die Kopfzeile ist fixiert und über alle Spalten filterbar, alle Felder haben einen Rahmen.
       Die Spalten Spieler-ID, Vorname und Nachname ordnen jede Zeile ihrer Person zu; „Herkunft“
       kennzeichnet Erfolge, die beim Abschluss eines Vereinsturniers automatisch übertragen wurden –
-      bitte unverändert lassen.
+      bitte unverändert lassen. In „Partner“ steht beim Doppel der Partner als „Vorname Nachname“;
+      die Spalte kann nachgetragen und die Datei wieder eingelesen werden. Beim Doppel reicht der
+      Eintrag bei einem der beiden Partner. Dateien ohne diese Spalte lassen sich weiterhin einlesen.
     </div>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <button onClick={exportieren} disabled={exportLaeuft} style={{flex:"1 1 180px",padding:"10px 12px",
@@ -12577,6 +12769,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                             style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
                         </div>
                       </div>
+                      {/* V482: Doppelpartner – nur bei Doppel/Mixed */}
+                      {/doppel|mixed/i.test(t.konkurrenz||"") && <div style={{marginBottom:6}}>
+                        <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Partner</label>
+                        <input value={t.partner||""} onChange={e=>updateT(i,"partner",e.target.value)} placeholder="Vorname Nachname"
+                          style={{padding:"4px 8px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                      </div>}
                       {/* Zeile 3: Datum + Jahr (auto) */}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 80px",gap:6}}>
                         <div>
@@ -15446,7 +15644,7 @@ function ErfolgeTab({player, hideTraining=false}) {
     const color=placeN===1?"#ffd700":placeN===2?"#b8b8b8":placeN===3?"#cd7f32":"#6b7280";
     const year=t.year||t.date?.slice(0,4)||"";
     const line1=[t.name,year].filter(Boolean).join(" ");
-    const line2=[t.altersklasse,t.konkurrenz].filter(Boolean).join(" – ");
+    const line2=[t.altersklasse,t.konkurrenz,t.partner?`mit ${t.partner}`:""].filter(Boolean).join(" – ");
     const line3=t.date?formatDateDE(t.date):"";
     return <div style={{background:"var(--bg2)",border:`1px solid ${color}44`,borderRadius:11,padding:"10px 13px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:`${color}22`,border:`2px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{placeEmoji(t.place||"?")}</div>
