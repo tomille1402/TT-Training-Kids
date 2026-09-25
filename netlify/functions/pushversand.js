@@ -1,4 +1,4 @@
-// === TTC-App · Version 352 · netlify/functions/pushversand.js · erstellt 29.07.2026 (V352: Push nur an final Nominierte) ===
+// === TTC-App · Version 485 · netlify/functions/pushversand.js · erstellt 24.09.2026 (V485: Glocken-Nachrichten nachziehen) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -201,6 +201,10 @@ function uhrzeitMinusStunden(uhr, stunden){
 }
 
 module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue };
+// V485: für nachrichtaktualisieren.js (Funktionen werden weiter unten deklariert und gehoben).
+module.exports.nachwuchsNachrichtenNachziehen = (...a)=>nachwuchsNachrichtenNachziehen(...a);
+module.exports.SAISON = SAISON;
+module.exports.AUF_KEY = AUF_KEY;
 
 // ── Fachlogik: Empfänger ──
 function istNachwuchsMannschaft(mannschaft, nachwuchsListe){
@@ -255,15 +259,15 @@ function betreuerIds(spielKey, einsaetzeData, players){
   }
   return ids;
 }
-// Fahrer: der unter _fahrer eingetragene Name ist i.d.R. ein Elternteil OHNE eigenen
-// Account. Die Nachricht geht daher an den Account des zugehörigen KINDES, in dessen
-// Elternfeldern dieser Name steht. Rückgabe: Spieler-IDs der betroffenen Kinder.
+// Fahrer: die unter _fahrer und _fahrer2 (seit V475) eingetragenen Namen sind i.d.R.
+// Elternteile OHNE eigenen Account. Die Nachricht geht daher an den Account des
+// zugehörigen KINDES, in dessen Elternfeldern der Name steht. Rückgabe: Spieler-IDs
+// der betroffenen Kinder (ohne Doppelte, falls beide Fahrer Eltern desselben Kindes sind).
 function fahrerKindIds(spielKey, einsaetzeData, players){
   const e = einsaetzeData[spielKey] || {};
-  const nm = e._fahrer;
-  if(!nm) return [];
-  const ziel = normName(nm);
-  const ids = [];
+  const ziele = [e._fahrer, e._fahrer2].filter(Boolean).map(normName).filter(Boolean);
+  if(!ziele.length) return [];
+  const ids = new Set();
   for(const kind of players){
     const paare = [
       [kind.elternVorname1, kind.elternNachname1],
@@ -272,11 +276,11 @@ function fahrerKindIds(spielKey, einsaetzeData, players){
     const treffer = paare.some(([vn,nn])=>{
       const v=(vn||"").trim(), n=(nn||"").trim();
       if(!v && !n) return false;
-      return normName(v+n)===ziel || normName(n+v)===ziel;
+      return ziele.includes(normName(v+n)) || ziele.includes(normName(n+v));
     });
-    if(treffer) ids.push(kind.id);
+    if(treffer) ids.add(kind.id);
   }
-  return ids;
+  return [...ids];
 }
 // Alle aktiven Admins – sie erhalten laut Vereinsbeschluss GRUNDSÄTZLICH jede
 // Push-Nachricht, unabhängig von der jeweiligen Empfänger-Regel.
@@ -330,6 +334,102 @@ function tageBis(terminISO, heute){
   return Math.round((a-b)/86400000);
 }
 
+// ── Nachricht zu einem Nachwuchsspiel (V485 aus dem Handler herausgelöst) ──
+// Ausführlicher, nach Heim/Auswärts unterschiedener Text mit Treffpunkt (1 Std. vor
+// Beginn), Betreuern und – auswärts – bis zu zwei Fahrern (_fahrer, _fahrer2).
+// Wird vom täglichen Versand und vom Nachziehen bestehender Glocken-Nachrichten
+// (nachrichtaktualisieren.js) gemeinsam genutzt, damit beide denselben Text liefern.
+function nachwuchsSpielNachricht(s, ei, diff){
+  const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
+  const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean);
+  const fahrer = [ei._fahrer, ei._fahrer2].filter(Boolean)
+    .map(f=>String(f).trim().replace(/\.+$/,"")).filter(Boolean);
+  const wtag = deWochentag(s.datum);
+  const dat = deDatum(s.datum);
+  const beginn = (s.uhrzeit||"").trim();
+  const treff = uhrzeitMinusStunden(beginn, 1);
+  const istHeim = /heim/i.test(s.ort||"");
+  const gegner = s.gegner || "unseren Gegner";
+  const betreuerSatz = betreuer.length>=2
+    ? `Betreuer sind ${betreuer[0]} und ${betreuer[1]}.`
+    : betreuer.length===1
+      ? `Betreuer ist ${betreuer[0]}.`
+      : "Ein Betreuer wird noch gesucht.";
+  let text;
+  if(istHeim){
+    text =
+`🏓 Guten Morgen,
+
+am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in Niederzeuzheim und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
+${betreuerSatz}
+
+Viel Erfolg 🏓`;
+  } else {
+    const spielort = ortAusGegner(s.gegner) || "beim Gegner";
+    const fahrerSatz = fahrer.length>=2
+      ? `Eure Fahrer sind ${fahrer[0]} und ${fahrer[1]}.`
+      : fahrer.length===1
+        ? `Euer Fahrer ist ${fahrer[0]}.`
+        : "Ein Fahrer wird noch gesucht. Wer von den Eltern kann fahren?";
+    text =
+`🏓 Guten Morgen,
+
+am ${wtag}, den ${dat} habt ihr euer nächstes Spiel gegen ${gegner}. Das Spiel ist in ${spielort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam nach ${spielort} zu fahren.
+${fahrerSatz}
+${betreuerSatz}
+
+Viel Erfolg 🏓`;
+  }
+  return { titel:`🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`, text };
+}
+
+// ── Bestehende Glocken-Nachrichten zu Nachwuchsspielen nachziehen (V485) ──
+// Eine Erinnerung wird am Versandtag einmal als appNachrichten/<sendeId> abgelegt.
+// Wird danach ein (zweiter) Fahrer oder Betreuer eingetragen oder geändert, blieb der
+// Text hinter der Glocke bisher auf dem alten Stand. Diese Funktion baut Text und
+// Empfänger aller bereits angelegten Nachrichten kommender Nachwuchsspiele neu auf
+// und schreibt sie zurück, wenn sich etwas geändert hat. Es wird dabei KEIN Push
+// verschickt; Anlagedatum und Zeitstempel der Nachricht bleiben erhalten.
+async function nachwuchsNachrichtenNachziehen({ spiele, regeln, einsaetzeData, aufSpieler, players,
+    verlegungen={}, heute, nurSpielKey=null, dryRun=false }){
+  const regel = regeln && regeln.spiele && regeln.spiele.nachwuchs;
+  if(!regel || !regel.aktiv) return 0;
+  const admins = adminIds(players);
+  let geaendert = 0;
+  for(const s of (spiele||[])){
+    if(!s.datum) continue;
+    if(!istNachwuchsMannschaft(s.mannschaft, regeln.nachwuchsMannschaften)) continue;
+    const sk = spielKeyOf(s);
+    if(nurSpielKey && sk!==nurSpielKey) continue;
+    const vg = verlegungen[sk]; if(vg && vg.status==="geplant") continue;
+    const diff = tageBis(s.datum, heute);
+    if(diff<0) continue;                                   // vergangene Spiele nicht mehr anfassen
+    for(const t of (regel.tage||[])){
+      if(t<diff) continue;                                 // noch nicht verschickt
+      const sendeId = `spiel_${sk}_d${t}`;
+      const bisher = await getDocData("appNachrichten/"+sendeId);
+      if(!bisher) continue;                                // nur vorhandene Nachrichten aktualisieren
+      const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, t);
+      const empf = [...new Set([
+        ...spielEmpfaenger(regel.empfaenger, s.mannschaft, sk, aufSpieler, einsaetzeData, players),
+        ...admins])];
+      const gleicheEmpf = JSON.stringify([...(bisher.empfaenger||[])].sort())===JSON.stringify([...empf].sort());
+      if(bisher.titel===titel && bisher.text===text && gleicheEmpf) continue;
+      geaendert++;
+      if(dryRun) continue;
+      // PATCH ersetzt das ganze Dokument – daher alle Felder mitschicken.
+      await patchDoc("appNachrichten/"+sendeId, {
+        titel, text, empfaenger: empf,
+        kategorie: bisher.kategorie || "nachwuchs_spiele",
+        erstellt: bisher.erstellt || heute,
+        ts: typeof bisher.ts==="number" ? bisher.ts : Date.now(),
+        aktualisiert: Date.now()
+      });
+    }
+  }
+  return geaendert;
+}
+
 // ── Handler ──
 module.exports.handler = async (event) => {
   try{
@@ -371,6 +471,14 @@ module.exports.handler = async (event) => {
     const players = await getCollection("players");
     const abos = await getCollection("pushAbos");
 
+    // V485: Bereits angelegte Glocken-Nachrichten kommender Nachwuchsspiele auf den
+    // aktuellen Stand bringen (z. B. nachträglich eingetragener zweiter Fahrer).
+    let nachgezogen = 0;
+    try{
+      nachgezogen = await nachwuchsNachrichtenNachziehen({ spiele, regeln, einsaetzeData, aufSpieler,
+        players, verlegungen, heute, dryRun });
+    }catch(e){ /* Zusatzfunktion – Versand nicht gefährden */ }
+
     const histDoc = await getDocData("config/pushVersand");
     const historie = (histDoc && histDoc.gesendet) || {};
 
@@ -406,50 +514,11 @@ module.exports.handler = async (event) => {
       // Für Nachwuchsspiele: ausführliche, nach Heim/Auswärts differenzierte Nachricht
       // inkl. Treffpunkt (1 Std. vor Beginn), Betreuer und – auswärts – Fahrer.
       if(nachwuchs){
-        const ei = einsaetzeData[sk] || {};
-        const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean);
-        const fahrer = ei._fahrer || "";
-        const wtag = deWochentag(s.datum);
-        const dat = deDatum(s.datum);
-        const beginn = (s.uhrzeit||"").trim();
-        const treff = uhrzeitMinusStunden(beginn, 1);
-        const istHeim = /heim/i.test(s.ort||"");
-        const gegner = s.gegner || "unseren Gegner";
-        // Betreuer-Satz je nach Anzahl.
-        const betreuerSatz = betreuer.length>=2
-          ? `Betreuer sind ${betreuer[0]} und ${betreuer[1]}.`
-          : betreuer.length===1
-            ? `Betreuer ist ${betreuer[0]}.`
-            : "Ein Betreuer wird noch gesucht.";
-        let text;
-        if(istHeim){
-          text =
-`🏓 Guten Morgen,
-
-am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in Niederzeuzheim und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
-${betreuerSatz}
-
-Viel Erfolg 🏓`;
-        } else {
-          // Bei Auswärtsspielen ist der Spielort der ORT des Gegners (aus dem Vereinsnamen
-          // abgeleitet, ohne Kürzel/Gründungsjahr/Mannschaftsnummer).
-          const spielort = ortAusGegner(s.gegner) || "beim Gegner";
-          const fahrerSatz = fahrer
-            ? `Euer Fahrer ist ${String(fahrer).trim().replace(/\.+$/,"")}.`
-            : "Ein Fahrer wird noch gesucht. Wer von den Eltern kann fahren?";
-          text =
-`🏓 Guten Morgen,
-
-am ${wtag}, den ${dat} habt ihr euer nächstes Spiel gegen ${gegner}. Das Spiel ist in ${spielort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam nach ${spielort} zu fahren.
-${fahrerSatz}
-${betreuerSatz}
-
-Viel Erfolg 🏓`;
-        }
+        const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, diff);
         zuSenden.push({
           sendeId: `spiel_${sk}_d${diff}`,
           empfaengerIds: ids,
-          titel: `🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`,
+          titel,
           text,
           kategorie: "nachwuchs_spiele",
           url: "/"
@@ -690,6 +759,7 @@ Viel Erfolg 🏓`;
       datum: heute, dryRun,
       jobs: zuSenden.length,
       gesendet, uebersprungen, fehler,
+      glockenNachrichtenAktualisiert: nachgezogen,
       details: zuSenden.map(j=>{
         const d = {
           sendeId:j.sendeId,

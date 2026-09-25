@@ -1,4 +1,4 @@
-// === TTC-App · Version 272 · netlify/functions/calendar.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 485 · netlify/functions/calendar.js · erstellt 24.09.2026 (V485: zweiter Fahrer) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -84,7 +84,7 @@ function buildICS(opts){
     if(puffer&&heim&&(vorMin||nachMin)) descParts.push(`inkl. Aufbau ${vorMin} Min vorher, Abbau ${nachMin} Min nachher`);
     if(puffer&&auswaerts&&(vorMin||nachMin)) descParts.push(`inkl. Hinfahrt ${vorMin} Min, Rückfahrt ${nachMin} Min`);
     if(s.ergebnis) descParts.push(`Ergebnis: ${s.ergebnis}`);
-    // Fahrer/Betreuer aus dem Spiegeldokument (Struktur {b1,b2,f}). spielKey identisch zur App.
+    // Fahrer/Betreuer aus dem Spiegeldokument (Struktur {b1,b2,f,f2}). spielKey identisch zur App.
     const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
     const ei=einsaetzeData[sk]||{};
     // Betreuer/Fahrer als eigene Zeilen GANZ UNTEN anfügen, rollenabhängig:
@@ -95,7 +95,9 @@ function buildICS(opts){
       if(ei.b1) bfZeilen.push(`Betreuer 1: ${ei.b1}`);
       if(ei.b2) bfZeilen.push(`Betreuer 2: ${ei.b2}`);
     } else {
-      if(ei.f)  bfZeilen.push(`Fahrer: ${ei.f}`);
+      // V485: bis zu zwei Fahrer (f, f2) – wie in der App.
+      const fahrer=[ei.f,ei.f2].filter(Boolean).join(", ");
+      if(fahrer) bfZeilen.push(`Fahrer: ${fahrer}`);
       if(ei.b1) bfZeilen.push(`Betreuer: ${ei.b1}`);
     }
     let descText=descParts.join(" · ");
