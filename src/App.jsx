@@ -1,4 +1,4 @@
-// === TTC-App · Version 485 · erstellt 24.09.2026 ===
+// === TTC-App · Version 486 · erstellt 25.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "485";
-const APP_DATUM = "24.09.2026";
+const APP_VERSION = "486";
+const APP_DATUM = "25.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
 // (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
@@ -8618,8 +8618,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </Modal>}
 
     {/* Standalone header + chips - only when NOT inside RSW */}
-    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:97,background:"var(--bg2)",paddingTop:"var(--sat, 0px)"}}>
-      <div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 6px"}}>
+    {!hideHeader&&<div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:97,background:MENU_GRUND(),paddingTop:"var(--sat, 0px)"}}>
+      <div style={{background:`${MENU_TOENUNG}, linear-gradient(135deg,var(--bg2),var(--bg))`,borderBottom:"1px solid var(--club-22)",padding:"14px 14px 6px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
@@ -8705,7 +8705,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     </div>}
 
     {/* Tabs — immer fixiert: unter RSWHeader (hideHeader) oder standalone (62px) */}
-    <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
+    <div ref={tabBarRef} style={{display:"flex",borderBottom:"1px solid var(--club-33, #c8102e33)",background:REITER_GRUND(),
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"calc(62px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:96,
@@ -8720,7 +8720,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{
         flexShrink:0,flex:istHome?"0 0 auto":1,padding:"10px 4px",
         background: istHome
-          ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)")
+          ? REITER_HOME_GRUND(aktiv)
           : reiterHintergrund(t, aktiv),
         border:"none",
         ...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),
@@ -15302,7 +15302,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
-    {!hideHeader&&<div style={{background:"linear-gradient(135deg,var(--bg2),var(--bg))",borderBottom:"1px solid var(--border)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
+    {!hideHeader&&<div style={{background:`${MENU_TOENUNG}, linear-gradient(135deg,var(--bg2),var(--bg))`,borderBottom:"1px solid var(--club-22)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
@@ -15324,7 +15324,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--club-22)",background:"var(--bg)",
+    <div style={{display:"flex",borderBottom:"1px solid var(--club-33, #c8102e33)",background:REITER_GRUND(),
       position:"fixed",
       top:hideHeader?"var(--rsw-height)":"calc(70px + var(--sat, 0px))",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:99,
@@ -15333,7 +15333,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         // Vereinsfarbe aus dem Farbschema; getoenter Grund fuer den aktiven Reiter.
         const aktiv = activeTab===t.key;
         const istHome = t.key==="home";
-        return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{flexShrink:0,padding:"8px 10px",background:istHome?(aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg)":"var(--bg)"):reiterHintergrund(t, aktiv),border:"none",...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,color:aktiv?TTC_ROT:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
+        return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{flexShrink:0,padding:"8px 10px",background:istHome?REITER_HOME_GRUND(aktiv):reiterHintergrund(t, aktiv),border:"none",...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),...(istHome?{position:"sticky",left:0,zIndex:2,boxShadow:"2px 0 4px -2px rgba(0,0,0,0.25)"}:{}),borderBottom:`2px solid ${aktiv?TTC_ROT:"transparent"}`,color:aktiv?TTC_ROT:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,lineHeight:1.1,whiteSpace:"nowrap"}}>
           <span style={{fontSize:15}}>{t.icon}</span>
           <span>{t.label}</span>
         </button>;
@@ -23393,10 +23393,28 @@ function setzeFarbschema(key){
     r.setProperty("--club-18", basis+"18");
     r.setProperty("--club-22", basis+"22");
     r.setProperty("--club-55", basis+"55");
+    // V486: Tönung der oberen Menüzeilen. Kopfzeile (Funktionen) etwas kräftiger als
+    // die Reiterleiste darunter; Trennlinie in mittlerer Stärke.
+    r.setProperty("--club-menu",   basis+"24");   // ca. 14 % Deckkraft
+    r.setProperty("--club-reiter", basis+"17");   // ca. 9 % Deckkraft
+    r.setProperty("--club-33",     basis+"33");
     r.setProperty("--club-shadow", "0 4px 14px "+basis+"33");
   }catch(e){}
   return s;
 }
+// Deckende Hintergründe der oberen Menüzeilen (V486): Vereinsfarbe als Schleier über
+// dem normalen Grund. Deckend, weil die Leisten fixiert sind und der Inhalt darunter
+// durchscrollt. Die Rückfallwerte gelten, falls das Farbschema noch nicht gesetzt ist.
+const MENU_TOENUNG   = "linear-gradient(var(--club-menu, #c8102e24),var(--club-menu, #c8102e24))";
+const REITER_TOENUNG = "linear-gradient(var(--club-reiter, #c8102e17),var(--club-reiter, #c8102e17))";
+const MENU_GRUND = (basis="var(--bg2)") => `${MENU_TOENUNG}, ${basis}`;
+const REITER_GRUND = (basis="var(--bg)") => `${REITER_TOENUNG}, ${basis}`;
+// Fixierter Home-Reiter: braucht denselben deckenden Grund wie die Leiste, aktiv mit
+// zusätzlichem Schleier.
+const REITER_HOME_GRUND = (aktiv, basis="var(--bg)") => aktiv
+  ? `linear-gradient(var(--club-12),var(--club-12)), ${REITER_TOENUNG}, ${basis}`
+  : REITER_GRUND(basis);
+
 // Standardfarben sofort setzen, damit die App schon vor dem Laden der
 // Vereinskonfiguration korrekt eingefaerbt ist.
 try{ setzeFarbschema("rot"); }catch(e){}
@@ -23712,7 +23730,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     <div style={{position:"fixed",
       top:inRSW?"var(--rsw-height)":"0px",
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:200,
-      background:"var(--bg2)",borderBottom:"2px solid var(--club-22)",
+      background:REITER_GRUND("var(--bg2)"),borderBottom:"2px solid var(--club-33, #c8102e33)",
       paddingTop:inRSW?0:"var(--sat, 0px)"}}>
       <div style={{display:"flex",alignItems:"center",padding:"4px 8px 0",gap:4}}>
         <div style={{flex:1,display:"flex",overflowX:"auto"}}>
@@ -23723,7 +23741,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
             return <button key={t.key} onClick={()=>setActiveTab(t.key)} title={t._abschnitt||undefined} style={{
             flexShrink:0,padding:"7px 8px",
             background: istHome
-              ? (aktiv?"linear-gradient(var(--club-12),var(--club-12)), var(--bg2)":"var(--bg2)")
+              ? REITER_HOME_GRUND(aktiv, "var(--bg2)")
               : reiterHintergrund(t, aktiv),
             border:"none",
             ...(t._abschnittStart?{borderLeft:"2px solid var(--club-55)"}:{}),
@@ -23838,8 +23856,8 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
   return <>
     <div ref={containerRef} style={{
       position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",
-      width:"100%",maxWidth:APP_MAX_BREITE,zIndex:500,background:"var(--bg2)",
-      borderBottom:"2px solid var(--club-22)",
+      width:"100%",maxWidth:APP_MAX_BREITE,zIndex:500,background:MENU_GRUND(),
+      borderBottom:"2px solid var(--club-33, #c8102e33)",
       // Platz fuer die Statusleiste (iPad/iPhone). Da die Hoehe gemessen wird,
       // ruecken Reiterleisten und Platzhalter automatisch mit.
       paddingTop:"var(--sat, 0px)"
@@ -23853,11 +23871,11 @@ function RSWHeader({switchBarContent, parentBarContent, chipsContent}) {
         {switchBarContent}
       </div>
       {/* Eltern-/Kind-Umschaltleiste — direkt unter der Funktionsleiste, über allen anderen Menüs */}
-      {parentBarContent && <div style={{padding:"6px 14px",borderTop:"1px solid var(--border)",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
+      {parentBarContent && <div style={{padding:"6px 14px",borderTop:"1px solid var(--club-22)",display:"flex",gap:6,alignItems:"center",overflowX:"auto"}}>
         {parentBarContent}
       </div>}
       {/* Chips */}
-      {chipsContent && <div style={{padding:"4px 14px 8px",borderTop:"1px solid var(--border)"}}>
+      {chipsContent && <div style={{padding:"4px 14px 8px",borderTop:"1px solid var(--club-22)"}}>
         {chipsContent}
       </div>}
     </div>
