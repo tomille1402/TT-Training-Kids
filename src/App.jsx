@@ -1,4 +1,4 @@
-// === TTC-App · Version 486 · erstellt 25.09.2026 ===
+// === TTC-App · Version 488 · erstellt 26.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,8 +21,8 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "486";
-const APP_DATUM = "25.09.2026";
+const APP_VERSION = "488";
+const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
 // (1180 bis 1376 Pixel) blieben dadurch links und rechts graue Streifen. 1600 Pixel
@@ -17685,7 +17685,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
       }catch(e){}
       try{
         const sl=await getDoc(doc(db,"config","spiellokale"));
-        d.lokale=(sl.exists()&&sl.data().vereine)||SPIELLOKALE_SEED;
+        d.lokale=spiellokaleMitVorbelegung(sl.exists()?sl.data().vereine:null);
       }catch(e){ d.lokale=SPIELLOKALE_SEED; }
       try{
         const tz=await getDoc(doc(db,"config","trainingszeiten"));
@@ -17790,9 +17790,12 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
 
 // ─── SPIELLOKALE ──────────────────────────────────────────────────────────────
 // Spielstaetten der Vereine im Kreis Limburg-Weilburg. Die Stammdaten unten sind
-// aus dem Vereinsspielplan vorbelegt und koennen in der Verwaltung gepflegt und
+// seit V488 vollstaendig aus dem Vereinsverzeichnis des HTTV uebernommen
+// (httv.de/limburg-weilburg/vereine, Stand 26.09.2026: 59 Vereine, 93 Spiellokale,
+// Spiellokal-Nummern wie beim Verband). Sie koennen in der Verwaltung gepflegt und
 // ergaenzt werden (bis zu 3 Spiellokale je Verein). Gespeichert wird unter
-// config/spiellokale; ohne gespeicherte Daten gilt die Vorbelegung.
+// config/spiellokale. Gespeicherte Angaben haben Vorrang; Vereine und Spiellokale,
+// die dort noch fehlen, werden aus der Vorbelegung ergaenzt (spiellokaleMitVorbelegung).
 const SPIELLOKALE_SEED = [
  {
   "verein": "DJK SG Blau-Weiß Lahr",
@@ -17804,6 +17807,26 @@ const SPIELLOKALE_SEED = [
     "strasse": "Ahornweg 3",
     "plz": "65620",
     "ort": "Waldbrunn/Lahr"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle Waldernbach",
+    "strasse": "Pfingstbornstr.",
+    "plz": "35794",
+    "ort": "Mengerskirchen/Waldernbach"
+   }
+  ]
+ },
+ {
+  "verein": "FC SW 1921 Dorndorf",
+  "vereinNr": "33014",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Mehrzweckhalle Dorndorf",
+    "strasse": "Friedenstraße",
+    "plz": "65599",
+    "ort": "Dornburg-Dorndorf"
    }
   ]
  },
@@ -17834,6 +17857,59 @@ const SPIELLOKALE_SEED = [
   ]
  },
  {
+  "verein": "Sportfreunde 1986 Reichenborn",
+  "vereinNr": "33061",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH Reichenborn",
+    "strasse": "Bienengarten",
+    "plz": "35799",
+    "ort": "Reichenborn"
+   },
+   {
+    "nr": "2",
+    "name": "Albert-Wagner-Schule Sporthalle",
+    "strasse": "In der Hembach 1",
+    "plz": "35799",
+    "ort": "Merenberg"
+   }
+  ]
+ },
+ {
+  "verein": "STV 1911 Drommershausen",
+  "vereinNr": "33015",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle des STV",
+    "strasse": "Pfannenstielstr.",
+    "plz": "35781",
+    "ort": "Drommershausen"
+   }
+  ]
+ },
+ {
+  "verein": "SV Langenbach",
+  "vereinNr": "33042",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH Langenbach",
+    "strasse": "Schulstraße",
+    "plz": "35789",
+    "ort": "Langenbach"
+   },
+   {
+    "nr": "2",
+    "name": "Turnhalle Grundschule Weilmünster",
+    "strasse": "Weilstraße 76",
+    "plz": "35789",
+    "ort": "Weilmünster"
+   }
+  ]
+ },
+ {
   "verein": "SV Odersbach 1960",
   "vereinNr": "33057",
   "lokale": [
@@ -17842,7 +17918,14 @@ const SPIELLOKALE_SEED = [
     "name": "Bürgerhaus Odersbach",
     "strasse": "Albert Schweitzer Str.",
     "plz": "35781",
-    "ort": "Weilburg- Odersbach"
+    "ort": "Weilburg-Odersbach"
+   },
+   {
+    "nr": "2",
+    "name": "Neue Turnhalle Jakob-Mankel-Schule",
+    "strasse": "Waldhäuser Weg 17",
+    "plz": "35781",
+    "ort": "Weilburg"
    }
   ]
  },
@@ -17860,6 +17943,39 @@ const SPIELLOKALE_SEED = [
   ]
  },
  {
+  "verein": "TG 1848 Camberg",
+  "vereinNr": "33004",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "TG-Halle",
+    "strasse": "Jahnstraße 1",
+    "plz": "65520",
+    "ort": "Bad Camberg"
+   }
+  ]
+ },
+ {
+  "verein": "Tischtennisclub Elz",
+  "vereinNr": "33020",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Sporthalle Erlenbachschule (Elz-Nord)",
+    "strasse": "Hadamarer Str. 13",
+    "plz": "65604",
+    "ort": "Elz"
+   },
+   {
+    "nr": "2",
+    "name": "Turnhalle Oranienschule (Elz-Süd)",
+    "strasse": "Pestalozzistr.",
+    "plz": "65604",
+    "ort": "Elz"
+   }
+  ]
+ },
+ {
   "verein": "TSV 1959 Hofen-Eschenau",
   "vereinNr": "33036",
   "lokale": [
@@ -17868,7 +17984,7 @@ const SPIELLOKALE_SEED = [
     "name": "Bürgerhaus",
     "strasse": "Eschenauer Straße",
     "plz": "65594",
-    "ort": "Runkel- Hofen"
+    "ort": "Runkel-Hofen"
    }
   ]
  },
@@ -17882,6 +17998,13 @@ const SPIELLOKALE_SEED = [
     "strasse": "Jahnstr.",
     "plz": "65597",
     "ort": "Hünfelden-Heringen"
+   },
+   {
+    "nr": "2",
+    "name": "TSV Kirberg 1863",
+    "strasse": "Weiherweg 3",
+    "plz": "65597",
+    "ort": "Hünfelden-Kirberg"
    }
   ]
  },
@@ -17945,6 +18068,72 @@ const SPIELLOKALE_SEED = [
   ]
  },
  {
+  "verein": "TTC 1968 Werschau",
+  "vereinNr": "33073",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus Werschau",
+    "strasse": "Hessenstraße 8",
+    "plz": "65611",
+    "ort": "Brechen-Werschau"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1969 Freienfels",
+  "vereinNr": "33024",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH Freienfels",
+    "strasse": "Brunnenstr",
+    "plz": "35796",
+    "ort": "Weinbach"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1970 Rot-Weiß Selters",
+  "vereinNr": "33065",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Talhofstr. 2",
+    "plz": "35792",
+    "ort": "Löhnberg-Selters"
+   }
+  ]
+ },
+ {
+  "verein": "TTC 1975 Schupbach",
+  "vereinNr": "33063",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus",
+    "strasse": "In der Bitz",
+    "plz": "65614",
+    "ort": "Beselich-Schupbach"
+   },
+   {
+    "nr": "2",
+    "name": "Bürgerhaus Heckholzhausen",
+    "strasse": "Oberdorf 3",
+    "plz": "65614",
+    "ort": "Beselich-Heckholzhausen"
+   },
+   {
+    "nr": "3",
+    "name": "Sporthalle Obertiefenbach",
+    "strasse": "Schupbacher Str. 43",
+    "plz": "65614",
+    "ort": "Beselich-Obertiefenbach"
+   }
+  ]
+ },
+ {
   "verein": "TTC 1976 Hintermeilingen",
   "vereinNr": "33034",
   "lokale": [
@@ -17980,6 +18169,26 @@ const SPIELLOKALE_SEED = [
     "strasse": ".",
     "plz": "35799",
     "ort": "Merenberg"
+   },
+   {
+    "nr": "2",
+    "name": "DGH Dillhausen",
+    "strasse": "Marktstr.",
+    "plz": "35794",
+    "ort": "Mengerskirchen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Dorchheim-H.",
+  "vereinNr": "33013",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Sporthalle an der B 54",
+    "strasse": "Vogelsanger Weg",
+    "plz": "65627",
+    "ort": "Dorchheim"
    }
   ]
  },
@@ -17993,6 +18202,20 @@ const SPIELLOKALE_SEED = [
     "strasse": "Friedhofstr. 1",
     "plz": "65556",
     "ort": "Limburg-Staffel"
+   },
+   {
+    "nr": "2",
+    "name": "Schulturnhalle Staffel",
+    "strasse": "Schulstrasse",
+    "plz": "65556",
+    "ort": "Limburg-Staffel"
+   },
+   {
+    "nr": "3",
+    "name": "Leo-Sternberg-Schule Limburg",
+    "strasse": "Im Ansper",
+    "plz": "65549",
+    "ort": "Limburg"
    }
   ]
  },
@@ -18008,11 +18231,31 @@ const SPIELLOKALE_SEED = [
     "ort": "Hausen"
    },
    {
+    "nr": "2",
+    "name": "Mehrzweckhalle Lahr",
+    "strasse": "Ahornweg 3",
+    "plz": "65620",
+    "ort": "Waldbrunn Lahr"
+   },
+   {
     "nr": "3",
     "name": "Dorfgemeinschaftshaus Fussingen",
     "strasse": "Ellarer Weg",
     "plz": "65620",
     "ort": "Fussingen"
+   }
+  ]
+ },
+ {
+  "verein": "TTC Lindenholzhausen",
+  "vereinNr": "33045",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle Lindenschule",
+    "strasse": "Am Wingert",
+    "plz": "65551",
+    "ort": "Lindenholzhausen"
    }
   ]
  },
@@ -18026,6 +18269,20 @@ const SPIELLOKALE_SEED = [
     "strasse": "Kirchgasse",
     "plz": "65589",
     "ort": "Niederzeuzheim"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle TuS Frickhofen",
+    "strasse": "Sportplatzweg",
+    "plz": "65599",
+    "ort": "Frickhofen"
+   },
+   {
+    "nr": "3",
+    "name": "Turnhalle der FJL-Gesamtschule",
+    "strasse": "Freiherr-vom-Stein-Str.",
+    "plz": "65589",
+    "ort": "Hadamar"
    }
   ]
  },
@@ -18036,6 +18293,13 @@ const SPIELLOKALE_SEED = [
    {
     "nr": "1",
     "name": "Bürgerhaus Halle 2",
+    "strasse": "Am Hallenbad",
+    "plz": "65555",
+    "ort": "Limburg-Offheim"
+   },
+   {
+    "nr": "2",
+    "name": "Bürgerhaus Halle 1",
     "strasse": "Am Hallenbad",
     "plz": "65555",
     "ort": "Limburg-Offheim"
@@ -18052,6 +18316,26 @@ const SPIELLOKALE_SEED = [
     "strasse": "Westerwaldstraße",
     "plz": "65589",
     "ort": "Oberzeuzheim"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle an der B 54",
+    "strasse": "Vogelsanger Weg",
+    "plz": "65627",
+    "ort": "Dorchheim"
+   }
+  ]
+ },
+ {
+  "verein": "Turnverein Würges 1904",
+  "vereinNr": "33077",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle TV Würges",
+    "strasse": "Am Sportplatz 4",
+    "plz": "65520",
+    "ort": "Bad Camberg-Würges"
    }
   ]
  },
@@ -18069,93 +18353,28 @@ const SPIELLOKALE_SEED = [
   ]
  },
  {
-  "verein": "TV  Frisch auf  Erbach",
-  "vereinNr": "33021",
+  "verein": "TuS 1897 Linter",
+  "vereinNr": "33046",
   "lokale": [
    {
     "nr": "1",
-    "name": "Erlenbachhalle Erbach",
-    "strasse": "Horstweg",
-    "plz": "65520",
-    "ort": "Bad Camberg"
+    "name": "Bürgerhaus",
+    "strasse": "Jahnstraße",
+    "plz": "65550",
+    "ort": "Linter"
    }
   ]
  },
  {
-  "verein": "TV 1882 Runkel",
-  "vereinNr": "33062",
+  "verein": "TuS 1903 Weilmünster",
+  "vereinNr": "33071",
   "lokale": [
    {
     "nr": "1",
-    "name": "Schulturnhalle Runkel",
-    "strasse": "Am Sportplatz",
-    "plz": "65594",
-    "ort": "Runkel"
-   }
-  ]
- },
- {
-  "verein": "TV 1896 Nauheim",
-  "vereinNr": "33050",
-  "lokale": [
-   {
-    "nr": "1",
-    "name": "Turnhalle Nauheim",
-    "strasse": "Heringer Weg 4",
-    "plz": "65597",
-    "ort": "Hünfelden"
-   }
-  ]
- },
- {
-  "verein": "TV 1905 Niederselters",
-  "vereinNr": "33052",
-  "lokale": [
-   {
-    "nr": "1",
-    "name": "TVN-Turnhalle",
-    "strasse": "An den Birken 1",
-    "plz": "65618",
-    "ort": "Selters-Niederselters"
-   }
-  ]
- },
- {
-  "verein": "TV 1907 Kubach",
-  "vereinNr": "33039",
-  "lokale": [
-   {
-    "nr": "2",
-    "name": "Sporthalle Heinrich-von Gagern-Schule",
-    "strasse": "Windhof",
-    "plz": "35781",
-    "ort": "Weilburg"
-   }
-  ]
- },
- {
-  "verein": "TV Münster 1902",
-  "vereinNr": "33049",
-  "lokale": [
-   {
-    "nr": "1",
-    "name": "MZH Mehrzweckhalle",
-    "strasse": "An der Silbergrube",
-    "plz": "65618",
-    "ort": "Selters-Münster"
-   }
-  ]
- },
- {
-  "verein": "Tischtennisclub Elz",
-  "vereinNr": "33020",
-  "lokale": [
-   {
-    "nr": "1",
-    "name": "Sporthalle Erlenbachschule (Elz-Nord)",
-    "strasse": "Hadamarer Str. 13",
-    "plz": "65604",
-    "ort": "Elz"
+    "name": "Grundschulturnhalle",
+    "strasse": "Weilstraße 76",
+    "plz": "35789",
+    "ort": "Weilmünster"
    }
   ]
  },
@@ -18169,6 +18388,40 @@ const SPIELLOKALE_SEED = [
     "strasse": "Schulstraße",
     "plz": "35796",
     "ort": "Weinbach"
+   },
+   {
+    "nr": "2",
+    "name": "\"Bürgerhaus\" TUS Weinbach",
+    "strasse": "Hahnstraße",
+    "plz": "35796",
+    "ort": "Weinbach"
+   }
+  ]
+ },
+ {
+  "verein": "TuS 1910 Ahausen",
+  "vereinNr": "33001",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Ahausen",
+    "strasse": "Selterser Str. 78",
+    "plz": "35781",
+    "ort": "Weilburg-Ahausen"
+   },
+   {
+    "nr": "2",
+    "name": "Turnhalle des STV",
+    "strasse": "Pfannenstielstr.",
+    "plz": "35781",
+    "ort": "Weilburg"
+   },
+   {
+    "nr": "3",
+    "name": "Sporthalle Heinrich-von Gagern-Schule",
+    "strasse": "Am Winhof",
+    "plz": "35781",
+    "ort": "Weilburg"
    }
   ]
  },
@@ -18182,6 +18435,20 @@ const SPIELLOKALE_SEED = [
     "strasse": "Pfarrstraße (Dorfmitte)",
     "plz": "35796",
     "ort": "Weinbach-Elkerhausen"
+   },
+   {
+    "nr": "2",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Zum Grund 10",
+    "plz": "35796",
+    "ort": "Weinbach-Blessenbach"
+   },
+   {
+    "nr": "3",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Brunnenstraße 18",
+    "plz": "35796",
+    "ort": "Weinbach-Freienfels"
    }
   ]
  },
@@ -18193,6 +18460,13 @@ const SPIELLOKALE_SEED = [
     "nr": "1",
     "name": "Bürgerhaus Obertiefenbach",
     "strasse": "Steinbacher Str. 10",
+    "plz": "65614",
+    "ort": "Beselich-Obertiefenbach"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle",
+    "strasse": "Schupbacher Str. 41",
     "plz": "65614",
     "ort": "Beselich-Obertiefenbach"
    },
@@ -18215,6 +18489,13 @@ const SPIELLOKALE_SEED = [
     "strasse": "Jahnstr.",
     "plz": "65606",
     "ort": "Villmar-Aumenau"
+   },
+   {
+    "nr": "2",
+    "name": "Christian-Senckenberg-Schule",
+    "strasse": "Ferdinand-Dirichs-Str. 1",
+    "plz": "65606",
+    "ort": "Villmar"
    }
   ]
  },
@@ -18228,6 +18509,79 @@ const SPIELLOKALE_SEED = [
     "strasse": "Am Sportplatz",
     "plz": "65553",
     "ort": "Limburg-Dietkirchen"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle Eschhofen",
+    "strasse": "Sportplatzstraße",
+    "plz": "65552",
+    "ort": "Limburg"
+   },
+   {
+    "nr": "3",
+    "name": "Leo-Sternberg-Schule",
+    "strasse": "Im Ansper",
+    "plz": "65549",
+    "ort": "Limburg"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Gaudernbach 1911",
+  "vereinNr": "33026",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Bürgerhaus Gaudernbach",
+    "strasse": "Am Wingertsberg",
+    "plz": "35781",
+    "ort": "Weilburg-Gaudernbach"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Gräveneck 1907",
+  "vereinNr": "33027",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "DGH",
+    "strasse": "Taunusstr. 20",
+    "plz": "35796",
+    "ort": "Gräveneck"
+   }
+  ]
+ },
+ {
+  "verein": "TuS GW Schwickershausen",
+  "vereinNr": "33064",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Weilstraße",
+    "plz": "65520",
+    "ort": "Schwickershausen"
+   },
+   {
+    "nr": "2",
+    "name": "Kreissporthalle Bad Camberg",
+    "strasse": "Pommernstraße",
+    "plz": "65520",
+    "ort": "Bad Camberg"
+   }
+  ]
+ },
+ {
+  "verein": "TuS Haintchen 1902",
+  "vereinNr": "33029",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "TuS-Sporthalle",
+    "strasse": "Hessenstraße 40",
+    "plz": "65618",
+    "ort": "Selters-Haintchen"
    }
   ]
  },
@@ -18287,6 +18641,125 @@ const SPIELLOKALE_SEED = [
     "strasse": "Horstertstraße 9",
     "plz": "65594",
     "ort": "Runkel-Wirbelau"
+   },
+   {
+    "nr": "2",
+    "name": "TT Raum Kirschhofen Bürgerhaus",
+    "strasse": "Roßsteinstraße 2",
+    "plz": "35781",
+    "ort": "Weilburg-Kirschhofen"
+   }
+  ]
+ },
+ {
+  "verein": "TV \"Frisch auf\" Erbach",
+  "vereinNr": "33021",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Erlenbachhalle Erbach",
+    "strasse": "Horstweg",
+    "plz": "65520",
+    "ort": "Bad Camberg"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1882 Runkel",
+  "vereinNr": "33062",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Schulturnhalle Runkel",
+    "strasse": "Am Sportplatz",
+    "plz": "65594",
+    "ort": "Runkel"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1896 Nauheim",
+  "vereinNr": "33050",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Turnhalle Nauheim",
+    "strasse": "Heringer Weg 4",
+    "plz": "65597",
+    "ort": "Hünfelden"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1905 Niederselters",
+  "vereinNr": "33052",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "TVN-Turnhalle",
+    "strasse": "An den Birken 1",
+    "plz": "65618",
+    "ort": "Selters-Niederselters"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1907 Falkenbach",
+  "vereinNr": "33023",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Dorfgemeinschaftshaus",
+    "strasse": "Backhausstraße",
+    "plz": "65606",
+    "ort": "Villmar-Falkenbach"
+   }
+  ]
+ },
+ {
+  "verein": "TV 1907 Kubach",
+  "vereinNr": "33039",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "Volkshalle Kubach",
+    "strasse": "Hauptstrasse 60",
+    "plz": "35781",
+    "ort": "Weilburg-Kubach"
+   },
+   {
+    "nr": "2",
+    "name": "Sporthalle Heinrich-von Gagern-Schule",
+    "strasse": "Windhof",
+    "plz": "35781",
+    "ort": "Weilburg"
+   },
+   {
+    "nr": "3",
+    "name": "Hessen-Tags-Halle",
+    "strasse": "Lessingstraße",
+    "plz": "35781",
+    "ort": "Weilburg"
+   }
+  ]
+ },
+ {
+  "verein": "TV Münster 1902",
+  "vereinNr": "33049",
+  "lokale": [
+   {
+    "nr": "1",
+    "name": "MZH Mehrzweckhalle",
+    "strasse": "An der Silbergrube",
+    "plz": "65618",
+    "ort": "Selters-Münster"
+   },
+   {
+    "nr": "2",
+    "name": "Selterser Sporthalle",
+    "strasse": "Goethestraße",
+    "plz": "65618",
+    "ort": "Selters-Niederselters"
    }
   ]
  },
@@ -18331,22 +18804,104 @@ const SPIELLOKALE_SEED = [
  }
 ];
 
-// Adresse eines Spiellokals als einzeiliger Text (Strasse, PLZ Ort).
+// Adresse eines Spiellokals als einzeiliger Text (Strasse, PLZ Ort) – fuer die Anzeige.
 function lokalAdresse(l){
   if(!l) return "";
   return [l.strasse, [l.plz, l.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 }
-// Vollstaendige Bezeichnung inkl. Hallenname – Grundlage fuer die Kartensuche.
+
+// ── Kartenlinks (V487) ───────────────────────────────────────────────────────
+// Bis V486 wurde „Hallenname, Strasse, PLZ Ort“ als freie Suche an Google Maps und
+// Apple Karten uebergeben. Das fuehrte oft zum falschen Ort: Allgemeine Namen wie
+// „Bürgerhaus“ oder „Dorfgemeinschaftshaus“ lenkten die Suche auf andere Gebaeude,
+// und Zusaetze in den Adressen („(Dorfmitte)“, „Ecke Goethe-/Wiesbadener Str.“,
+// „Wlbg-Kirschhofen“, „.“) verwirrten die Adresssuche. Jetzt gilt:
+//  1. Sind Koordinaten hinterlegt (Feld „Koordinaten“ in der Verwaltung – auch ein
+//     eingefuegter Google-Maps-Link), fuehrt der Link genau dorthin.
+//  2. Sonst wird nur die bereinigte Anschrift gesucht (ohne Hallennamen) – das
+//     landet verlaesslich in der richtigen Strasse. Bei Apple Karten erscheint der
+//     Hallenname als Beschriftung der Stecknadel.
+//  3. Nur ohne Strasse wird ersatzweise mit dem Hallennamen gesucht.
+
+// Koordinaten aus einer Eingabe lesen: „50.4567, 8.1234“ oder ein Google-Maps-/
+// Apple-Karten-Link (…/@50.45,8.12,17z, …!3d50.45!4d8.12, ?q=50.45,8.12, ?ll=…).
+// Rueckgabe {lat,lng} oder null. Nur plausible Werte fuer Mitteleuropa werden angenommen,
+// damit vertauschte oder unsinnige Angaben nicht zu einem falschen Ort fuehren.
+function lokalKoordinaten(eingabe){
+  const t=String(eingabe||"").trim();
+  if(!t) return null;
+  const zahl="(-?\\d{1,2}(?:\\.\\d+)?)";
+  const muster=[
+    new RegExp(`!3d${zahl}!4d${zahl}`),                  // Google: Ortsmarke (genauer als @)
+    new RegExp(`@${zahl},${zahl}`),                      // Google: Kartenmitte
+    new RegExp(`[?&](?:q|query|ll|sll|daddr|destination|center)=${zahl}(?:,|%2C)\\s*${zahl}`,"i"),
+    new RegExp(`^${zahl}\\s*[,;\\s]\\s*${zahl}$`),        // reine Zahlen „50.45, 8.12“
+  ];
+  // Deutsche Schreibweise mit Dezimalkomma: „50,4567; 8,1234“ oder „50,4567 8,1234“
+  const de=/^(-?\d{1,2}),(\d+)\s*[;\s]\s*(-?\d{1,2}),(\d+)$/.exec(t);
+  const text = de ? `${de[1]}.${de[2]}, ${de[3]}.${de[4]}` : t;
+  for(const m of muster){
+    const r=m.exec(text);
+    if(!r) continue;
+    let lat=parseFloat(r[1]), lng=parseFloat(r[2]);
+    if(lat>=5 && lat<=16 && lng>=45 && lng<=56){ const x=lat; lat=lng; lng=x; }  // vertauscht
+    if(lat>=45 && lat<=56 && lng>=5 && lng<=16) return {lat, lng};
+  }
+  return null;
+}
+
+// Strasse fuer die Kartensuche bereinigen. Beispiele:
+//  „Pfarrstraße (Dorfmitte)“            → „Pfarrstraße“
+//  „Ecke Goethe-/Wiesbadener Str.“      → „Goethestraße“
+//  „Am Falkenflug/Zufahrt Riehlstr.“    → „Am Falkenflug“
+//  „Albert Schweitzer Str.“             → „Albert Schweitzer Straße“
+//  „Sportplatzstrasse“ · „.“            → „Sportplatzstraße“ · „“
+function lokalStrasseBereinigt(s){
+  let t=String(s||"").replace(/\([^)]*\)?/g," ").replace(/\s+/g," ").trim();
+  t=t.replace(/^(ecke|zufahrt|einfahrt|eingang)\s+/i,"");
+  if(t.includes("/")){
+    const [erst, rest] = t.split("/");
+    // „Goethe-/Wiesbadener Str.“: erster Teil endet auf Bindestrich → Endung vom Rest
+    const endung=/(str(?:a(?:ss|ß)e)?\.?|weg|gasse|platz|allee|ring)\s*\d*\s*$/i.exec(rest||"");
+    t = /-\s*$/.test(erst) && endung ? erst.replace(/-\s*$/,"")+endung[1].toLowerCase() : erst;
+  }
+  // „Jahnstr.“ → „Jahnstraße“, „Freiherr-vom-Stein-Str.“ → „…-Straße“, „Albert Schweitzer Str.“ → „… Straße“
+  t=t.replace(/(^|[\s-])(\S*?)str\.(?=\s|$|\d)/gi,(a,vor,v)=>`${vor}${v}${v?"straße":"Straße"}`)
+     .replace(/-straße\b/g,"-Straße")
+     .replace(/(-?)strasse\b/gi,(a,b)=>b?"-Straße":"straße")
+     .replace(/\s+/g," ").trim();
+  return /[a-zäöüß]{2,}/i.test(t) ? t : "";
+}
+// Ort bereinigen: Kuerzel ausschreiben, „Waldbrunn/Lahr“ → „Waldbrunn-Lahr“,
+// „Weilburg- Odersbach“ → „Weilburg-Odersbach“.
+const LOKAL_ORT_KUERZEL = { "wlbg":"Weilburg", "lbg":"Limburg" };
+function lokalOrtBereinigt(o){
+  let t=String(o||"").replace(/\([^)]*\)?/g," ").trim();
+  t=t.replace(/\s*[\/]\s*/g,"-").replace(/\s*-\s*/g,"-").replace(/\s+/g," ");
+  t=t.replace(/^([A-Za-zÄÖÜäöüß]+)\.?(?=-|\s|$)/,(a,k)=>LOKAL_ORT_KUERZEL[k.toLowerCase()]||a);
+  return t;
+}
+// Suchtext fuer die Karten: bereinigte Anschrift; ohne Strasse der Hallenname davor.
 function lokalSuchtext(l){
   if(!l) return "";
-  return [l.name, lokalAdresse(l)].filter(Boolean).join(", ");
+  const strasse=lokalStrasseBereinigt(l.strasse);
+  const ort=[String(l.plz||"").trim(), lokalOrtBereinigt(l.ort)].filter(Boolean).join(" ");
+  const name=String(l.name||"").replace(/\([^)]*\)?/g," ").replace(/\s+/g," ").trim();
+  const teile = strasse ? [strasse, ort] : [name, ort];
+  return [...teile.filter(Boolean), "Deutschland"].join(", ");
 }
 // Routenplaner-Links (Google Maps / Apple Karten).
 function googleMapsUrl(l){
-  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(lokalSuchtext(l));
+  const k=lokalKoordinaten(l && l.koordinaten);
+  const ziel = k ? `${k.lat},${k.lng}` : lokalSuchtext(l);
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(ziel);
 }
 function appleMapsUrl(l){
-  return "https://maps.apple.com/?q=" + encodeURIComponent(lokalSuchtext(l));
+  const k=lokalKoordinaten(l && l.koordinaten);
+  const name=String((l && l.name)||"Spiellokal").trim();
+  return k
+    ? `https://maps.apple.com/?ll=${k.lat},${k.lng}&q=${encodeURIComponent(name)}`
+    : `https://maps.apple.com/?address=${encodeURIComponent(lokalSuchtext(l))}&q=${encodeURIComponent(name)}`;
 }
 // Vereinsnamen fuer den Abgleich vereinheitlichen (Mannschaftssuffixe, Umlaute, Zusaetze).
 function normVereinName(s){
@@ -18354,7 +18909,7 @@ function normVereinName(s){
     .toLowerCase()
     .replace(/\s+(i{1,3}|iv|v|vi{0,3}|ix|x)\s*$/,"")   // roemische Mannschaftsnummer am Ende
     .replace(/\b\d{4}\b/g,"")                          // Gruendungsjahr
-    .replace(/[.\-\/]/g," ")
+    .replace(/[.\-\/"'„“”‚‘’]/g," ")   // V488: auch Anfuehrungszeichen (TV "Frisch auf" Erbach)
     .replace(/ae/g,"a").replace(/oe/g,"o").replace(/ue/g,"u")
     .replace(/\u00e4/g,"a").replace(/\u00f6/g,"o").replace(/\u00fc/g,"u").replace(/\u00df/g,"ss")
     .replace(/\s+/g," ")
@@ -18373,6 +18928,17 @@ function findeSpiellokal(vereine, vereinName, halleNr){
       return a && (a.includes(ziel) || ziel.includes(a));
     });
   }
+  if(!treffer){
+    // Dritter Versuch (V488): ueber den Ortsnamen, z. B. „TuS Grün-Weiß Schwickershausen“
+    // statt „TuS GW Schwickershausen“. Nur wenn genau EIN Verein passt – bei Orten mit
+    // mehreren Vereinen (Limburg, Weinbach …) wird lieber nichts angezeigt als das Falsche.
+    const ortsWort=(n)=>normVereinName(n).split(" ").filter(w=>w.length>=5).pop()||"";
+    const w=ortsWort(vereinName);
+    if(w){
+      const kandidaten=(vereine||[]).filter(v=>ortsWort(v.verein)===w);
+      if(kandidaten.length===1) treffer=kandidaten[0];
+    }
+  }
   if(!treffer) return null;
   const lok = treffer.lokale||[];
   const nr = String(halleNr||"").trim();
@@ -18380,12 +18946,32 @@ function findeSpiellokal(vereine, vereinName, halleNr){
   return gefunden || lok[0] || null;
 }
 // Laedt die Spiellokale (mit Vorbelegung, falls noch nichts gespeichert wurde).
+// Gespeicherte Spiellokale mit der Vorbelegung zusammenfuehren (V488). Gespeicherte
+// Angaben (in der Verwaltung gepflegt) gewinnen immer. Ergaenzt werden nur Vereine,
+// die es dort noch nicht gibt, und bei vorhandenen Vereinen die Spiellokal-Nummern,
+// die noch fehlen. Zuordnung ueber die Vereinsnummer, ersatzweise ueber den Namen.
+function spiellokaleMitVorbelegung(gespeichert){
+  if(!Array.isArray(gespeichert) || !gespeichert.length) return SPIELLOKALE_SEED;
+  const gleich=(a,b)=> (a.vereinNr && b.vereinNr) ? String(a.vereinNr)===String(b.vereinNr)
+    : normVereinName(a.verein)===normVereinName(b.verein);
+  const liste=gespeichert.map(v=>{
+    const vor=SPIELLOKALE_SEED.find(x=>gleich(x,v));
+    if(!vor) return v;
+    const vorhanden=new Set((v.lokale||[]).map(l=>String(l.nr)));
+    const fehlend=(vor.lokale||[]).filter(l=>!vorhanden.has(String(l.nr)));
+    const lokale=[...(v.lokale||[]), ...fehlend].sort((a,b)=>(Number(a.nr)||99)-(Number(b.nr)||99));
+    return {...v, vereinNr:v.vereinNr||vor.vereinNr||"", lokale};
+  });
+  for(const vor of SPIELLOKALE_SEED)
+    if(!liste.some(v=>gleich(vor,v))) liste.push(vor);
+  return liste.sort((a,b)=>String(a.verein).localeCompare(String(b.verein),"de"));
+}
 function useSpiellokale(){
   const [vereine,setVereine]=useState(SPIELLOKALE_SEED);
   useEffect(()=>{
     const u=onSnapshot(doc(db,"config","spiellokale"),snap=>{
       const d=snap.exists()?snap.data().vereine:null;
-      setVereine(Array.isArray(d)&&d.length?d:SPIELLOKALE_SEED);
+      setVereine(spiellokaleMitVorbelegung(d));
     },()=>{});
     return u;
   },[]);
@@ -18603,14 +19189,14 @@ function SpiellokaleVerwaltung({ showToast }){
   function starteBearbeiten(v){
     const lok=[0,1,2].map(i=>{
       const l=(v.lokale||[])[i]||{};
-      return {nr:String(l.nr||(i+1)),name:l.name||"",strasse:l.strasse||"",plz:l.plz||"",ort:l.ort||""};
+      return {nr:String(l.nr||(i+1)),name:l.name||"",strasse:l.strasse||"",plz:l.plz||"",ort:l.ort||"",koordinaten:l.koordinaten||""};
     });
     setEditVerein(v.verein);
     setEntwurf({verein:v.verein, vereinNr:v.vereinNr||"", lokale:lok});
   }
   function starteNeu(){
     setEditVerein("__neu__");
-    setEntwurf({verein:"", vereinNr:"", lokale:[0,1,2].map(i=>({nr:String(i+1),name:"",strasse:"",plz:"",ort:""}))});
+    setEntwurf({verein:"", vereinNr:"", lokale:[0,1,2].map(i=>({nr:String(i+1),name:"",strasse:"",plz:"",ort:"",koordinaten:""}))});
   }
   function abbrechen(){ setEditVerein(null); setEntwurf(null); }
   function setLokalFeld(idx,feld,wert){
@@ -18623,7 +19209,18 @@ function SpiellokaleVerwaltung({ showToast }){
       // Nur ausgefuellte Spiellokale uebernehmen (Name oder Strasse gesetzt).
       const lok=entwurf.lokale
         .filter(l=>(l.name||"").trim()||(l.strasse||"").trim())
-        .map((l,i)=>({nr:String(l.nr||(i+1)),name:(l.name||"").trim(),strasse:(l.strasse||"").trim(),plz:(l.plz||"").trim(),ort:(l.ort||"").trim()}));
+        .map((l,i)=>{
+          const k=lokalKoordinaten(l.koordinaten);
+          return {nr:String(l.nr||(i+1)),name:(l.name||"").trim(),strasse:(l.strasse||"").trim(),plz:(l.plz||"").trim(),ort:(l.ort||"").trim(),
+            // V487: als „Breite, Länge“ gespeichert – auch wenn ein Kartenlink eingefügt wurde
+            koordinaten: k ? `${k.lat}, ${k.lng}` : ""};
+        });
+      // Unlesbare Koordinaten nicht stillschweigend verwerfen
+      const unlesbar=entwurf.lokale.filter(l=>(l.koordinaten||"").trim() && !lokalKoordinaten(l.koordinaten));
+      if(unlesbar.length){
+        showToast&&showToast("Koordinaten nicht erkannt – bitte „50.4567, 8.1234“ oder einen Google-Maps-Link einfügen","❌");
+        setBusy(false); return;
+      }
       const neu={verein:entwurf.verein.trim(), vereinNr:(entwurf.vereinNr||"").trim(), lokale:lok};
       let liste=[...(vereine||[])];
       if(editVerein==="__neu__"){
@@ -18657,7 +19254,10 @@ function SpiellokaleVerwaltung({ showToast }){
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>
       Spielstaetten der Vereine (bis zu 3 je Verein). Die Liste ist aus dem Vereinsspielplan
       vorbelegt; Adressen koennen ergaenzt bzw. korrigiert und weitere Vereine angelegt werden.
-      Aus diesen Angaben werden die Links zu Google Maps und Apple Karten gebildet.
+      Aus diesen Angaben werden die Links zu Google Maps und Apple Karten gebildet – gesucht wird
+      die Anschrift. Zeigt die Karte trotzdem nicht die richtige Halle, im Feld „Koordinaten“ die
+      genaue Position hinterlegen: in Google Maps lange auf die Halle tippen und die angezeigten
+      Zahlen kopieren, oder den Link der Halle einfügen. Mit „Test“ lässt sich das prüfen.
     </div>
 
     {entwurf
@@ -18679,7 +19279,21 @@ function SpiellokaleVerwaltung({ showToast }){
                 <input value={l.strasse} onChange={e=>setLokalFeld(i,"strasse",e.target.value)} placeholder="Strasse und Hausnummer" style={{...inp,flex:"1 1 180px"}}/>
                 <input value={l.plz} onChange={e=>setLokalFeld(i,"plz",e.target.value)} placeholder="PLZ" style={{...inp,width:90}}/>
                 <input value={l.ort} onChange={e=>setLokalFeld(i,"ort",e.target.value)} placeholder="Ort" style={{...inp,flex:"1 1 140px"}}/>
+                {/* V487: exakte Position – Koordinaten oder eingefügter Google-Maps-Link */}
+                <input value={l.koordinaten||""} onChange={e=>setLokalFeld(i,"koordinaten",e.target.value)}
+                  placeholder="Koordinaten (optional) – z. B. 50.4703, 8.0636 oder Google-Maps-Link"
+                  style={{...inp,flex:"1 1 100%",borderColor:(l.koordinaten||"").trim()&&!lokalKoordinaten(l.koordinaten)?"#ef4444":"var(--border2)"}}/>
               </div>
+              {(l.koordinaten||"").trim() && <div style={{fontSize:10,marginTop:4,
+                color:lokalKoordinaten(l.koordinaten)?"#10b981":"#ef4444"}}>
+                {lokalKoordinaten(l.koordinaten)
+                  ? `✓ erkannt: ${lokalKoordinaten(l.koordinaten).lat}, ${lokalKoordinaten(l.koordinaten).lng} – die Kartenlinks führen genau dorthin`
+                  : "Nicht erkannt. Erwartet: „Breite, Länge“ oder ein Link aus Google Maps."}
+              </div>}
+              {(l.strasse||l.ort||l.name) && <div style={{display:"flex",gap:10,marginTop:5,fontSize:10}}>
+                <a href={googleMapsUrl(l)} target="_blank" rel="noopener noreferrer" style={{color:"#3b82f6"}}>Test: Google Maps ↗</a>
+                <a href={appleMapsUrl(l)} target="_blank" rel="noopener noreferrer" style={{color:"#3b82f6"}}>Test: Apple Karten ↗</a>
+              </div>}
             </div>
           ))}
           <div style={{display:"flex",gap:8}}>
