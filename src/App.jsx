@@ -1,4 +1,4 @@
-// === TTC-App · Version 488 · erstellt 26.09.2026 ===
+// === TTC-App · Version 489 · erstellt 26.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "488";
+const APP_VERSION = "489";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -19176,12 +19176,180 @@ function SpiellokaleView({ ziel=null }){
 }
 
 // Verwaltungs-Abschnitt: Spiellokale pflegen (bis zu 3 je Verein).
+// ─── Spiellokale als Excel (V489) ──────────────────────────────────────────
+// Eine Zeile je Spiellokal. Die Spalten "Test Google Maps" / "Test Apple Karten"
+// sind nur zum Ausprobieren und werden beim Hochladen ignoriert. Zugeordnet wird
+// über die Spaltenüberschrift – umsortierte Spalten funktionieren also weiter.
+const SPIELLOKAL_SPALTEN = [
+  {feld:"verein",      titel:"Verein",                 breite:34},
+  {feld:"vereinNr",    titel:"Vereinsnr.",             breite:11},
+  {feld:"nr",          titel:"Spiellokal-Nr.",         breite:13},
+  {feld:"name",        titel:"Name der Spielstätte",   breite:40},
+  {feld:"strasse",     titel:"Straße und Hausnummer",  breite:34},
+  {feld:"plz",         titel:"PLZ",                    breite:8},
+  {feld:"ort",         titel:"Ort",                    breite:28},
+  {feld:"koordinaten", titel:"Koordinaten",            breite:24},
+  {feld:"_google",     titel:"Test Google Maps",       breite:18},
+  {feld:"_apple",      titel:"Test Apple Karten",      breite:18},
+];
+function spiellokalKopfNorm(t){
+  return String(t||"").toLowerCase().replace(/ß/g,"ss").replace(/[^a-z0-9äöü]/g,"");
+}
+// Überschrift → Feld. Auch kurze Varianten werden verstanden.
+const SPIELLOKAL_KOPF_ALIAS = {
+  verein:"verein", vereinsname:"verein",
+  vereinsnr:"vereinNr", vereinsnummer:"vereinNr", vereinnr:"vereinNr",
+  spiellokalnr:"nr", lokalnr:"nr", hallennr:"nr", nr:"nr", spiellokal:"nr",
+  namederspielstätte:"name", name:"name", spielstätte:"name", halle:"name", hallenname:"name",
+  strasseundhausnummer:"strasse", strasse:"strasse", adresse:"strasse",
+  plz:"plz", postleitzahl:"plz",
+  ort:"ort",
+  koordinaten:"koordinaten", koordinate:"koordinaten", geo:"koordinaten",
+};
+async function spiellokaleExcelExport(vereine){
+  const zeilen=[];
+  [...(vereine||[])].sort((a,b)=>String(a.verein).localeCompare(String(b.verein),"de")).forEach(v=>{
+    (v.lokale||[]).forEach(l=>zeilen.push({verein:v.verein||"", vereinNr:v.vereinNr||"",
+      nr:String(l.nr||""), name:l.name||"", strasse:l.strasse||"", plz:l.plz||"", ort:l.ort||"",
+      koordinaten:l.koordinaten||"", _l:l}));
+  });
+  const datum=new Date().toLocaleDateString("sv");
+  const dateiname=`Spiellokale_${datum.replace(/-/g,"_")}.xlsx`;
+  const typ="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  try{
+    const ExcelJS=await ladeExcelJsLib();
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet("Spiellokale");
+    ws.addRow(SPIELLOKAL_SPALTEN.map(s=>s.titel));
+    zeilen.forEach(z=>{
+      const row=ws.addRow(SPIELLOKAL_SPALTEN.map(s=>
+        s.feld==="_google" ? {text:"Google Maps ↗", hyperlink:googleMapsUrl(z._l)} :
+        s.feld==="_apple"  ? {text:"Apple Karten ↗", hyperlink:appleMapsUrl(z._l)} :
+        String(z[s.feld]??"")));
+      [SPIELLOKAL_SPALTEN.findIndex(s=>s.feld==="_google"), SPIELLOKAL_SPALTEN.findIndex(s=>s.feld==="_apple")]
+        .forEach(i=>{ row.getCell(i+1).font={color:{argb:"FF2E75B6"},underline:true}; });
+    });
+    SPIELLOKAL_SPALTEN.forEach((s,i)=>{ ws.getColumn(i+1).width=s.breite; ws.getColumn(i+1).numFmt="@"; });
+    ws.views=[{state:"frozen", ySplit:1}];
+    ws.autoFilter={from:{row:1,column:1}, to:{row:1,column:SPIELLOKAL_SPALTEN.length}};
+    const rahmen={top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"}};
+    ws.eachRow({includeEmpty:false},(row,nr)=>{
+      row.eachCell({includeEmpty:false},(zelle)=>{
+        // Rahmen nur um gefüllte Zellen
+        const leer = zelle.value===null || zelle.value===undefined || String(zelle.value).trim()==="";
+        if(!leer) zelle.border=rahmen;
+        if(nr===1){
+          zelle.font={bold:true};
+          zelle.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE9ECEF"}};
+          zelle.alignment={vertical:"middle"};
+        }
+      });
+    });
+    dateiHerunterladen(new Blob([await wb.xlsx.writeBuffer()],{type:typ}), dateiname);
+    return {anzahl:zeilen.length, formatiert:true};
+  }catch(err){
+    const XLSX=await ladeXlsxLib();
+    const aoa=[SPIELLOKAL_SPALTEN.map(s=>s.titel), ...zeilen.map(z=>SPIELLOKAL_SPALTEN.map(s=>
+      s.feld==="_google"?googleMapsUrl(z._l):s.feld==="_apple"?appleMapsUrl(z._l):String(z[s.feld]??"")))];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=SPIELLOKAL_SPALTEN.map(s=>({wch:s.breite}));
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Spiellokale");
+    dateiHerunterladen(new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],{type:typ}), dateiname);
+    return {anzahl:zeilen.length, formatiert:false, fehler:err?.message};
+  }
+}
+// Liest eine Spiellokal-Excel. Rückgabe {vereine:[…], fehler:[…], hinweise:[…]}.
+async function spiellokaleExcelLesen(file){
+  const XLSX=await ladeXlsxLib();
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+  const blatt=wb.SheetNames.find(n=>/spiellokal/i.test(n))||wb.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[blatt],{header:1,defval:"",raw:false});
+  const fehler=[], hinweise=[];
+  if(!rows.length) return {vereine:[], fehler:["Die Datei ist leer."], hinweise};
+  const spalte={};
+  rows[0].forEach((t,i)=>{ const f=SPIELLOKAL_KOPF_ALIAS[spiellokalKopfNorm(t)]; if(f && spalte[f]===undefined) spalte[f]=i; });
+  for(const pflicht of ["verein","name","strasse","ort"])
+    if(spalte[pflicht]===undefined)
+      fehler.push(`Spalte „${SPIELLOKAL_SPALTEN.find(s=>s.feld===pflicht).titel}“ fehlt in der Kopfzeile.`);
+  if(fehler.length) return {vereine:[], fehler, hinweise};
+  const wert=(r,f)=>spalte[f]===undefined?"":String(r[spalte[f]]??"").trim();
+  const map=new Map();
+  rows.slice(1).forEach((r,idx)=>{
+    const zeile=idx+2;
+    const verein=wert(r,"verein");
+    const lok={nr:wert(r,"nr"), name:wert(r,"name"), strasse:wert(r,"strasse"), plz:wert(r,"plz"), ort:wert(r,"ort")};
+    if(!verein && !lok.name && !lok.strasse) return;            // Leerzeile
+    if(!verein){ fehler.push(`Zeile ${zeile}: Verein fehlt.`); return; }
+    const kRoh=wert(r,"koordinaten");
+    const k=lokalKoordinaten(kRoh);
+    if(kRoh && !k){ fehler.push(`Zeile ${zeile} (${verein}): Koordinaten „${kRoh}“ nicht erkannt.`); return; }
+    lok.koordinaten = k ? `${k.lat}, ${k.lng}` : "";
+    const vnr=wert(r,"vereinNr");
+    const schluessel = vnr || ("n:"+normVereinName(verein));
+    if(!map.has(schluessel)) map.set(schluessel,{verein, vereinNr:vnr, lokale:[]});
+    map.get(schluessel).lokale.push(lok);
+  });
+  const vereine=[...map.values()].map(v=>{
+    let lokale=v.lokale.map((l,i)=>({...l, nr:String(l.nr||(i+1))}))
+      .sort((a,b)=>(Number(a.nr)||99)-(Number(b.nr)||99));
+    if(lokale.length>3){ hinweise.push(`${v.verein}: nur die ersten 3 Spiellokale übernommen.`); lokale=lokale.slice(0,3); }
+    return {...v, lokale};
+  });
+  return {vereine, fehler, hinweise};
+}
+
 function SpiellokaleVerwaltung({ showToast }){
   const vereine = useSpiellokale();
   const [entwurf,setEntwurf] = useState(null); // Arbeitskopie beim Bearbeiten
   const [editVerein,setEditVerein] = useState(null);
   const [busy,setBusy] = useState(false);
   const [suche,setSuche] = useState("");
+  const [excelMeldung,setExcelMeldung] = useState("");   // V489
+  const [excelBusy,setExcelBusy] = useState(false);
+
+  async function excelExport(){
+    setExcelBusy(true); setExcelMeldung("");
+    try{
+      const r=await spiellokaleExcelExport(vereine);
+      setExcelMeldung(`${r.anzahl} Spiellokal(e) exportiert.`+(r.formatiert?"":
+        ` Ohne Rahmen/fixierte Kopfzeile – Formatierungs-Bibliothek nicht geladen (${r.fehler||"unbekannt"}).`));
+    }catch(e){ setExcelMeldung("Export fehlgeschlagen: "+(e?.message||"unbekannt")); }
+    setExcelBusy(false);
+  }
+  async function excelImport(e){
+    const file=(e.target.files||[])[0];
+    e.target.value="";
+    if(!file) return;
+    setExcelBusy(true); setExcelMeldung("");
+    try{
+      const {vereine:neu, fehler, hinweise}=await spiellokaleExcelLesen(file);
+      if(fehler.length){
+        setExcelMeldung("Nichts übernommen – bitte korrigieren:\n• "+fehler.slice(0,8).join("\n• ")+(fehler.length>8?`\n… und ${fehler.length-8} weitere`:""));
+        setExcelBusy(false); return;
+      }
+      if(!neu.length){ setExcelMeldung("Keine Spiellokale in der Datei gefunden."); setExcelBusy(false); return; }
+      // Vereine aus der Datei ersetzen ihren bisherigen Stand vollständig; Vereine, die
+      // nicht in der Datei stehen, bleiben unverändert (es wird nichts gelöscht).
+      const gleich=(a,b)=> (a.vereinNr && b.vereinNr) ? String(a.vereinNr)===String(b.vereinNr)
+        : normVereinName(a.verein)===normVereinName(b.verein);
+      let geaendert=0, neuAngelegt=0;
+      const liste=(vereine||[]).map(v=>{
+        const n=neu.find(x=>gleich(x,v));
+        if(!n) return v;
+        geaendert++;
+        return {verein:n.verein, vereinNr:n.vereinNr||v.vereinNr||"", lokale:n.lokale};
+      });
+      for(const n of neu) if(!liste.some(v=>gleich(n,v))){ liste.push(n); neuAngelegt++; }
+      liste.sort((a,b)=>String(a.verein).localeCompare(String(b.verein),"de"));
+      await speichereAlle(liste);
+      const mitKoord=neu.reduce((s,v)=>s+v.lokale.filter(l=>l.koordinaten).length,0);
+      const lokAnz=neu.reduce((s,v)=>s+v.lokale.length,0);
+      setExcelMeldung(`Übernommen: ${lokAnz} Spiellokal(e) von ${neu.length} Verein(en) – ${geaendert} aktualisiert, ${neuAngelegt} neu, ${mitKoord} mit Koordinaten.`
+        +(hinweise.length?"\n• "+hinweise.join("\n• "):""));
+      showToast&&showToast("Spiellokale importiert","✅");
+    }catch(err){ setExcelMeldung("Import fehlgeschlagen: "+(err?.message||"unbekannt")); }
+    setExcelBusy(false);
+  }
 
   async function speichereAlle(liste){
     await setDoc(doc(db,"config","spiellokale"),{vereine:liste,lastUpdated:Date.now()},{merge:true});
@@ -19258,6 +19426,25 @@ function SpiellokaleVerwaltung({ showToast }){
       die Anschrift. Zeigt die Karte trotzdem nicht die richtige Halle, im Feld „Koordinaten“ die
       genaue Position hinterlegen: in Google Maps lange auf die Halle tippen und die angezeigten
       Zahlen kopieren, oder den Link der Halle einfügen. Mit „Test“ lässt sich das prüfen.
+    </div>
+
+    {/* V489: Excel-Download / -Upload aller Spiellokale */}
+    <div style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:10,padding:10,marginBottom:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>📊 Excel-Liste</div>
+      <div style={{fontSize:10.5,color:"var(--text3)",lineHeight:1.55,marginBottom:8}}>
+        Eine Zeile je Spiellokal. Beim Hochladen ersetzen die Vereine aus der Datei ihren bisherigen
+        Stand; Vereine, die nicht in der Datei stehen, bleiben unverändert. Die Test-Link-Spalten
+        werden beim Hochladen ignoriert.
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={excelExport} disabled={excelBusy} style={{padding:"8px 12px",background:"#2E75B622",border:"1px solid #2E75B655",borderRadius:9,color:"#2E75B6",fontSize:12,fontWeight:700,cursor:excelBusy?"wait":"pointer"}}>⬇️ Excel herunterladen</button>
+        <label style={{padding:"8px 12px",background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",fontSize:12,fontWeight:700,cursor:excelBusy?"wait":"pointer"}}>
+          ⬆️ Excel hochladen
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={excelImport} disabled={excelBusy} style={{display:"none"}}/>
+        </label>
+      </div>
+      {excelBusy && <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>⏳ Einen Moment …</div>}
+      {excelMeldung && <div style={{fontSize:11,color:/fehlgeschlagen|Nichts übernommen/.test(excelMeldung)?"#ef4444":"var(--text2)",marginTop:6,whiteSpace:"pre-line"}}>{excelMeldung}</div>}
     </div>
 
     {entwurf
