@@ -1,4 +1,4 @@
-// === TTC-App · Version 490 · erstellt 26.09.2026 ===
+// === TTC-App · Version 491 · erstellt 27.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "490";
+const APP_VERSION = "491";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -15076,11 +15076,10 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     .filter(s => s && s.datum && s.datum >= heute)
     .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
     [alleSpiele, heute]);
-  const naechstes = useMemo(()=>{
-    if(kommend.length===0) return null;
-    const eigenes = meinSpielplanName ? kommend.find(s=>s.mannschaft===meinSpielplanName || String(s.mannschaft||"").startsWith(meinSpielplanName)) : null;
-    return eigenes || null; // Spieler: nur eigenes Spiel zeigen (kein Fallback auf fremde Mannschaft)
-  }, [kommend, meinSpielplanName]);
+  // V491: eigene Mannschaft + Nominierungen in anderen (höheren) Mannschaften
+  const meineSpiele = useMemo(()=> meineKommendenSpiele(kommend, meinSpielplanName, myPlayer, einsaetze, {praefix:true}),
+    [kommend, meinSpielplanName, myPlayer, einsaetze]);
+  const naechstes = meineSpiele[0] || null; // Spieler: nur eigene Spiele (kein Fallback auf fremde Mannschaft)
 
   const saisonKeys = ["2026_27","2026_2027"];
   const feldVonSpiel = (s, quelle, feld) =>
@@ -15106,16 +15105,47 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     else onOpen(key);
   };
 
-  const heim = naechstes ? /heim/i.test(naechstes.ort||"") : false;
-  const code = feldVonSpiel(naechstes, spielcodes, "code");
-  const pin  = feldVonSpiel(naechstes, spielpins, "pin");
-  // Betreuer/Fahrer des nächsten Spiels aus den Einsätzen (Fahrer nur bei Auswärtsspielen).
-  const einsatz = naechstes ? (einsaetze[spielKeyFromSpiel(naechstes)]||{}) : {};
-  const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
-  const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
-  const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
-  const team = teamZuSpiel(naechstes);
-  const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
+  // Spielkarte (V491): rot = „Dein nächstes Spiel", grau = Eintrag in „Deine nächsten Spiele".
+  const spielerKarte = (sp, rot) => {
+    if(!sp) return null;
+    const heim = /heim/i.test(sp.ort||"");
+    const code = feldVonSpiel(sp, spielcodes, "code");
+    const pin  = feldVonSpiel(sp, spielpins, "pin");
+    // Betreuer/Fahrer aus den Einsätzen (Fahrer nur bei Auswärtsspielen).
+    const einsatz = einsaetze[spielKeyFromSpiel(sp)]||{};
+    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
+    const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
+    const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
+    const team = teamZuSpiel(sp);
+    const spielplanUrl = team ? teamLinks(team, (SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan : "";
+    const labelFarbe = rot ? "var(--club-hell, #ffd7dd)" : "var(--text3)";
+    const titel = rot ? "Dein nächstes Spiel" : "Spiel";
+    return <div style={{background:rot?TTC_ROT:"var(--bg3)", border:rot?"none":"1px solid var(--border2)", borderRadius:14,
+      padding:rot?"16px 16px":"14px 15px", marginBottom:rot?14:10, boxShadow:rot?"var(--club-shadow, 0 4px 14px #c8102e33)":"none"}}>
+      <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>
+        {titel} · {spielMeta(sp)}{sp._nominiertFremd?" · ⭐ nominiert":""}
+      </div>
+      <div style={{fontSize:rot?17:16, color:rot?"#fff":"var(--text)", fontWeight:700, lineHeight:1.25}}>
+        {sp.mannschaft||"Mannschaft"} gegen {sp.gegner||"Gegner"}{sp.art==="Pokal"?" (Pokalspiel)":""}
+      </div>
+      {verlegStatusVon(sp)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
+        ⚠️ wird verlegt
+      </div>}
+      <SpiellokalHinweis spiel={sp} vereine={spiellokaleListe} aufRot={rot}/>
+      <SpielPersonenZeilen betreuerText={betreuerText} fahrerText={fahrerText}
+        aufstellung={nominierteGeordnet(einsatz, players, aufSpieler, sp)} farbe={labelFarbe}/>
+      <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
+        {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
+          style={{display:"inline-flex", alignItems:"center", gap:5, background:rot?"#fff":"var(--bg2)", color:rot?TTC_ROT:"var(--text)", fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Digitaler Spielbericht</a>}
+        {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer" title="Mannschaftsspielplan auf myTischtennis.de öffnen"
+          style={{display:"inline-flex", alignItems:"center", gap:6, fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none",
+            ...(rot?{background:"#fff", color:"#1a2b4a"}:{background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"})}}>
+          <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
+        {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, fontVariantNumeric:"tabular-nums",
+          ...(rot?{background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55"}:{background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"})}}>🔑 PIN {pin}</span>}
+      </div>
+    </div>;
+  };
 
   // Gruppen auf die tatsächlich verfügbaren Reiter filtern; leere Gruppen weglassen.
   const gruppen = SP_HOME_GRUPPEN
@@ -15124,27 +15154,10 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
 
   return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Hero: nächstes eigenes Spiel. Steht keines an, beginnt die Seite direkt mit den Kacheln. */}
-    {naechstes &&
-      <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:14, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
-          <div style={{fontSize:12, color:"var(--club-hell, #ffd7dd)", marginBottom:3, fontWeight:600}}>Dein nächstes Spiel · {spielMeta(naechstes)}</div>
-          <div style={{fontSize:17, color:"#fff", fontWeight:700, lineHeight:1.25}}>
-            {naechstes.mannschaft||"Mannschaft"} gegen {naechstes.gegner||"Gegner"}{naechstes.art==="Pokal"?" (Pokalspiel)":""}
-          </div>
-          {verlegStatusVon(naechstes)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:"#fff",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
-            ⚠️ wird verlegt
-          </div>}
-          <SpiellokalHinweis spiel={naechstes} vereine={spiellokaleListe} aufRot={true}/>
-          <SpielPersonenZeilen betreuerText={betreuerText} fahrerText={fahrerText}
-            aufstellung={nominierteGeordnet(einsatz, players, aufSpieler, naechstes)} farbe="var(--club-hell, #ffd7dd)"/>
-          <div style={{display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, marginTop:12}}>
-            {heim && berichtUrl && <a href={berichtUrl} target="_blank" rel="noopener noreferrer"
-              style={{display:"inline-flex", alignItems:"center", gap:5, background:"#fff", color:TTC_ROT, fontSize:12, fontWeight:700, padding:"7px 11px", borderRadius:9, textDecoration:"none"}}>📝 Digitaler Spielbericht</a>}
-            {spielplanUrl && <a href={spielplanUrl} target="_blank" rel="noopener noreferrer" title="Mannschaftsspielplan auf myTischtennis.de öffnen"
-              style={{display:"inline-flex", alignItems:"center", gap:6, background:"#fff", color:"#1a2b4a", fontSize:12, fontWeight:700, padding:"5px 10px", borderRadius:9, textDecoration:"none"}}>
-              <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
-            {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55", fontVariantNumeric:"tabular-nums"}}>🔑 PIN {pin}</span>}
-          </div>
-        </div>}
+    {naechstes && spielerKarte(naechstes, true)}
+
+    {/* V491: die nächsten 5 Spiele danach – eigene Mannschaft und Nominierungen */}
+    <DeineNaechstenSpiele spiele={meineSpiele.slice(1,6)} karte={s=>spielerKarte(s,false)}/>
 
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
       <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
@@ -20533,6 +20546,46 @@ function spielKeyFromSpiel(s){
   return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
 }
 
+// Kommende Spiele einer Person (V491): Spiele der eigenen Mannschaft plus alle Spiele,
+// für die sie in einer anderen (höheren) Mannschaft endgültig nominiert ist
+// (einsaetze[spielKey]._nominiert). kommend muss bereits nach Datum/Uhrzeit sortiert sein.
+// Jedes Ergebnis erhält _nominiertFremd=true, wenn es nicht die eigene Mannschaft ist.
+function meineKommendenSpiele(kommend, spielplanName, myPlayer, einsaetze, {praefix=false}={}){
+  const eigeneMannschaft = (m)=> !!spielplanName && (m===spielplanName ||
+    (praefix && String(m||"").startsWith(spielplanName)));
+  const id = myPlayer && myPlayer.id;
+  const out=[];
+  for(const sp of (kommend||[])){
+    if(!sp) continue;
+    if(String(sp.gegner||"").toLowerCase().includes("spielfrei")) continue;
+    const eigen = eigeneMannschaft(sp.mannschaft);
+    const nom = Array.isArray((einsaetze||{})[spielKeyFromSpiel(sp)]?._nominiert)
+      ? einsaetze[spielKeyFromSpiel(sp)]._nominiert : [];
+    const nominiert = !!id && nom.includes(id);
+    if(eigen) out.push(sp);
+    else if(nominiert) out.push({...sp, _nominiertFremd:true});
+  }
+  return out;
+}
+
+// Aufklappbarer Abschnitt „Deine nächsten Spiele" (V491) – wie „Weitere Nachwuchsspiele".
+function DeineNaechstenSpiele({ spiele, karte }){
+  const [offen,setOffen]=useState(false);   // standardmäßig zugeklappt
+  if(!spiele || spiele.length===0) return null;
+  return <div style={{marginBottom:16}}>
+    <button onClick={()=>setOffen(o=>!o)} style={{width:"100%",textAlign:"left",
+      background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,
+      borderRadius:12,padding:"11px 12px",cursor:"pointer",display:"flex",
+      justifyContent:"space-between",alignItems:"center"}}>
+      <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 Deine nächsten Spiele</span>
+      <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{offen?"▲":"▼"}</span>
+    </button>
+    {offen && <div style={{marginTop:10}}>
+      {spiele.map(sp=><div key={spielKeyFromSpiel(sp)}>{karte(sp)}</div>)}
+    </div>}
+  </div>;
+}
+
 // Der Anzeigename einer Person, wie er als Betreuer/Fahrer gespeichert wird: "Vorname Nachname".
 function personAnzeigeName(player){
   if(!player) return "";
@@ -24318,12 +24371,14 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     .sort((a,b)=> (a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
     [alleSpiele, heute]);
 
-  // Eigenes nächstes Spiel (Mannschaft der Person; sonst nächstes Vereinsspiel).
+  // V491: eigene Mannschaft + Nominierungen in anderen (höheren) Mannschaften.
+  const meineSpiele = useMemo(()=> meineKommendenSpiele(kommend, meinSpielplanName, myPlayer, einsaetze),
+    [kommend, meinSpielplanName, myPlayer, einsaetze]);
+  // Eigenes nächstes Spiel (inkl. Nominierungen; ohne Zuordnung: nächstes Vereinsspiel).
   const naechstes = useMemo(()=>{
     if(kommend.length===0) return null;
-    const eigenes = meinSpielplanName ? kommend.find(s=>s.mannschaft===meinSpielplanName) : null;
-    return eigenes || kommend[0] || null;
-  }, [kommend, meinSpielplanName]);
+    return meineSpiele[0] || kommend[0] || null;
+  }, [kommend, meineSpiele]);
 
   // Nächstes Spiel, bei dem die Person als Betreuer eines Nachwuchsspiels eingetragen ist.
   const naechsteBetreuung = useMemo(()=>{
@@ -24404,7 +24459,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
 
     return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>
-      <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}</div>
+      <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}{s._nominiertFremd?" · ⭐ nominiert":""}</div>
       <div style={{fontSize:17, color:titelFarbe, fontWeight:700, lineHeight:1.25}}>
         {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}{s.art==="Pokal"?" (Pokalspiel)":""}
       </div>
@@ -24449,6 +24504,11 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
           <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
           <div style={{fontSize:12, color:"var(--club-hell, #ffd7dd)", marginTop:4}}>Aktuell kein anstehendes Spiel im Plan.</div>
         </div>}
+
+    {/* V491: die nächsten 5 Spiele danach – eigene Mannschaft und Nominierungen */}
+    <DeineNaechstenSpiele
+      spiele={(naechstes && meineSpiele[0]===naechstes ? meineSpiele.slice(1,6) : meineSpiele.slice(0,5))}
+      karte={sp=>spielKarte(sp, { titelText:"Spiel", variante:"grau" })}/>
 
     {/* Kachel 2: nächste Betreuung eines Nachwuchsspiels (grau/schwarz) */}
     {naechsteBetreuung &&
