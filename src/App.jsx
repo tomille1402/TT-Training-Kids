@@ -1,4 +1,4 @@
-// === TTC-App · Version 494 · erstellt 29.09.2026 ===
+// === TTC-App · Version 495 · erstellt 29.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "494";
+const APP_VERSION = "495";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8334,8 +8334,8 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   useEffect(()=>{
     const u1=onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
       s=>setEinsaetze(s.exists()?(s.data().data||{}):{}), ()=>setEinsaetze({}));
-    const u2=onSnapshot(doc(db,"config","spielcodes"), s=>setSpielcodes(s.exists()?s.data():{}), ()=>{});
-    const u3=onSnapshot(doc(db,"config","spielpins"),  s=>setSpielpins(s.exists()?s.data():{}),  ()=>{});
+    const u2=abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
+    const u3=abonniereSpielDaten("spielpins",  setSpielpins);
     return ()=>{u1&&u1();u2&&u2();u3&&u3();};
   },[]);
 
@@ -13226,6 +13226,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 </div>,
         qttr:             <SpielplanUpload abschnitt="qttr" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         pins:             <SpielplanUpload abschnitt="pins" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
+        pinsPokal:        <SpielplanUpload abschnitt="pinsPokal" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         spielerfotos:     <SpielerfotosUpload players={players} showToast={showToast}/>,
         videos:           <SpielplanUpload abschnitt="videos" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         beitritte:        <SpielplanUpload abschnitt="beitritte" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
@@ -13242,7 +13243,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         {k:"mannschaftsfotos", icon:"📸", label:"Mannschaftsfotos"},
         {k:"personen",         icon:"👥", label:"Personen Export/Import"},
         {k:"qttr",             icon:"📊", label:"QTTR-Liste"},
-        {k:"pins",             icon:"🔑", label:"Spiel-PINs und Spielcodes"},
+        {k:"pins",             icon:"🔑", label:"Spiel-PINs und Spielcodes für Runden-Spiele"},
+        {k:"pinsPokal",        icon:"🏆", label:"Spiel-PINs und Spielcodes für Pokalspiele"},
         {k:"spielerfotos",     icon:"🧍", label:"Spielerfotos"},
         {k:"videos",           icon:"🎬", label:"Übungsvideos"},
         {k:"beitritte",        icon:"📥", label:"Vereinsbeitritte"},
@@ -15180,8 +15182,8 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     return unsub;
   }, []);
   useEffect(() => {
-    const u1 = onSnapshot(doc(db,"config","spielcodes"), snap=> setSpielcodes(snap.exists()?snap.data():{}), ()=>{});
-    const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
+    const u1 = abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
+    const u2 = abonniereSpielDaten("spielpins",  setSpielpins);
     return ()=>{ u1&&u1(); u2&&u2(); };
   }, []);
   useEffect(() => {
@@ -17584,10 +17586,33 @@ function migriereNachVerlegung(quelle, spiele, feld){
 // dann noch unter dem alten Datum. Damit dabei nichts vertauscht wird, kommen nur
 // "verwaiste" Eintraege in Frage, deren Datum im aktuellen Spielplan nicht mehr
 // vorkommt, und die Zuordnung muss eindeutig sein.
+// V495: PINs/Codes für Pokalspiele liegen getrennt (config/spielpins_pokal bzw.
+// spielcodes_pokal) und werden von abonniereSpielDaten unter quelle.__pokal
+// mitgeliefert. Pokalspiele suchen nur dort, Runden-Spiele nur in den normalen Daten –
+// so kann weder ein Runden-Code an ein Pokalspiel noch umgekehrt geraten.
 function spielEintragFinden(quelle, s, spiele, feld, saisonKeysHint){
   if(!s || !quelle) return "";
+  if(Object.prototype.hasOwnProperty.call(quelle,"__pokal")){
+    const istPokal = (x)=> x && x.art==="Pokal";
+    const { __pokal, ...runde } = quelle;
+    return istPokal(s)
+      ? spielEintragFindenIntern(__pokal||{}, s, (spiele||[]).filter(istPokal), feld, saisonKeysHint)
+      : spielEintragFindenIntern(runde, s, (spiele||[]).filter(x=>!istPokal(x)), feld, saisonKeysHint);
+  }
+  return spielEintragFindenIntern(quelle, s, spiele, feld, saisonKeysHint);
+}
+// Abo auf config/<cfg> und config/<cfg>_pokal; Ergebnis = Rundendaten + __pokal.
+function abonniereSpielDaten(cfg, setter){
+  let runde={}, pokal={};
+  const melde=()=>setter({...runde, __pokal:pokal});
+  const u1=onSnapshot(doc(db,"config",cfg), snap=>{ runde=snap.exists()?snap.data():{}; melde(); }, ()=>{});
+  const u2=onSnapshot(doc(db,"config",cfg+"_pokal"), snap=>{ pokal=snap.exists()?snap.data():{}; melde(); }, ()=>{});
+  return ()=>{ u1&&u1(); u2&&u2(); };
+}
+function spielEintragFindenIntern(quelle, s, spiele, feld, saisonKeysHint){
+  if(!s || !quelle) return "";
   const saisonKeys = (saisonKeysHint && saisonKeysHint.length)
-    ? saisonKeysHint : Object.keys(quelle||{});
+    ? saisonKeysHint : Object.keys(quelle||{}).filter(k=>k!=="__pokal");
   const aliasse = mannschaftAliasse(s.mannschaft);
   // Gilt ein Eintrag nur fuer Heimspiele? Spielcodes ja – die PDF enthaelt nur die
   // Begegnungen, die wir ausrichten. Aeltere Eintraege tragen das Kennzeichen noch
@@ -20360,7 +20385,13 @@ function MannschaftsfotosUpload({showToast}) {  const [teamPhotos,setTeamPhotos]
   </div>;
 }
 
-function MannschaftenVerwaltung({showToast}) {
+// V495: pokal=true → eigener Bereich für Pokalspiele. Dateien in config/teamFilesPokal
+// (eigenes Dokument wegen der 1-MiB-Grenze), ausgelesene PINs/Codes in
+// config/spielpins_pokal bzw. config/spielcodes_pokal.
+function MannschaftenVerwaltung({showToast, pokal=false}) {
+  const DATEI_DOC = pokal ? "teamFilesPokal" : "teamFiles";
+  const CODES_DOC = pokal ? "spielcodes_pokal" : "spielcodes";
+  const PINS_DOC  = pokal ? "spielpins_pokal"  : "spielpins";
   const [teamFiles,setTeamFiles] = useState({});
   const [uploading,setUploading] = useState({});
   // Saison-Auswahl: Standard = aktuelle Saison
@@ -20371,11 +20402,11 @@ function MannschaftenVerwaltung({showToast}) {
   const seasonSlug = selSeasonKey.replace("/","_");
 
   useEffect(()=>{
-    const unsub = onSnapshot(doc(db,"config","teamFiles"),snap=>{
-      if(snap.exists()) setTeamFiles(snap.data());
+    const unsub = onSnapshot(doc(db,"config",DATEI_DOC),snap=>{
+      setTeamFiles(snap.exists()?snap.data():{});
     },()=>{});
     return unsub;
-  },[]);
+  },[DATEI_DOC]);
 
   async function handleUpload(fileKey, file) {
     if(!file) return;
@@ -20384,7 +20415,7 @@ function MannschaftenVerwaltung({showToast}) {
     reader.onload = async(e)=>{
       const dataUrl = e.target.result;
       const updated = {...teamFiles, [fileKey]:dataUrl, [`${fileKey}_name`]:file.name};
-      await setDoc(doc(db,"config","teamFiles"),updated,{merge:true}).catch(()=>{});
+      await setDoc(doc(db,"config",DATEI_DOC),updated,{merge:true}).catch(()=>{});
       setTeamFiles(updated);
       // Bei Spielcode-PDFs (Key endet auf "_code"): Spielcodes auslesen und je Mannschaft
       // strukturiert speichern, damit der Vereinsspielplan sie den Spielen zuordnen kann.
@@ -20397,15 +20428,15 @@ function MannschaftenVerwaltung({showToast}) {
           const codes = parseSpielcodeZeilen(zeilen);
           if(codes.length>0){
             // Ablage: config/spielcodes → { [seasonSlug]: { [teamName]: { [datum]: {code,gegner} } } }
-            const snap = await getDoc(doc(db,"config","spielcodes")).catch(()=>null);
+            const snap = await getDoc(doc(db,"config",CODES_DOC)).catch(()=>null);
             const bestehend = (snap && snap.exists()) ? snap.data() : {};
             const proSaison = {...(bestehend[seasonSlug]||{})};
             const teamName = team?.name || mid;   // z.B. "Herren 1"
             const eintrag = {};
             for(const c of codes) eintrag[c.datum] = { code:c.code, gegner:c.gegner };
             proSaison[teamName] = eintrag;
-            await setDoc(doc(db,"config","spielcodes"), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
-            showToast(`${file.name}: ${codes.length} Spielcodes übernommen`,"🎫");
+            await setDoc(doc(db,"config",CODES_DOC), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
+            showToast(`${file.name}: ${codes.length} Spielcodes${pokal?" (Pokal)":""} übernommen`,"🎫");
           } else {
             showToast(`${file.name} hochgeladen (keine Spielcodes erkannt)`,"📎");
           }
@@ -20422,15 +20453,15 @@ function MannschaftenVerwaltung({showToast}) {
           const pins = parseSpielpinZeilen(zeilen);
           if(pins.length>0){
             // Ablage: config/spielpins → { [seasonSlug]: { [teamName]: { [datum]: {pin,gegner} } } }
-            const snap = await getDoc(doc(db,"config","spielpins")).catch(()=>null);
+            const snap = await getDoc(doc(db,"config",PINS_DOC)).catch(()=>null);
             const bestehend = (snap && snap.exists()) ? snap.data() : {};
             const proSaison = {...(bestehend[seasonSlug]||{})};
             const teamName = team?.name || mid;   // z.B. "Herren 1"
             const eintrag = {};
             for(const p of pins) eintrag[p.datum] = { pin:p.pin, gegner:p.gegner };
             proSaison[teamName] = eintrag;
-            await setDoc(doc(db,"config","spielpins"), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
-            showToast(`${file.name}: ${pins.length} Spiel-PINs übernommen`,"🔑");
+            await setDoc(doc(db,"config",PINS_DOC), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
+            showToast(`${file.name}: ${pins.length} Spiel-PINs${pokal?" (Pokal)":""} übernommen`,"🔑");
           } else {
             showToast(`${file.name} hochgeladen (keine PINs erkannt)`,"📎");
           }
@@ -20448,15 +20479,17 @@ function MannschaftenVerwaltung({showToast}) {
   async function handleDelete(fileKey) {
     const updated = {...teamFiles};
     delete updated[fileKey]; delete updated[`${fileKey}_name`];
-    await setDoc(doc(db,"config","teamFiles"),updated).catch(()=>{});
+    await setDoc(doc(db,"config",DATEI_DOC),updated).catch(()=>{});
     setTeamFiles(updated);
     showToast("Gelöscht","🗑️");
   }
 
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:14,marginBottom:16}}>
-    <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
+    <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:12}}>📋 Mannschaften — Spiel-PINs & Spielcodes {pokal?"für Pokalspiele":"für Runden-Spiele"}</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
-      Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes hoch. Diese erscheinen dann im Spielbetrieb-Tab.
+      {pokal
+        ? <>Lade pro Mannschaft die PDF-Dateien mit Spiel-PINs und Spielcodes der <b>Pokalspiele</b> hoch. Sie werden nur den Pokalspielen im Spielplan zugeordnet und erscheinen zusätzlich im Spielbetrieb-Tab.</>
+        : <>Lade pro Mannschaft Dateien mit Spiel-PINs und Spielcodes der <b>Runden-Spiele</b> hoch. Diese erscheinen dann im Spielbetrieb-Tab.</>}
     </div>
 
     {/* Saison-Auswahl */}
@@ -20472,7 +20505,7 @@ function MannschaftenVerwaltung({showToast}) {
     {seasonTeams.map(t=>{
       // Saison-spezifischer Key; Fallback auf alten Key (ohne Saison) für Altdaten
       const pinKey = `${seasonSlug}_${t.id}_pin`;   const codeKey = `${seasonSlug}_${t.id}_code`;
-      const oldPinKey = `${t.id}_pin`;              const oldCodeKey = `${t.id}_code`;
+      const oldPinKey = pokal ? pinKey : `${t.id}_pin`;   const oldCodeKey = pokal ? codeKey : `${t.id}_code`;
       const pinFile = teamFiles[pinKey] ?? teamFiles[oldPinKey];
       const codFile = teamFiles[codeKey] ?? teamFiles[oldCodeKey];
       const pinName = teamFiles[`${pinKey}_name`] ?? teamFiles[`${oldPinKey}_name`];
@@ -21508,6 +21541,7 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   const [legacyPhotos,setLegacyPhotos] = useState({}); // altes Sammeldokument
   const [zoomFoto,setZoomFoto] = useState(null);       // Foto für Vollbild-Zoom
   const [teamFiles,setTeamFiles] = useState({});
+  const [teamFilesPokal,setTeamFilesPokal] = useState({});   // V495
   const teamRefs=useRef({});          // {teamName: DOM-Knoten} für gezieltes Scrollen
   const scrollDone=useRef(false);
   // Saison-Auswahl: standardmäßig die aktuelle Saison
@@ -21531,7 +21565,11 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     const u2 = onSnapshot(doc(db,"config","teamFiles"),snap=>{
       if(snap.exists()) setTeamFiles(snap.data());
     },()=>{});
-    return ()=>{u1();u1b();u2();};
+    // V495: Spiel-PINs/Spielcodes der Pokalspiele (eigenes Dokument)
+    const u3 = onSnapshot(doc(db,"config","teamFilesPokal"),snap=>{
+      setTeamFilesPokal(snap.exists()?snap.data():{});
+    },()=>{});
+    return ()=>{u1();u1b();u2();u3();};
   },[]);
 
   // Nach dem Aufbau einmalig zur gewünschten Mannschaft scrollen (Spielbetrieb-Kachel).
@@ -21558,6 +21596,24 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
       whiteSpace:"nowrap",
     }}>{icon} {label}</a>
   );
+
+  // Datei-Knopf je Mannschaft (V495 vereinheitlicht): quelle = teamFiles bzw. teamFilesPokal.
+  const dateiKnopf=(quelle, t, art, label, altKeys)=>{
+    const slug=selSeasonKey.replace("/","_");
+    const dataUrl=quelle[`${slug}_${t.id}_${art}`] ?? (altKeys ? quelle[`${t.id}_${art}`] : undefined);
+    if(!dataUrl) return null;
+    const name=quelle[`${slug}_${t.id}_${art}_name`] ?? (altKeys ? quelle[`${t.id}_${art}_name`] : undefined) ?? (art==="pin"?"spiel-pins":"spielcodes");
+    const isPdf=dataUrl.startsWith("data:application/pdf")||String(name).endsWith(".pdf");
+    const st={display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",textDecoration:"none"};
+    if(isPdf){
+      return <button onClick={()=>{
+        const blob=dataURLtoBlob(dataUrl);
+        const url=URL.createObjectURL(blob);
+        window.open(url,"_blank");
+      }} style={st}>{label}</button>;
+    }
+    return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name} style={st}>{label}</a>;
+  };
 
   return <div style={{padding:13,paddingBottom:40}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:8}}>📋 Spielbetrieb</div>
@@ -21636,38 +21692,11 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
             <LinkBtn href={links.aufstellung} label="Aufstellung" icon="👥"/>
             <LinkBtn href={links.einzelrl}   label="Einzel-RL"  icon="🥇"/>
             <LinkBtn href={links.doppelrl}   label="Doppel-RL"  icon="🥈"/>
-            {(()=>{
-              const slug=selSeasonKey.replace("/","_");
-              const dataUrl=teamFiles[`${slug}_${t.id}_pin`] ?? teamFiles[`${t.id}_pin`];
-              if(!dataUrl) return null;
-              const name=teamFiles[`${slug}_${t.id}_pin_name`] ?? teamFiles[`${t.id}_pin_name`] ?? "spiel-pins";
-              const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
-              if(isPdf){
-                return <button onClick={()=>{
-                  const blob=dataURLtoBlob(dataUrl);
-                  const url=URL.createObjectURL(blob);
-                  window.open(url,"_blank");
-                }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🔑 Spiel-PINs</button>;
-              }
-              return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
-                style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🔑 Spiel-PINs</a>;
-            })()}
-            {(()=>{
-              const slug=selSeasonKey.replace("/","_");
-              const dataUrl=teamFiles[`${slug}_${t.id}_code`] ?? teamFiles[`${t.id}_code`];
-              if(!dataUrl) return null;
-              const name=teamFiles[`${slug}_${t.id}_code_name`] ?? teamFiles[`${t.id}_code_name`] ?? "spielcodes";
-              const isPdf=dataUrl.startsWith("data:application/pdf")||name.endsWith(".pdf");
-              if(isPdf){
-                return <button onClick={()=>{
-                  const blob=dataURLtoBlob(dataUrl);
-                  const url=URL.createObjectURL(blob);
-                  window.open(url,"_blank");
-                }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>🎫 Spielcodes</button>;
-              }
-              return <a href={dataUrl} target="_blank" rel="noopener noreferrer" download={name}
-                style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",textDecoration:"none",cursor:"pointer"}}>🎫 Spielcodes</a>;
-            })()}
+            {/* V495: Dateien der Runden-Spiele und – falls hochgeladen – der Pokalspiele */}
+            {dateiKnopf(teamFiles,      t, "pin",  "🔑 Spiel-PINs",        true)}
+            {dateiKnopf(teamFiles,      t, "code", "🎫 Spielcodes",        true)}
+            {dateiKnopf(teamFilesPokal, t, "pin",  "🔑 Spiel-PINs Pokal",  false)}
+            {dateiKnopf(teamFilesPokal, t, "code", "🎫 Spielcodes Pokal",  false)}
           </div>}
         </div>;
       })}
@@ -23011,10 +23040,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   // Spielcodes je Saison/Mannschaft/Datum (aus den hochgeladenen Spielcode-PDFs).
   const [spielcodes,setSpielcodes]=useState({});
   useEffect(()=>{
-    const unsub=onSnapshot(doc(db,"config","spielcodes"),snap=>{
-      setSpielcodes(snap.exists()?snap.data():{});
-    },()=>{});
-    return unsub;
+    return abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
   }, []);
   // Verlegungen laden: config/verlegungen -> { data: { spielKey: {status,...} } }.
   useEffect(()=>{
@@ -23062,7 +23088,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     const m=(selSeason||"").match(/(\d{4})_(\d{4})/);
     const kandidatenSaison=[];
     if(m) kandidatenSaison.push(`${m[1]}_${m[2].slice(2)}`, `${m[1]}_${m[2]}`);
-    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielcodes||{});
+    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielcodes||{}).filter(k=>k!=="__pokal");
     // Die Spielcode-PDFs werden unter dem Team-Namen der Saison-Definition abgelegt
     // (z.B. "Erwachsene I"), der Spielplan nutzt aber "Herren 1". Beide Schreibweisen
     // sowie die Rohbezeichnung als Suchschlüssel probieren.
@@ -23072,10 +23098,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   // Spiel-PINs je Saison/Mannschaft/Datum (aus den hochgeladenen Spiel-PIN-PDFs).
   const [spielpins,setSpielpins]=useState({});
   useEffect(()=>{
-    const unsub=onSnapshot(doc(db,"config","spielpins"),snap=>{
-      setSpielpins(snap.exists()?snap.data():{});
-    },()=>{});
-    return unsub;
+    return abonniereSpielDaten("spielpins", setSpielpins);   // V495: inkl. Pokal
   },[]);
   // Liefert den Spiel-PIN für ein Spiel über Saison-Slug + Mannschaft + Datum.
   // Anders als der Spielcode gelten PINs für Heim- UND Auswärtsspiele.
@@ -23084,7 +23107,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     const m=(selSeason||"").match(/(\d{4})_(\d{4})/);
     const kandidatenSaison=[];
     if(m) kandidatenSaison.push(`${m[1]}_${m[2].slice(2)}`, `${m[1]}_${m[2]}`);
-    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielpins||{});
+    const saisonKeys = kandidatenSaison.length?kandidatenSaison:Object.keys(spielpins||{}).filter(k=>k!=="__pokal");
     return spielEintragFinden(spielpins, s, spiele, "pin", saisonKeys);
   };
   useEffect(()=>{
@@ -23948,10 +23971,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
             // damit sie nach der Verlegung erhalten bleiben (es werden keine neuen PINs vergeben).
             try{
               let verschoben=0;
-              for(const cfg of ["spielpins","spielcodes"]){
+              for(const cfg of ["spielpins","spielcodes","spielpins_pokal","spielcodes_pokal"]){
                 const snapP=await getDoc(doc(db,"config",cfg));
                 if(!snapP.exists()) continue;
-                const res=migriereNachVerlegung(snapP.data(), spiele, cfg==="spielcodes"?"code":"pin");
+                // V495: Runden- und Pokaldaten nur mit den jeweils passenden Spielen abgleichen
+                const pok=cfg.endsWith("_pokal");
+                const passendeSpiele=spiele.filter(x=>pok ? x.art==="Pokal" : x.art!=="Pokal");
+                const res=migriereNachVerlegung(snapP.data(), passendeSpiele, cfg.startsWith("spielcodes")?"code":"pin");
                 if(res.geaendert){
                   await setDoc(doc(db,"config",cfg), res.daten);
                   verschoben+=res.anzahl;
@@ -24109,10 +24135,16 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
     </>}
 
     {zeig("pins") && <>
-    {/* Mannschaften */}
+    {/* Mannschaften – Runden-Spiele */}
     <div>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Mannschaften — Spiel-PINs & Spielcodes</div>
       <MannschaftenVerwaltung showToast={showToast}/>
+    </div>
+    </>}
+
+    {zeig("pinsPokal") && <>
+    {/* Mannschaften – Pokalspiele (V495) */}
+    <div>
+      <MannschaftenVerwaltung showToast={showToast} pokal/>
     </div>
     </>}
   </div>;
@@ -24464,8 +24496,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   }, []);
   // Spielcodes + PINs laden (für Spielbericht-Link und PIN in der Hero-Karte).
   useEffect(() => {
-    const u1 = onSnapshot(doc(db,"config","spielcodes"), snap=> setSpielcodes(snap.exists()?snap.data():{}), ()=>{});
-    const u2 = onSnapshot(doc(db,"config","spielpins"),  snap=> setSpielpins(snap.exists()?snap.data():{}),  ()=>{});
+    const u1 = abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
+    const u2 = abonniereSpielDaten("spielpins",  setSpielpins);
     return ()=>{ u1&&u1(); u2&&u2(); };
   }, []);
   // Einsätze (Betreuer/Fahrer je Spiel) laden — für die Betreuungs-Kachel.
