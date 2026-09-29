@@ -1,4 +1,4 @@
-// === TTC-App · Version 493 · erstellt 29.09.2026 ===
+// === TTC-App · Version 494 · erstellt 29.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "493";
+const APP_VERSION = "494";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8023,9 +8023,15 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
       const wert = c.type==="beginner" ? af : sum;   // AF nach Anfängersternen, FG nach Gesamtsternen
       const erreicht = wert>=c.stars;
       const datum = p[c.key] || "";
-      urk[c.bereich+"_"+c.kurz] = { datum, erreicht, faellig: erreicht && !datum };
+      urk[c.bereich+"_"+c.kurz] = { datum, erreicht, faellig: erreicht && !datum, key:c.key };
     }
-    return { id:p.id, name:`${p.firstName||""} ${p.lastName||""}`.trim(), group:p.group||"Anfänger", af, fg, sum, urk };
+    // V494: Sprungziel beim Klick auf den Namen = letzte fällige Urkunde
+    // (sonst die zuletzt erreichte, damit man zumindest dort landet).
+    const liste=urkCols.map(c=>urk[c.bereich+"_"+c.kurz]);
+    const letzteFaellig=[...liste].reverse().find(u=>u.faellig);
+    const letzteErreicht=[...liste].reverse().find(u=>u.erreicht);
+    const sprungKey=(letzteFaellig||letzteErreicht||{}).key||"";
+    return { id:p.id, sprungKey, name:`${p.firstName||""} ${p.lastName||""}`.trim(), group:p.group||"Anfänger", af, fg, sum, urk };
   });
 
   // ── Sortierung ──
@@ -8175,7 +8181,12 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
           {gefiltert.map(z=>(
             <tr key={z.id}>
               <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",hyphens:"manual",lineHeight:1.2}}>{z.group==="Fortgeschrittene"?"Fortge\u00ADschrittene":z.group}</td>
-              <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,maxWidth:W_NAME}}>{z.name}</td>
+              <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,maxWidth:W_NAME}}>
+                {onSpielerKlick
+                  ? <span onClick={()=>onSpielerKlick(z.id, z.sprungKey)} title="Zur Verwaltung springen – zum Datum der letzten fälligen Urkunde"
+                      style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"var(--border2)",textUnderlineOffset:2}}>{z.name}</span>
+                  : z.name}
+              </td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.af}</td>
               <td style={{...td,fontWeight:700,color:"var(--text2)"}}>{z.fg}</td>
               <td style={{...td,fontWeight:800,color:"var(--text)"}}>{z.sum}</td>
@@ -8192,7 +8203,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
                     ? fmtDatum(u.datum)
                     : (u.faellig
                         ? (onSpielerKlick
-                            ? <span onClick={()=>onSpielerKlick(z.id)} title="Zur Verwaltung springen und Urkundendatum eintragen"
+                            ? <span onClick={()=>onSpielerKlick(z.id, u.key)} title="Zur Verwaltung springen und Urkundendatum eintragen"
                                 style={{cursor:"pointer",textDecoration:"underline",fontWeight:700}}>fällig</span>
                             : "fällig")
                         : "–")}
@@ -8495,6 +8506,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
   const [verwaltungJumpId,setVerwaltungJumpId]=useState(null);
   const [verwaltungJumpSection,setVerwaltungJumpSection]=useState(null);
+  const [verwaltungJumpKey,setVerwaltungJumpKey]=useState(null);   // V494: Datumsfeld der Urkunde
   // Punkt 1: Höhe der fixierten Tab-Leiste messen, damit der Spacer exakt passt und
   // keine Überschriften abgeschnitten werden (v.a. Admin-Ansicht mit vielen Chips).
   const tabBarRef=useRef(null);
@@ -8902,7 +8914,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── URKUNDEN TAB ── */}
     {activeTab==="urkunden"&&<UrkundenTab players={players} isSuperAdmin={isSuperAdmin}
-      onSpielerKlick={isSuperAdmin ? (id)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("urkunden"); setActiveTab("verwaltung"); } : null}/>}
+      onSpielerKlick={isSuperAdmin ? (id,key)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("urkunden"); setVerwaltungJumpKey(key||null); setActiveTab("verwaltung"); } : null}/>}
 
     {/* ── SCHLÄGER TAB ── */}
     {activeTab==="schlaeger"&&<SchlaegerTab rackets={rackets} players={activePlayers} showToast={showToast}/>}
@@ -8932,7 +8944,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historieadmin"&&<HistorieAdminView players={players}/>}
     {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null);}}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} jumpToKey={verwaltungJumpKey} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null); setVerwaltungJumpKey(null);}}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -11108,7 +11120,7 @@ function UrkundenAusgabeDialog({ ausgabe, onClose }){
   </div>;
 }
 
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
+function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,jumpToKey=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
   // ── Übungs-Urkunde als PDF (Muster-Hintergrund + Name + Datum) ───────────────
@@ -11303,13 +11315,23 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       setShowGrp(prev=>({...prev, [grp]:true}));   // Gruppe des Spielers aufklappen
       // Nach dem Rendern zum Ziel scrollen (kurzer Timeout, bis es sichtbar ist).
       // Ist ein Abschnitt angefragt (z.B. "urkunden"), dorthin scrollen, sonst zum Spieler.
+      // V494: Nicht nach fester Wartezeit, sondern so lange (max. ~3 s) nachsehen, bis das
+      // Ziel gezeichnet ist – beim Reiterwechsel dauert der Aufbau der Liste unterschiedlich
+      // lange. Bei Urkunden wird direkt das Datumsfeld der Urkunde angesteuert und fokussiert.
       if(typeof window!=="undefined"){
-        setTimeout(()=>{
-          const ziel = jumpToSection==="urkunden" ? document.getElementById("urkundendaten-"+p.id) : null;
-          const el = ziel || document.getElementById("verwaltung-player-"+p.id);
-          if(el && el.scrollIntoView) el.scrollIntoView({behavior:"smooth", block:ziel?"center":"center"});
+        const key=jumpToKey, urk=jumpToSection==="urkunden";
+        let versuche=0;
+        const tick=()=>{
+          versuche++;
+          if(urk && key && zumUrkundenDatum(p.id, key)) return;
+          const block = urk ? document.getElementById("urkundendaten-"+p.id) : null;
+          const el = block || document.getElementById("verwaltung-player-"+p.id);
+          // Ist nur die Personenzeile da (Formular noch nicht fertig), weiter warten.
+          if(el && (!urk || block || versuche>=12)){ try{ el.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){} return; }
+          if(versuche<15) setTimeout(tick, 200);
           else window.scrollTo({top:0, behavior:"smooth"});
-        }, 320);
+        };
+        setTimeout(tick, 250);
       }
     }
     onJumpHandled && onJumpHandled();
