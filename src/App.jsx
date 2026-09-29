@@ -1,4 +1,4 @@
-// === TTC-App · Version 491 · erstellt 27.09.2026 ===
+// === TTC-App · Version 493 · erstellt 29.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "491";
+const APP_VERSION = "493";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8505,7 +8505,16 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     measure();
     const ro=new ResizeObserver(measure);
     ro.observe(tabBarRef.current);
-    return ()=>ro.disconnect();
+    // V493: Nach der Rückkehr in die App (z. B. aus Druck-/Teilen-Dialog oder PDF-Ansicht)
+    // Menüleiste neu vermessen und die Ansicht einmal neu ausrichten – iOS liefert sonst
+    // gelegentlich eine verschobene Ansicht, in der das Menü nur teilweise sichtbar ist.
+    const zurueck=()=>{ if(document.visibilityState && document.visibilityState!=="visible") return;
+      setTimeout(()=>{ measure(); try{ window.scrollTo(window.scrollX, window.scrollY); }catch(e){} }, 150); };
+    document.addEventListener("visibilitychange", zurueck);
+    window.addEventListener("pageshow", zurueck);
+    window.addEventListener("focus", zurueck);
+    return ()=>{ ro.disconnect(); document.removeEventListener("visibilitychange", zurueck);
+      window.removeEventListener("pageshow", zurueck); window.removeEventListener("focus", zurueck); };
   },[hideHeader]);
   const [selectedPlayer,setSelectedPlayer]=useState(null);
   const [exerciseFilter,setExerciseFilter]=useState("all");
@@ -10074,8 +10083,13 @@ function EhrungenImport({players, showToast}) {
 
 // Tabelle aller Personen: Funktionen, Gruppe, Status, Datenschutz-Datum.
 // Alle Spalten filter- und sortierbar; Kopfzeile fixiert (sticky).
-function PersonenUebersicht({players}) {
-  const [offen,setOffen]=useState(false);
+// eingebettet (V492): ohne eigene Klappzeile und Rahmen – der umgebende Abschnitt
+// „Personenübersicht" in der Verwaltung übernimmt das Auf-/Zuklappen. Die Daten
+// (Push-Zustimmungen, Betreuer) werden weiterhin erst beim Aufklappen geladen,
+// weil die Komponente erst dann eingehängt wird.
+function PersonenUebersicht({players, eingebettet=false}) {
+  const [offenIntern,setOffen]=useState(false);
+  const offen = eingebettet || offenIntern;
   const [sortKey,setSortKey]=useState("name");
   const [sortDir,setSortDir]=useState("asc");
   // Mehrfachfilter: Arrays statt Einzelwerte. Funktionen/Gruppe/Status als Sets.
@@ -10258,11 +10272,11 @@ function PersonenUebersicht({players}) {
     </div>
   );
 
-  return <div style={{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setOffen(v=>!v)}>
+  return <div style={eingebettet?{}:{marginTop:14,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,padding:12}}>
+    {!eingebettet && <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setOffen(v=>!v)}>
       <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>📋 Personen-Übersicht <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>({players.length})</span></div>
       <span style={{fontSize:13,color:"var(--text3)"}}>{offen?"▲":"▼"}</span>
-    </div>
+    </div>}
     {offen && <>
       {/* Punkt 3: Mehrfachfilter über Chip-Leisten */}
       <div style={{marginTop:10,marginBottom:10,padding:"10px 10px 4px",background:"var(--bg3)",borderRadius:9}}>
@@ -11023,6 +11037,77 @@ const VW_KAPITEL = [
   { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Farbschema, App-Design, Branding" },
 ];
 
+// ─── Urkunden-Ausgabe ohne Seitenwechsel (V493) ─────────────────────────────
+// Bisher wurde die fertige Urkunde als PDF-Link geöffnet. In der installierten App
+// (iPad/iPhone) verlässt die App dabei ihre Seite; beim Zurückkehren wird sie neu
+// gestartet – das Menü war dann unvollständig und der Bearbeitungsstand (Person,
+// Urkunden-Datum) verloren. Jetzt bleibt die App stehen: Ein Dialog bietet
+//  • „Drucken / Teilen": System-Teilen-Menü (enthält „Drucken"), falls verfügbar;
+//    sonst Drucken über einen unsichtbaren Rahmen (Desktop-Browser),
+//  • „Speichern": PDF herunterladen (ohne neuen Tab).
+// Beim Schließen wird zum Datumsfeld der Urkunde gescrollt und es erhält den Fokus.
+const URKUNDE_RUECKKEHR_KEY = "ttc_urkundeRueckkehr";
+function urkundeDatumFeldId(playerId, key){ return `urkdatum-${playerId}-${key}`; }
+function zumUrkundenDatum(playerId, key){
+  if(typeof document==="undefined") return;
+  const el=document.getElementById(urkundeDatumFeldId(playerId, key));
+  if(!el) return false;
+  try{ el.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){}
+  setTimeout(()=>{
+    try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(_){} }
+    // kurz hervorheben, damit man sieht, wo man ist
+    const alt=el.style.boxShadow;
+    el.style.boxShadow="0 0 0 3px var(--club-55, #c8102e55)";
+    setTimeout(()=>{ el.style.boxShadow=alt; }, 2200);
+  }, 350);
+  return true;
+}
+function UrkundenAusgabeDialog({ ausgabe, onClose }){
+  const [hinweis,setHinweis]=useState("");
+  if(!ausgabe) return null;
+  const { blob, url, dateiname, titel } = ausgabe;
+  const datei = (()=>{ try{ return new File([blob], dateiname, {type:"application/pdf"}); }catch(e){ return null; } })();
+  const teilenMoeglich = !!(datei && navigator.canShare && navigator.canShare({files:[datei]}));
+  async function drucken(){
+    setHinweis("");
+    if(teilenMoeglich){
+      try{ await navigator.share({files:[datei], title:titel||dateiname}); return; }
+      catch(e){ if(e && e.name==="AbortError") return; }   // abgebrochen = ok
+    }
+    // Desktop: PDF in unsichtbarem Rahmen laden und dessen Druckdialog öffnen
+    try{
+      const f=document.createElement("iframe");
+      f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+      f.src=url;
+      f.onload=()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }
+        catch(e){ setHinweis("Direktes Drucken wird hier nicht unterstützt – bitte „Speichern“ wählen und die PDF drucken."); } };
+      document.body.appendChild(f);
+      setTimeout(()=>{ try{ document.body.removeChild(f); }catch(e){} }, 60000);
+    }catch(e){ setHinweis("Direktes Drucken wird hier nicht unterstützt – bitte „Speichern“ wählen und die PDF drucken."); }
+  }
+  function speichern(){
+    const a=document.createElement("a");
+    a.href=url; a.download=dateiname;          // bewusst OHNE target="_blank"
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ try{ document.body.removeChild(a); }catch(e){} }, 1000);
+  }
+  const btn={flex:"1 1 140px",padding:"11px 12px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",border:"none"};
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"#0008",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:16,width:"100%",maxWidth:420,boxShadow:"0 10px 30px #0006"}}>
+      <div style={{fontSize:15,fontWeight:800,color:"var(--text)",marginBottom:4}}>📄 Urkunde erstellt</div>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:12,wordBreak:"break-word"}}>{dateiname}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        <button onClick={drucken} style={{...btn,background:"var(--club, #c8102e)",color:"#fff"}}>🖨️ {teilenMoeglich?"Drucken / Teilen":"Drucken"}</button>
+        <button onClick={speichern} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>⬇️ Speichern</button>
+      </div>
+      {hinweis && <div style={{fontSize:11,color:"#b45309",marginTop:8}}>{hinweis}</div>}
+      <button onClick={onClose} style={{marginTop:10,width:"100%",padding:"10px 12px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)"}}>
+        Schließen – zurück zum Datum
+      </button>
+    </div>
+  </div>;
+}
+
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -11065,7 +11150,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     return { nameOk };
   }
 
-  async function uebungsUrkundePdf(player, label, musterKey, datumIso){
+  async function uebungsUrkundePdf(player, label, musterKey, datumIso, datumKey){
     if(!musterKey){ window.alert("Für diese Urkunde ist kein Muster-Typ zugeordnet."); return; }
     // Muster aus clubConfig laden.
     let muster="";
@@ -11122,11 +11207,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
       const blob=pdf.output("blob");
       const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url; a.download=`Urkunde_${safe(label)}_${safe(vor+"_"+nach)}.pdf`;
-      a.target="_blank"; a.rel="noopener noreferrer";
-      document.body.appendChild(a); a.click();
-      setTimeout(()=>{ try{document.body.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },4000);
+      // V493: kein Seitenwechsel mehr – Ausgabe-Dialog in der App. Rückkehrziel merken,
+      // falls das Gerät die App trotzdem neu lädt (z. B. beim Speichern auf dem iPhone).
+      try{ sessionStorage.setItem(URKUNDE_RUECKKEHR_KEY, JSON.stringify({playerId:player.id, key:datumKey||"", t:Date.now()})); }catch(e){}
+      setUrkAusgabe({ blob, url, dateiname:`Urkunde_${safe(label)}_${safe(vor+"_"+nach)}.pdf`,
+        titel:`Urkunde ${label} – ${vor} ${nach}`.trim(), playerId:player.id, key:datumKey||"" });
     }catch(err){ window.alert("Die Urkunde konnte nicht erzeugt werden.\n"+(err&&err.message||"")); }
   }
 
@@ -11177,6 +11262,29 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showP,setShowP]=useState({});                   // je Personen-Abschnitt auf/zu
   // Kapitel-Einstieg: null = Kachelübersicht, sonst der Schlüssel des offenen Kapitels
   const [vwKapitel,setVwKapitel]=useState(null);
+  // V493: Ausgabe-Dialog der Übungs-Urkunden
+  const [urkAusgabe,setUrkAusgabe]=useState(null);
+  const urkAusgabeSchliessen=()=>{
+    const a=urkAusgabe; setUrkAusgabe(null);
+    try{ sessionStorage.removeItem(URKUNDE_RUECKKEHR_KEY); }catch(e){}
+    if(a){ setTimeout(()=>zumUrkundenDatum(a.playerId, a.key), 60);
+      setTimeout(()=>{ try{ URL.revokeObjectURL(a.url); }catch(e){} }, 120000); }
+  };
+  // Wurde die App während der Urkunden-Ausgabe neu geladen, Person und Datum wiederherstellen.
+  useEffect(()=>{
+    let ziel=null;
+    try{ ziel=JSON.parse(sessionStorage.getItem(URKUNDE_RUECKKEHR_KEY)||"null"); }catch(e){}
+    if(!ziel || !ziel.playerId || (Date.now()-(ziel.t||0))>30*60*1000) return;
+    const p=(players||[]).find(x=>x.id===ziel.playerId);
+    if(!p) return;   // Personen noch nicht geladen – Effekt läuft erneut, wenn sie da sind
+    try{ sessionStorage.removeItem(URKUNDE_RUECKKEHR_KEY); }catch(e){}
+    setVwKapitel("personen");
+    setShowP(prev=>({...prev, liste:true}));
+    setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
+    setShowGrp(prev=>({...prev, [p.group||"Anfänger"]:true}));
+    setTimeout(()=>{ if(!zumUrkundenDatum(p.id, ziel.key)){
+      const el=document.getElementById("urkundendaten-"+p.id); if(el) el.scrollIntoView({block:"center"}); } }, 500);
+  },[players.length>0]);
 
   // Sprung aus dem Eltern-Reiter: kommt eine jumpToId herein, öffnen wir den passenden
   // Spieler zum Bearbeiten. Wichtig: Das Bearbeiten-Formular wird NUR in der (nach
@@ -11776,6 +11884,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   }
 
   return <div style={{padding:13,paddingBottom:40}}>
+    <UrkundenAusgabeDialog ausgabe={urkAusgabe} onClose={urkAusgabeSchliessen}/>
     {avatarPickerFor&&<AvatarPicker current={editPlayer?.avatar||newData.avatar} onSelect={av=>{
       if (avatarPickerFor==="new") setNewData(p=>({...p,avatar:av}));
       else setEditPlayer(p=>({...p,avatar:av}));
@@ -12705,12 +12814,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     return <div key={key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                       <span style={{fontSize:16}}>{a.emoji}</span>
                       <div style={{flex:1,fontSize:11,color:"var(--text2)"}}>{a.label}</div>
-                      <input type="date" value={editPlayer[key]||""}
+                      <input type="date" id={urkundeDatumFeldId(editPlayer.id,key)} value={editPlayer[key]||""}
                         onChange={e=>setEditPlayer(prev=>({...prev,[key]:e.target.value}))}
                         style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
                       {editPlayer[key]&&<button type="button" onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
                       <button type="button" title="Urkunde als PDF erzeugen"
-                        onClick={()=>uebungsUrkundePdf(editPlayer, a.label, musterKey, editPlayer[key])}
+                        onClick={()=>uebungsUrkundePdf(editPlayer, a.label, musterKey, editPlayer[key], key)}
                         style={{padding:"4px 9px",background:"var(--club, #c8102e)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
                     </div>;
                   })}
@@ -12907,12 +13016,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {/* Personenübersicht */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowP(p=>({...p,uebersicht:!p.uebersicht}))} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📋 Personenübersicht</div>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📋 Personenübersicht <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>({players.length})</span></div>
         <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showP.uebersicht?"▲":"▼"}</span>
       </div>
       {showP.uebersicht&&<div style={{padding:"0 14px 14px"}}>
-    {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins */}
-    {isSuperAdmin && <PersonenUebersicht players={players}/>}
+    {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins.
+        V492: direkt im Abschnitt, ohne eigenen Unterabschnitt „Personen-Übersicht". */}
+    {isSuperAdmin && <PersonenUebersicht players={players} eingebettet/>}
 
 
     {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
