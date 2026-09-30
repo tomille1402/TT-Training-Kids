@@ -1,4 +1,4 @@
-// === TTC-App · Version 495 · erstellt 29.09.2026 ===
+// === TTC-App · Version 496 · erstellt 30.09.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "495";
+const APP_VERSION = "496";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9692,6 +9692,7 @@ function UebungsUrkundenEditor({showToast}) {
       const neu = {...muster, [key]:dataUrl};
       setMuster(neu);
       await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true});
+      URK_CACHE.muster=null; URK_CACHE.jpeg={};   // V496: neues Muster sofort verwenden
       showToast("Muster gespeichert 🏅","🏅");
     }catch(err){ window.alert(err&&err.message?err.message:"Bild konnte nicht verarbeitet werden."); }
     setBusy("");
@@ -9700,7 +9701,7 @@ function UebungsUrkundenEditor({showToast}) {
   async function entferne(key){
     const neu={...muster}; delete neu[key];
     setMuster(neu);
-    try{ await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true}); showToast("Muster entfernt","✅"); }
+    try{ await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true}); URK_CACHE.muster=null; URK_CACHE.jpeg={}; showToast("Muster entfernt","✅"); }
     catch(e){ window.alert("Fehler:\n"+(e.message||e)); }
   }
 
@@ -11059,6 +11060,42 @@ const VW_KAPITEL = [
 //  • „Speichern": PDF herunterladen (ohne neuen Tab).
 // Beim Schließen wird zum Datumsfeld der Urkunde gescrollt und es erhält den Fokus.
 const URKUNDE_RUECKKEHR_KEY = "ttc_urkundeRueckkehr";
+// V496: Beschleunigung. Muster und Schriften werden nur EINMAL geladen und im Speicher
+// gehalten; PNG-Muster werden einmalig in JPEG umgewandelt (jsPDF bettet JPEG direkt
+// ein, PNG muss es aufwendig neu komprimieren – das kostete auf dem iPad Sekunden).
+const URK_CACHE = { muster:null, jpeg:{}, kalam:undefined, laden:null };
+async function urkundenMusterLaden(){
+  if(URK_CACHE.muster) return URK_CACHE.muster;
+  if(!URK_CACHE.laden){
+    URK_CACHE.laden = getDoc(doc(db,"config","clubConfig"))
+      .then(snap=>{ URK_CACHE.muster = (snap.exists() && snap.data().uebungsUrkunden) || {}; return URK_CACHE.muster; })
+      .catch(()=>({}))
+      .finally(()=>{ URK_CACHE.laden=null; });
+  }
+  return URK_CACHE.laden;
+}
+function bildAlsJpeg(dataUrl){
+  if(!dataUrl || /^data:image\/jpe?g/i.test(dataUrl)) return Promise.resolve(dataUrl);
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{ try{
+      const c=document.createElement("canvas"); c.width=img.naturalWidth; c.height=img.naturalHeight;
+      const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0);
+      res(c.toDataURL("image/jpeg",0.92));
+    }catch(e){ res(dataUrl); } };
+    img.onerror=()=>res(dataUrl);
+    img.src=dataUrl;
+  });
+}
+async function urkundenMusterJpeg(musterKey){
+  if(URK_CACHE.jpeg[musterKey]) return URK_CACHE.jpeg[musterKey];
+  const alle=await urkundenMusterLaden();
+  const roh=alle[musterKey]||"";
+  if(!roh) return "";
+  const jpg=await bildAlsJpeg(roh);
+  URK_CACHE.jpeg[musterKey]=jpg;
+  return jpg;
+}
 function urkundeDatumFeldId(playerId, key){ return `urkdatum-${playerId}-${key}`; }
 function zumUrkundenDatum(playerId, key){
   if(typeof document==="undefined") return;
@@ -11077,6 +11114,17 @@ function zumUrkundenDatum(playerId, key){
 function UrkundenAusgabeDialog({ ausgabe, onClose }){
   const [hinweis,setHinweis]=useState("");
   if(!ausgabe) return null;
+  if(ausgabe.laeuft){
+    // V496: sofort sichtbar, solange die Urkunde erstellt wird
+    return <div style={{position:"fixed",inset:0,background:"#0008",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:18,width:"100%",maxWidth:420,boxShadow:"0 10px 30px #0006",textAlign:"center"}}>
+        <style>{"@keyframes urkDreh{to{transform:rotate(360deg)}}"}</style>
+        <div style={{width:34,height:34,margin:"4px auto 12px",border:"4px solid var(--border2)",borderTopColor:"var(--club, #c8102e)",borderRadius:"50%",animation:"urkDreh .8s linear infinite"}}/>
+        <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>Urkunde wird erstellt …</div>
+        <div style={{fontSize:12,color:"var(--text3)",marginTop:4}}>{ausgabe.titel||""}</div>
+      </div>
+    </div>;
+  }
   const { blob, url, dateiname, titel } = ausgabe;
   const datei = (()=>{ try{ return new File([blob], dateiname, {type:"application/pdf"}); }catch(e){ return null; } })();
   const teilenMoeglich = !!(datei && navigator.canShare && navigator.canShare({files:[datei]}));
@@ -11142,6 +11190,15 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   }
   // Registriert die Schriften in jsPDF. Gibt zurück, ob die Namensschrift (Parisienne)
   // verfügbar ist. Parisienne ist fest eingebettet (kein Netz nötig), Kalam optional per CDN.
+  async function kalamVorladen(){
+    if(URK_CACHE.kalam!==undefined) return;
+    try{
+      URK_CACHE.kalam = await Promise.race([
+        fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf"),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("Zeitüberschreitung")),4000)),
+      ]);
+    }catch(e){ URK_CACHE.kalam = null; }
+  }
   async function registriereFonts(pdf){
     let nameOk=false;
     try{
@@ -11152,10 +11209,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       nameOk = !!(fonts && fonts.Parisienne);
     }catch(e){ nameOk=false; }
     try{
-      if(!VerwaltungTab._fontDate){
-        // Kalam (≈ Chalkboard) für das Datum – optional per CDN, sonst Fallback.
-        VerwaltungTab._fontDate = await fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf");
-      }
+      // V496: Kalam nur einmal laden (max. 4 s); ein Fehlschlag wird gemerkt, damit nicht
+      // jede weitere Urkunde erneut auf das Netz wartet.
+      if(URK_CACHE.kalam===undefined) await kalamVorladen();
+      if(!URK_CACHE.kalam) throw new Error("Kalam nicht verfügbar");
+      VerwaltungTab._fontDate = URK_CACHE.kalam;
       pdf.addFileToVFS("Kalam.ttf", VerwaltungTab._fontDate);
       pdf.addFont("Kalam.ttf","Kalam","normal");
     }catch(e){}
@@ -11164,17 +11222,22 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
   async function uebungsUrkundePdf(player, label, musterKey, datumIso, datumKey){
     if(!musterKey){ window.alert("Für diese Urkunde ist kein Muster-Typ zugeordnet."); return; }
-    // Muster aus clubConfig laden.
-    let muster="";
-    try{ const snap=await getDoc(doc(db,"config","clubConfig")); if(snap.exists()){ const d=snap.data(); muster=(d.uebungsUrkunden||{})[musterKey]||""; } }catch(e){}
-    if(!muster){ window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
+    if(urkErstelltRef.current) return;             // V496: Doppelklick ignorieren
+    urkErstelltRef.current=true;
+    // V496: sofortige Rückmeldung – Dialog mit „Urkunde wird erstellt …"
+    setUrkAusgabe({ laeuft:true, titel:`${label} – ${(player.firstName||"").trim()} ${(player.lastName||"").trim()}`.trim() });
+    await new Promise(r=>setTimeout(r,30));        // Dialog zeichnen lassen, bevor gerechnet wird
+    const muster = await urkundenMusterJpeg(musterKey);
+    if(!muster){ urkErstelltRef.current=false; setUrkAusgabe(null);
+      window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
     try{
       const jsPDF=await ladeJsPDF_V();
       const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
       const { nameOk } = await registriereFonts(pdf);
       const PW=210, PH=297, mid=PW/2;
       const bildTyp=/^data:image\/png/i.test(muster)?"PNG":"JPEG";
-      try{ pdf.addImage(muster,bildTyp,0,0,PW,PH); }catch(e){}
+      // Alias = Muster-Schlüssel: jsPDF verarbeitet das Bild nur einmal je Muster.
+      try{ pdf.addImage(muster,bildTyp,0,0,PW,PH,"muster_"+musterKey,"FAST"); }catch(e){}
       // Name: Vorname (Zeile 1) + Nachname (Zeile 2), rote Handschrift (Parisienne), unter dem Stern.
       const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
       // Parisienne ist fest eingebettet; nur falls das Registrieren scheitert, Fallback.
@@ -11224,7 +11287,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       try{ sessionStorage.setItem(URKUNDE_RUECKKEHR_KEY, JSON.stringify({playerId:player.id, key:datumKey||"", t:Date.now()})); }catch(e){}
       setUrkAusgabe({ blob, url, dateiname:`Urkunde_${safe(label)}_${safe(vor+"_"+nach)}.pdf`,
         titel:`Urkunde ${label} – ${vor} ${nach}`.trim(), playerId:player.id, key:datumKey||"" });
-    }catch(err){ window.alert("Die Urkunde konnte nicht erzeugt werden.\n"+(err&&err.message||"")); }
+    }catch(err){ setUrkAusgabe(null); window.alert("Die Urkunde konnte nicht erzeugt werden.\n"+(err&&err.message||"")); }
+    finally{ urkErstelltRef.current=false; }
   }
 
   // TTR-Liste (für Vorbelegung/Anzeige des aktuellen QTTR-Werts je Spieler).
@@ -11276,6 +11340,19 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [vwKapitel,setVwKapitel]=useState(null);
   // V493: Ausgabe-Dialog der Übungs-Urkunden
   const [urkAusgabe,setUrkAusgabe]=useState(null);
+  const urkErstelltRef=useRef(false);   // V496: läuft gerade eine Erstellung?
+  // V496: Sobald eine Person zum Bearbeiten geöffnet ist, im Hintergrund jsPDF, Schrift
+  // und die Muster vorbereiten – der Klick auf „PDF" ist dann in ca. 1 s fertig.
+  useEffect(()=>{
+    if(!editPlayer?.id) return;
+    const t=setTimeout(async()=>{
+      try{ await ladeJsPDF_V(); }catch(e){}
+      try{ await kalamVorladen(); }catch(e){}
+      try{ const alle=await urkundenMusterLaden();
+        for(const k of Object.keys(alle||{})) await urkundenMusterJpeg(k); }catch(e){}
+    }, 400);
+    return ()=>clearTimeout(t);
+  },[editPlayer?.id]);
   const urkAusgabeSchliessen=()=>{
     const a=urkAusgabe; setUrkAusgabe(null);
     try{ sessionStorage.removeItem(URKUNDE_RUECKKEHR_KEY); }catch(e){}
@@ -12841,8 +12918,9 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                         style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
                       {editPlayer[key]&&<button type="button" onClick={()=>setEditPlayer(p=>({...p,[key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
                       <button type="button" title="Urkunde als PDF erzeugen"
+                        disabled={!!urkAusgabe?.laeuft}
                         onClick={()=>uebungsUrkundePdf(editPlayer, a.label, musterKey, editPlayer[key], key)}
-                        style={{padding:"4px 9px",background:"var(--club, #c8102e)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
+                        style={{padding:"4px 9px",background:"var(--club, #c8102e)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:urkAusgabe?.laeuft?"wait":"pointer",whiteSpace:"nowrap",opacity:urkAusgabe?.laeuft?0.6:1}}>📄 PDF</button>
                     </div>;
                   })}
                   <div style={{marginTop:8,borderTop:"1px solid var(--border2)",paddingTop:8}}>
