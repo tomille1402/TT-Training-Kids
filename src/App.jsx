@@ -1,4 +1,4 @@
-// === TTC-App · Version 498 · erstellt 03.10.2026 ===
+// === TTC-App · Version 499 · erstellt 03.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "498";
+const APP_VERSION = "499";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -23516,9 +23516,16 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     if(key==="verlegung"){ const st=verlegStatus(row); return st==="geplant"?"0_geplant":st==="erfolgt"?"1_erfolgt":"2_-"; }
     return row[key]||"";
   };
+  // V499: Datum + Uhrzeit als gemeinsamer Sortierschlüssel ("20261003 09:30").
+  // Uhrzeit auf HH:MM normiert ("9:30" → "09:30"); ohne Uhrzeit ans Ende des Tages.
+  const zeitSort=(u)=>{ const m=/^(\d{1,2})[:.](\d{2})/.exec(String(u||"").trim()); return m?`${m[1].padStart(2,"0")}:${m[2]}`:"99:99"; };
+  const datumZeitSort=(row)=>{
+    const d=String(row.datum||"");
+    return `${datumSort(d.includes("-")?d.split("-").reverse().join("."):d)} ${zeitSort(row.uhrzeit)}`;
+  };
   const sorted0 = [...filtered].sort((a,b)=>{
     let va=sortWert(a,sortKey); let vb=sortWert(b,sortKey);
-    if(sortKey==="datum"){va=datumSort(va); vb=datumSort(vb);}
+    if(sortKey==="datum"){va=datumZeitSort(a); vb=datumZeitSort(b);}
     // Leere Werte (kein Betreuer/Fahrer) immer ans Ende, unabhängig von der Richtung.
     if(sortKey==="betreuer"||sortKey==="fahrer"){
       const ea=va.trim()==="", eb=vb.trim()==="";
@@ -23526,7 +23533,11 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
       if(!ea&&eb) return -1;
       va=va.toLowerCase(); vb=vb.toLowerCase();
     }
-    return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
+    const r = sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
+    if(r!==0 || sortKey==="datum") return r;
+    // V499: bei gleichem Wert in der gewählten Spalte nach Datum und Uhrzeit (aufsteigend)
+    const da=datumZeitSort(a), db=datumZeitSort(b);
+    return da<db?-1:da>db?1:0;
   });
 
   // Vereinstermine als eigene Zeilen einfügen. Sie werden nach dem Rubrik-Filter
@@ -23567,8 +23578,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     const all=[...sorted0,...terminRows];
     if(sortKey==="datum"){
       all.sort((a,b)=>{
-        const va=datumSort((a.datum||"").includes("-")?a.datum.split("-").reverse().join("."):a.datum);
-        const vb=datumSort((b.datum||"").includes("-")?b.datum.split("-").reverse().join("."):b.datum);
+        const va=datumZeitSort(a), vb=datumZeitSort(b);   // V499: Datum + Uhrzeit
         return sortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
       });
     }
