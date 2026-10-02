@@ -1,4 +1,4 @@
-// === TTC-App · Version 496 · erstellt 30.09.2026 ===
+// === TTC-App · Version 497 · erstellt 02.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "496";
+const APP_VERSION = "497";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -596,11 +596,45 @@ function findLoginPlayer(players, email, bevorzugeErwachsen=false){
   if(bevorzugeErwachsen) return erw||treffer[0];
   return nichtErw||treffer[0];
 }
-const VEREIN_KONTO = {
-  inhaber:"TTC 1979 Niederzeuzheim e. V.",
+// ─── VEREINSDATEN (V497, Mehrvereinsfähigkeit Etappe 1) ─────────────────────
+// Alle vereinsspezifischen Angaben stehen hier zentral. Die Standardwerte sind die
+// des TTC Niederzeuzheim; gepflegt werden sie in der Verwaltung unter
+// Darstellung › Vereinsdaten (gespeichert in config/clubConfig.verein). Ein anderer
+// Verein muss dadurch keinen Code mehr ändern.
+const VEREIN_STANDARD = {
+  kurzname:"TTC Niederzeuzheim",              // Anzeige in der App, Spielplan-Erkennung
+  vollname:"TTC 1979 Niederzeuzheim e. V.",   // Kontoinhaber, Glückwünsche, Titel
+  ort:"Niederzeuzheim",                       // „<Ort>, den …" (Urkunden), Push-Texte
+  suchname:"Niederzeuzheim",                  // Namensteil zum Erkennen des eigenen Vereins in Spielplan-CSV und PIN-/Code-PDFs
+  vereinNr:"33053",                           // Vereinsnummer im Verband (click-tt / myTischtennis)
+  verband:"Hessischer Tischtennis-Verband",
+  verbandKuerzel:"HeTTV",
+  kontoInhaber:"TTC 1979 Niederzeuzheim e. V.",
   iban:"DE78 5105 0015 0520 0127 61",
   bic:"NASSDE55XXX",
   bank:"Naspa",
+  datenschutzVerantwortlicher:"TTC Niederzeuzheim, vertreten durch den Vereinsvorsitzenden Thomas Meilinger, Mühlenstraße 33, 65620 Waldbrunn-Hausen, E-Mail: thomas@meilinger.net.",
+};
+let VEREIN = {...VEREIN_STANDARD};
+// Übernimmt gespeicherte Vereinsdaten; leere Felder fallen auf den Standard zurück.
+function setzeVereinsdaten(cfg){
+  const v = (cfg && cfg.verein) || {};
+  const neu = {...VEREIN_STANDARD};
+  for(const k of Object.keys(VEREIN_STANDARD)){
+    const w = v[k]; if(typeof w==="string" && w.trim()) neu[k]=w.trim();
+  }
+  if(cfg && cfg.name && !(v.kurzname||"").trim()) neu.kurzname = cfg.name;
+  VEREIN = neu;
+}
+function escRegExp(t){ return String(t||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+// Pfad des Vereins bei myTischtennis, z. B. "verein/33053/TTC_Niederzeuzheim".
+function vereinClickttPfad(){ return `verein/${VEREIN.vereinNr}/${String(VEREIN.kurzname).replace(/\s+/g,"_")}`; }
+// Kontodaten für Bestellungen – als Getter, damit immer die aktuellen Vereinsdaten gelten.
+const VEREIN_KONTO = {
+  get inhaber(){ return VEREIN.kontoInhaber; },
+  get iban(){ return VEREIN.iban; },
+  get bic(){ return VEREIN.bic; },
+  get bank(){ return VEREIN.bank; },
 };
 function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
 
@@ -722,7 +756,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
   const [resetLoad,setResetLoad]=useState(false);
   const [uploadingLogo,setUploadingLogo]=useState(false);
 
-  const clubName = clubConfig.name || "TTC Niederzeuzheim";
+  const clubName = clubConfig.name || VEREIN.kurzname;
   const clubSubtitle = clubConfig.subtitle || "Trainings-App";
   const clubLogo = clubConfig.logo || "";
 
@@ -3882,7 +3916,7 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
   };
   const vereinVon=(id)=>{
     if(istGastId(id)) return gastVon(konk,id)?.verein || "–";
-    return "TTC Niederzeuzheim";
+    return VEREIN.kurzname;
   };
   const qttrOf=(id)=>{
     if(istGastId(id)) return Number(gastVon(konk,id)?.qttr)||0;
@@ -5062,7 +5096,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       `<li class="pl${e.platz<=3?" medal":""}"><span class="rank">${medaille(e.platz)||e.platz+"."}</span><span class="pname">${esc(e.name)}</span></li>`
     ).join("");
 
-    const vereinName = "TTC Niederzeuzheim";
+    const vereinName = VEREIN.kurzname;
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Turnierbericht – ${esc(t.name)} · ${esc(k.name)}</title>
@@ -5268,7 +5302,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Verein</div></div>
             <div class="sig"><div class="sigline"></div><div class="siglabel">Unterschrift Turnierleitung</div></div>
           </div>
-          <div class="ortdatum">Niederzeuzheim, den ${esc(datumLang)}</div>
+          <div class="ortdatum">${esc(VEREIN.ort)}, den ${esc(datumLang)}</div>
         </div>
       </section>`;
 
@@ -5402,7 +5436,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         pdf.text("Unterschrift Turnierleitung", fx+sigW+gap+sigW/2, fTop+5, {align:"center"});
         // Ort/Datum links – grau (wie die Unterschriftsbeschriftung)
         setF(12,"normal",GRAU);
-        pdf.text(`Niederzeuzheim, den ${datumLang}`, fx, fTop+16);
+        pdf.text(`${VEREIN.ort}, den ${datumLang}`, fx, fTop+16);
       });
 
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,80);
@@ -8645,7 +8679,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div style={{width:38,height:38,background:"linear-gradient(135deg,#10b981,#3b82f6)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🏓</div>
             <div>
-              <div style={{fontSize:15,fontWeight:800}}>{clubConfig.name||"TTC Niederzeuzheim"}</div>
+              <div style={{fontSize:15,fontWeight:800}}>{clubConfig.name||VEREIN.kurzname}</div>
               <div style={{fontSize:11,color:"#10b981",fontWeight:600}}>🛡️ Trainer-Bereich</div>
             </div>
           </div>
@@ -9735,6 +9769,62 @@ function UebungsUrkundenEditor({showToast}) {
 }
 
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
+// ─── Vereinsdaten pflegen (V497) ─────────────────────────────────────────────
+const VEREINSDATEN_FELDER = [
+  {k:"kurzname", label:"Vereinsname (kurz)", hilfe:"Wie in click-tt/myTischtennis geschrieben – damit erkennt die App den eigenen Verein im Spielplan-Import und in den PIN-/Code-PDFs."},
+  {k:"vollname", label:"Vollständiger Vereinsname", hilfe:"z. B. mit Gründungsjahr und „e. V.\""},
+  {k:"ort", label:"Ort", hilfe:"Für „<Ort>, den …\" auf Urkunden und in den Benachrichtigungen zu Heimspielen."},
+  {k:"suchname", label:"Erkennungswort", hilfe:"Eindeutiger Namensteil des Vereins (meist der Ort). Steht er im Vereinsnamen einer Spielplan-Zeile, gilt sie als eigenes Spiel."},
+  {k:"vereinNr", label:"Vereinsnummer (Verband)", hilfe:"Für die Links zu myTischtennis."},
+  {k:"verband", label:"Verband", hilfe:""},
+  {k:"verbandKuerzel", label:"Verbandskürzel (click-tt)", hilfe:"z. B. HeTTV"},
+  {k:"kontoInhaber", label:"Kontoinhaber", hilfe:"Für Zahlungshinweise bei Bestellungen."},
+  {k:"iban", label:"IBAN", hilfe:""},
+  {k:"bic", label:"BIC", hilfe:""},
+  {k:"bank", label:"Bank", hilfe:""},
+  {k:"datenschutzVerantwortlicher", label:"Datenschutz: Verantwortlicher", hilfe:"Name, Anschrift und E-Mail – erscheint in der Datenschutzerklärung.", lang:true},
+];
+function VereinsdatenEditor({showToast}){
+  const [werte,setWerte]=useState(null);
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","clubConfig"),snap=>{
+      const v=(snap.exists()&&snap.data().verein)||{};
+      setWerte(w=> w || Object.fromEntries(VEREINSDATEN_FELDER.map(f=>[f.k, v[f.k] ?? VEREIN[f.k] ?? ""])));
+    },()=>setWerte(w=>w||{...VEREIN}));
+    return u;
+  },[]);
+  async function speichern(){
+    setBusy(true);
+    try{
+      const sauber=Object.fromEntries(Object.entries(werte).map(([k,v])=>[k,String(v||"").trim()]));
+      await setDoc(doc(db,"config","clubConfig"),{verein:sauber},{merge:true});
+      setzeVereinsdaten({verein:sauber});
+      showToast&&showToast("Vereinsdaten gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    setBusy(false);
+  }
+  if(!werte) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const inp={width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.55}}>
+      Diese Angaben verwendet die App überall dort, wo bisher der Vereinsname fest hinterlegt war
+      (Urkunden, Benachrichtigungen, Spielplan-Import, PIN-/Code-PDFs, Bestellungen, Datenschutzerklärung,
+      Kalender). Leere Felder fallen auf die bisherigen Werte zurück.
+    </div>
+    {VEREINSDATEN_FELDER.map(f=><div key={f.k} style={{marginBottom:10}}>
+      <label style={{fontSize:11,color:"var(--text2)",fontWeight:700,display:"block",marginBottom:3}}>{f.label}</label>
+      {f.lang
+        ? <textarea value={werte[f.k]||""} rows={3} onChange={e=>setWerte(w=>({...w,[f.k]:e.target.value}))} style={{...inp,resize:"vertical"}}/>
+        : <input value={werte[f.k]||""} onChange={e=>setWerte(w=>({...w,[f.k]:e.target.value}))} style={inp}/>}
+      {f.hilfe && <div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>{f.hilfe}</div>}
+    </div>)}
+    <button onClick={speichern} disabled={busy} style={{width:"100%",padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+      {busy?"⏳ Speichern …":"Vereinsdaten speichern"}
+    </button>
+  </div>;
+}
+
 function BrandingEditor({showToast, teil="alles"}) {
   // teil="design"  -> ohne Urkunden-Vorlage (App-Design)
   // teil="urkunde" -> nur die Urkunden-Vorlage (Kapitel Wettkampf)
@@ -9832,7 +9922,7 @@ function BrandingEditor({showToast, teil="alles"}) {
 
     <div style={{marginBottom:10}}>
       <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Vereinsname</label>
-      <input value={name} onChange={e=>setName(e.target.value)} placeholder="TTC Niederzeuzheim"
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder={VEREIN_STANDARD.kurzname}
         style={{width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
     </div>
@@ -11047,7 +11137,7 @@ const VW_KAPITEL = [
   { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale, Turnier-Urkunde" },
   { key:"kommunikation", icon:"📣", label:"Infos",         sub:"Halleninfos, Termine, Push" },
   { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
-  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Farbschema, App-Design, Branding" },
+  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Vereinsdaten, Farbschema, Branding" },
 ];
 
 // ─── Urkunden-Ausgabe ohne Seitenwechsel (V493) ─────────────────────────────
@@ -11332,6 +11422,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
   const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
   const [showBranding,setShowBranding]=useState(false);
+  const [showVereinsdaten,setShowVereinsdaten]=useState(false);   // V497
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
@@ -13188,6 +13279,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
       {showFarbschema&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <FarbschemaVerwaltung showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* V497: Vereinsdaten */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowVereinsdaten(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏢 Vereinsdaten</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showVereinsdaten?"▲":"▼"}</span>
+      </div>
+      {showVereinsdaten&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <VereinsdatenEditor showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
@@ -15536,7 +15638,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||"TTC Niederzeuzheim"}{sortedRanking.length>0?` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||VEREIN.kurzname}{sortedRanking.length>0?` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -17510,8 +17612,8 @@ function parseSpielcodeZeilen(zeilen){
     const code=cm[1];
     const datum=`${dm[3]}-${dm[2]}-${dm[1]}`;
     let rest=zt.slice(0,cm.index).trim();
-    const nzIdx=rest.lastIndexOf("Niederzeuzheim");
-    let gegner = nzIdx>=0 ? rest.slice(nzIdx+"Niederzeuzheim".length).trim() : rest;
+    const nzIdx=rest.lastIndexOf(VEREIN.suchname);   // V497: eigener Verein aus den Vereinsdaten
+    let gegner = nzIdx>=0 ? rest.slice(nzIdx+VEREIN.suchname.length).trim() : rest;
     // Hinter "Niederzeuzheim" steht zuerst noch der Zusatz UNSERER Mannschaft –
     // als roemische Ziffer ("III", "VI") oder in Klammern ("(M15)"). Bliebe er
     // stehen, waere der Gegnername verfaelscht ("VI KSG Aulenhausen II") und eine
@@ -17551,7 +17653,9 @@ function parseSpielpinZeilen(zeilen){
     // Der Zusatz steht je nach Altersklasse in Klammern („TTC Niederzeuzheim (M15)")
     // oder als römische Ziffer („TTC Niederzeuzheim VI"). Beides muss mit entfernt
     // werden, sonst bliebe ein Rest am Gegnernamen hängen.
-    let gegner=rest.replace(/TTC\s+Niederzeuzheim(\s*\([^)]*\)|\s+[IVX]{1,5}\b)?/i," ").replace(/\s+/g," ").trim();
+    // V497: Vereinsname aus den Vereinsdaten (Leerzeichen flexibel)
+    const eigenRe=new RegExp(escRegExp(VEREIN.kurzname).replace(/\s+/g,"\\s+")+"(\\s*\\([^)]*\\)|\\s+[IVX]{1,5}\\b)?","i");
+    let gegner=rest.replace(eigenRe," ").replace(/\s+/g," ").trim();
     if(!gegner) gegner=rest.replace(/\s+/g," ").trim();
     ergebnis.push({datum, gegner, pin});
   }
@@ -20637,7 +20741,7 @@ function dataURLtoBlob(dataUrl) {
 
 // ─── SPIELBETRIEB TAB ─────────────────────────────────────────────────────────
 const BASE = "https://www.mytischtennis.de/click-tt/HeTTV";
-const CLUB = "verein/33053/TTC_Niederzeuzheim";
+// V497: Vereinspfad kommt aus den Vereinsdaten → vereinClickttPfad()
 const S = "25--26"; // Saison-Code für Links (aktuelle Spielsaison in click-tt)
 
 // Mannschaften pro Saison. 2026/27 ist die kommende Saison — Platzierung/Punkte
@@ -21707,7 +21811,7 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     </div>
 
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
-      TTC Niederzeuzheim · Saison {season.key} · Hessischer Tischtennis-Verband
+      {VEREIN.kurzname} · Saison {season.key} · {VEREIN.verband}
       {!season.showStandings&&<span style={{color:"#f59e0b"}}> · Platzierungen noch nicht verfügbar</span>}
     </div>
 
@@ -21781,7 +21885,7 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     </div>
 
     {/* Link to full overview */}
-    <a href={`${BASE}/10--11/${CLUB}/mannschaften`} target="_blank" rel="noopener noreferrer"
+    <a href={`${BASE}/10--11/${vereinClickttPfad()}/mannschaften`} target="_blank" rel="noopener noreferrer"
       style={{display:"block",marginTop:16,textAlign:"center",fontSize:12,color:"#3b82f6",textDecoration:"none"}}>
       🌐 Alle Mannschaften auf myTischtennis.de →
     </a>
@@ -22205,10 +22309,10 @@ function buildICS(options){
   const L=[];
   L.push("BEGIN:VCALENDAR");
   L.push("VERSION:2.0");
-  L.push("PRODID:-//TTC Niederzeuzheim//Trainings-App//DE");
+  L.push(`PRODID:-//${VEREIN.kurzname}//Trainings-App//DE`);
   L.push("CALSCALE:GREGORIAN");
   L.push("METHOD:PUBLISH");
-  L.push("X-WR-CALNAME:TTC Niederzeuzheim – Spieltermine");
+  L.push(`X-WR-CALNAME:${VEREIN.kurzname} – Spieltermine`);
   L.push("X-WR-TIMEZONE:Europe/Berlin");
 
   const stamp=(()=>{const d=new Date();const p=n=>String(n).padStart(2,"0");
@@ -23885,7 +23989,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
     const sep=lines[0].includes(';')?';':',';
     const headers=lines[0].split(sep);
     const idx=(h)=>headers.indexOf(h);
-    const TTC="TTC Niederzeuzheim";
+    const TTC=VEREIN.kurzname;   // V497
     const MANN_MAP={
       [TTC]:"Herren 1",[TTC+" II"]:"Herren 2",[TTC+" III"]:"Herren 3",
       [TTC+" IV"]:"Herren 4",[TTC+" V"]:"Herren 5",[TTC+" VI"]:"Herren 6",
@@ -23893,7 +23997,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
     const spiele=[];
     // Erkennt "unseren" Verein anhand des Namens-Bestandteils (robust gegen
     // Schreibvarianten wie "TTC Niederzeuzheim" / "TTC 1979 Niederzeuzheim").
-    const istUnsVerein=(name)=>(name||"").toLowerCase().includes("niederzeuzheim");
+    const istUnsVerein=(name)=>(name||"").toLowerCase().includes(String(VEREIN.suchname).toLowerCase());
     // Römische Mannschafts-Nummer aus einer Mannschaftsbezeichnung ableiten
     // ("… III" → 3, ohne Suffix → 1). Unabhängig vom Vereinsnamen.
     function herrenNummer(mannBez){
@@ -25283,14 +25387,15 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 // ─── DATENSCHUTZ-ERKLÄRUNG (Volltext + Zustimmungs-Gate) ─────────────────────
-const DATENSCHUTZ_TEXT = [
+// V497: als Funktion, damit Vereinsname und Verantwortlicher aus den Vereinsdaten kommen.
+const datenschutzText = () => [
   {h:"1. Verantwortlicher", t:[
     "Verantwortlich für die Verarbeitung personenbezogener Daten im Sinne von Art. 4 Nr. 7 DSGVO ist:",
-    "TTC Niederzeuzheim, vertreten durch den Vereinsvorsitzenden Thomas Meilinger, Mühlenstraße 33, 65620 Waldbrunn-Hausen, E-Mail: thomas@meilinger.net.",
+    VEREIN.datenschutzVerantwortlicher,
     "Ein Datenschutzbeauftragter ist gesetzlich nicht verpflichtend bestellt. Bei Fragen zum Datenschutz wenden Sie sich bitte an den oben genannten Verantwortlichen.",
   ]},
   {h:"2. Zweck und Gegenstand der Verarbeitung", t:[
-    "Der TTC Niederzeuzheim betreibt eine digitale Trainings-App zur Organisation und Unterstützung des Tischtennis-Trainingsbetriebs. Die App dient der Verwaltung der Mitglieder und Trainingsgruppen, der Erfassung der Trainingsanwesenheit, der Dokumentation von Trainingsfortschritten (Übungssterne, Beobachtungen), der Anzeige von Mannschaftsaufstellungen, Spielplänen und Ranglisten, der Verwaltung der Vereinsausstattung sowie der Bereitstellung von Übungsvideos.",
+    `Der ${VEREIN.kurzname} betreibt eine digitale Trainings-App zur Organisation und Unterstützung des Tischtennis-Trainingsbetriebs. Die App dient der Verwaltung der Mitglieder und Trainingsgruppen, der Erfassung der Trainingsanwesenheit, der Dokumentation von Trainingsfortschritten (Übungssterne, Beobachtungen), der Anzeige von Mannschaftsaufstellungen, Spielplänen und Ranglisten, der Verwaltung der Vereinsausstattung sowie der Bereitstellung von Übungsvideos.`,
   ]},
   {h:"3. Welche Daten werden verarbeitet?", t:[
     "Je nach Rolle werden folgende Kategorien verarbeitet: Stammdaten (Name, Geschlecht, Geburtsdatum), Kontaktdaten (E-Mail, Telefon), Vereinsdaten (Mannschaft, Vereinsbeitritt, Status, Rolle), Trainingsdaten (Anwesenheit, Übungssterne, Beobachtungen), Ausstattungsdaten (Trikot-/Anzugsgröße, Schlägernummer), Nutzungsdaten (Login-Daten, verschlüsseltes Passwort, Avatar) sowie Bild-/Videodaten (Fotos und kurze Übungsvideos).",
@@ -25314,7 +25419,7 @@ const DATENSCHUTZ_TEXT = [
     "Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist der Hessische Beauftragte für Datenschutz und Informationsfreiheit.",
   ]},
   {h:"9. Einwilligung", t:[
-    "Die Nutzung der Trainings-App des TTC Niederzeuzheim setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.",
+    `Die Nutzung der Trainings-App des ${VEREIN.kurzname} setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.`,
   ]},
 ];
 
@@ -25343,14 +25448,14 @@ async function datenschutzAlsPdfHerunterladen(){
 
   // Kopf
   pdf.setFont("helvetica","bold"); pdf.setFontSize(17); pdf.setTextColor(31,78,121);
-  pdf.text("TTC Niederzeuzheim", PW/2, y, {align:"center"}); y+=7;
+  pdf.text(VEREIN.kurzname, PW/2, y, {align:"center"}); y+=7;
   pdf.setFont("helvetica","normal"); pdf.setFontSize(10); pdf.setTextColor(95,95,95);
   pdf.text("Datenschutzerklärung und Einwilligung zur Nutzung der Trainings-App", PW/2, y, {align:"center"}); y+=5;
   pdf.text("gemäß DSGVO (EU 2016/679)", PW/2, y, {align:"center"}); y+=4;
   pdf.setDrawColor(31,78,121); pdf.setLineWidth(0.5); pdf.line(L,y,PW-R,y); y+=8;
 
   // Kapitel
-  for(const abschnitt of DATENSCHUTZ_TEXT){
+  for(const abschnitt of datenschutzText()){
     platzPruefen(16);
     pdf.setFont("helvetica","bold"); pdf.setFontSize(11.5); pdf.setTextColor(31,78,121);
     pdf.splitTextToSize(abschnitt.h, BREITE).forEach(z=>{ pdf.text(z, L, y); y+=5.5; });
@@ -25378,7 +25483,7 @@ async function datenschutzAlsPdfHerunterladen(){
   // ersetzt — wichtig auf Mobilgeraeten, wo sie sonst neu starten wuerde.
   const url = URL.createObjectURL(pdf.output("blob"));
   const a = document.createElement("a");
-  a.href=url; a.download="Datenschutzerklaerung_TTC_Niederzeuzheim.pdf";
+  a.href=url; a.download=`Datenschutzerklaerung_${String(VEREIN.kurzname).replace(/[^\wäöüÄÖÜß]+/g,"_")}.pdf`;
   a.target="_blank"; a.rel="noopener noreferrer";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),5000);
@@ -25389,13 +25494,13 @@ function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut
   function druckenPDF(){
     const w=window.open("","_blank");
     if(!w){alert("Bitte Popups erlauben, um die Erklärung zu drucken.");return;}
-    const html=`<html><head><meta charset="utf-8"><title>Datenschutzerklärung TTC Niederzeuzheim</title>
+    const html=`<html><head><meta charset="utf-8"><title>Datenschutzerklärung ${VEREIN.kurzname}</title>
       <style>body{font-family:Arial,sans-serif;max-width:800px;margin:30px auto;padding:0 20px;color:#222;line-height:1.5}
       h1{color:#1F4E79;font-size:22px;text-align:center}h2{color:#1F4E79;font-size:15px;margin-top:20px}
       p{font-size:13px}.sub{text-align:center;color:#666;font-style:italic}</style></head><body>
-      <h1>TTC Niederzeuzheim</h1>
+      <h1>${VEREIN.kurzname}</h1>
       <p class="sub">Datenschutzerklärung und Einwilligung zur Nutzung der Trainings-App<br>gemäß DSGVO (EU 2016/679)</p>
-      ${DATENSCHUTZ_TEXT.map(s=>`<h2>${s.h}</h2>${s.t.map(x=>`<p>${x}</p>`).join("")}`).join("")}
+      ${datenschutzText().map(s=>`<h2>${s.h}</h2>${s.t.map(x=>`<p>${x}</p>`).join("")}`).join("")}
       </body></html>`;
     w.document.write(html); w.document.close();
     setTimeout(()=>w.print(),400);
@@ -25430,10 +25535,10 @@ function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut
       <div style={{fontSize:12,color:"var(--text3)",marginTop:3}}>Bitte lies die Erklärung und stimme zu, um die App zu nutzen.</div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
-      <div style={{fontSize:13,fontWeight:700,color:"#1F4E79",textAlign:"center",marginBottom:4}}>TTC Niederzeuzheim</div>
+      <div style={{fontSize:13,fontWeight:700,color:"#1F4E79",textAlign:"center",marginBottom:4}}>{VEREIN.kurzname}</div>
       <div style={{fontSize:11,color:"var(--text3)",textAlign:"center",fontStyle:"italic",marginBottom:16}}>
         Datenschutzerklärung gemäß DSGVO (EU 2016/679)</div>
-      {DATENSCHUTZ_TEXT.map((s,i)=><div key={i} style={{marginBottom:14}}>
+      {datenschutzText().map((s,i)=><div key={i} style={{marginBottom:14}}>
         <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:5}}>{s.h}</div>
         {s.t.map((x,j)=><div key={j} style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:6}}>{x}</div>)}
       </div>)}
@@ -25510,7 +25615,7 @@ export default function App() {
   // dann per Live-Listener nach). Verhindert 20-Sekunden-Hänger bei langsamer Verbindung.
   const [startFallback, setStartFallback] = useState(false);
   const [attendance,   setAttendance]   = useState({});
-  const [clubConfig,   setClubConfig]    = useState({name:"TTC Niederzeuzheim",subtitle:"Trainings-App",loginFooter:"",logo:"",farbschema:"rot"});
+  const [clubConfig,   setClubConfig]    = useState({name:VEREIN_STANDARD.kurzname,subtitle:"Trainings-App",loginFooter:"",logo:"",farbschema:"rot"});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
@@ -25566,8 +25671,9 @@ export default function App() {
     getDoc(doc(db,"config","clubConfig")).then(snap=>{
       if(snap.exists()){
         const d=snap.data();
+        setzeVereinsdaten(d);   // V497
         setClubConfig({
-          name:d.name||"TTC Niederzeuzheim",
+          name:d.name||VEREIN.kurzname,
           subtitle:d.subtitle||"Trainings-App",
           loginFooter:d.loginFooter||"",
           logo:d.logo||"",
@@ -25580,8 +25686,9 @@ export default function App() {
     const unsub2=onSnapshot(doc(db,"config","clubConfig"),snap=>{
       if(snap.exists()){
         const d=snap.data();
+        setzeVereinsdaten(d);   // V497
         setClubConfig({
-          name:d.name||"TTC Niederzeuzheim",
+          name:d.name||VEREIN.kurzname,
           subtitle:d.subtitle||"Trainings-App",
           loginFooter:d.loginFooter||"",
           logo:d.logo||"",
@@ -25710,7 +25817,7 @@ export default function App() {
   if (authUser === undefined) return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <div style={{fontSize:48}}>🏓</div>
-      <div style={{fontSize:14,color:"var(--text3)"}}>TTC Niederzeuzheim wird geladen…</div>
+      <div style={{fontSize:14,color:"var(--text3)"}}>{VEREIN.kurzname} wird geladen…</div>
     </div>
   );
 
