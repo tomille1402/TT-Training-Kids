@@ -1,4 +1,4 @@
-// === TTC-App · Version 485 · netlify/functions/pushversand.js · erstellt 24.09.2026 (V485: Glocken-Nachrichten nachziehen) ===
+// === TTC-App · Version 497 · netlify/functions/pushversand.js · erstellt 02.10.2026 (V497: Vereinsort/-name aus den Vereinsdaten) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -69,6 +69,25 @@ async function getDocData(path){
   if(!r.ok) return null;
   const j = await r.json();
   return j.fields ? convertFields(j.fields) : {};
+}
+// V497: Vereinsangaben (Ort, voller Name) aus config/clubConfig.verein. Nur die
+// benötigten Felder abfragen (das Dokument enthält auch Bilder). Fallback: TTC.
+const VEREIN = { ort:"Niederzeuzheim", vollname:"TTC 1979 Niederzeuzheim e. V." };
+let _vereinGeladen=false;
+async function ladeVereinsdaten(){
+  if(_vereinGeladen) return VEREIN;
+  try{
+    const token = await getAccessToken();
+    const r = await fetch(`${fsBase()}/config/clubConfig?mask.fieldPaths=verein`, { headers:{ Authorization:`Bearer ${token}` } });
+    if(r.ok){
+      const j = await r.json(); const f = j.fields ? convertFields(j.fields) : {};
+      const v = f.verein || {};
+      if(v.ort && String(v.ort).trim()) VEREIN.ort = String(v.ort).trim();
+      if(v.vollname && String(v.vollname).trim()) VEREIN.vollname = String(v.vollname).trim();
+      _vereinGeladen=true;
+    }
+  }catch(e){}
+  return VEREIN;
 }
 async function getCollection(path){
   const token = await getAccessToken();
@@ -360,7 +379,7 @@ function nachwuchsSpielNachricht(s, ei, diff){
     text =
 `🏓 Guten Morgen,
 
-am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in Niederzeuzheim und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
+am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in ${VEREIN.ort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
 ${betreuerSatz}
 
 Viel Erfolg 🏓`;
@@ -394,6 +413,7 @@ async function nachwuchsNachrichtenNachziehen({ spiele, regeln, einsaetzeData, a
     verlegungen={}, heute, nurSpielKey=null, dryRun=false }){
   const regel = regeln && regeln.spiele && regeln.spiele.nachwuchs;
   if(!regel || !regel.aktiv) return 0;
+  await ladeVereinsdaten();   // V497: auch beim Aufruf aus nachrichtaktualisieren.js
   const admins = adminIds(players);
   let geaendert = 0;
   for(const s of (spiele||[])){
@@ -451,6 +471,7 @@ module.exports.handler = async (event) => {
     const force = q.force==="1";
     const heute = q.datum || heuteISO(0);
 
+    await ladeVereinsdaten();   // V497
     const regelnDoc = await getDocData("config/pushRegeln");
     const regeln = (regelnDoc && regelnDoc.regeln) || null;
     if(!regeln) return { statusCode:200, body:"Keine Push-Regeln konfiguriert – nichts zu tun." };
@@ -657,7 +678,7 @@ module.exports.handler = async (event) => {
             sendeId: `${basisId}_glueckwunsch`,
             empfaengerIds: [p.id],
             titel: `🎉 Alles Gute zum Geburtstag, ${p.firstName||name}!`,
-            text: `Der ganze TTC 1979 Niederzeuzheim wünscht dir einen wunderschönen Tag! 🥳🏓`,
+            text: `Der ganze ${VEREIN.vollname} wünscht dir einen wunderschönen Tag! 🥳🏓`,
             kategorie: "geburtstag",
             url: "/"
           });
