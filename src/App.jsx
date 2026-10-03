@@ -1,4 +1,4 @@
-// === TTC-App · Version 499 · erstellt 03.10.2026 ===
+// === TTC-App · Version 500 · erstellt 03.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "499";
+const APP_VERSION = "500";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9769,6 +9769,149 @@ function UebungsUrkundenEditor({showToast}) {
 }
 
 // ─── BRANDING EDITOR ──────────────────────────────────────────────────────────
+// ─── Saisons & Mannschaften pflegen (V500) ──────────────────────────────────
+const TEAM_FELDER = [
+  {k:"name",       label:"Name",                 breit:true,  hilfe:"Wie in Aufstellung/Verwaltung, z. B. „Erwachsene III“ oder „Mädchen 13“."},
+  {k:"liga",       label:"Liga (Anzeige)",       breit:true},
+  {k:"ligaPath",   label:"Liga im Link"},
+  {k:"gruppe",     label:"Gruppen-ID"},
+  {k:"mannschaft", label:"Mannschafts-ID"},
+  {k:"mName",      label:"Mannschaft im Link"},
+  {k:"color",      label:"Farbe", typ:"color"},
+  {k:"rang",       label:"Platz"},
+  {k:"punkte",     label:"Punkte"},
+];
+function SaisonsEditor({showToast, onGespeichert}){
+  const [liste,setListe]=useState(null);
+  const [offen,setOffen]=useState(null);      // key der aufgeklappten Saison
+  const [busy,setBusy]=useState(false);
+  const [geaendert,setGeaendert]=useState(false);
+  useEffect(()=>{
+    getDoc(doc(db,"config","saisons")).then(snap=>{
+      const gesp = snap.exists() ? saisonsBereinigt(snap.data().saisons) : null;
+      const basis = (gesp || SEASONS_STANDARD).map(x=>({...x, teams:x.teams.map(t=>({...t}))}));
+      setListe(basis); setOffen((basis.find(x=>x.current)||basis[0]).key);
+    }).catch(()=>{ const b=SEASONS.map(x=>({...x,teams:x.teams.map(t=>({...t}))})); setListe(b); setOffen(b[0].key); });
+  },[]);
+  if(!liste) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const aendere=(fn)=>{ setListe(l=>fn(l.map(x=>({...x,teams:x.teams.map(t=>({...t}))})))); setGeaendert(true); };
+  const setSaisonFeld=(key,f,w)=>aendere(l=>l.map(x=>x.key===key?{...x,[f]:w}:x));
+  const setTeamFeld=(key,i,f,w)=>aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.map((t,j)=>j===i?{...t,[f]:w}:t)}));
+  const alsAktuell=(key)=>aendere(l=>l.map(x=>({...x,current:x.key===key})));
+  const teamDazu=(key)=>aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:[...x.teams,{id:"",name:"",liga:"",color:"#3b82f6"}]}));
+  const teamWeg=(key,i)=>{ if(!window.confirm("Diese Mannschaft aus der Saison entfernen?")) return;
+    aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.filter((_,j)=>j!==i)})); };
+  const teamSchieben=(key,i,d)=>aendere(l=>l.map(x=>{ if(x.key!==key) return x;
+    const t=[...x.teams]; const j=i+d; if(j<0||j>=t.length) return x; [t[i],t[j]]=[t[j],t[i]]; return {...x,teams:t}; }));
+  const linkUebernehmen=(key,i)=>{
+    const url=window.prompt("Link der Mannschaft bei myTischtennis einfügen (Seite Spielplan, Tabelle oder Bilanzen):");
+    if(!url) return;
+    const t=teamAusMyttLink(url);
+    if(!t){ window.alert("Im Link wurden keine Liga-/Gruppen-Angaben gefunden."); return; }
+    aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.map((tm,j)=>j!==i?tm:{...tm,...Object.fromEntries(Object.entries(t).filter(([,v])=>v))})}));
+  };
+  const neueSaison=()=>{
+    const akt=liste.find(x=>x.current)||liste[0];
+    const m=/^(\d{4})\/(\d{2})$/.exec(akt.key);
+    const vorschlag = m ? `${+m[1]+1}/${String(+m[2]+1).padStart(2,"0")}` : "";
+    const key=(window.prompt("Neue Saison (Schreibweise wie „2027/28“):", vorschlag)||"").trim();
+    if(!key) return;
+    if(liste.some(x=>x.key===key)){ window.alert("Diese Saison gibt es bereits."); return; }
+    const mm=/^(\d{4})\/(\d{2})$/.exec(key);
+    const code = mm ? `${mm[1].slice(2)}--${mm[2]}` : "";
+    // Mannschaften übernehmen (gleiche IDs → hochgeladene Dateien/Fotos bleiben zuordenbar),
+    // Liga-Angaben, Platz und Punkte leeren – die kommen aus click-tt der neuen Saison.
+    const teams=akt.teams.map(t=>({id:t.id,name:t.name,color:t.color,liga:"",ligaPath:"",gruppe:"",mannschaft:"",mName:t.mName||""}));
+    aendere(l=>[{key,code,teams,showStandings:false,showLinks:true,current:false},...l]);
+    setOffen(key);
+  };
+  const saisonWeg=(key)=>{
+    const x=liste.find(y=>y.key===key);
+    if(x.current){ window.alert("Die aktuelle Saison kann nicht gelöscht werden. Zuerst eine andere als aktuell setzen."); return; }
+    if(!window.confirm(`Saison ${key} mit ${x.teams.length} Mannschaft(en) entfernen?`)) return;
+    aendere(l=>l.filter(y=>y.key!==key));
+  };
+  async function speichern(){
+    const sauber=saisonsBereinigt(liste.map(x=>({...x,teams:x.teams.map(t=>{
+      const o={}; for(const [k,v] of Object.entries(t)){ if(v!==undefined && v!==null && String(v).trim()!=="") o[k]=typeof v==="string"?v.trim():v; }
+      return o; })})));
+    if(!sauber){ window.alert("Mindestens eine Saison mit Namen ist nötig."); return; }
+    for(const x of sauber){
+      const ids=x.teams.map(t=>t.id); const doppelt=ids.find((id,i)=>ids.indexOf(id)!==i);
+      if(doppelt){ window.alert(`Saison ${x.key}: Die Mannschafts-ID „${doppelt}“ kommt doppelt vor.`); return; }
+    }
+    setBusy(true);
+    try{
+      await setDoc(doc(db,"config","saisons"),{saisons:sauber, lastUpdated:Date.now()});
+      setzeSaisons(sauber); setGeaendert(false);
+      onGespeichert && onGespeichert();
+      showToast&&showToast("Saisons & Mannschaften gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    setBusy(false);
+  }
+  const inp={width:"100%",padding:"6px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
+  const knopf={padding:"5px 9px",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.55}}>
+      Saisons und Mannschaften für Spielbetrieb, Aufstellung, Uploads (Spiel-PINs/Spielcodes),
+      Mannschaftsführer-Auswahl und die Spielkacheln. Die als <b>aktuell</b> markierte Saison gilt überall
+      als Standard. Tipp: Mit „🔗 Link“ den myTischtennis-Link einer Mannschaft einfügen – Liga, Gruppe und
+      Mannschafts-ID werden daraus übernommen.
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+      <button onClick={neueSaison} style={{...knopf,background:"#10b98122",border:"1px solid #10b98155",color:"#10b981"}}>+ Neue Saison (Mannschaften übernehmen)</button>
+    </div>
+    {liste.map(x=>{
+      const auf=offen===x.key;
+      return <div key={x.key} style={{border:`1px solid ${x.current?"#10b98166":"var(--border2)"}`,borderRadius:10,marginBottom:10,background:"var(--bg)"}}>
+        <div onClick={()=>setOffen(auf?null:x.key)} style={{padding:"9px 11px",display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+          <span style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>{x.key}</span>
+          {x.current && <span style={{fontSize:10,fontWeight:800,color:"#10b981",background:"#10b98122",padding:"2px 7px",borderRadius:6}}>aktuell</span>}
+          <span style={{fontSize:11,color:"var(--text3)"}}>{x.teams.length} Mannschaft(en)</span>
+          <span style={{marginLeft:"auto",fontSize:12,color:TTC_ROT,fontWeight:800}}>{auf?"▲":"▼"}</span>
+        </div>
+        {auf && <div style={{padding:"0 11px 11px"}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end",marginBottom:10}}>
+            <div style={{width:120}}><label style={{fontSize:10,color:"var(--text3)"}}>Saison-Code (click-tt)</label>
+              <input value={x.code||""} onChange={e=>setSaisonFeld(x.key,"code",e.target.value)} placeholder="26--27" style={inp}/></div>
+            <label style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
+              <input type="checkbox" checked={!!x.showStandings} onChange={e=>setSaisonFeld(x.key,"showStandings",e.target.checked)}/> Platz/Punkte anzeigen</label>
+            <label style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
+              <input type="checkbox" checked={x.showLinks!==false} onChange={e=>setSaisonFeld(x.key,"showLinks",e.target.checked)}/> Links anzeigen</label>
+            {!x.current && <button onClick={()=>alsAktuell(x.key)} style={knopf}>Als aktuell setzen</button>}
+            {!x.current && <button onClick={()=>saisonWeg(x.key)} style={{...knopf,color:"#ef4444",background:"#ef444415",border:"1px solid #ef444444"}}>Saison löschen</button>}
+          </div>
+          {x.teams.map((t,i)=><div key={i} style={{border:"1px solid var(--border2)",borderLeft:`4px solid ${t.color||"#6b7280"}`,borderRadius:9,padding:9,marginBottom:8,background:"var(--bg2)"}}>
+            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:12,fontWeight:800,color:"var(--text)",flex:1}}>{t.name||"Neue Mannschaft"} <span style={{fontSize:10,color:"var(--text4)",fontWeight:400}}>{t.id?`ID ${t.id}`:"(ID wird aus dem Namen gebildet)"}</span></span>
+              <button onClick={()=>linkUebernehmen(x.key,i)} style={knopf} title="Angaben aus myTischtennis-Link übernehmen">🔗 Link</button>
+              <button onClick={()=>teamSchieben(x.key,i,-1)} style={knopf} title="nach oben">▲</button>
+              <button onClick={()=>teamSchieben(x.key,i,1)} style={knopf} title="nach unten">▼</button>
+              <button onClick={()=>teamWeg(x.key,i)} style={{...knopf,color:"#ef4444"}} title="entfernen">🗑️</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))",gap:6}}>
+              {TEAM_FELDER.filter(f=>f.k!=="rang"&&f.k!=="punkte"||x.showStandings).map(f=><div key={f.k} style={f.breit?{gridColumn:"span 2"}:{}}>
+                <label style={{fontSize:10,color:"var(--text3)"}}>{f.label}</label>
+                {f.typ==="color"
+                  ? <input type="color" value={t.color||"#3b82f6"} onChange={e=>setTeamFeld(x.key,i,"color",e.target.value)} style={{...inp,padding:2,height:30}}/>
+                  : <input value={t[f.k]??""} onChange={e=>setTeamFeld(x.key,i,f.k,e.target.value)} style={inp}/>}
+              </div>)}
+            </div>
+          </div>)}
+          <button onClick={()=>teamDazu(x.key)} style={knopf}>+ Mannschaft hinzufügen</button>
+        </div>}
+      </div>;
+    })}
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.5}}>
+      Hinweis: Die Mannschafts-ID verknüpft hochgeladene Dateien (Spiel-PINs, Spielcodes) und Mannschaftsfotos.
+      Bei einer neuen Saison werden die IDs übernommen – daher Mannschaften lieber umbenennen als löschen und neu anlegen.
+    </div>
+    <button onClick={speichern} disabled={busy||!geaendert} style={{width:"100%",padding:"10px 12px",background:busy||!geaendert?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":(geaendert?"pointer":"default")}}>
+      {busy?"⏳ Speichern …":(geaendert?"Saisons & Mannschaften speichern":"Keine Änderungen")}
+    </button>
+  </div>;
+}
+
 // ─── Vereinsdaten pflegen (V497) ─────────────────────────────────────────────
 const VEREINSDATEN_FELDER = [
   {k:"kurzname", label:"Vereinsname (kurz)", hilfe:"Wie in click-tt/myTischtennis geschrieben – damit erkennt die App den eigenen Verein im Spielplan-Import und in den PIN-/Code-PDFs."},
@@ -11134,7 +11277,7 @@ function TtrUpload({ showToast }){
 const VW_KAPITEL = [
   { key:"personen",      icon:"👥", label:"Personen",      sub:"Profile, Logins, Ehrungen" },
   { key:"training",      icon:"🏓", label:"Training",      sub:"Zeitraum & Trainingszeiten" },
-  { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Spiellokale, Turnier-Urkunde" },
+  { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Saisons, Mannschaften, Spiellokale" },
   { key:"kommunikation", icon:"📣", label:"Infos",         sub:"Halleninfos, Termine, Push" },
   { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
   { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Vereinsdaten, Farbschema, Branding" },
@@ -11421,6 +11564,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showFaksimile,setShowFaksimile]=useState(false);
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
   const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
+  const [showSaisons,setShowSaisons]=useState(false);   // V500
   const [showBranding,setShowBranding]=useState(false);
   const [showVereinsdaten,setShowVereinsdaten]=useState(false);   // V497
   const [showFarbschema,setShowFarbschema]=useState(false);
@@ -12787,7 +12931,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>MF Click-tt (Mehrfachauswahl)</label>
                   <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:160,overflowY:"auto",
                     background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,padding:"7px 9px"}}>
-                    {AKTUELLE_MANNSCHAFTEN.map(m=>{
+                    {aktuelleMannschaften().map(m=>{
                       const sel=(editPlayer.mfClickTT||[]).includes(m);
                       return <label key={m} style={{display:"flex",alignItems:"center",gap:7,fontSize:12,color:"var(--text)",cursor:"pointer"}}>
                         <input type="checkbox" checked={sel} onChange={()=>setEditPlayer(prev=>{
@@ -12804,7 +12948,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   <select value={editPlayer.mannschaftsfuehrerTeam||""} onChange={e=>setEditPlayer(prev=>({...prev,mannschaftsfuehrerTeam:e.target.value}))}
                     style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13}}>
                     <option value="">— keine —</option>
-                    {AKTUELLE_MANNSCHAFTEN.map(m=><option key={m} value={m}>{m}</option>)}
+                    {aktuelleMannschaften().map(m=><option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
               </div>
@@ -13470,6 +13614,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="wettkampf" && <>
+    {/* V500: Saisons & Mannschaften */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowSaisons(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>📆 Saisons & Mannschaften</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showSaisons?"▲":"▼"}</span>
+      </div>
+      {showSaisons&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <SaisonsEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
     {/* Turnier-Urkunde: Hintergrundvorlage (aus dem App-Design hierher verschoben) */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTurnierUrkunde(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -20772,13 +20927,48 @@ const TEAMS_2026_27 = [
   {id:"jug11",name:"Jugend 11",liga:"Jugend 13 Kreisklasse",ligaPath:"Jugend_13_Kreisklasse",gruppe:"519402",mannschaft:"3151351",mName:"Jugend_11",color:"#f97316"},
 ];
 
-const SEASONS = [
+// V500: Saisons und Mannschaften sind in der Verwaltung pflegbar (config/saisons).
+// SEASONS_STANDARD ist die Vorbelegung, solange dort nichts gespeichert ist.
+const SEASONS_STANDARD = [
   {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, showLinks:true,  current:true},
   {key:"2025/26", code:"25--26", teams:TEAMS_2025_26, showStandings:true,  showLinks:true,  current:false},
 ];
+let SEASONS = SEASONS_STANDARD;
+// Gespeicherte Saisons übernehmen – mit Prüfung, damit fehlerhafte Daten die App nie lahmlegen.
+function saisonsBereinigt(liste){
+  if(!Array.isArray(liste) || !liste.length) return null;
+  const out = liste.filter(x=>x && String(x.key||"").trim()).map(x=>({
+    key:String(x.key).trim(),
+    code:String(x.code||"").trim(),
+    showStandings:!!x.showStandings,
+    showLinks:x.showLinks!==false,
+    current:!!x.current,
+    teams:(Array.isArray(x.teams)?x.teams:[]).filter(t=>t && String(t.name||"").trim()).map(t=>({
+      ...t, id:String(t.id||"").trim() || teamIdAusName(t.name), name:String(t.name).trim(),
+    })),
+  }));
+  if(!out.length) return null;
+  if(!out.some(x=>x.current)) out[0].current=true;
+  let gesehen=false; out.forEach(x=>{ if(x.current){ if(gesehen) x.current=false; gesehen=true; } });
+  return out;
+}
+function setzeSaisons(liste){ SEASONS = saisonsBereinigt(liste) || SEASONS_STANDARD; }
+function aktuelleSaison(){ return SEASONS.find(s=>s.current) || SEASONS[0]; }
+// Stabile Mannschafts-ID aus dem Namen (für neue Mannschaften): "Erwachsene VII" → "erwachsene_vii".
+function teamIdAusName(n){
+  return String(n||"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
+    .replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"") || ("team_"+Date.now());
+}
+// Liest Liga-Pfad, Gruppe, Mannschafts-ID und URL-Namen aus einem myTischtennis-Link,
+// z. B. …/ligen/Kreisliga_Gr._3/gruppe/519422/mannschaft/3087568/Erwachsene_II_(4er)/…
+function teamAusMyttLink(url){
+  const m=/\/ligen\/([^/]+)\/gruppe\/(\d+)(?:\/mannschaft\/(\d+)\/([^/?#]+))?/.exec(String(url||""));
+  if(!m) return null;
+  return { ligaPath:m[1], gruppe:m[2], mannschaft:m[3]||"", mName:m[4]||"" };
+}
 
 // Mannschaftsnamen der aktuellen Saison (für Verwaltungs-Dropdowns)
-const AKTUELLE_MANNSCHAFTEN = (SEASONS.find(s=>s.current)||SEASONS[0]).teams.map(t=>t.name);
+function aktuelleMannschaften(){ return aktuelleSaison().teams.map(t=>t.name); }
 
 // Rückwärtskompatibel: TEAMS zeigt auf die aktuelle Saison
 const TEAMS = TEAMS_2025_26;
@@ -25627,6 +25817,17 @@ export default function App() {
   const [attendance,   setAttendance]   = useState({});
   const [clubConfig,   setClubConfig]    = useState({name:VEREIN_STANDARD.kurzname,subtitle:"Trainings-App",loginFooter:"",logo:"",farbschema:"rot"});
   const [clubConfigLoaded, setClubConfigLoaded] = useState(false);
+  // V500: Saisons & Mannschaften aus config/saisons (nach Anmeldung lesbar). Der Zähler
+  // sorgt dafür, dass nach einer Änderung die ganze App neu zeichnet.
+  const [, setSaisonStand] = useState(0);
+  useEffect(()=>{
+    if(!authUser) return;
+    const u=onSnapshot(doc(db,"config","saisons"), snap=>{
+      setzeSaisons(snap.exists()?snap.data().saisons:null);
+      setSaisonStand(n=>n+1);
+    }, ()=>{});
+    return u;
+  },[authUser?.uid]);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
   const [loginLoad,    setLoginLoad]    = useState(false);
