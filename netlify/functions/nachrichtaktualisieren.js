@@ -1,4 +1,4 @@
-// === TTC-App · Version 485 · netlify/functions/nachrichtaktualisieren.js · erstellt 24.09.2026 ===
+// === TTC-App · Version 501 · netlify/functions/nachrichtaktualisieren.js · erstellt 03.10.2026 (V501: Saison aus config/saisons) ===
 // Zieht die bereits angelegten Glocken-Nachrichten (appNachrichten) eines Nachwuchsspiels
 // sofort nach, wenn in der App Betreuer oder Fahrer eingetragen bzw. geändert werden –
 // z. B. ein zweiter Fahrer, nachdem die Erinnerung schon verschickt war. Ohne diesen
@@ -32,6 +32,7 @@ exports.handler = async (event) => {
     const regelnDoc = await pv.getDocData("config/pushRegeln");
     const regeln = (regelnDoc && regelnDoc.regeln) || null;
     if(!regeln) return { statusCode:200, headers:cors(), body:JSON.stringify({aktualisiert:0}) };
+    await pv.ladeSaison();   // V501: aktuelle Saison aus config/saisons
     const spielplan = await pv.getDocData("config/"+pv.SAISON);
     const aufDoc = await pv.getDocData("config/"+pv.AUF_KEY);
     const einsaetzeDoc = await pv.getDocData("einsaetze/"+pv.SAISON);

@@ -1,4 +1,4 @@
-// === TTC-App · Version 497 · netlify/functions/pushversand.js · erstellt 02.10.2026 (V497: Vereinsort/-name aus den Vereinsdaten) ===
+// === TTC-App · Version 501 · netlify/functions/pushversand.js · erstellt 03.10.2026 (V501: Saison aus config/saisons) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -15,8 +15,10 @@ const { sendePush } = require("./webpush.js");
 
 const crypto = require("crypto");
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "";
-const SAISON     = "spielplan_2026_2027";
-const AUF_KEY    = "aufstellung_2026_2027_V";
+// V501: Saison wird zur Laufzeit aus config/saisons ermittelt (ladeSaison);
+// diese Werte gelten nur als Rückfall.
+let SAISON     = "spielplan_2026_2027";
+let AUF_KEY    = "aufstellung_2026_2027_V";
 
 // ── Service-Account-Authentifizierung ──
 // Die Funktion läuft ohne eingeloggten Nutzer, muss aber geschützte Daten
@@ -70,6 +72,22 @@ async function getDocData(path){
   const j = await r.json();
   return j.fields ? convertFields(j.fields) : {};
 }
+// V501: aktuelle Saison aus config/saisons → Spielplan-/Einsatz- und Aufstellungs-Dokument.
+async function ladeSaison(){
+  try{
+    const d = await getDocData("config/saisons");
+    const liste = (d && Array.isArray(d.saisons)) ? d.saisons : [];
+    const akt = liste.find(x=>x && x.current) || null;
+    const m = akt && /^(\d{4})\s*\/\s*(\d{2}|\d{4})$/.exec(String(akt.key||"").trim());
+    if(m){
+      const y1=+m[1]; let y2 = m[2].length===4 ? +m[2] : Math.floor(y1/100)*100 + (+m[2]); if(y2<=y1) y2+=100;
+      SAISON  = `spielplan_${y1}_${y2}`;
+      AUF_KEY = `aufstellung_${y1}_${y2}_${akt.halbserie==="R"?"R":"V"}`;
+    }
+  }catch(e){}
+  return { SAISON, AUF_KEY };
+}
+
 // V497: Vereinsangaben (Ort, voller Name) aus config/clubConfig.verein. Nur die
 // benötigten Felder abfragen (das Dokument enthält auch Bilder). Fallback: TTC.
 const VEREIN = { ort:"Niederzeuzheim", vollname:"TTC 1979 Niederzeuzheim e. V." };
@@ -222,8 +240,10 @@ function uhrzeitMinusStunden(uhr, stunden){
 module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue };
 // V485: für nachrichtaktualisieren.js (Funktionen werden weiter unten deklariert und gehoben).
 module.exports.nachwuchsNachrichtenNachziehen = (...a)=>nachwuchsNachrichtenNachziehen(...a);
-module.exports.SAISON = SAISON;
-module.exports.AUF_KEY = AUF_KEY;
+// V501: als Getter, damit Aufrufer immer die zur Laufzeit ermittelte Saison erhalten.
+Object.defineProperty(module.exports, "SAISON",  { get(){ return SAISON; },  enumerable:true });
+Object.defineProperty(module.exports, "AUF_KEY", { get(){ return AUF_KEY; }, enumerable:true });
+module.exports.ladeSaison = (...a)=>ladeSaison(...a);
 
 // ── Fachlogik: Empfänger ──
 function istNachwuchsMannschaft(mannschaft, nachwuchsListe){
@@ -472,6 +492,7 @@ module.exports.handler = async (event) => {
     const heute = q.datum || heuteISO(0);
 
     await ladeVereinsdaten();   // V497
+    await ladeSaison();         // V501
     const regelnDoc = await getDocData("config/pushRegeln");
     const regeln = (regelnDoc && regelnDoc.regeln) || null;
     if(!regeln) return { statusCode:200, body:"Keine Push-Regeln konfiguriert – nichts zu tun." };

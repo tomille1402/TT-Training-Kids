@@ -1,4 +1,4 @@
-// === TTC-App · Version 497 · netlify/functions/calendar.js · erstellt 02.10.2026 (V497: Vereinsname aus den Vereinsdaten) ===
+// === TTC-App · Version 501 · netlify/functions/calendar.js · erstellt 03.10.2026 (V501: aktuelle Saison aus clubConfig) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -25,12 +25,15 @@ function icsUid(parts){return parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g
 // V497: Vereinsname aus config/clubConfig (öffentlich lesbar); nur die benötigten
 // Felder abfragen – das Dokument enthält auch Logo und Urkunden-Muster.
 let VEREIN_NAME="TTC Niederzeuzheim";
+let AKT_SPIELPLAN="spielplan_2026_2027";   // V501: aus clubConfig.aktuelleSaison
 async function ladeVereinsname(){
   try{
-    const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/config/clubConfig?mask.fieldPaths=name&mask.fieldPaths=verein${API_KEY?`&key=${API_KEY}`:""}`;
+    const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/config/clubConfig?mask.fieldPaths=name&mask.fieldPaths=verein&mask.fieldPaths=aktuelleSaison${API_KEY?`&key=${API_KEY}`:""}`;
     const r=await fetch(url); if(!r.ok) return;
     const j=await r.json(); const f=j.fields?convertFields(j.fields):{};
     const n=(f.verein&&f.verein.kurzname)||f.name; if(n&&String(n).trim()) VEREIN_NAME=String(n).trim();
+    const sp=f.aktuelleSaison&&f.aktuelleSaison.spielplan;
+    if(sp && /^spielplan_\d{4}_\d{4}$/.test(sp)) AKT_SPIELPLAN=sp;
   }catch(e){}
 }
 
@@ -180,7 +183,7 @@ exports.handler = async (event) => {
     const puffer=q.puffer==="1";
 
     // Saison aus Parameter (Default aktuelle Saison)
-    const saisonKey=q.saison||"spielplan_2026_2027";
+    const saisonKey=q.saison||AKT_SPIELPLAN;   // V501
     const spielplanDoc=await getDocData("config/"+saisonKey);
     let spiele=(spielplanDoc&&spielplanDoc.spiele)||[];
     // Fallback auf Vorsaison, falls leer
