@@ -1,4 +1,4 @@
-// === TTC-App · Version 503 · erstellt 03.10.2026 ===
+// === TTC-App · Version 504 · erstellt 03.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "503";
+const APP_VERSION = "504";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -79,29 +79,33 @@ function usePersistentState(key, initial){
   return [val,setVal];
 }
 
-// ─── ADMIN EMAILS ────────────────────────────────────────────────────────────
-// Alle Trainer-E-Mails (sehen Trainer-Bereich, aber NICHT Verwaltung)
-const ADMIN_EMAILS = [
-  "thomas@meilinger.net",
-  "kira@meilinger.net",
-  "joerg.bonkowski@web.de",
-  "dominik.horz@gmx.de",
-  "christina@rohschuermann.de",
-  // weitere Trainer hier hinzufügen:
-  // "trainer2@ttc-niederzeuzheim.de",
-];
-// Super-Admin E-Mails (sehen zusätzlich den Verwaltungsbereich)
-const SUPER_ADMIN_EMAILS = [
-  "thomas@meilinger.net",
-  // weitere Admins hier hinzufügen:
-];
+// ─── ADMINS & RECHTE (V504) ──────────────────────────────────────────────────
+// Bis V503 standen die Admin-Adressen fest im Code (und zusätzlich in firestore.rules
+// und storage.rules). Seit V504 liegen sie in der Datenbank (config/rollen) und werden
+// in der Verwaltung unter Personen → „Admins & Rechte“ gepflegt:
+//   admins      = alle Adressen mit Schreibrechten (Admin)
+//   superAdmins = zusätzlich Zugang zur Verwaltung
+// Fest bleibt nur der Betreiber der App (Notzugang, damit sich niemand aussperrt).
+const PLATTFORM_ADMIN_EMAILS = ["thomas@meilinger.net"];
+// Vorbelegung, solange config/rollen noch nicht gespeichert wurde (bisherige Liste).
+const ROLLEN_STANDARD = {
+  admins: ["thomas@meilinger.net","kira@meilinger.net","joerg.bonkowski@web.de","dominik.horz@gmx.de","christina@rohschuermann.de"],
+  superAdmins: ["thomas@meilinger.net"],
+};
+const mailNorm = m => String(m||"").toLowerCase().trim();
+let ROLLEN = { admins:[...ROLLEN_STANDARD.admins], superAdmins:[...ROLLEN_STANDARD.superAdmins] };
+function setzeRollen(d){
+  if(!d) return;
+  const liste = x => (Array.isArray(x)?x:[]).map(mailNorm).filter(Boolean);
+  ROLLEN = { admins: liste(d.admins), superAdmins: liste(d.superAdmins) };
+}
 function isAdminEmail(email) {
-  if (!email) return false;
-  return ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
+  const m=mailNorm(email); if(!m) return false;
+  return PLATTFORM_ADMIN_EMAILS.includes(m) || ROLLEN.admins.includes(m) || ROLLEN.superAdmins.includes(m);
 }
 function isSuperAdminEmail(email) {
-  if (!email) return false;
-  return SUPER_ADMIN_EMAILS.some(a => a.toLowerCase().trim() === email.toLowerCase().trim());
+  const m=mailNorm(email); if(!m) return false;
+  return PLATTFORM_ADMIN_EMAILS.includes(m) || ROLLEN.superAdmins.includes(m);
 }
 
 // ─── TRAINING DATES 2026 ─────────────────────────────────────────────────────
@@ -9949,6 +9953,115 @@ const VEREINSDATEN_FELDER = [
   {k:"bank", label:"Bank", hilfe:""},
   {k:"datenschutzVerantwortlicher", label:"Datenschutz: Verantwortlicher", hilfe:"Name, Anschrift und E-Mail – erscheint in der Datenschutzerklärung.", lang:true},
 ];
+// ─── Admins & Rechte (V504) ─────────────────────────────────────────────────
+// Pflegt config/rollen. Nur Super-Admins dürfen speichern (auch per Firestore-Regel).
+function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
+  const [liste,setListe]=useState(null);          // [{email, superAdmin}]
+  const [nieGespeichert,setNieGespeichert]=useState(false);
+  const [geaendert,setGeaendert]=useState(false);
+  const [neu,setNeu]=useState("");
+  const [busy,setBusy]=useState(false);
+  const geaendertRef=useRef(false);
+  useEffect(()=>{
+    const aus = d => {
+      const sup=(d.superAdmins||[]).map(mailNorm);
+      const alle=[...new Set([...(d.admins||[]).map(mailNorm), ...sup])].filter(Boolean);
+      return alle.map(email=>({email, superAdmin: sup.includes(email)}));
+    };
+    const u=onSnapshot(doc(db,"config","rollen"),snap=>{
+      if(snap.exists()){ setzeRollen(snap.data()); setNieGespeichert(false); setListe(l=> l && geaendertRef.current ? l : aus(snap.data())); }
+      else { setNieGespeichert(true); setListe(l=> l || aus(ROLLEN_STANDARD)); }
+    },()=>{ setNieGespeichert(true); setListe(l=> l || aus(ROLLEN_STANDARD)); });
+    return u;
+  },[]);
+  function aendern(fn){ geaendertRef.current=true; setGeaendert(true); setListe(fn); }
+  const personZu = email => players.find(p=>mailNorm(p.email)===email);
+  const nameVon = email => { const p=personZu(email); return p ? `${p.firstName||""} ${p.lastName||""}`.trim() : ""; };
+  const istPlattform = email => PLATTFORM_ADMIN_EMAILS.includes(email);
+  function hinzufuegen(email){
+    const m=mailNorm(email);
+    if(!m || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){ showToast&&showToast("Bitte eine gültige E-Mail-Adresse eingeben","⚠️"); return; }
+    if(m.endsWith("@ttc-intern.de")){ showToast&&showToast("Interne Platzhalter-Adressen können sich nicht anmelden","⚠️"); return; }
+    if((liste||[]).some(x=>x.email===m)){ showToast&&showToast("Adresse ist bereits eingetragen","ℹ️"); return; }
+    aendern(l=>[...(l||[]), {email:m, superAdmin:false}]); setNeu("");
+  }
+  async function speichern(){
+    if(!isSuperAdmin){ showToast&&showToast("Nur Super-Admins dürfen die Admin-Liste ändern","⛔"); return; }
+    setBusy(true);
+    try{
+      const admins=[...new Set(liste.map(x=>x.email))];
+      const superAdmins=liste.filter(x=>x.superAdmin).map(x=>x.email);
+      await setDoc(doc(db,"config","rollen"),{ admins, superAdmins, stand:Date.now(), von: mailNorm(user&&user.email) });
+      setzeRollen({admins, superAdmins});
+      geaendertRef.current=false; setGeaendert(false); setNieGespeichert(false);
+      showToast&&showToast("Admins & Rechte gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern: "+(e&&e.message||e),"❌"); }
+    setBusy(false);
+  }
+  if(!liste) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const eingetragen=new Set(liste.map(x=>x.email));
+  // Personen mit der Funktion „Admin“ im Profil, aber ohne Schreibrechte
+  const ohneRechte = players.filter(p=>p.roles?.admin===true && mailNorm(p.email) && !mailNorm(p.email).endsWith("@ttc-intern.de")
+    && !eingetragen.has(mailNorm(p.email)) && !istPlattform(mailNorm(p.email)));
+  const vorschlaege = players.filter(p=>{ const m=mailNorm(p.email); return m && !m.endsWith("@ttc-intern.de") && !eingetragen.has(m) && !istPlattform(m); })
+    .sort((a,b)=>(`${a.firstName} ${a.lastName}`).localeCompare(`${b.firstName} ${b.lastName}`,"de"));
+  const inp={padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
+  const kann = isSuperAdmin && !busy && (geaendert || nieGespeichert);
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.55}}>
+      Wer hier eingetragen ist, darf Daten ändern (Admin). Mit „Verwaltung“ erhält die Person
+      zusätzlich Zugang zu diesem Bereich (Super-Admin). Welche Ansicht jemand sieht, regeln weiterhin
+      die Funktionen im Profil. Änderungen wirken beim nächsten Start der App der betroffenen Person.
+    </div>
+    {nieGespeichert && <div style={{fontSize:11,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px",marginBottom:12,lineHeight:1.55}}>
+      Die Liste ist noch nicht in der Datenbank gespeichert – angezeigt wird die bisherige Vorbelegung.
+      Bitte einmal <b>speichern</b>; erst danach die neuen Firestore- und Storage-Regeln veröffentlichen.
+    </div>}
+    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+      {PLATTFORM_ADMIN_EMAILS.map(m=><div key={m} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"var(--bg3)",borderRadius:8,border:"1px solid var(--border2)"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis"}}>{nameVon(m)||m}</div>
+          <div style={{fontSize:10,color:"var(--text3)"}}>{m} · Betreiber der App (fest hinterlegt)</div>
+        </div>
+        <span style={{fontSize:10,fontWeight:800,color:"#10b981"}}>🔒 Admin + Verwaltung</span>
+      </div>)}
+      {liste.filter(x=>!istPlattform(x.email)).map(x=><div key={x.email} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"var(--bg3)",borderRadius:8,border:"1px solid var(--border2)",flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:150}}>
+          <div style={{fontSize:13,fontWeight:700,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis"}}>{nameVon(x.email)||x.email}</div>
+          <div style={{fontSize:10,color:"var(--text3)"}}>{x.email}{!personZu(x.email)&&" · kein Profil mit dieser Adresse"}</div>
+        </div>
+        <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text2)",cursor:"pointer"}}>
+          <input type="checkbox" checked={!!x.superAdmin} disabled={!isSuperAdmin}
+            onChange={e=>aendern(l=>l.map(y=>y.email===x.email?{...y,superAdmin:e.target.checked}:y))}/> Verwaltung
+        </label>
+        {isSuperAdmin && <button onClick={()=>{
+            if(mailNorm(user&&user.email)===x.email && !window.confirm("Du entfernst deine eigenen Rechte. Fortfahren?")) return;
+            aendern(l=>l.filter(y=>y.email!==x.email));
+          }} style={{padding:"4px 9px",background:"transparent",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:12,cursor:"pointer"}}>✕</button>}
+      </div>)}
+    </div>
+    {ohneRechte.length>0 && <div style={{fontSize:11,color:"var(--text2)",background:"#3b82f618",border:"1px solid #3b82f644",borderRadius:8,padding:"8px 10px",marginBottom:12,lineHeight:1.55}}>
+      <div style={{fontWeight:700,marginBottom:4}}>Funktion „Admin“ im Profil, aber keine Schreibrechte:</div>
+      {ohneRechte.map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+        <span style={{flex:1}}>{p.firstName} {p.lastName} <span style={{color:"var(--text3)"}}>({mailNorm(p.email)})</span></span>
+        {isSuperAdmin && <button onClick={()=>hinzufuegen(p.email)} style={{padding:"3px 9px",background:"#3b82f6",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Übernehmen</button>}
+      </div>)}
+    </div>}
+    {isSuperAdmin && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      <select value="" onChange={e=>{ if(e.target.value) hinzufuegen(e.target.value); }} style={{...inp,flex:"1 1 180px"}}>
+        <option value="">+ Person auswählen …</option>
+        {vorschlaege.map(p=><option key={p.id} value={mailNorm(p.email)}>{p.firstName} {p.lastName} – {mailNorm(p.email)}</option>)}
+      </select>
+      <input value={neu} onChange={e=>setNeu(e.target.value)} placeholder="oder E-Mail-Adresse" style={{...inp,flex:"1 1 180px"}}
+        onKeyDown={e=>{ if(e.key==="Enter") hinzufuegen(neu); }}/>
+      <button onClick={()=>hinzufuegen(neu)} style={{padding:"8px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hinzufügen</button>
+    </div>}
+    <button onClick={speichern} disabled={!kann} style={{width:"100%",padding:"10px 12px",background:kann?"#10b981":"#9ca3af",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:kann?"pointer":"default"}}>
+      {busy?"⏳ Speichern …":(isSuperAdmin?"Admins & Rechte speichern":"Nur Super-Admins können ändern")}
+    </button>
+  </div>;
+}
+
 function VereinsdatenEditor({showToast}){
   const [werte,setWerte]=useState(null);
   const [busy,setBusy]=useState(false);
@@ -11298,7 +11411,7 @@ function TtrUpload({ showToast }){
 // Kapitel der Verwaltung – Einstieg über Kacheln, danach die zugehörigen
 // Abschnitte (jeweils aufklappbar). Reihenfolge bestimmt die Kachel-Reihenfolge.
 const VW_KAPITEL = [
-  { key:"personen",      icon:"👥", label:"Personen",      sub:"Profile, Logins, Ehrungen" },
+  { key:"personen",      icon:"👥", label:"Personen",      sub:"Admins, Profile, Logins, Ehrungen" },
   { key:"training",      icon:"🏓", label:"Training",      sub:"Zeitraum & Trainingszeiten" },
   { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Saisons, Mannschaften, Spiellokale" },
   { key:"kommunikation", icon:"📣", label:"Infos",         sub:"Halleninfos, Termine, Push" },
@@ -11590,6 +11703,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showSaisons,setShowSaisons]=useState(false);   // V500
   const [showBranding,setShowBranding]=useState(false);
   const [showVereinsdaten,setShowVereinsdaten]=useState(false);   // V497
+  const [showRollen,setShowRollen]=useState(false);               // V504
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
@@ -12347,6 +12461,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     </div>}
 
     {vwKapitel==="personen" && <>
+    {/* V504: Admins & Rechte (statt fest im Code) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowRollen(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🔐 Admins & Rechte</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showRollen?"▲":"▼"}</span>
+      </div>
+      {showRollen&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <RollenEditor players={players} showToast={showToast} user={user} isSuperAdmin={isSuperAdmin}/>
+      </div></ErrorBoundary>}
+    </div>
     {/* Kopfzeile des Personen-Kapitels mit Anlegen-Schaltfläche */}
     <div style={{display:"flex",justifyContent:"flex-start",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
       <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -26073,22 +26197,21 @@ export default function App() {
       setAuthUser(u || null);
       if (!u) { setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); return; }
 
-      // 1) E-Mail-Vergleich (ADMIN_EMAILS → immer Trainer+Admin)
+      // V504: Admin-Liste aus der Datenbank (config/rollen); ohne Eintrag gilt die Vorbelegung.
+      try {
+        const rs = await getDoc(doc(db, "config", "rollen"));
+        if (rs.exists()) setzeRollen(rs.data());
+      } catch(e) {}
+
+      // 1) E-Mail-Vergleich (Admin-Liste → immer Trainer+Admin)
       if (isAdminEmail(u.email)) {
         setIsAdmin(true);
         setIsSuperAdmin(isSuperAdminEmail(u.email));
         setAdminReady(true); return;
       }
 
-      // 2) Firestore trainers-Collection (Legacy)
-      try {
-        const snap = await getDoc(doc(db, "trainers", u.uid));
-        if (snap.exists() && snap.data().role === "admin") {
-          setIsAdmin(true);
-          setIsSuperAdmin(snap.data().superAdmin===true || isSuperAdminEmail(u.email));
-          setAdminReady(true); return;
-        }
-      } catch(e) {}
+      // 2) (bis V503) trainers-Collection: Jeder Angemeldete konnte sich dort selbst als
+      //    Admin eintragen. Seit V504 entfällt dieser Weg – Rechte nur noch über die Admin-Liste.
 
       // 3) Rollen werden jetzt über players-Collection gesteuert (roles.trainer/admin)
       // Wird in Root render ausgewertet sobald players geladen sind
@@ -26149,16 +26272,6 @@ export default function App() {
     try { await signOut(auth); } catch(e) {}
   }
 
-  // Trainer-Freischalt-Funktion (Notfall)
-  async function makeAdminInFirestore() {
-    if (!authUser) return;
-    try {
-      await setDoc(doc(db,"trainers", authUser.uid), {
-        uid: authUser.uid, email: authUser.email, role: "admin"
-      });
-      setIsAdmin(true);
-    } catch(e) { alert("Fehler: " + e.message); }
-  }
 
   // ── Ladezustand: nur beim allerersten Start (authUser noch unbekannt) ──
   if (authUser === undefined) return (
@@ -26423,13 +26536,12 @@ export default function App() {
       <div style={{maxWidth:400,width:"100%"}}>
         <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:24,textAlign:"center"}}>
           <div style={{fontSize:40,marginBottom:12}}>🔑</div>
-          <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Bist du ein Trainer?</div>
+          <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Noch kein Profil verknüpft</div>
           <div style={{fontSize:13,color:"var(--text3)",marginBottom:20,lineHeight:1.6}}>
-            Angemeldet als: <b style={{color:"#10b981"}}>{authUser.email}</b>
+            Angemeldet als: <b style={{color:"#10b981"}}>{authUser.email}</b><br/>
+            Für diese Adresse gibt es noch kein Profil in der App. Bitte wende dich an die
+            Administration von {VEREIN.kurzname} – sie legt dein Profil an bzw. vergibt die Rechte.
           </div>
-          <button onClick={makeAdminInFirestore} style={{width:"100%",padding:12,marginBottom:10,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
-            ✅ Trainer-Zugang freischalten
-          </button>
           <button onClick={handleSignOut} style={{width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>Abmelden</button>
         </div>
       </div>
