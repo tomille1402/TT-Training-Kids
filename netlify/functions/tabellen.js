@@ -1,4 +1,4 @@
-// === TTC-App · Version 502 · netlify/functions/tabellen.js · erstellt 03.10.2026 (V502: Tabellen automatisch abrufen) ===
+// === TTC-App · Version 503 · netlify/functions/tabellen.js · erstellt 03.10.2026 (V503: Ligatabelle statt Spielplan auslesen) ===
 // Ruft für jede Mannschaft der aktuellen Saison die Tabelle bei myTischtennis ab und
 // speichert Platz, Punkte und die komplette Tabelle in config/tabellen. Läuft täglich
 // früh morgens (netlify.toml) und kann aus der App über „Tabellen jetzt aktualisieren“
@@ -53,23 +53,38 @@ function tabellenAus(html){
   }
   return tabellen;
 }
-// Wählt die Liga-Tabelle: die Tabelle mit den meisten Zeilen, die auf eine Mannschaft verlinken.
+// Wählt die Liga-Tabelle (V503). Auf der Seite stehen zwei Tabellen: die Ligatabelle
+// (Rang, Mannschaft, Beg., S, U, N, Spiele, +/-, Punkte) und der Spielplan (Datum, Zeit,
+// Halle, Heimmannschaft, Gastmannschaft …). Entscheidend sind die Überschriften:
+// Spielplan-Tabellen werden ausgeschlossen. Ohne erkennbare Überschriften gilt als
+// Ligatabelle die Tabelle, deren Zeilen genau EINE Mannschaft verlinken und mit dem Rang beginnen.
+const norm = t => String(t||"").toLowerCase().replace(/\s+/g," ").trim();
+function istSpielplanKopf(kopf){ return kopf.some(h=>/^(datum|zeit|heim|heimmannschaft|gast|gastmannschaft|halle)$/.test(norm(h))); }
+function istLigaKopf(kopf){
+  const k=kopf.map(norm);
+  return k.some(h=>/^(rang|platz|pl\.?)$/.test(h)) && k.some(h=>/mannschaft/.test(h)) && k.some(h=>/^punkte$/.test(h));
+}
+function idsDerZeile(r){ return [...new Set(r.links.map(l=>(/\/mannschaft\/(\d+)/.exec(l)||[])[1]).filter(Boolean))]; }
 function ligaTabelle(html){
-  let beste=null, max=0;
-  for(const z of tabellenAus(html)){
-    const n=z.filter(r=>r.links.some(l=>/\/mannschaft\/\d+/.test(l))).length;
-    if(n>max){ max=n; beste=z; }
+  const kandidaten = tabellenAus(html).map(z=>{
+    const kopfZeile = z.find(r=>r.zellen.length && r.zellen.every(c=>c.kopf)) || null;
+    const kopf = kopfZeile ? kopfZeile.zellen.map(c=>c.text) : [];
+    const daten = z.filter(r=>idsDerZeile(r).length>0 && r.zellen.length>=3);
+    return { kopf, daten };
+  }).filter(t=>t.daten.length>=2 && !istSpielplanKopf(t.kopf));
+  let beste = kandidaten.find(t=>istLigaKopf(t.kopf));
+  if(!beste){
+    beste = kandidaten.find(t=>t.daten.every(r=>idsDerZeile(r).length===1 && /^\d{1,2}\.?$/.test((r.zellen[0]||{}).text||"")));
   }
-  if(!beste || max<2) return null;
-  const kopfZeile = beste.find(r=>r.zellen.every(c=>c.kopf)) || null;
-  const daten = beste.filter(r=>r.links.some(l=>/\/mannschaft\/\d+/.test(l)) && r.zellen.length>=3);
-  let kopf = kopfZeile ? kopfZeile.zellen.map(c=>c.text) : [];
+  if(!beste) return null;
+  const daten = beste.daten;
+  let kopf = beste.kopf;
   // Zellen ohne Inhalt (Icons, Pfeile) in allen Zeilen weglassen, damit die Anzeige schlank bleibt.
   const breite=Math.max(...daten.map(r=>r.zellen.length));
   const leer=[...Array(breite).keys()].filter(i=>daten.every(r=>!(r.zellen[i]&&r.zellen[i].text)));
   const zeilen=daten.map(r=>({
     z: r.zellen.map(c=>c.text).filter((_,i)=>!leer.includes(i)),
-    mannschaftId: ((r.links.map(l=>/\/mannschaft\/(\d+)/.exec(l)).find(Boolean))||[])[1] || "",
+    mannschaftId: idsDerZeile(r)[0] || "",
   }));
   if(kopf.length===breite) kopf=kopf.filter((_,i)=>!leer.includes(i));
   else kopf=[];
@@ -77,7 +92,7 @@ function ligaTabelle(html){
 }
 // Platz und Punkte aus einer Zeile: Platz = erste Zahl, Punkte = letzte „x:y“-Angabe.
 function rangUndPunkte(z){
-  const rang = (z.find(t=>/^\d{1,2}\.?$/.test(t))||"").replace(".","");
+  const rang = (/^\d{1,2}\.?$/.test(z[0]||"") ? z[0] : (z.find(t=>/^\d{1,2}\.?$/.test(t))||"")).replace(".","");
   const paare = z.filter(t=>/^\d+\s*:\s*\d+$/.test(t));
   const punkte = paare.length ? paare[paare.length-1].replace(/\s+/g,"") : "";
   return { rang, punkte };
