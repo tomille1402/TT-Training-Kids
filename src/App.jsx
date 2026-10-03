@@ -1,4 +1,4 @@
-// === TTC-App · Version 500 · erstellt 03.10.2026 ===
+// === TTC-App · Version 502 · erstellt 03.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "500";
+const APP_VERSION = "502";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8357,21 +8357,22 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
 
+  const spKey = aktSpielplanKey();   // V501: aktuelle Saison
   useEffect(()=>{
     let ab=false;
     (async()=>{ try{
-      const snap=await getDoc(doc(db,"config","spielplan_2026_2027"));
+      const snap=await getDoc(doc(db,"config",spKey));
       if(!ab) setAlleSpiele((snap.exists()&&snap.data().spiele)||[]);
     }catch(e){ if(!ab) setAlleSpiele([]); } })();
     return ()=>{ab=true;};
-  },[]);
+  },[spKey]);
   useEffect(()=>{
-    const u1=onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+    const u1=onSnapshot(doc(db,"einsaetze",spKey),
       s=>setEinsaetze(s.exists()?(s.data().data||{}):{}), ()=>setEinsaetze({}));
     const u2=abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
     const u3=abonniereSpielDaten("spielpins",  setSpielpins);
     return ()=>{u1&&u1();u2&&u2();u3&&u3();};
-  },[]);
+  },[spKey]);
 
   const heuteISO = new Date().toLocaleDateString("sv");
   const nachwuchsSpiele = useMemo(()=> (alleSpiele||[])
@@ -8398,8 +8399,8 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const nachwuchsKarte = (s, rot)=>{
     if(!s) return null;
     const heim=/heim/i.test(s.ort||"");
-    const code=spielEintragFinden(spielcodes,s,alleSpiele,"code",["2026_27","2026_2027"]);
-    const pin =spielEintragFinden(spielpins, s,alleSpiele,"pin", ["2026_27","2026_2027"]);
+    const code=spielEintragFinden(spielcodes,s,alleSpiele,"code",aktSaisonSlugs());
+    const pin =spielEintragFinden(spielpins, s,alleSpiele,"pin", aktSaisonSlugs());
     const berichtUrl = code?`https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`:"";
     const team=teamZuSpielTR(s);
     const spielplanUrl = team?teamLinks(team,(SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan:"";
@@ -9315,12 +9316,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
 
   useEffect(()=>{
     // Alle möglichen Aufstellungs-Keys (neueste Saisons zuerst)
-    const ALL_KEYS=[
-      "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
-      "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
-      "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
-      "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
-    ];
+    const ALL_KEYS=bekannteAufstellungKeys();   // V501: aus den gepflegten Saisons
     function saisonFromKey(k){
       const m=k.match(/(\d{4})_(\d{4})/);
       return m?`${m[1]}/${m[2]}`:k;
@@ -9786,18 +9782,32 @@ function SaisonsEditor({showToast, onGespeichert}){
   const [offen,setOffen]=useState(null);      // key der aufgeklappten Saison
   const [busy,setBusy]=useState(false);
   const [geaendert,setGeaendert]=useState(false);
+  const [nieGespeichert,setNieGespeichert]=useState(false);
   useEffect(()=>{
     getDoc(doc(db,"config","saisons")).then(snap=>{
       const gesp = snap.exists() ? saisonsBereinigt(snap.data().saisons) : null;
       const basis = (gesp || SEASONS_STANDARD).map(x=>({...x, teams:x.teams.map(t=>({...t}))}));
       setListe(basis); setOffen((basis.find(x=>x.current)||basis[0]).key);
+      // V502: noch nie gespeichert → Speichern freigeben (Tabellenabruf und Benachrichtigungen
+      // lesen die Mannschaften aus config/saisons)
+      if(!gesp){ setGeaendert(true); setNieGespeichert(true); }
     }).catch(()=>{ const b=SEASONS.map(x=>({...x,teams:x.teams.map(t=>({...t}))})); setListe(b); setOffen(b[0].key); });
   },[]);
   if(!liste) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
   const aendere=(fn)=>{ setListe(l=>fn(l.map(x=>({...x,teams:x.teams.map(t=>({...t}))})))); setGeaendert(true); };
   const setSaisonFeld=(key,f,w)=>aendere(l=>l.map(x=>x.key===key?{...x,[f]:w}:x));
   const setTeamFeld=(key,i,f,w)=>aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.map((t,j)=>j===i?{...t,[f]:w}:t)}));
-  const alsAktuell=(key)=>aendere(l=>l.map(x=>({...x,current:x.key===key})));
+  // V501: Vor dem Umschalten prüfen, ob für die Saison schon Spielplan und Aufstellung da sind.
+  const alsAktuell=async(key)=>{
+    const x=liste.find(y=>y.key===key); if(!x) return;
+    const fehlt=[];
+    try{ const sp=await getDoc(doc(db,"config",spielplanKeyVon(x)));
+      if(!(sp.exists() && (sp.data().spiele||[]).length)) fehlt.push(`Vereinsspielplan (${spielplanKeyVon(x)})`); }catch(e){}
+    try{ const au=await getDoc(doc(db,"config",aufstellungKeyVon(x)));
+      if(!(au.exists() && (au.data().spieler||[]).length)) fehlt.push(`Aufstellung ${x.halbserie==="R"?"Rückrunde":"Vorrunde"} (${aufstellungKeyVon(x)})`); }catch(e){}
+    if(fehlt.length && !window.confirm(`Für ${key} ist noch nicht hochgeladen:\n• ${fehlt.join("\n• ")}\n\nSpielplan, Einsätze, Spielkacheln und Benachrichtigungen wären dann leer. Trotzdem als aktuell setzen?`)) return;
+    aendere(l=>l.map(y=>({...y,current:y.key===key})));
+  };
   const teamDazu=(key)=>aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:[...x.teams,{id:"",name:"",liga:"",color:"#3b82f6"}]}));
   const teamWeg=(key,i)=>{ if(!window.confirm("Diese Mannschaft aus der Saison entfernen?")) return;
     aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.filter((_,j)=>j!==i)})); };
@@ -9822,7 +9832,7 @@ function SaisonsEditor({showToast, onGespeichert}){
     // Mannschaften übernehmen (gleiche IDs → hochgeladene Dateien/Fotos bleiben zuordenbar),
     // Liga-Angaben, Platz und Punkte leeren – die kommen aus click-tt der neuen Saison.
     const teams=akt.teams.map(t=>({id:t.id,name:t.name,color:t.color,liga:"",ligaPath:"",gruppe:"",mannschaft:"",mName:t.mName||""}));
-    aendere(l=>[{key,code,teams,showStandings:false,showLinks:true,current:false},...l]);
+    aendere(l=>[{key,code,teams,showStandings:false,showLinks:true,current:false,halbserie:"V"},...l]);
     setOffen(key);
   };
   const saisonWeg=(key)=>{
@@ -9843,7 +9853,11 @@ function SaisonsEditor({showToast, onGespeichert}){
     setBusy(true);
     try{
       await setDoc(doc(db,"config","saisons"),{saisons:sauber, lastUpdated:Date.now()});
-      setzeSaisons(sauber); setGeaendert(false);
+      // V501: aktuelle Saison zusätzlich im öffentlich lesbaren clubConfig ablegen –
+      // der Kalender-Feed (ohne Anmeldung) liest sie von dort.
+      const akt=sauber.find(x=>x.current)||sauber[0];
+      await setDoc(doc(db,"config","clubConfig"),{aktuelleSaison:{key:akt.key, spielplan:spielplanKeyVon(akt), aufstellung:aufstellungKeyVon(akt)}},{merge:true});
+      setzeSaisons(sauber); setGeaendert(false); setNieGespeichert(false);
       onGespeichert && onGespeichert();
       showToast&&showToast("Saisons & Mannschaften gespeichert","✅");
     }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
@@ -9858,6 +9872,10 @@ function SaisonsEditor({showToast, onGespeichert}){
       als Standard. Tipp: Mit „🔗 Link“ den myTischtennis-Link einer Mannschaft einfügen – Liga, Gruppe und
       Mannschafts-ID werden daraus übernommen.
     </div>
+    {nieGespeichert && <div style={{fontSize:11,color:"#b45309",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,padding:"8px 10px",marginBottom:10,lineHeight:1.5}}>
+      Die Saisons sind noch nicht gespeichert (es gilt die Vorbelegung). Bitte einmal unten auf
+      „Saisons & Mannschaften speichern“ tippen – erst dann kann der Server die Tabellen abrufen.
+    </div>}
     <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
       <button onClick={neueSaison} style={{...knopf,background:"#10b98122",border:"1px solid #10b98155",color:"#10b981"}}>+ Neue Saison (Mannschaften übernehmen)</button>
     </div>
@@ -9878,6 +9896,10 @@ function SaisonsEditor({showToast, onGespeichert}){
               <input type="checkbox" checked={!!x.showStandings} onChange={e=>setSaisonFeld(x.key,"showStandings",e.target.checked)}/> Platz/Punkte anzeigen</label>
             <label style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
               <input type="checkbox" checked={x.showLinks!==false} onChange={e=>setSaisonFeld(x.key,"showLinks",e.target.checked)}/> Links anzeigen</label>
+            <div style={{width:150}}><label style={{fontSize:10,color:"var(--text3)"}}>Gültige Aufstellung</label>
+              <select value={x.halbserie==="R"?"R":"V"} onChange={e=>setSaisonFeld(x.key,"halbserie",e.target.value)} style={inp}>
+                <option value="V">Vorrunde</option><option value="R">Rückrunde</option>
+              </select></div>
             {!x.current && <button onClick={()=>alsAktuell(x.key)} style={knopf}>Als aktuell setzen</button>}
             {!x.current && <button onClick={()=>saisonWeg(x.key)} style={{...knopf,color:"#ef4444",background:"#ef444415",border:"1px solid #ef444444"}}>Saison löschen</button>}
           </div>
@@ -10373,7 +10395,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
   // Person als Betreuer (1 oder 2) eingetragen ist. Quelle ist das öffentliche
   // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,f,f2}}}),
   // das nur für Nachwuchsspiele Einträge enthält.
-  const AKTUELLE_SAISON = "spielplan_2026_2027";
+  const AKTUELLE_SAISON = aktSpielplanKey();   // V501
   const [betreuerDaten,setBetreuerDaten]=useState(null);
   useEffect(()=>{
     if(!offen || betreuerDaten!==null) return;
@@ -10689,8 +10711,9 @@ function PushRegelnVerwaltung({showToast}){
   },[]);
 
   // Alle Mannschaftsnamen aus der aktuellen Aufstellung sammeln (für Nachwuchs-Häkchen)
+  const aufKeyAkt=aktAufstellungKey();
   useEffect(()=>{
-    const aufKey="aufstellung_2026_2027_V";
+    const aufKey=aufKeyAkt;   // V501
     const u=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
         ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
@@ -10699,7 +10722,7 @@ function PushRegelnVerwaltung({showToast}){
       setMannschaften(namen);
     },()=>setMannschaften([]));
     return u;
-  },[]);
+  },[aufKeyAkt]);
 
   function aendern(fn){ setRegeln(r=>{ const kopie=JSON.parse(JSON.stringify(r)); fn(kopie); return kopie; }); setDirty(true); }
 
@@ -14260,15 +14283,16 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
   // ermitteln (für MF: alle Spieler der eigenen Mannschaft, nicht nur solche mit
   // gesetztem mannschaftsfuehrerTeam-Feld).
   const [aufSpieler,setAufSpieler]=useState([]);
+  const aufKeyAkt=aktAufstellungKey();
   useEffect(()=>{
-    const aufKey="aufstellung_2026_2027_V";
+    const aufKey=aufKeyAkt;   // V501
     const u=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
         ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
       setAufSpieler(data);
-    },()=>setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+    },()=>setAufSpieler(AUFSTELLUNG_DATA[aufKey]||[]));
     return u;
-  },[]);
+  },[aufKeyAkt]);
 
   // MF: nur Bestellungen der eigenen Mannschaft. Admin: alle.
   const meineMannschaft = me?.mannschaftsfuehrerTeam||"";
@@ -15508,33 +15532,35 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
   const [spielpins, setSpielpins] = useState({});
   const [einsaetze, setEinsaetze] = useState({});
   const [alleSpiele, setAlleSpiele] = useState([]);
+  const spKeyAkt  = aktSpielplanKey();    // V501: aktuelle Saison
+  const aufKeyAkt = aktAufstellungKey();
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db,"config","aufstellung_2026_2027_V"), snap=>{
+    const unsub = onSnapshot(doc(db,"config",aufKeyAkt), snap=>{
       const d = snap.exists() ? (snap.data().spieler||[]) : [];
-      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
-    }, ()=> setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA[aufKeyAkt]||[]));
+    }, ()=> setAufSpieler(AUFSTELLUNG_DATA[aufKeyAkt]||[]));
     return unsub;
-  }, []);
+  }, [aufKeyAkt]);
   useEffect(() => {
     const u1 = abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
     const u2 = abonniereSpielDaten("spielpins",  setSpielpins);
     return ()=>{ u1&&u1(); u2&&u2(); };
   }, []);
   useEffect(() => {
-    const u = onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+    const u = onSnapshot(doc(db,"einsaetze",spKeyAkt),
       snap=> setEinsaetze(snap.exists()?(snap.data().data||{}):{}), ()=> setEinsaetze({}));
     return u;
-  }, []);
+  }, [spKeyAkt]);
   useEffect(() => {
     let ab=false;
     (async()=>{ try{
-      const snap = await getDoc(doc(db,"config","spielplan_2026_2027"));
+      const snap = await getDoc(doc(db,"config",spKeyAkt));
       const spiele = (snap.exists() && snap.data().spiele) || [];
       if(!ab) setAlleSpiele(spiele);
     }catch(e){ if(!ab) setAlleSpiele([]); } })();
     return ()=>{ ab=true; };
-  }, []);
+  }, [spKeyAkt]);
 
   // Mannschaft der Person (Nachwuchs: z.B. "Mädchen 13" – im Spielplan gleich benannt).
   const meinAufName = useMemo(()=> myPlayer ? stammMannschaftVorauswahl(myPlayer, aufSpieler) : "", [myPlayer, aufSpieler]);
@@ -15550,7 +15576,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     [kommend, meinSpielplanName, myPlayer, einsaetze]);
   const naechstes = meineSpiele[0] || null; // Spieler: nur eigene Spiele (kein Fallback auf fremde Mannschaft)
 
-  const saisonKeys = ["2026_27","2026_2027"];
+  const saisonKeys = aktSaisonSlugs();   // V501
   const feldVonSpiel = (s, quelle, feld) =>
     spielEintragFinden(quelle, s, alleSpiele, feld, saisonKeys);
   const teamZuSpiel = (s) => {
@@ -17455,12 +17481,7 @@ function AufstellungUpload({showToast}) {
   const [saved,setSaved]=useState([]);
 
   // Alle möglichen Keys — dynamisch erkennen via Meta-Doc
-  const ALL_KEYS=[
-    "aufstellung_2024_2025_R","aufstellung_2024_2025_V",
-    "aufstellung_2025_2026_R","aufstellung_2025_2026_V",
-    "aufstellung_2026_2027_R","aufstellung_2026_2027_V",
-    "aufstellung_2027_2028_R","aufstellung_2027_2028_V",
-  ];
+  const ALL_KEYS=bekannteAufstellungKeys().slice().reverse();   // V501: aus den gepflegten Saisons (älteste zuerst)
 
   function mesz(ts){
     if(!ts) return "—";
@@ -18179,7 +18200,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
     (async()=>{
       const d={spiele:[],termine:[],halleninfos:[],lokale:[],zeiten:[]};
       try{
-        const sp=await getDoc(doc(db,"config","spielplan_2026_2027"));
+        const sp=await getDoc(doc(db,"config",aktSpielplanKey()));   // V501
         d.spiele=(sp.exists()&&sp.data().spiele)||[];
       }catch(e){}
       try{
@@ -19495,17 +19516,18 @@ const ICON_GOOGLE_MAPS = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABA
 const ICON_APPLE_KARTEN = "data:image/png;base64,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";
 
 // Aufstellung der laufenden Saison (fuer die Reihenfolge der Nominierten).
-const AKTUELLE_AUFSTELLUNG_ID = "aufstellung_2026_2027_V";
+// V501: aus der aktuellen Saison (Vor-/Rückrunde laut Saisons-Editor).
 function useAufstellungSpieler(){
-  const [liste,setListe]=useState(AUFSTELLUNG_DATA[AKTUELLE_AUFSTELLUNG_ID]||[]);
+  const id = aktAufstellungKey();
+  const [liste,setListe]=useState(AUFSTELLUNG_DATA[id]||[]);
   useEffect(()=>{
-    const u=onSnapshot(doc(db,"config",AKTUELLE_AUFSTELLUNG_ID), snap=>{
+    const u=onSnapshot(doc(db,"config",id), snap=>{
       const d=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[AKTUELLE_AUFSTELLUNG_ID]||[]);
+        ? snap.data().spieler : (AUFSTELLUNG_DATA[id]||[]);
       setListe(d);
     },()=>{});
     return u;
-  },[]);
+  },[id]);
   return liste;
 }
 
@@ -20930,7 +20952,7 @@ const TEAMS_2026_27 = [
 // V500: Saisons und Mannschaften sind in der Verwaltung pflegbar (config/saisons).
 // SEASONS_STANDARD ist die Vorbelegung, solange dort nichts gespeichert ist.
 const SEASONS_STANDARD = [
-  {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, showLinks:true,  current:true},
+  {key:"2026/27", code:"26--27", teams:TEAMS_2026_27, showStandings:false, showLinks:true,  current:true, halbserie:"V"},
   {key:"2025/26", code:"25--26", teams:TEAMS_2025_26, showStandings:true,  showLinks:true,  current:false},
 ];
 let SEASONS = SEASONS_STANDARD;
@@ -20943,6 +20965,7 @@ function saisonsBereinigt(liste){
     showStandings:!!x.showStandings,
     showLinks:x.showLinks!==false,
     current:!!x.current,
+    halbserie:x.halbserie==="R"?"R":"V",   // V501: aktuelle Halbserie (Vorrunde/Rückrunde)
     teams:(Array.isArray(x.teams)?x.teams:[]).filter(t=>t && String(t.name||"").trim()).map(t=>({
       ...t, id:String(t.id||"").trim() || teamIdAusName(t.name), name:String(t.name).trim(),
     })),
@@ -20954,6 +20977,52 @@ function saisonsBereinigt(liste){
 }
 function setzeSaisons(liste){ SEASONS = saisonsBereinigt(liste) || SEASONS_STANDARD; }
 function aktuelleSaison(){ return SEASONS.find(s=>s.current) || SEASONS[0]; }
+// ── V501: Datenbereiche aus der aktuellen Saison ableiten ──
+// "2026/27" → {y1:2026, y2:2027}. Liefert null bei unbekannter Schreibweise.
+function saisonJahre(s){
+  const m=/^(\d{4})\s*\/\s*(\d{2}|\d{4})$/.exec(String((s&&s.key)||"").trim());
+  if(!m) return null;
+  const y1=+m[1]; let y2 = m[2].length===4 ? +m[2] : Math.floor(y1/100)*100 + (+m[2]);
+  if(y2<=y1) y2+=100;
+  return {y1,y2};
+}
+function spielplanKeyVon(s){ const j=saisonJahre(s); return j?`spielplan_${j.y1}_${j.y2}`:"spielplan_2026_2027"; }
+function aufstellungKeyVon(s, halbserie){
+  const j=saisonJahre(s); const h=(halbserie||(s&&s.halbserie))==="R"?"R":"V";
+  return j?`aufstellung_${j.y1}_${j.y2}_${h}`:`aufstellung_2026_2027_${h}`;
+}
+// Spielplan-/Einsatz-Dokument der aktuellen Saison, z. B. "spielplan_2026_2027".
+function aktSpielplanKey(){ return spielplanKeyVon(aktuelleSaison()); }
+// Gültige Aufstellung der aktuellen Saison (Vor- oder Rückrunde laut Saisons-Editor).
+function aktAufstellungKey(){ return aufstellungKeyVon(aktuelleSaison()); }
+// Schreibweisen der Saison in Spiel-PIN-/Spielcode-Daten: ["2026_27","2026_2027"].
+function aktSaisonSlugs(){
+  const j=saisonJahre(aktuelleSaison()); if(!j) return ["2026_27","2026_2027"];
+  return [`${j.y1}_${String(j.y2).slice(2)}`, `${j.y1}_${j.y2}`];
+}
+// Alle bekannten Spielplan-Dokumente: gepflegte Saisons + frühere Standard-Saisons.
+function bekannteSpielplanKeys(){
+  const ks=SEASONS.map(spielplanKeyVon);
+  for(const k of ["spielplan_2026_2027","spielplan_2025_2026","spielplan_2024_2025","spielplan_2023_2024","spielplan_2022_2023"]) if(!ks.includes(k)) ks.push(k);
+  return ks.sort((a,b)=>b.localeCompare(a)).concat(["spielplan"]);   // neueste zuerst; Altschlüssel zuletzt
+}
+function bekannteAufstellungKeys(){
+  const out=[];
+  for(const k of bekannteSpielplanKeys()){ if(k==="spielplan") continue;
+    const j=k.replace("spielplan_",""); out.push(`aufstellung_${j}_R`,`aufstellung_${j}_V`); }
+  // eine Saison voraus, damit die Meldung der kommenden Saison schon hochgeladen werden kann
+  const a=saisonJahre(SEASONS.slice().sort((x,y)=>String(y.key).localeCompare(String(x.key)))[0]);
+  if(a){ const n=`aufstellung_${a.y1+1}_${a.y2+1}`; if(!out.includes(n+"_R")) out.unshift(n+"_R",n+"_V"); }
+  return out;
+}
+// Saison-Auswahl für Listen: [{id:"spielplan_2026_2027", label:"2026/27", aktuell:true}, …]
+function saisonOptionen(){
+  const akt=aktSpielplanKey();
+  return bekannteSpielplanKeys().filter(k=>k!=="spielplan").map(k=>{
+    const m=/spielplan_(\d{4})_(\d{4})/.exec(k);
+    return { id:k, label: m?`${m[1]}/${m[2].slice(2)}`:k, aktuell:k===akt };
+  });
+}
 // Stabile Mannschafts-ID aus dem Namen (für neue Mannschaften): "Erwachsene VII" → "erwachsene_vii".
 function teamIdAusName(n){
   return String(n||"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss")
@@ -20974,7 +21043,7 @@ function aktuelleMannschaften(){ return aktuelleSaison().teams.map(t=>t.name); }
 const TEAMS = TEAMS_2025_26;
 
 function teamLinks(t, seasonCode) {
-  const sc = seasonCode || S;
+  const sc = seasonCode || aktuelleSaison().code || S;   // V501
   const g = `${BASE}/${sc}/ligen`;
   // ligaPath: exaktes URL-Segment (falls gesetzt), sonst aus liga generiert
   const liga = t.ligaPath || (t.liga||"").replace(/ /g,"_").replace(/\./g,"");
@@ -21278,7 +21347,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const [spielplaene,setSpielplaene] = useState({});
   const [aufstellungen,setAufstellungen] = useState({});
   const [einsaetze,setEinsaetze] = useState({});
-  const [selSeasonId,setSelSeasonId] = useState("spielplan_2026_2027");
+  const [selSeasonId,setSelSeasonId] = useState(()=>aktSpielplanKey());   // V501
   const [selTeam,setSelTeam] = useState("");
   const [expandedGames,setExpandedGames] = useState({}); // {spielKey: true} — aufgeklappte Spieltage
   // Zeitraum-Schalter: Voreinstellung sind die noch anstehenden Spiele – das haelt
@@ -21286,10 +21355,16 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const [nurKuenftige,setNurKuenftige] = useState(true);
   const { statusVon:verlegStatusVon } = useVerlegungen();
 
-  const SEASON_OPTS = [
-    {id:"spielplan_2026_2027", label:"2026/27", auf:"aufstellung_2026_2027_V"},
-    {id:"spielplan_2025_2026", label:"2025/26", auf:"aufstellung_2025_2026_R"},
-  ];
+  // V501: aus den gepflegten Saisons – aktuelle Saison mit der gültigen Halbserie,
+  // frühere Saisons mit ihrer Rückrunde (Endstand).
+  const SEASON_OPTS = [...SEASONS].sort((a,b)=>String(b.key).localeCompare(String(a.key))).map(x=>({
+    id:spielplanKeyVon(x),
+    label:x.key,
+    auf: x.current ? aufstellungKeyVon(x) : aufstellungKeyVon(x,"R"),
+    aktuell: !!x.current,
+  }));
+  const seasonOptsSig = SEASON_OPTS.map(o=>o.id+"|"+o.auf).join(",");
+  useEffect(()=>{ if(!SEASON_OPTS.some(o=>o.id===selSeasonId)) setSelSeasonId(aktSpielplanKey()); },[seasonOptsSig]);
 
   useEffect(()=>{
     const unsubs=[];
@@ -21306,7 +21381,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
       },()=>{ setAufstellungen(p=>({...p,[so.auf]:AUFSTELLUNG_DATA[so.auf]||[]})); }));
     }
     return ()=>unsubs.forEach(u=>u());
-  },[]);
+  },[seasonOptsSig]);
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"einsaetze",selSeasonId),snap=>{
@@ -21714,7 +21789,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
       <select value={selSeasonId} onChange={e=>setSelSeasonId(e.target.value)}
         style={{padding:"7px 10px",borderRadius:8,fontSize:13,fontWeight:700,background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"}}>
-        {SEASON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}{s.id==="spielplan_2026_2027"?" (aktuell)":""}</option>)}
+        {SEASON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}{s.aktuell?" (aktuell)":""}</option>)}
       </select>
       <select value={selTeam} onChange={e=>setSelTeam(e.target.value)}
         style={{padding:"7px 10px",borderRadius:8,fontSize:13,fontWeight:700,background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)",flex:1,minWidth:140}}>
@@ -21919,6 +21994,25 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   // Saison-Auswahl: standardmäßig die aktuelle Saison
   const [selSeasonKey,setSelSeasonKey] = useState((SEASONS.find(s=>s.current)||SEASONS[0]).key);
   const season = SEASONS.find(s=>s.key===selSeasonKey) || SEASONS[0];
+  // V502: automatisch abgerufene Tabellen (config/tabellen, täglich per Server-Funktion)
+  const [tabellen,setTabellen] = useState(null);
+  const [tabOffen,setTabOffen] = useState({});
+  const [tabLaeuft,setTabLaeuft] = useState(false);
+  const [tabBericht,setTabBericht] = useState(null);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","tabellen"),snap=>setTabellen(snap.exists()?snap.data():null),()=>{});
+    return u;
+  },[]);
+  async function tabellenAktualisieren(){
+    setTabLaeuft(true); setTabBericht(null);
+    try{
+      const r=await fetch("/.netlify/functions/tabellenjetzt",{method:"POST"});
+      const j=await r.json().catch(()=>({ok:false,meldung:`HTTP ${r.status}`}));
+      setTabBericht(j);
+    }catch(e){ setTabBericht({ok:false,meldung:e?.message||"Netzwerkfehler"}); }
+    setTabLaeuft(false);
+  }
+  const fmtStand=(ts)=>{ if(!ts) return ""; try{ return new Date(ts).toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr"; }catch(e){ return ""; } };
   const seasonTeams = season.teams;
   const seasonSlugSB = selSeasonKey.replace("/","_");
   const fotoVonSB = (teamId) => {
@@ -22002,14 +22096,34 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
 
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
       {VEREIN.kurzname} · Saison {season.key} · {VEREIN.verband}
-      {!season.showStandings&&<span style={{color:"#f59e0b"}}> · Platzierungen noch nicht verfügbar</span>}
+      {season.current && tabellen && tabellen.saison===season.key && tabellen.stand
+        ? <span> · Tabellen Stand {fmtStand(tabellen.stand)}</span>
+        : (!season.showStandings&&<span style={{color:"#f59e0b"}}> · Platzierungen noch nicht verfügbar</span>)}
     </div>
+
+    {/* V502: Tabellen manuell aktualisieren (Admin) */}
+    {isSuperAdmin && season.current && <div style={{marginBottom:14}}>
+      <button onClick={tabellenAktualisieren} disabled={tabLaeuft} style={{padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,
+        background:"#2E75B622",border:"1px solid #2E75B655",color:"#2E75B6",cursor:tabLaeuft?"wait":"pointer"}}>
+        {tabLaeuft?"⏳ Tabellen werden abgerufen …":"🔄 Tabellen jetzt aktualisieren"}
+      </button>
+      {tabBericht && <div style={{marginTop:8,fontSize:11,lineHeight:1.6,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:9,padding:"8px 10px"}}>
+        {tabBericht.hinweis && <div style={{color:"var(--text3)"}}>{tabBericht.hinweis}</div>}
+        {!tabBericht.ok && <div style={{color:"#ef4444"}}>Fehler: {tabBericht.meldung||"unbekannt"}</div>}
+        {(tabBericht.bericht||[]).map((b,i)=><div key={i} style={{color:b.ok?"var(--text2)":"#ef4444"}}>{b.ok?"✅":"⚠️"} {b.team}: {b.info}</div>)}
+      </div>}
+    </div>}
 
     <div style={{display:"grid",gridTemplateColumns:"1fr",gap:12}}>
       {seasonTeams.map(t=>{
         const links = teamLinks(t, season.code);
         const photo = fotoVonSB(t.id);
-        const hasStandings = season.showStandings && t.rang!=null;
+        // V502: aktuelle Saison → automatisch abgerufene Tabelle; frühere Saisons → gepflegte Werte
+        const auto = (season.current && tabellen && tabellen.saison===season.key && tabellen.teams) ? tabellen.teams[t.id] : null;
+        const autoOk = !!(auto && auto.rang);
+        const rangW = autoOk ? Number(auto.rang) : t.rang;
+        const punkteW = autoOk ? auto.punkte : t.punkte;
+        const hasStandings = autoOk || (season.showStandings && t.rang!=null);
         const showLinks = season.showLinks && t.gruppe;
         return <div key={t.id} ref={el=>{ if(el) teamRefs.current[t.name]=el; }} style={{
           background:"var(--bg2)",borderRadius:14,overflow:"hidden",
@@ -22045,17 +22159,40 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
                 <div style={{fontSize:14,fontWeight:800,color:t.color}}>{t.name}</div>
                 {hasStandings&&<div style={{
                   fontSize:11,fontWeight:700,
-                  color:t.rang<=3?"#10b981":t.rang<=6?"#f59e0b":"var(--text3)",
-                  background:t.rang<=3?"#10b98122":t.rang<=6?"#f59e0b22":"var(--bg3)",
+                  color:rangW<=3?"#10b981":rangW<=6?"#f59e0b":"var(--text3)",
+                  background:rangW<=3?"#10b98122":rangW<=6?"#f59e0b22":"var(--bg3)",
                   padding:"2px 7px",borderRadius:20,
-                }}>Platz {t.rang}</div>}
+                }}>Platz {rangW}</div>}
               </div>
               {t.liga&&<div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>{t.liga}</div>}
               {hasStandings
-                ? <div style={{fontSize:11,color:"var(--text2)"}}>Punkte: <b style={{color:"var(--text)"}}>{t.punkte}</b></div>
+                ? <div style={{fontSize:11,color:"var(--text2)"}}>Punkte: <b style={{color:"var(--text)"}}>{punkteW}</b>
+                    {autoOk && <span style={{color:"var(--text4)"}}> · Stand {fmtStand(auto.stand)}</span>}</div>
                 : <div style={{fontSize:11,color:"var(--text4)",fontStyle:"italic"}}>Saison läuft noch — Tabelle siehe Links</div>}
+              {isSuperAdmin && auto && auto.fehler && <div style={{fontSize:10,color:"#ef4444",marginTop:2}}>⚠️ Tabellenabruf: {auto.fehler}</div>}
             </div>
           </div>
+
+          {/* V502: komplette Tabelle aufklappbar, eigene Zeile hervorgehoben */}
+          {auto && Array.isArray(auto.zeilen) && auto.zeilen.length>0 && <div style={{borderTop:"1px solid var(--border)"}}>
+            <div onClick={()=>setTabOffen(p=>({...p,[t.id]:!p[t.id]}))} style={{padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--text2)"}}>
+              <span>📊 Tabelle</span><span style={{color:TTC_ROT,fontWeight:800}}>{tabOffen[t.id]?"▲":"▼"}</span>
+            </div>
+            {tabOffen[t.id] && <div style={{overflowX:"auto",padding:"0 8px 10px"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                {Array.isArray(auto.kopf)&&auto.kopf.length>0 && <thead><tr>
+                  {auto.kopf.map((h,i)=><th key={i} style={{textAlign:i===1?"left":"center",padding:"4px 5px",color:"var(--text3)",fontWeight:700,borderBottom:"1px solid var(--border2)",whiteSpace:"nowrap"}}>{h}</th>)}
+                </tr></thead>}
+                <tbody>{auto.zeilen.map((r,ri)=>{
+                  const eigen = ri===auto.eigeneZeile;
+                  return <tr key={ri} style={{background:eigen?"var(--club-12, #c8102e12)":"transparent"}}>
+                    {(r.z||[]).map((c,ci)=><td key={ci} style={{padding:"4px 5px",textAlign:ci===1?"left":"center",borderBottom:"1px solid var(--border)",
+                      fontWeight:eigen?800:400,color:eigen?"var(--text)":"var(--text2)",whiteSpace:ci===1?"normal":"nowrap"}}>{c}</td>)}
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>}
+          </div>}
 
           {/* Links — bei Saisons mit veröffentlichten Liga-/Gruppendaten */}
           {showLinks&&<div style={{padding:"8px 12px 10px",borderTop:"1px solid var(--border)",display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -22660,12 +22797,9 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
     setBetreutPersonIds(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
   };
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
-  const SAISON_OPTS=[
-    {id:"spielplan_2026_2027", label:"2026/27 (aktuell)"},
-    {id:"spielplan_2025_2026", label:"2025/26"},
-    {id:"spielplan_2024_2025", label:"2024/25"},
-  ];
-  const [selSaison,setSelSaison]=useState((SEASONS.find(s=>s.current)||SEASONS[0]).key.startsWith("2026")?"spielplan_2026_2027":"spielplan_"+(SEASONS.find(s=>s.current)||SEASONS[0]).key.replace("/","_"));
+  // V501: aus den gepflegten Saisons
+  const SAISON_OPTS=saisonOptionen().map(o=>({id:o.id, label:o.label+(o.aktuell?" (aktuell)":"")}));
+  const [selSaison,setSelSaison]=useState(()=>aktSpielplanKey());   // V501
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
 
@@ -23506,12 +23640,13 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   useEffect(()=>{
     if(!vorauswahlPlayer||!selSeason||selSeason==="_local"){ setAufSpielerSP([]); return; }
     const jahre=selSeason.replace("spielplan_","");
-    const aufKey=`aufstellung_${jahre}_V`;
+    // V501: aktuelle Saison → gültige Halbserie aus dem Saisons-Editor, sonst Vorrunde
+    const aufKey = selSeason===aktSpielplanKey() ? aktAufstellungKey() : `aufstellung_${jahre}_V`;
     const unsub=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
         ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
       setAufSpielerSP(data);
-    },()=>setAufSpielerSP(AUFSTELLUNG_DATA[`aufstellung_${jahre}_V`]||[]));
+    },()=>setAufSpielerSP(AUFSTELLUNG_DATA[aufKey]||[]));
     return unsub;
   },[vorauswahlPlayer,selSeason]);
 
@@ -23552,9 +23687,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
 
   // Verfügbare Saisons laden — direkter Zugriff statt getDocs
   useEffect(()=>{
-    const KNOWN_SPIELPLAN_KEYS=[
-      "spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan_2023_2024","spielplan_2022_2023","spielplan",
-    ];
+    const KNOWN_SPIELPLAN_KEYS=bekannteSpielplanKeys();   // V501
     Promise.all(KNOWN_SPIELPLAN_KEYS.map(k=>
       getDoc(doc(db,"config",k)).then(s=>s.exists()&&(s.data().spiele||[]).length>0
         ?{id:k,saison:s.data().saison||(k==="spielplan"?"2025/2026 (alt)":k.replace("spielplan_","").replace(/_/g,"/"))}
@@ -23571,7 +23704,8 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
         });
       if(seas.length>0){
         setSeasons(seas);
-        setSelSeason(seas[0].id);
+        // V501: Standard ist die aktuelle Saison (sofern vorhanden), nicht die neueste Datei
+        setSelSeason((seas.find(x=>x.id===aktSpielplanKey())||seas[0]).id);
       } else {
         // Absoluter Fallback: eingebettete Daten direkt verwenden
         // Embedded data fallback: show all known seasons
@@ -24164,7 +24298,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
   const [uploading,setUploading]=useState(false);
   const [savedSpielpläne,setSavedSpielpläne]=useState([]);
 
-  const SPIELPLAN_KEYS=["spielplan_2025_2026","spielplan_2026_2027","spielplan_2024_2025","spielplan_2023_2024","spielplan_2022_2023","spielplan"];
+  const SPIELPLAN_KEYS=bekannteSpielplanKeys();   // V501
 
   // Lade gespeicherte Spielpläne
   function mesz(ts){
@@ -24867,15 +25001,17 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   const [spielpins, setSpielpins] = useState({});
   const [einsaetze, setEinsaetze] = useState({});
   const [alleSpiele, setAlleSpiele] = useState([]);
+  const spKeyAkt  = aktSpielplanKey();    // V501: aktuelle Saison
+  const aufKeyAkt = aktAufstellungKey();
 
   // Aufstellung laden (bestimmt die Mannschaft der Person).
   useEffect(() => {
-    const unsub = onSnapshot(doc(db,"config","aufstellung_2026_2027_V"), snap=>{
+    const unsub = onSnapshot(doc(db,"config",aufKeyAkt), snap=>{
       const d = snap.exists() ? (snap.data().spieler||[]) : [];
-      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
-    }, ()=> setAufSpieler(AUFSTELLUNG_DATA["aufstellung_2026_2027_V"]||[]));
+      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA[aufKeyAkt]||[]));
+    }, ()=> setAufSpieler(AUFSTELLUNG_DATA[aufKeyAkt]||[]));
     return unsub;
-  }, []);
+  }, [aufKeyAkt]);
   // Spielcodes + PINs laden (für Spielbericht-Link und PIN in der Hero-Karte).
   useEffect(() => {
     const u1 = abonniereSpielDaten("spielcodes", setSpielcodes);   // V495: inkl. Pokal
@@ -24884,10 +25020,10 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   }, []);
   // Einsätze (Betreuer/Fahrer je Spiel) laden — für die Betreuungs-Kachel.
   useEffect(() => {
-    const u = onSnapshot(doc(db,"einsaetze","spielplan_2026_2027"),
+    const u = onSnapshot(doc(db,"einsaetze",spKeyAkt),
       snap=> setEinsaetze(snap.exists()?(snap.data().data||{}):{}), ()=> setEinsaetze({}));
     return u;
-  }, []);
+  }, [spKeyAkt]);
 
   // Mannschaft der betrachteten Person (Aufstellungsname, z.B. "Erwachsene III").
   const meinAufName = useMemo(
@@ -24903,13 +25039,13 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     let ab = false;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "config", "spielplan_2026_2027"));
+        const snap = await getDoc(doc(db, "config", spKeyAkt));
         const spiele = (snap.exists() && snap.data().spiele) || [];
         if(!ab) setAlleSpiele(spiele);
       } catch(e){ if(!ab) setAlleSpiele([]); }
     })();
     return () => { ab = true; };
-  }, []);
+  }, [spKeyAkt]);
 
   const heute = new Date().toLocaleDateString("sv");
   const kommend = useMemo(()=> (alleSpiele||[])
@@ -24949,7 +25085,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   // Spielcode / PIN des Spiels finden — robust wie im Vereinsspielplan:
   // Config-Slug kann "2026_27" ODER "2026_2027" lauten; die Mannschaft ist dort
   // unter dem Aufstellungsnamen ("Erwachsene III") abgelegt, nicht "Herren 3".
-  const saisonKeys = ["2026_27", "2026_2027"];
+  const saisonKeys = aktSaisonSlugs();   // V501
   const namensKandidaten = (s) => {
     const out = [s.mannschaft];
     const hm = String(s.mannschaft||"").match(/^Herren\s+(\d+)/i);
