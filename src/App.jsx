@@ -1,4 +1,4 @@
-// === TTC-App · Version 507 · erstellt 04.10.2026 ===
+// === TTC-App · Version 508 · erstellt 04.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "507";
+const APP_VERSION = "508";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -57,6 +57,17 @@ const storage    = getStorage(app);
 // globalDoc()/globalCollection() greifen bewusst immer auf die oberste Ebene zu
 // (für vereinsübergreifende Dokumente wie die spätere Umschaltung selbst).
 let DATEN_WURZEL = [];
+// V508: Umschaltung über das (öffentlich lesbare) Dokument system/datenbereich:
+//   modus "oben"       → bisherige Ablage
+//   modus "umstellung" → Wartung: nur der Betreiber arbeitet (Abschlusskopie)
+//   modus "verein"     → Vereinsbereich vereine/<vereinId>/…
+let DATEN_MODUS = "oben";
+let AKTIVER_VEREIN_ID = "ttc-niederzeuzheim";
+function datenbereichAnwenden(m){
+  DATEN_MODUS = (m && m.modus) || "oben";
+  AKTIVER_VEREIN_ID = (m && m.vereinId) || "ttc-niederzeuzheim";
+  DATEN_WURZEL = DATEN_MODUS==="verein" ? ["vereine", AKTIVER_VEREIN_ID] : [];
+}
 function doc(d, ...seg){ return d===db ? fsDoc(d, ...DATEN_WURZEL, ...seg) : fsDoc(d, ...seg); }
 function collection(d, ...seg){ return d===db ? fsCollection(d, ...DATEN_WURZEL, ...seg) : fsCollection(d, ...seg); }
 function globalDoc(...seg){ return fsDoc(db, ...seg); }
@@ -10027,6 +10038,7 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
       const superAdmins=liste.filter(x=>x.superAdmin).map(x=>x.email);
       await setDoc(doc(db,"config","rollen"),{ admins, superAdmins, stand:Date.now(), von: mailNorm(user&&user.email) });
       setzeRollen({admins, superAdmins});
+      if(DATEN_MODUS==="verein"){ try{ await zugangAbgleichen(AKTIVER_VEREIN_ID, players, {admins, superAdmins}); }catch(e){} }   // V508
       geaendertRef.current=false; setGeaendert(false); setNieGespeichert(false);
       showToast&&showToast("Admins & Rechte gespeichert","✅");
     }catch(e){ showToast&&showToast("Konnte nicht speichern: "+(e&&e.message||e),"❌"); }
@@ -10298,6 +10310,9 @@ async function zugangAbgleichen(vid, playersListe, rollen){
       schreiben.push({ ref:fsDoc(col,m), data:{ quellen, stand:Date.now() } });
   }
   for(const d of ist.docs) if(!soll.has(d.id)) loeschen.push(d.ref);
+  // Sicherheitsbremse: fehlt plötzlich mehr als die Hälfte (z. B. Personen unvollständig
+  // geladen), wird nichts entfernt – nur ergänzt.
+  if(ist.size>10 && soll.size < ist.size*0.5) loeschen.length=0;
   await inPaketenSchreiben(schreiben, loeschen);
   return { anzahl:soll.size, neu:schreiben.length, entfernt:loeschen.length };
 }
@@ -10331,6 +10346,23 @@ async function inVereinsbereichKopieren(vid, user, meldung){
     alleOk, bericht:kurz, zugang } },{merge:true});
   return { bericht:kurz, alleOk, zugang };
 }
+// V508: Rückkopie Vereinsbereich → bisherige Ablage (für „Zurück auf bisherige Ablage")
+async function ausVereinsbereichZurueckkopieren(vid, meldung){
+  const bericht={};
+  for(const name of SICHERUNG_SAMMLUNGEN){
+    meldung(`Kopiere ${name} zurück …`);
+    bericht[name]=await sammlungSpiegeln(fsCollection(db,"vereine",vid,name), ()=>fsCollection(db,name));
+  }
+  const ids=[...new Set([...(bericht.observations?.ids||[]), ...(bericht.players?.ids||[])])];
+  let ok=Object.values(bericht).every(b=>b.ok);
+  for(const id of ids){
+    const r=await sammlungSpiegeln(fsCollection(db,"vereine",vid,"observations",id,"entries"), ()=>fsCollection(db,"observations",id,"entries"));
+    if(!r.ok) ok=false;
+  }
+  return { alleOk:ok, bericht };
+}
+const warte = ms => new Promise(r=>setTimeout(r,ms));
+
 async function ausSicherungWiederherstellen(daten, zielWurzel, meldung){
   if(!daten || daten.format!=="ttc-app-sicherung") throw new Error("Keine gültige Sicherungsdatei.");
   const ref=(...seg)=>fsDoc(db, ...zielWurzel, ...seg);
@@ -10366,6 +10398,63 @@ function VereinsbereichPanel({user, players=[]}){
     catch(e){ setMeldung("Fehler: "+(e&&e.message||e)+" – Sind die neuen Firestore-Regeln veröffentlicht?"); }
     setLaeuft(false);
   }
+  const [bereich,setBereich]=useState(null);
+  const [sicherung,setSicherung]=useState(null);
+  useEffect(()=>{
+    const u1=onSnapshot(globalDoc("system","datenbereich"),s=>setBereich(s.exists()?s.data():{modus:"oben"}),()=>{});
+    const u2=onSnapshot(doc(db,"config","sicherungen"),s=>setSicherung(s.exists()?s.data():null),()=>{});
+    return ()=>{u1();u2();};
+  },[]);
+  const flagRef=globalDoc("system","datenbereich");
+  async function umschalten(){
+    if(laeuft) return;
+    const alter = sicherung&&sicherung.letzte ? (Date.now()-new Date(sicherung.letzte).getTime()) : Infinity;
+    if(alter > 3*3600*1000){ window.alert("Bitte zuerst eine aktuelle Sicherung erstellen (Abschnitt „💾 Datensicherung“, höchstens 3 Stunden alt)."); return; }
+    if(!window.confirm("Jetzt auf den Vereinsbereich umschalten?\n\n1. Die App geht für alle kurz in den Wartungsmodus.\n2. Die Kopie wird ein letztes Mal erneuert und geprüft.\n3. Nur wenn alles identisch ist, arbeiten App und Server-Funktionen ab sofort mit vereine/"+vid+".\n\nBei Abweichungen bleibt alles beim Alten.")) return;
+    window.__ttcUmschaltungHier=true; setLaeuft(true); setErgebnis(null);
+    const von=(user&&user.email)||"";
+    try{
+      setMeldung("Wartungsmodus ein …");
+      await setDoc(flagRef,{ modus:"umstellung", vereinId:vid, seit:Date.now(), von });
+      await warte(4000);   // laufende Schreibvorgänge anderer Geräte abwarten
+      const erg=await inVereinsbereichKopieren(vid, user, setMeldung);
+      setErgebnis(erg);
+      if(!erg.alleOk){
+        await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: Abweichungen bei der Kopie" });
+        setMeldung("Fehler: Abweichungen bei der Abschlusskopie – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage.");
+        window.__ttcUmschaltungHier=false; setLaeuft(false); return;
+      }
+      await setDoc(flagRef,{ modus:"verein", vereinId:vid, seit:Date.now(), von, appVersion:APP_VERSION });
+      setMeldung("✅ Umgeschaltet. Die App wird neu geladen …");
+      setTimeout(()=>window.location.reload(),1500);
+    }catch(e){
+      try{ await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: "+(e&&e.message||e) }); }catch(e2){}
+      setMeldung("Fehler: "+(e&&e.message||e)+" – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage.");
+      window.__ttcUmschaltungHier=false; setLaeuft(false);
+    }
+  }
+  async function zurueckschalten(){
+    if(laeuft) return;
+    if(!window.confirm("Zurück auf die bisherige Ablage schalten?\n\nDie Daten aus dem Vereinsbereich (inkl. aller Änderungen seit der Umschaltung) werden zuvor in die bisherige Ablage zurückkopiert und geprüft.")) return;
+    window.__ttcUmschaltungHier=true; setLaeuft(true);
+    const von=(user&&user.email)||"";
+    try{
+      await setDoc(flagRef,{ modus:"umstellung", vereinId:vid, seit:Date.now(), von, richtung:"zurueck" });
+      await warte(4000);
+      const erg=await ausVereinsbereichZurueckkopieren(vid, setMeldung);
+      if(!erg.alleOk){
+        await setDoc(flagRef,{ modus:"verein", vereinId:vid, seit:Date.now(), von, hinweis:"Rückschaltung abgebrochen: Abweichungen" });
+        setMeldung("Fehler: Abweichungen bei der Rückkopie – es bleibt beim Vereinsbereich.");
+        window.__ttcUmschaltungHier=false; setLaeuft(false); return;
+      }
+      await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von });
+      setMeldung("✅ Zurückgeschaltet. Die App wird neu geladen …");
+      setTimeout(()=>window.location.reload(),1500);
+    }catch(e){
+      setMeldung("Fehler: "+(e&&e.message||e)+" – bitte Stand oben prüfen.");
+      window.__ttcUmschaltungHier=false; setLaeuft(false);
+    }
+  }
   async function zugang(){
     if(laeuft) return; setLaeuft(true); setMeldung("Gleiche Zugangsliste ab …");
     try{
@@ -10396,21 +10485,33 @@ function VereinsbereichPanel({user, players=[]}){
   const btn={flex:"1 1 160px",padding:"10px 12px",borderRadius:9,fontSize:13,fontWeight:800,cursor:laeuft?"wait":"pointer",border:"none"};
   return <div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.55}}>
-      Schritt 2b der Umstellung: Alle Daten werden in den eigenen Bereich <b>vereine/{vid}</b> kopiert
-      und danach Dokument für Dokument verglichen. Die App arbeitet weiterhin mit den bisherigen Daten –
-      umgeschaltet wird erst in einer späteren Version. Die Kopie kann jederzeit erneuert werden.
-      Vorher bitte eine aktuelle Sicherung erstellen.
+      Eigener Datenbereich <b>vereine/{vid}</b>: Kopie mit Prüfung (Dokument für Dokument) und
+      Umschaltung. Beim Umschalten geht die App kurz in den Wartungsmodus, die Kopie wird ein letztes
+      Mal erneuert und nur bei vollständiger Übereinstimmung wird umgeschaltet. Vorher eine aktuelle
+      Sicherung erstellen. Zurückschalten ist jederzeit möglich (mit Rückkopie).
     </div>
     <div style={{fontSize:11,color:"var(--text2)",marginBottom:10}}>
       Stand Vereinsbereich: {info===null?"⏳":info.fehler?"nicht lesbar (Regeln veröffentlicht?)":kopie?
         <><b>{new Date(kopie.stand).toLocaleString("de-DE")}</b> · {kopie.alleOk?"✅ alles identisch":"⚠️ Abweichungen"}{kopie.zugang?` · Zugangsliste ${kopie.zugang.anzahl} Adressen`:""}</>
         :"noch nicht angelegt"}
     </div>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    <div style={{fontSize:12,fontWeight:800,marginBottom:10,padding:"8px 10px",borderRadius:8,
+      background:bereich&&bereich.modus==="verein"?"#10b98118":"#3b82f618",
+      color:bereich&&bereich.modus==="verein"?"#059669":"#2563eb",border:"1px solid var(--border2)"}}>
+      Aktiver Datenbereich: {bereich===null?"⏳":bereich.modus==="verein"?`Vereinsbereich vereine/${bereich.vereinId||vid}`:bereich.modus==="umstellung"?"⚙️ Umstellung läuft":"bisherige Ablage (oberste Ebene)"}
+      {bereich&&bereich.seit?<span style={{fontWeight:500}}> · seit {new Date(bereich.seit).toLocaleString("de-DE")}</span>:null}
+      {bereich&&bereich.hinweis?<div style={{fontWeight:500,color:"#b45309",marginTop:3}}>{bereich.hinweis}</div>:null}
+    </div>
+    {bereich && bereich.modus!=="verein" && <button onClick={umschalten} disabled={laeuft} style={{...btn,width:"100%",marginBottom:8,background:laeuft?"#9ca3af":"#10b981",color:"#fff"}}>
+      🚀 Jetzt auf Vereinsbereich umschalten</button>}
+    {bereich && bereich.modus==="verein" && <button onClick={zurueckschalten} disabled={laeuft} style={{...btn,width:"100%",marginBottom:8,background:laeuft?"#9ca3af":"#f59e0b",color:"#fff"}}>
+      ↩️ Zurück auf bisherige Ablage</button>}
+    {bereich && bereich.modus!=="verein" && <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <button onClick={kopieren} disabled={laeuft} style={{...btn,background:laeuft?"#9ca3af":"#3b82f6",color:"#fff"}}>
         {laeuft?"⏳ läuft …":(kopie?"🔁 Kopie erneuern + prüfen":"📦 In Vereinsbereich kopieren")}</button>
       <button onClick={zugang} disabled={laeuft} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>👥 Zugangsliste abgleichen</button>
-    </div>
+    </div>}
+    {bereich && bereich.modus==="verein" && <button onClick={zugang} disabled={laeuft} style={{...btn,width:"100%",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>👥 Zugangsliste abgleichen</button>}
     {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")?"#ef4444":"var(--text2)",marginTop:8}}>{meldung}</div>}
     {bericht && <div style={{marginTop:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"2px 10px",fontSize:11,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>
@@ -26482,7 +26583,51 @@ function ElternView({user, players, attendance, rackets, kinder, ownProfile, vie
     : <div style={{minHeight:"100vh",background:"var(--bg)",padding:30,textAlign:"center",color:"var(--text3)"}}>Keine Person zugeordnet.</div>;
 }
 
+// ─── V508: Start-Hülle – Datenbereich laden, bevor irgendein Datenzugriff startet ──
+const DATENBEREICH_LS = "ttc_datenbereich";
 export default function App() {
+  const [bereich,setBereich]=useState(null);
+  const [authU,setAuthU]=useState(undefined);
+  const angewandt=useRef(null);
+  useEffect(()=>onAuthStateChanged(auth,u=>setAuthU(u||null)),[]);
+  useEffect(()=>{
+    let timer=null;
+    const uebernehmen=(d)=>{
+      const m={ modus:(d&&d.modus)||"oben", vereinId:(d&&d.vereinId)||"ttc-niederzeuzheim" };
+      try{ localStorage.setItem(DATENBEREICH_LS, JSON.stringify(m)); }catch(e){}
+      if(!angewandt.current){ angewandt.current=m; datenbereichAnwenden(m); setBereich(m); return; }
+      if(angewandt.current.modus!==m.modus || angewandt.current.vereinId!==m.vereinId){
+        if(window.__ttcUmschaltungHier) return;   // eigene Umschaltung lädt am Ende selbst neu
+        window.location.reload();
+      }
+    };
+    const ausSpeicher=()=>{ let m=null; try{ m=JSON.parse(localStorage.getItem(DATENBEREICH_LS)||"null"); }catch(e){} return m; };
+    const u=onSnapshot(globalDoc("system","datenbereich"), snap=>{
+      const d=snap.exists()?snap.data():null;
+      // Erster Stand nur aus dem Gerätespeicher? Kurz auf den Server warten (vermeidet unnötiges Neuladen).
+      if(snap.metadata.fromCache && !angewandt.current){
+        if(!timer) timer=setTimeout(()=>{ if(!angewandt.current) uebernehmen(d||ausSpeicher()); },2500);
+        return;
+      }
+      clearTimeout(timer); uebernehmen(d);
+    }, ()=>{ if(!angewandt.current) uebernehmen(ausSpeicher()); });
+    return ()=>{ u(); clearTimeout(timer); };
+  },[]);
+  const lade = (text)=> <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24,textAlign:"center"}}>
+    <div style={{fontSize:48}}>🏓</div>
+    <div style={{fontSize:14,color:"var(--text3)",maxWidth:380,lineHeight:1.6}}>{text}</div>
+  </div>;
+  if(!bereich) return lade(`${VEREIN.kurzname} wird geladen…`);
+  if(bereich.modus==="umstellung"){
+    if(authU===undefined) return lade("Wird geladen…");
+    if(!(authU && PLATTFORM_ADMIN_EMAILS.includes(mailNorm(authU.email)))) return <div>
+      {lade("⚙️ Die App wird gerade umgestellt. Bitte in wenigen Minuten erneut öffnen – es geht automatisch weiter.")}
+    </div>;
+  }
+  return <AppInhalt/>;
+}
+
+function AppInhalt() {
   const [authUser,     setAuthUser]     = useState(undefined);
   const [verknuepfLaeuft, setVerknuepfLaeuft] = useState(false);
   const [verknuepfFehler, setVerknuepfFehler] = useState("");
@@ -26647,11 +26792,20 @@ export default function App() {
     return ()=> clearTimeout(t);
   },[authUser, playersReady]);
 
+  // V508: Zugangsliste des Vereins automatisch nachführen, wenn ein Admin die App nutzt
+  // und sich Personen ändern (neue Person, geänderte Login-/Eltern-Adresse).
+  const playersVomServer = useRef(false);
+  useEffect(()=>{
+    if(DATEN_MODUS!=="verein" || !isAdmin || !playersReady || !playersVomServer.current || players.length===0) return;
+    const t=setTimeout(()=>{ zugangAbgleichen(AKTIVER_VEREIN_ID, players, ROLLEN).catch(()=>{}); }, 4000);
+    return ()=>clearTimeout(t);
+  },[players, isAdmin, playersReady]);
+
   // ── Echtzeit-Listener für Spieler, Anwesenheit & Schläger ──
   useEffect(()=>{
     if (!authUser) return;
     const u1 = onSnapshot(collection(db,"players"),
-      snap => { setPlayers(snap.docs.map(d=>d.data())); setPlayersReady(true); },
+      snap => { playersVomServer.current = !snap.metadata.fromCache; setPlayers(snap.docs.map(d=>d.data())); setPlayersReady(true); },
       () => { setPlayersReady(true); }
     );
     const u2 = onSnapshot(collection(db,"attendance"),
