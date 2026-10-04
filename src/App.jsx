@@ -1,4 +1,4 @@
-// === TTC-App · Version 504 · erstellt 03.10.2026 ===
+// === TTC-App · Version 505 · erstellt 04.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "504";
+const APP_VERSION = "505";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1113,8 +1113,11 @@ function useTurniereListe(){
 
 const TURNIER_SICHTBAR_ROLLEN = [
   ["player","Spieler"],["erwachsene","Erwachsene"],
-  ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],
+  ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],["ttc","TTC"],
 ];
+// V505: Funktion „TTC" darf in Turnieren nur Ergebnisse eintragen (keine Tableau-/
+// Doppel-Änderungen). Wird über diesen Kontext an die Turnier-Bausteine gereicht.
+const TurnierRechteCtx = React.createContext({ nurErgebnisse:false });
 const KONKURRENZEN = [
   "Herren","Herren A","Herren B",
   "Nachwuchs",
@@ -2268,7 +2271,7 @@ function turnierVonFirestore(t){
 }
 
 // ─── Haupt-Komponente ───────────────────────────────────────────────────────
-function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }){
+function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null, nurErgebnisse=false }){
   const [turniere,setTurniere]=useState([]);
   const [laedt,setLaedt]=useState(true);
   const [selId,setSelId]=useState(()=>{
@@ -2300,7 +2303,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
     (!!myPlayer && meineRollen.erwachsene!==true && meineRollen.mannschaftsfuehrer!==true && meineRollen.trainer!==true && meineRollen.admin!==true);
   // Abgeleitete Rollen-Map für die Sichtbarkeitsprüfung (player ggf. aus Gruppe ergänzt,
   // trainer aus dem übergebenen isTrainer-Flag abgesichert).
-  const meineRollenEff = { ...meineRollen, player: istSpieler || meineRollen.player===true, trainer: isTrainer || meineRollen.trainer===true };
+  const meineRollenEff = { ...meineRollen, player: istSpieler || meineRollen.player===true, trainer: (isTrainer && !nurErgebnisse) || meineRollen.trainer===true };
   function turnierSichtbar(t){
     if(isAdmin) return true;                          // nur Admin sieht standardmäßig alles
     const fuer = t.sichtbarFuer || [];
@@ -2372,14 +2375,14 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null }
   // damit die Ansicht nach einer Parameter-Änderung (z.B. Gruppenzahl) mit den neuen
   // Werten frisch aufgebaut wird statt den alten internen Stand weiterzuzeigen.
   if(selTurnier){
-    return <TurnierDetail
+    return <TurnierRechteCtx.Provider value={{nurErgebnisse}}><TurnierDetail
       key={selTurnier.id+"_"+paramVersion}
       turnier={selTurnier} players={players} qttrVon={qttrVon} ttrStichtag={ttrStichtag}
       isAdmin={isAdmin} isTrainer={isTrainer} myPlayer={myPlayer}
       onBack={()=>setSelId(null)}
       onEdit={darfAnlegen?()=>{setEditTurnier(selTurnier);setFormOffen(true);}:null}
       onSpeichern={speichern}
-    />;
+    /></TurnierRechteCtx.Provider>;
   }
 
   // Übersicht
@@ -4501,6 +4504,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   const [gruppenphaseOffen,setGruppenphaseOffen]=useState(true); // Gruppenphase bei gemischt
   const [teilnSort,setTeilnSort]=useState("name");   // Teilnehmerauswahl-Sortierung: "name" | "qttr" | "alter"
   const darfAlle = isAdmin || isTrainer;
+  const { nurErgebnisse:nurErgTD } = React.useContext(TurnierRechteCtx);   // V505
   const speichernTimer=useRef(null);
   const letzterStand=useRef(turnier);
 
@@ -6408,7 +6412,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       {(konk.art==="Gruppen"||konk.art==="gemischt") ? <>
         {/* Bei Doppel-Konkurrenzen zuerst die Teams bilden — auch im Gruppen-/gemischt-
             Modus, da sonst keine Möglichkeit zur Doppel-Zusammenstellung bestünde. */}
-        {istDoppelKonk(konk) && <DoppelTeamVerwaltung konk={konk} players={players} qttrVon={qttrVon} darfAlle={darfAlle} updKonk={updKonk}/>}
+        {istDoppelKonk(konk) && <DoppelTeamVerwaltung konk={konk} players={players} qttrVon={qttrVon} darfAlle={darfAlle && !nurErgTD} updKonk={updKonk}/>}
         {(!konk.gruppen || konk.gruppen.length===0)
           ? <button onClick={initGruppen} disabled={!isAdmin} style={{padding:"9px 14px",background:isAdmin?"#8b5cf6":"var(--bg3)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isAdmin?"pointer":"default",marginBottom:12}}>
               {konk.anzahlGruppen} Gruppen anlegen
@@ -7248,6 +7252,7 @@ function ZoomBox({ children, min=0.2, max=1.6, step=0.1 }){
 // ─── Grafisches KO-Tableau ──────────────────────────────────────────────────
 function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
   const darfAlle = isAdmin || isTrainer;
+  const darfOrga = darfAlle && !React.useContext(TurnierRechteCtx).nurErgebnisse;   // V505
 
   // Doppel-Modus: Bei Doppel-Konkurrenzen treten Zweier-Teams als Einheit an.
   // Die Teams werden manuell aus den Teilnehmern gekoppelt und in konk.doppelTeams
@@ -7344,7 +7349,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   // Tipp-Verschiebung der Erstrunden-Positionen (wie bei den Gruppen, touch-tauglich)
   const [tippSlot,setTippSlot]=useState(null);
   function slotAntippen(i){
-    if(!darfAlle) return;
+    if(!darfOrga) return;
     if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
     if(tippSlot===i){ setTippSlot(null); return; }
     // zwei Slots tauschen
@@ -7355,7 +7360,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   }
   // Einen Spieler aus dem Tableau entfernen: sein Erstrunden-Platz wird frei (Freilos).
   function slotLeeren(i){
-    if(!darfAlle) return;
+    if(!darfOrga) return;
     const neu=[...slots];
     neu[i]=null;
     setTippSlot(null);
@@ -7701,6 +7706,7 @@ function KoSpielBox({ sp, ri, si, istErstrunde, nameVon, qttrVon, spielerVon, fi
 // verhält sich exakt wie beim einfachen KO (KoSpielBox wird wiederverwendet).
 function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKonk, tischMap={} }){
   const darfAlle = isAdmin || isTrainer;
+  const darfOrga = darfAlle && !React.useContext(TurnierRechteCtx).nurErgebnisse;   // V505
   const nameVon=(id)=>{ const p=players.find(x=>x.id===id); return p?`${p.firstName} ${p.lastName}`:(id||""); };
   const spielerVon=(id)=> players.find(x=>x.id===id);
 
@@ -7749,14 +7755,14 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 
   const [tippSlot,setTippSlot]=useState(null);
   function slotAntippen(i){
-    if(!darfAlle) return;
+    if(!darfOrga) return;
     if(tippSlot==null){ if(slots[i]!=null) setTippSlot(i); return; }
     if(tippSlot===i){ setTippSlot(null); return; }
     const neu=[...slots]; const tmp=neu[i]; neu[i]=neu[tippSlot]; neu[tippSlot]=tmp;
     updKonk({ koSlots:neu }); setTippSlot(null);
   }
   function slotLeeren(i){
-    if(!darfAlle) return;
+    if(!darfOrga) return;
     const neu=[...slots]; neu[i]=null; setTippSlot(null); updKonk({ koSlots:neu });
   }
   function setSatz(key, satzIndex, seite, wert){
@@ -8346,7 +8352,7 @@ const TR_HOME_GRUPPEN = [
 
 // Kachel-Startseite der Trainer-Ansicht — stark am Spieler-Design orientiert.
 // verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
-function TrainerHome({ user, players, onOpen, verfuegbar }) {
+function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=false }) {
   const halleninfoNeu = useHalleninfoNeuCount();
   const aufSpieler = useAufstellungSpieler();
 
@@ -8357,7 +8363,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const [einsaetze,setEinsaetze] = useState({});
   const [spielcodes,setSpielcodes] = useState({});
   const [spielpins,setSpielpins] = useState({});
-  const [mehrOffen,setMehrOffen] = useState(false);   // Liste standardmäßig zugeklappt
+  const [mehrOffen,setMehrOffen] = useState(alleVereinsspiele);   // Liste standardmäßig zugeklappt (V505: TTC offen)
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
 
@@ -8381,9 +8387,9 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   const heuteISO = new Date().toLocaleDateString("sv");
   const nachwuchsSpiele = useMemo(()=> (alleSpiele||[])
     .filter(s=>s&&s.datum&&s.datum>=heuteISO)
-    .filter(s=>istNachwuchsMannschaft(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft||""))
+    .filter(s=>alleVereinsspiele || istNachwuchsMannschaft(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft||""))
     .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||""))),
-    [alleSpiele,heuteISO]);
+    [alleSpiele,heuteISO,alleVereinsspiele]);
 
   const spielMetaTR = (s)=>{
     if(!s) return "";
@@ -8419,7 +8425,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
       style={{background:rot?TTC_ROT:"var(--bg3)",border:rot?"none":"1px solid var(--border2)",
         borderRadius:14,padding:"14px 15px",marginBottom:10,boxShadow:rot?"var(--club-shadow, 0 4px 14px #c8102e33)":"none"}}>
       <div style={{fontSize:12,color:labelFarbe,marginBottom:3,fontWeight:600}}>
-        {rot?"Nächstes Nachwuchsspiel":"Nachwuchsspiel"} · {spielMetaTR(s)}
+        {alleVereinsspiele?(rot?"Nächstes Spiel":"Spiel"):(rot?"Nächstes Nachwuchsspiel":"Nachwuchsspiel")} · {spielMetaTR(s)}
       </div>
       <div style={{fontSize:16,color:titelFarbe,fontWeight:700,lineHeight:1.25}}>
         {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}{s.art==="Pokal"?" (Pokalspiel)":""}
@@ -8462,7 +8468,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
         background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,
         borderRadius:12,padding:"11px 12px",cursor:"pointer",display:"flex",
         justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 Weitere Nachwuchsspiele</span>
+        <span style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>📅 {alleVereinsspiele?"Die nächsten Spiele des Vereins":"Weitere Nachwuchsspiele"}</span>
         <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{mehrOffen?"▲":"▼"}</span>
       </button>
       {mehrOffen && <div style={{marginTop:10}}>
@@ -8494,7 +8500,13 @@ function TrainerHome({ user, players, onOpen, verfuegbar }) {
   </div>;
 }
 
-function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt}) {
+// V505: Reiter/Kacheln der Funktion „TTC" (Vereins-iPads, Betreuer, Turnierhelfer):
+// spiel- und vereinsbezogen, ohne Eltern-, Geburtstags-, Trainings-, Analyse-, Schläger-
+// und Bestelldaten, ohne Verwaltung. Ändern ist nur bei Turnier-Ergebnissen möglich.
+const TTC_REITER = ["home","halleninfo","spielbetrieb","turniere","spielplan","spiellokale","termine",
+  "kalender","zeiten","aufstellung","einsaetze","ttr","historieadmin","vmhistorie"];
+
+function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt,ttcModus=false}) {
   const ALL_TABS=[
     {key:"home",         label:"Start",         icon:"🏠"},
     {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
@@ -8527,6 +8539,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
   const TABS = ALL_TABS.filter(t=>{
+    if(ttcModus) return TTC_REITER.includes(t.key);   // V505: Funktion „TTC"
     if(t.superAdminOnly && !isSuperAdmin) return false;
     if(t.nonSuperAdminOnly && isSuperAdmin) return false;
     return true;
@@ -8540,6 +8553,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   });
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
   useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
+  // V505: gemerkter Reiter aus einer anderen Ansicht (z. B. Verwaltung) ist hier evtl. nicht verfügbar
+  useEffect(()=>{ if(!TABS.some(t=>t.key===activeTab)) setActiveTab("home"); },[activeTab, TABS.length]);
   const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   // Sprung aus dem Eltern-Reiter direkt zur Spieler-Bearbeitung in der Verwaltung:
   // hält die Ziel-Spieler-ID, die VerwaltungTab dann automatisch zum Bearbeiten öffnet.
@@ -8797,7 +8812,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         gemessene Tab-Höhe (die fixierte Leiste sitzt bereits bei var(--rsw-height)). */}
     <div style={{height:hideHeader?tabBarH:`calc(${62+tabBarH}px + var(--sat, 0px))`}}/>
 
-    {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)}/>}
+    {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)} alleVereinsspiele={ttcModus}/>}
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
@@ -8970,16 +8985,19 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── VERWALTUNG TAB ── */}
     {activeTab==="beobachtungen"&&<BeobachtungenAdminTab players={visiblePlayers} selectedPlayer={curPlayer} user={user} showToast={showToast}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={isSuperAdmin}/>}
-    {activeTab==="turniere"&&<TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>}
+    {activeTab==="turniere"&&(ttcModus
+      ? <TurniereView players={players} isAdmin={false} isTrainer={true} nurErgebnisse
+          myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}/>
+      : <TurniereView players={players} isAdmin={isSuperAdmin} isTrainer={true} myPlayer={externalPlayer||null}/>)}
     {activeTab==="spielplan"&&<VereinsSpielplan nurNachwuchs={false} istAdmin={isSuperAdmin} myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} onOpenLokal={(v,n)=>{ setLokalZiel({verein:v,nr:n}); setActiveTab("spiellokale"); }}/>}
     {activeTab==="termine"&&<TermineView/>}
     {activeTab==="kalender"&&<KalenderExport players={players}/>}
     {activeTab==="einsaetze"&&<EinsaetzeView players={players}
       myPlayer={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null}
       isAdmin={isSuperAdmin}
-      roles={isSuperAdmin?{admin:true}:{trainer:true}}
-      viewerCanEditAll={true}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin}/>}
+      roles={ttcModus?{ttc:true}:(isSuperAdmin?{admin:true}:{trainer:true})}
+      viewerCanEditAll={true} nurLesen={ttcModus}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin && !ttcModus}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historieadmin"&&<HistorieAdminView players={players}/>}
     {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
@@ -10539,7 +10557,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     return betreuungCount[n]||0;
   };
 
-  const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"]];
+  const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"],["ttc","TTC"]];
   const rollenKurz=(p)=>{
     const r=p.roles||{};
     const list=[];
@@ -10548,6 +10566,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     if(r.player) list.push("S");
     if(r.erwachsene) list.push("E");
     if(r.mannschaftsfuehrer) list.push("MF");
+    if(r.ttc) list.push("TTC");
     return list.join("·")||"—";
   };
   const dsText=(p)=> p.datenschutzAccepted ? String(p.datenschutzAccepted).split("-").reverse().join(".") : "—";
@@ -11909,7 +11928,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     ["Geburtstag","birthdate"],["Vereinsbeitritt","joinDate"],["Austritt","leaveDate"],
     ["Rolle Spieler","_rolePlayer"],["Rolle Trainer","_roleTrainer"],
     ["Rolle Admin","_roleAdmin"],["Rolle Erwachsene","_roleErwachsene"],["Rolle Mannschaftsführer","_roleMF"],
-    ["Rolle Vorstand","_roleVorstand"],
+    ["Rolle Vorstand","_roleVorstand"],["Rolle TTC","_roleTTC"],
     ["Stamm/Ersatz","stammErsatz"],["Anzugs-Groesse","anzugSize"],
     ["T-Shirt Groesse","tshirtSize"],["T-Shirt DTTB","tshirtDTTB"],["T-Shirt TTC","tshirtTTC"],
     ["Trainingstage","trainingDays"],["Trainingsstart","trainingStart"],["Trainingsende","trainingEnd"],
@@ -11943,6 +11962,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           else if(key==="_roleErwachsene") r[label]=p.roles?.erwachsene?"ja":"";
           else if(key==="_roleMF") r[label]=p.roles?.mannschaftsfuehrer?"ja":"";
           else if(key==="_roleVorstand") r[label]=p.roles?.vorstand?"ja":"";
+          else if(key==="_roleTTC") r[label]=p.roles?.ttc?"ja":"";
           else r[label]=p[key]??"";
         });
         return r;
@@ -11987,7 +12007,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
         const roles={};
         let hasRoleCol=false;
-        [["Rolle Spieler","player"],["Rolle Trainer","trainer"],["Rolle Admin","admin"],["Rolle Erwachsene","erwachsene"],["Rolle Mannschaftsführer","mannschaftsfuehrer"]].forEach(([label,rk])=>{
+        [["Rolle Spieler","player"],["Rolle Trainer","trainer"],["Rolle Admin","admin"],["Rolle Erwachsene","erwachsene"],["Rolle Mannschaftsführer","mannschaftsfuehrer"],["Rolle TTC","ttc"]].forEach(([label,rk])=>{
           if(row[label]!==undefined){hasRoleCol=true; roles[rk]=String(row[label]).trim().toLowerCase()==="ja";}
         });
         const existing=players.find(pl=>
@@ -12516,7 +12536,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
         <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},{key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}].map(role=>{
+          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},{key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:"TTC"}].map(role=>{
             const isOn=(newData.roles||{})[role.key]===true;
             return <button key={role.key} onClick={()=>setNewData(p=>({...p,roles:{...(p.roles||{}),[role.key]:!isOn}}))} style={{
               padding:"6px 11px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -12601,7 +12621,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     })()}
 
     {/* Hinweis für Trainer-Gruppe ohne Funktionen */}
-    {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player).map(p=>(
+    {players.filter(p=>p.group==="Trainer"&&!p.roles?.trainer&&!p.roles?.admin&&!p.roles?.player&&!p.roles?.ttc).map(p=>(
       <div key={p.id} style={{background:"#3b82f622",border:"2px solid #3b82f6",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:16}}>ℹ️</span>
         <div style={{flex:1,fontSize:12,color:"#93c5fd"}}><b>{p.firstName} {p.lastName}</b> — Gruppe „Trainer" aber keine Funktionen gesetzt.</div>
@@ -12883,7 +12903,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
                     {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
                     {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},
-                    {key:"vorstand",icon:"🏛️",label:"Vorstand"}].map(role=>{
+                    {key:"vorstand",icon:"🏛️",label:"Vorstand"},
+                    {key:"ttc",icon:"🎽",label:"TTC"}].map(role=>{
                     const isOn=(editPlayer.roles||{})[role.key]===true;
                     return <button key={role.key} onClick={()=>setEditPlayer(prev=>({...prev,roles:{...(prev.roles||{}),[role.key]:!isOn}}))} style={{
                       padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -15227,7 +15248,7 @@ function MeineVerwaltung({me, showToast, group}) {
   // Rollen/Funktionen als lesbare Liste
   const ROLE_DEF=[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
     {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
-    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"}];
+    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:"TTC"}];
   const funktionen = ROLE_DEF.filter(r=>me.roles?.[r.key]).map(r=>`${r.icon} ${r.label}`).join(", ")||"—";
 
   const istErw = (me.group||"Anfänger")==="Erwachsene" || me.roles?.erwachsene===true;
@@ -21347,7 +21368,7 @@ function wochentagKurz(isoDatum){
 
 // Erlaubte Mannschaften je nach Rolle (gibt Aufstellungs-Namen zurück)
 function erlaubteMannschaften({player, roles, isAdmin, aufstellungSpieler, allTeams}){
-  if(isAdmin || roles?.admin) return allTeams; // Admin: alle
+  if(isAdmin || roles?.admin || roles?.ttc) return allTeams; // Admin (und V505: Funktion TTC, nur lesend): alle
   const result=new Set();
   // Trainer: alle Nachwuchsmannschaften
   if(roles?.trainer){ allTeams.filter(istNachwuchsMannschaft).forEach(t=>result.add(t)); }
@@ -21467,7 +21488,7 @@ function betreuerKandidaten(selTeam, players, aufSpieler){
   return [...map.values()].sort((a,b)=>a.vn.localeCompare(b.vn,"de")).map(x=>x.label);
 }
 
-function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) {
+function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nurLesen=false }) {
   const [spielplaene,setSpielplaene] = useState({});
   const [aufstellungen,setAufstellungen] = useState({});
   const [einsaetze,setEinsaetze] = useState({});
@@ -21531,7 +21552,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // schreibberechtigt ist und der Spiegel tatsächlich vom Soll abweicht.
   const spiegelSyncRef=useRef("");
   useEffect(()=>{
-    if(!viewerCanEditAll) return;                 // nur Trainer/MF/Admin lösen den Abgleich aus
+    if(!viewerCanEditAll || nurLesen) return;     // nur Trainer/MF/Admin lösen den Abgleich aus (V505: nicht im Nur-Lesen-Modus)
     if(Object.keys(einsaetze).length===0) return; // noch nichts geladen
     const soll=buildBetreuerFahrerSpiegel(einsaetze);
     if(Object.keys(soll).length===0) return;      // nichts zu spiegeln
@@ -21648,11 +21669,13 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   const betreuerListe = selTeamIstNachwuchs ? betreuerKandidaten(selTeam, players, aufSpieler) : [];
 
   function canEdit(targetPlayerId){
+    if(nurLesen) return false;   // V505: Funktion „TTC" – nur ansehen
     if(viewerCanEditAll) return true;
     return myPlayer && targetPlayerId===myPlayer.id;
   }
 
   async function setStatus(spiel, targetPlayerId, statusKey){
+    if(nurLesen) return;
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
     const prevEntry = cur[targetPlayerId]||{};
@@ -21694,6 +21717,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
     }
   }
   async function setNote(spiel, targetPlayerId, note){
+    if(nurLesen) return;
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
     const prevEntry = cur[targetPlayerId]||{};
@@ -21704,6 +21728,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // Betreuer/Fahrer sind spiel-global (nicht pro Spieler). Gespeichert unter
   // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_fahrer/_fahrer2. Sofort speichern.
   async function setEinsatzFeld(spiel, feld, wert){
+    if(nurLesen) return;
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
     const updated = {...einsaetze, [sk]:{...cur, [feld]:wert}};
@@ -21752,7 +21777,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // dürfen nominieren. Die Liste ist für alle Spieler der Mannschaft sichtbar (Anf. 2)
   // und steuert später den Punktspiel-Push (Anf. 3).
   async function toggleNominiert(spiel, targetPlayerId){
-    if(!viewerCanEditAll) return;
+    if(!viewerCanEditAll || nurLesen) return;
     const sk=spielKey(spiel);
     const cur = einsaetze[sk]||{};
     const bisher = Array.isArray(cur._nominiert)?cur._nominiert:[];
@@ -21767,7 +21792,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
   // Eltern (über den Kind-Account) und Erwachsene für sich — praktisch jeder, der
   // dieses Spiel in seiner Einsätze-Sicht sieht. Reine Nur-Lese-Fälle gibt es hier
   // nicht, daher an viewerCanEditAll ODER vorhandenem myPlayer festmachen.
-  const kannBetreuerFahrer = !!(viewerCanEditAll || myPlayer);
+  const kannBetreuerFahrer = !nurLesen && !!(viewerCanEditAll || myPlayer);
 
   // Anf.2: Block mit der finalen Aufstellung – für ALLE Spieler der Mannschaft sichtbar.
   function nominierungsBlock(spiel, opt={}){
@@ -22063,8 +22088,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll }) 
                 {/* Anf.1: finale Nominierung durch MF/Trainer/Admin */}
                 {(()=>{
                   const nominiert=(entries._nominiert||[]).includes(p.id);
-                  return <button onClick={()=>toggleNominiert(spiel,p.id)} title={nominiert?"Nominierung entfernen":"Für dieses Spiel nominieren"}
-                    style={{padding:"4px 8px",borderRadius:7,fontSize:13,fontWeight:700,cursor:"pointer",
+                  return <button onClick={()=>toggleNominiert(spiel,p.id)} disabled={nurLesen} title={nurLesen?(nominiert?"nominiert":"nicht nominiert"):(nominiert?"Nominierung entfernen":"Für dieses Spiel nominieren")}
+                    style={{padding:"4px 8px",borderRadius:7,fontSize:13,fontWeight:700,cursor:nurLesen?"default":"pointer",
                       border:`1.5px solid ${nominiert?"#f59e0b":"var(--border2)"}`,
                       background:nominiert?"#f59e0b22":"transparent",color:nominiert?"#f59e0b":"var(--text3)"}}>
                     {nominiert?"⭐":"☆"}
@@ -25584,6 +25609,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     admin:      {icon:"⚙️", label:"Admin",      color:"#f59e0b"},
     erwachsene: {icon:"👪", label:"Erwachsene", color:"#ec4899"},
     mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
+    ttc:        {icon:"🎽", label:"TTC",        color:"#c8102e"},   // V505
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
@@ -25670,7 +25696,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
           // Punkt 4: Für Admins die Rollen-Buttons abkürzen, damit auf dem Handy in der
           // obersten Leiste mehr Platz bleibt. Nur für Admin-Login, sonst volle Labels.
-          const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF"};
+          const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF",ttc:"TTC"};
           const label = hasAdminRole ? (KURZ[v]||cfg.label) : cfg.label;
           return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
             padding:"5px 7px",borderRadius:20,border:`1px solid ${isActive?cfg.color:cfg.color+"44"}`,
@@ -25684,9 +25710,10 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             steht oder allein in der naechsten Zeile. */}
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap",
           flex:"0 0 auto",marginLeft:"auto"}}>
-        <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>
+        {/* V505: In der TTC-Ansicht keine Geburtstage und keine Personensuche (keine Namen) */}
+        {activeView!=="ttc"&&<BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>}
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-        <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
+        {activeView!=="ttc"&&<GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>}
         <button onClick={onSignOut} title="Abmelden" style={{
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
@@ -25832,6 +25859,13 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
       externalPlayer={players.find(p=>p.id===viewAsPlayer)||null}
       showOnlyPresentExt={showOnlyPresent} onSetShowOnlyPresent={setShowOnlyPresent}
       clubConfig={clubConfig} groupFiltersExt={adminGroupFilters} {...sharedProps}/>}
+
+    {/* V505: TTC-View – Admin-Kacheln (Auswahl), nur lesend, ohne Gruppen-/Namensleisten */}
+    {activeView==="ttc"&&<AdminPanel key="ttc" ttcModus
+      user={user} players={players} attendance={attendance} rackets={rackets}
+      isSuperAdmin={false} globalTheme={globalTheme} onSetGlobalTheme={onSetGlobalTheme}
+      onPlayerAdded={onPlayerAdded} hideHeader externalPlayer={null}
+      clubConfig={clubConfig} {...sharedProps}/>}
 
     {/* Admin-View */}
     {activeView==="admin"&&<AdminPanel key="admin"
@@ -26507,13 +26541,14 @@ export default function App() {
   const hasAdminRole   = isSuperAdmin || playerRoles.admin === true || adminEmailFallback;
   const hasErwachseneRole = playerRoles.erwachsene === true;
   const hasMFRole = playerRoles.mannschaftsfuehrer === true;
+  const hasTtcRole = playerRoles.ttc === true;   // V505: Funktion „TTC"
   // Zu einer Spielergruppe gehören = ist Spieler (auch wenn zusätzlich Trainer).
   const myGroupRSW = myPlayer?.group || "";
   const inSpielerGruppe = myGroupRSW==="Profis" || myGroupRSW==="Fortgeschrittene" || myGroupRSW==="Anfänger" || myGroupRSW==="Gast";
   // Spieler-View: explizite Spieler-Rolle ODER Spielergruppe ODER ein Profil ohne
   // andere Sonderrolle.
   const hasPlayerRole  = playerRoles.player === true || inSpielerGruppe ||
-    (!!myPlayer && !hasErwachseneRole && !hasMFRole && !hasTrainerRole && !playerRoles.admin);
+    (!!myPlayer && !hasErwachseneRole && !hasMFRole && !hasTrainerRole && !playerRoles.admin && !hasTtcRole);
 
   // Erwachsene-only: nur eigene Daten
   const isErwachseneOnly = hasErwachseneRole && !hasAdminRole && !hasTrainerRole && !hasPlayerRole && !hasMFRole;
@@ -26525,6 +26560,7 @@ export default function App() {
   if (hasPlayerRole && myPlayer)    availableViews.push("player");
   if (hasErwachseneRole)            availableViews.push("erwachsene");
   if (hasMFRole)                    availableViews.push("mannschaftsfuehrer");
+  if (hasTtcRole)                   availableViews.push("ttc");
   // Fallback: Person OHNE eigenes Profil, aber in Admin-E-Mail-Liste → Admin/Trainer-Zugang.
   // (adminEmailFallback = isAdmin && !myPlayer). Verhindert, dass ein geteiltes Konto
   // einem fremden Profil ungewollt Admin-/Trainer-Ansichten gibt.
@@ -26560,7 +26596,7 @@ export default function App() {
   const mitPopup = (view) => <><PushBanner meId={myPlayer?.id}/>{view}</>;
 
   // Wenn nur eine View verfügbar → direkt rendern ohne Switch
-  if (availableViews.length <= 1) {
+  if (availableViews.length <= 1 && availableViews[0]!=="ttc") {   // V505: TTC immer im Rahmen mit Kopfleiste
     const only = availableViews[0];
     if (only==="admin" || only==="trainer") return mitPopup(
       <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
