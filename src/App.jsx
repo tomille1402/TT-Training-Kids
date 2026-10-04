@@ -1,4 +1,4 @@
-// === TTC-App · Version 505 · erstellt 04.10.2026 ===
+// === TTC-App · Version 506 · erstellt 04.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -10,7 +10,7 @@ import {
 import {
   getFirestore, initializeFirestore,
   persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, collection, addDoc,
+  doc as fsDoc, setDoc, collection as fsCollection, addDoc,
   onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, deleteField
 } from "firebase/firestore";
 import {
@@ -21,7 +21,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "505";
+const APP_VERSION = "506";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -46,6 +46,21 @@ try {
   db = getFirestore(app);
 }
 const storage    = getStorage(app);
+
+// ─── DATENBEREICH JE VEREIN (V506 · Mehrvereinsfähigkeit, Etappe 2) ─────────
+// Alle Lese- und Schreibzugriffe der App laufen über doc()/collection(). Diese beiden
+// Funktionen setzen den Datenbereich des Vereins davor:
+//   DATEN_WURZEL = []                                → bisherige Ablage (oberste Ebene)
+//   DATEN_WURZEL = ["vereine","ttc-niederzeuzheim"]  → eigener Bereich des Vereins
+// Bis zur Umstellung (eigene Version) bleibt die Wurzel leer – es ändert sich nichts.
+// globalDoc()/globalCollection() greifen bewusst immer auf die oberste Ebene zu
+// (für vereinsübergreifende Dokumente wie die spätere Umschaltung selbst).
+let DATEN_WURZEL = [];
+function doc(d, ...seg){ return d===db ? fsDoc(d, ...DATEN_WURZEL, ...seg) : fsDoc(d, ...seg); }
+function collection(d, ...seg){ return d===db ? fsCollection(d, ...DATEN_WURZEL, ...seg) : fsCollection(d, ...seg); }
+function globalDoc(...seg){ return fsDoc(db, ...seg); }
+function globalCollection(...seg){ return fsCollection(db, ...seg); }
+
 const appHelper  = initializeApp(firebaseConfig, "helper");
 const authHelper = getAuth(appHelper);
 
@@ -10080,6 +10095,125 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
   </div>;
 }
 
+// ─── Komplette Datensicherung (V506) ────────────────────────────────────────
+// Liest alle Sammlungen des Vereins (inkl. Unter-Sammlung observations/*/entries) und
+// erzeugt eine JSON-Datei. Firestore-Zeitstempel u. ä. werden als {__typ:…} abgelegt,
+// damit eine spätere Wiederherstellung sie exakt zurückschreiben kann.
+const SICHERUNG_SAMMLUNGEN = ["players","attendance","rackets","bestellungen","einsaetze","config",
+  "pushAbos","appNachrichten","einsatzalarmLog","halleninfos","turniere","trainerFotos","teamPhotos",
+  "spielerFotos","observations","einheiten","trainers"];
+function fuerSicherung(v){
+  if(v===null || typeof v!=="object") return v;
+  if(Array.isArray(v)) return v.map(fuerSicherung);
+  if(typeof v.toMillis==="function" && typeof v.seconds==="number") return {__typ:"zeitstempel", s:v.seconds, n:v.nanoseconds||0};
+  if(typeof v.toBase64==="function") return {__typ:"bytes", b64:v.toBase64()};
+  if(typeof v.path==="string" && v.firestore) return {__typ:"referenz", pfad:v.path};
+  if(typeof v.latitude==="number" && typeof v.longitude==="number" && typeof v.isEqual==="function") return {__typ:"geo", lat:v.latitude, lng:v.longitude};
+  const o={}; for(const [k,x] of Object.entries(v)) o[k]=fuerSicherung(x); return o;
+}
+async function erstelleSicherung(meldung){
+  const sammlungen={}, zaehler={}, fehler={};
+  for(const name of SICHERUNG_SAMMLUNGEN){
+    meldung && meldung(`Lese ${name} …`);
+    try{
+      const snap=await getDocs(collection(db,name));
+      const m={}; snap.forEach(d=>{ m[d.id]=fuerSicherung(d.data()); });
+      sammlungen[name]=m; zaehler[name]=snap.size;
+    }catch(e){ fehler[name]=String(e&&e.message||e); }
+  }
+  // Unter-Sammlung Beobachtungen: je Person (auch ohne eigenes Eltern-Dokument)
+  const ids=[...new Set([...Object.keys(sammlungen.observations||{}), ...Object.keys(sammlungen.players||{})])];
+  const unterSammlungen={}; let nEintraege=0;
+  for(let i=0;i<ids.length;i+=10){
+    meldung && meldung(`Lese Beobachtungen … ${Math.min(i+10,ids.length)}/${ids.length}`);
+    await Promise.all(ids.slice(i,i+10).map(async id=>{
+      try{
+        const s2=await getDocs(collection(db,"observations",id,"entries"));
+        if(s2.size){ const m={}; s2.forEach(d=>{ m[d.id]=fuerSicherung(d.data()); });
+          unterSammlungen[`observations/${id}/entries`]=m; nEintraege+=s2.size; }
+      }catch(e){ fehler[`observations/${id}/entries`]=String(e&&e.message||e); }
+    }));
+  }
+  zaehler["observations/*/entries"]=nEintraege;
+  return { format:"ttc-app-sicherung", formatVersion:1, appVersion:APP_VERSION,
+    erstellt:new Date().toISOString(), datenWurzel:DATEN_WURZEL.join("/")||"(oberste Ebene)",
+    zaehler, fehler, sammlungen, unterSammlungen };
+}
+function SicherungPanel({showToast, user}){
+  const [laeuft,setLaeuft]=useState(false);
+  const [meldung,setMeldung]=useState("");
+  const [ergebnis,setErgebnis]=useState(null);   // {blob,url,dateiname,zaehler,fehler,groesse}
+  const [letzte,setLetzte]=useState(null);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","sicherungen"),s=>setLetzte(s.exists()?s.data():null),()=>{});
+    return u;
+  },[]);
+  async function starten(){
+    if(laeuft) return;
+    setLaeuft(true); setErgebnis(null); setMeldung("Starte …");
+    try{
+      const daten=await erstelleSicherung(setMeldung);
+      setMeldung("Erzeuge Datei …");
+      const text=JSON.stringify(daten);
+      const blob=new Blob([text],{type:"application/json"});
+      const jetzt=new Date();
+      const st=jetzt.toLocaleDateString("sv")+"_"+String(jetzt.getHours()).padStart(2,"0")+String(jetzt.getMinutes()).padStart(2,"0");
+      const dateiname=`Sicherung_${(VEREIN.kurzname||"Verein").replace(/[^A-Za-z0-9]+/g,"_")}_${st}.json`;
+      const url=URL.createObjectURL(blob);
+      setErgebnis({blob,url,dateiname,zaehler:daten.zaehler,fehler:daten.fehler,groesse:blob.size});
+      try{
+        await setDoc(doc(db,"config","sicherungen"),{ letzte:daten.erstellt, von:(user&&user.email)||"",
+          appVersion:APP_VERSION, zaehler:daten.zaehler, fehlerAnzahl:Object.keys(daten.fehler).length, dateiname },{merge:true});
+      }catch(e){}
+      setMeldung("");
+    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    setLaeuft(false);
+  }
+  async function teilen(){
+    try{
+      const f=new File([ergebnis.blob], ergebnis.dateiname, {type:"application/json"});
+      if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:ergebnis.dateiname}); return; }
+    }catch(e){ if(e && e.name==="AbortError") return; }
+    speichern();
+  }
+  function speichern(){
+    const a=document.createElement("a"); a.href=ergebnis.url; a.download=ergebnis.dateiname;   // ohne target=_blank (iOS-App)
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ document.body.removeChild(a); }catch(e){} },1000);
+  }
+  const mb=n=>(n/1048576).toFixed(1).replace(".",",")+" MB";
+  const btn={flex:"1 1 140px",padding:"10px 12px",borderRadius:9,fontSize:13,fontWeight:800,cursor:"pointer",border:"none"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.55}}>
+      Erstellt eine vollständige Sicherung aller Vereinsdaten (Personen, Anwesenheit, Einsätze,
+      Spielpläne, Einstellungen, Fotos, Beobachtungen, Turniere, Nachrichten …) als Datei.
+      Bitte vor jedem Schritt der Umstellung auf getrennte Vereinsbereiche ausführen und die
+      Datei außerhalb der App aufbewahren (z. B. in iCloud Drive oder auf dem PC). Am besten
+      am Computer oder iPad im WLAN ausführen – die Datei kann wegen der Fotos groß werden.
+    </div>
+    {letzte && letzte.letzte && <div style={{fontSize:11,color:"var(--text2)",marginBottom:10}}>
+      Letzte Sicherung: <b>{new Date(letzte.letzte).toLocaleString("de-DE")}</b>{letzte.von?` · ${letzte.von}`:""}{letzte.appVersion?` · V${letzte.appVersion}`:""}
+    </div>}
+    <button onClick={starten} disabled={laeuft} style={{...btn,width:"100%",background:laeuft?"#9ca3af":"#10b981",color:"#fff",cursor:laeuft?"wait":"pointer"}}>
+      {laeuft?"⏳ Sicherung läuft …":"💾 Sicherung jetzt erstellen"}
+    </button>
+    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")?"#ef4444":"var(--text3)",marginTop:8}}>{meldung}</div>}
+    {ergebnis && <div style={{marginTop:12,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:12}}>
+      <div style={{fontSize:13,fontWeight:800,color:"var(--text)",marginBottom:6}}>✅ Sicherung erstellt · {mb(ergebnis.groesse)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 12px",fontSize:11,color:"var(--text2)",marginBottom:8}}>
+        {Object.entries(ergebnis.zaehler).map(([k,v])=><React.Fragment key={k}><span>{k}</span><span style={{textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{v}</span></React.Fragment>)}
+      </div>
+      {Object.keys(ergebnis.fehler).length>0 && <div style={{fontSize:11,color:"#b45309",marginBottom:8}}>
+        ⚠️ Nicht lesbar: {Object.entries(ergebnis.fehler).map(([k,v])=>`${k} (${v})`).join("; ")}
+      </div>}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={teilen} style={{...btn,background:"var(--club, #c8102e)",color:"#fff"}}>📤 Sichern / Teilen</button>
+        <button onClick={speichern} style={{...btn,background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"}}>⬇️ Herunterladen</button>
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>{ergebnis.dateiname}</div>
+    </div>}
+  </div>;
+}
+
 function VereinsdatenEditor({showToast}){
   const [werte,setWerte]=useState(null);
   const [busy,setBusy]=useState(false);
@@ -11435,7 +11569,7 @@ const VW_KAPITEL = [
   { key:"wettkampf",     icon:"🏟️", label:"Wettkampf",     sub:"Saisons, Mannschaften, Spiellokale" },
   { key:"kommunikation", icon:"📣", label:"Infos",         sub:"Halleninfos, Termine, Push" },
   { key:"uploads",       icon:"📤", label:"Uploads",       sub:"Dateien, Import & Export" },
-  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Vereinsdaten, Farbschema, Branding" },
+  { key:"system",        icon:"🎨", label:"Darstellung",   sub:"Sicherung, Vereinsdaten, Farbschema, Branding" },
 ];
 
 // ─── Urkunden-Ausgabe ohne Seitenwechsel (V493) ─────────────────────────────
@@ -11723,6 +11857,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showBranding,setShowBranding]=useState(false);
   const [showVereinsdaten,setShowVereinsdaten]=useState(false);   // V497
   const [showRollen,setShowRollen]=useState(false);               // V504
+  const [showSicherung,setShowSicherung]=useState(false);         // V506
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
@@ -13539,6 +13674,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
 
     </>}
     {vwKapitel==="system" && <>
+    {/* V506: Datensicherung (vor der Umstellung auf getrennte Vereinsbereiche) */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowSicherung(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>💾 Datensicherung</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showSicherung?"▲":"▼"}</span>
+      </div>
+      {showSicherung&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <SicherungPanel showToast={showToast} user={user}/>
+      </div></ErrorBoundary>}
+    </div>
     {/* App-Design — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
