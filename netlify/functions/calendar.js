@@ -1,4 +1,4 @@
-// === TTC-App · Version 501 · netlify/functions/calendar.js · erstellt 03.10.2026 (V501: aktuelle Saison aus clubConfig) ===
+// === TTC-App · Version 506 · netlify/functions/calendar.js · erstellt 04.10.2026 (V506: zentraler Datenpfad je Verein) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -25,10 +25,13 @@ function icsUid(parts){return parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g
 // V497: Vereinsname aus config/clubConfig (öffentlich lesbar); nur die benötigten
 // Felder abfragen – das Dokument enthält auch Logo und Urkunden-Muster.
 let VEREIN_NAME="TTC Niederzeuzheim";
+// V506: Datenbereich des Vereins ("" = bisherige Ablage; später z. B. "vereine/ttc-niederzeuzheim/").
+let DATEN_PREFIX = "";
+function datenPfad(path){ return DATEN_PREFIX + String(path||"").replace(/^\/+/,""); }
 let AKT_SPIELPLAN="spielplan_2026_2027";   // V501: aus clubConfig.aktuelleSaison
 async function ladeVereinsname(){
   try{
-    const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/config/clubConfig?mask.fieldPaths=name&mask.fieldPaths=verein&mask.fieldPaths=aktuelleSaison${API_KEY?`&key=${API_KEY}`:""}`;
+    const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${datenPfad("config/clubConfig")}?mask.fieldPaths=name&mask.fieldPaths=verein&mask.fieldPaths=aktuelleSaison${API_KEY?`&key=${API_KEY}`:""}`;
     const r=await fetch(url); if(!r.ok) return;
     const j=await r.json(); const f=j.fields?convertFields(j.fields):{};
     const n=(f.verein&&f.verein.kurzname)||f.name; if(n&&String(n).trim()) VEREIN_NAME=String(n).trim();
@@ -39,7 +42,7 @@ async function ladeVereinsname(){
 
 // Firestore REST: ein Dokument lesen und in JS-Objekt wandeln
 async function getDocData(path){
-  const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${path}${API_KEY?`?key=${API_KEY}`:""}`;
+  const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${datenPfad(path)}${API_KEY?`?key=${API_KEY}`:""}`;
   const r=await fetch(url);
   if(!r.ok) return null;
   const j=await r.json();
