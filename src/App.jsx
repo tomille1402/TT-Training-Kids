@@ -1,4 +1,4 @@
-// === TTC-App · Version 506 · erstellt 04.10.2026 ===
+// === TTC-App · Version 507 · erstellt 04.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -11,7 +11,8 @@ import {
   getFirestore, initializeFirestore,
   persistentLocalCache, persistentMultipleTabManager,
   doc as fsDoc, setDoc, collection as fsCollection, addDoc,
-  onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, deleteField
+  onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, deleteField,
+  writeBatch, getDocsFromServer, Timestamp, Bytes, GeoPoint
 } from "firebase/firestore";
 import {
   getStorage, ref as storageRef, uploadBytes,
@@ -21,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "506";
+const APP_VERSION = "507";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -10214,6 +10215,232 @@ function SicherungPanel({showToast, user}){
   </div>;
 }
 
+// ─── Vereinsbereich: Kopie, Prüfung, Zugangsliste, Wiederherstellen (V507) ──
+// Etappe 2b: Die Daten werden NUR kopiert (oberste Ebene → vereine/<id>/…). Die App
+// arbeitet weiter mit der obersten Ebene, bis in einer eigenen Version umgeschaltet wird.
+// Eine erneute Kopie gleicht den Vereinsbereich wieder exakt an (auch Löschungen).
+const VEREIN_ID_STANDARD = "ttc-niederzeuzheim";
+// Firestore-Werte aus der Sicherungsdatei zurückwandeln
+function ausSicherung(v){
+  if(v===null || typeof v!=="object") return v;
+  if(Array.isArray(v)) return v.map(ausSicherung);
+  if(v.__typ==="zeitstempel") return new Timestamp(v.s, v.n||0);
+  if(v.__typ==="bytes") return Bytes.fromBase64String(v.b64||"");
+  if(v.__typ==="geo") return new GeoPoint(v.lat, v.lng);
+  if(v.__typ==="referenz") return fsDoc(db, v.pfad);
+  const o={}; for(const [k,x] of Object.entries(v)) o[k]=ausSicherung(x); return o;
+}
+// Inhalt vergleichbar machen (Schlüssel sortiert, Firestore-Typen wie in der Sicherung)
+function stabilerText(v){
+  const n=fuerSicherung(v);
+  const sortiert=x=> (x && typeof x==="object" && !Array.isArray(x))
+    ? Object.keys(x).sort().reduce((o,k)=>{ o[k]=sortiert(x[k]); return o; },{})
+    : (Array.isArray(x) ? x.map(sortiert) : x);
+  return JSON.stringify(sortiert(n));
+}
+// Schreibt/löscht in Paketen (max. 400 Vorgänge bzw. ~3 MB je Paket)
+async function inPaketenSchreiben(schreiben, loeschen, meldung){
+  let batch=writeBatch(db), ops=0, bytes=0, fertig=0;
+  const gesamt=schreiben.length+loeschen.length;
+  const abschicken=async()=>{ if(ops===0) return; await batch.commit(); fertig+=ops; meldung&&meldung(fertig,gesamt);
+    batch=writeBatch(db); ops=0; bytes=0; };
+  for(const w of schreiben){
+    const groesse=JSON.stringify(fuerSicherung(w.data)).length+200;
+    if(ops>=400 || (bytes+groesse)>3000000) await abschicken();
+    batch.set(w.ref, w.data); ops++; bytes+=groesse;
+  }
+  for(const ref of loeschen){
+    if(ops>=400) await abschicken();
+    batch.delete(ref); ops++;
+  }
+  await abschicken();
+}
+// Spiegelt eine Sammlung (quelle → ziel) und prüft danach Anzahl, IDs und Inhalt.
+async function sammlungSpiegeln(quelleCol, zielColFn, meldung){
+  const quelle=await getDocsFromServer(quelleCol);
+  const zielVorher=await getDocsFromServer(zielColFn());
+  const qIds=new Set(quelle.docs.map(d=>d.id));
+  const schreiben=quelle.docs.map(d=>({ ref:fsDoc(zielColFn(), d.id), data:d.data() }));
+  const loeschen=zielVorher.docs.filter(d=>!qIds.has(d.id)).map(d=>d.ref);
+  await inPaketenSchreiben(schreiben, loeschen, meldung);
+  const ziel=await getDocsFromServer(zielColFn());
+  const zMap=new Map(ziel.docs.map(d=>[d.id, d]));
+  let abweichend=0;
+  for(const d of quelle.docs){ const z=zMap.get(d.id); if(!z || stabilerText(z.data())!==stabilerText(d.data())) abweichend++; }
+  const ueberzaehlig=ziel.docs.filter(d=>!qIds.has(d.id)).length;
+  return { quelle:quelle.size, ziel:ziel.size, abweichend, ueberzaehlig, geloescht:loeschen.length,
+    ok: quelle.size===ziel.size && abweichend===0 && ueberzaehlig===0, ids:[...qIds] };
+}
+// Zugangsliste: alle Adressen, die sich für diesen Verein anmelden dürfen.
+function gewuenschteZugaenge(playersListe, rollen){
+  const z=new Map();
+  const add=(mail,quelle)=>{ const m=mailNorm(mail); if(!m || !m.includes("@") || m.includes("/")) return;
+    if(!z.has(m)) z.set(m,new Set()); z.get(m).add(quelle); };
+  for(const p of playersListe||[]){
+    if(p.status==="geloescht") continue;
+    add(p.email,"person"); add(p.elternEmail,"eltern"); add(p.elternEmail1,"eltern"); add(p.elternEmail2,"eltern");
+  }
+  for(const m of (rollen&&rollen.admins)||[]) add(m,"admin");
+  for(const m of (rollen&&rollen.superAdmins)||[]) add(m,"admin");
+  for(const m of PLATTFORM_ADMIN_EMAILS) add(m,"betreiber");
+  return z;
+}
+async function zugangAbgleichen(vid, playersListe, rollen){
+  const soll=gewuenschteZugaenge(playersListe, rollen);
+  const col=fsCollection(db,"vereine",vid,"zugang");
+  const ist=await getDocsFromServer(col);
+  const istMap=new Map(ist.docs.map(d=>[d.id,d.data()]));
+  const schreiben=[]; const loeschen=[];
+  for(const [m,q] of soll){
+    const quellen=[...q].sort();
+    const alt=istMap.get(m);
+    if(!alt || JSON.stringify((alt.quellen||[]).slice().sort())!==JSON.stringify(quellen))
+      schreiben.push({ ref:fsDoc(col,m), data:{ quellen, stand:Date.now() } });
+  }
+  for(const d of ist.docs) if(!soll.has(d.id)) loeschen.push(d.ref);
+  await inPaketenSchreiben(schreiben, loeschen);
+  return { anzahl:soll.size, neu:schreiben.length, entfernt:loeschen.length };
+}
+async function inVereinsbereichKopieren(vid, user, meldung){
+  const bericht={};
+  await setDoc(fsDoc(db,"vereine",vid),{ name:VEREIN.kurzname||"", vollname:VEREIN.vollname||"",
+    kopie:{ stand:Date.now(), von:(user&&user.email)||"", appVersion:APP_VERSION } },{merge:true});
+  for(const name of SICHERUNG_SAMMLUNGEN){
+    meldung(`Kopiere ${name} …`);
+    bericht[name]=await sammlungSpiegeln(fsCollection(db,name), ()=>fsCollection(db,"vereine",vid,name),
+      (f,g)=>meldung(`Kopiere ${name} … ${f}/${g}`));
+  }
+  // Unter-Sammlung Beobachtungen
+  const ids=[...new Set([...(bericht.observations?.ids||[]), ...(bericht.players?.ids||[])])];
+  const eintr={ quelle:0, ziel:0, abweichend:0, ueberzaehlig:0, geloescht:0, ok:true };
+  for(let i=0;i<ids.length;i++){
+    if(i%10===0) meldung(`Kopiere Beobachtungs-Einträge … ${i}/${ids.length}`);
+    const r=await sammlungSpiegeln(fsCollection(db,"observations",ids[i],"entries"),
+      ()=>fsCollection(db,"vereine",vid,"observations",ids[i],"entries"));
+    for(const k of ["quelle","ziel","abweichend","ueberzaehlig","geloescht"]) eintr[k]+=r[k];
+    if(!r.ok) eintr.ok=false;
+  }
+  bericht["observations/*/entries"]=eintr;
+  meldung("Gleiche Zugangsliste ab …");
+  const pl=await getDocsFromServer(fsCollection(db,"players"));
+  const rs=await getDoc(fsDoc(db,"config","rollen"));
+  const zugang=await zugangAbgleichen(vid, pl.docs.map(d=>d.data()), rs.exists()?rs.data():ROLLEN_STANDARD);
+  const alleOk=Object.values(bericht).every(b=>b.ok);
+  const kurz=Object.fromEntries(Object.entries(bericht).map(([k,b])=>[k,{quelle:b.quelle,ziel:b.ziel,abweichend:b.abweichend,ueberzaehlig:b.ueberzaehlig,ok:b.ok}]));
+  await setDoc(fsDoc(db,"vereine",vid),{ kopie:{ stand:Date.now(), von:(user&&user.email)||"", appVersion:APP_VERSION,
+    alleOk, bericht:kurz, zugang } },{merge:true});
+  return { bericht:kurz, alleOk, zugang };
+}
+async function ausSicherungWiederherstellen(daten, zielWurzel, meldung){
+  if(!daten || daten.format!=="ttc-app-sicherung") throw new Error("Keine gültige Sicherungsdatei.");
+  const ref=(...seg)=>fsDoc(db, ...zielWurzel, ...seg);
+  const schreiben=[];
+  for(const [name,docs] of Object.entries(daten.sammlungen||{}))
+    for(const [id,inhalt] of Object.entries(docs||{})) schreiben.push({ ref:ref(name,id), data:ausSicherung(inhalt) });
+  for(const [pfad,docs] of Object.entries(daten.unterSammlungen||{})){
+    const seg=pfad.split("/");
+    for(const [id,inhalt] of Object.entries(docs||{})) schreiben.push({ ref:ref(...seg,id), data:ausSicherung(inhalt) });
+  }
+  await inPaketenSchreiben(schreiben, [], (f,g)=>meldung(`Schreibe … ${f}/${g}`));
+  return schreiben.length;
+}
+
+function VereinsbereichPanel({user, players=[]}){
+  const vid=VEREIN_ID_STANDARD;
+  const istBetreiber=PLATTFORM_ADMIN_EMAILS.includes(mailNorm(user&&user.email));
+  const [info,setInfo]=useState(null);
+  const [laeuft,setLaeuft]=useState(false);
+  const [meldung,setMeldung]=useState("");
+  const [ergebnis,setErgebnis]=useState(null);
+  const [wiederZiel,setWiederZiel]=useState("verein");
+  const dateiRef=useRef(null);
+  useEffect(()=>{
+    const u=onSnapshot(fsDoc(db,"vereine",vid),s=>setInfo(s.exists()?s.data():{}),()=>setInfo({fehler:true}));
+    return u;
+  },[]);
+  async function kopieren(){
+    if(laeuft) return;
+    if(!window.confirm("Alle Daten jetzt in den Vereinsbereich kopieren?\n\nDie bisherigen Daten bleiben unverändert und in Betrieb. Ein vorhandener Vereinsbereich wird exakt an den aktuellen Stand angeglichen.")) return;
+    setLaeuft(true); setErgebnis(null);
+    try{ setErgebnis(await inVereinsbereichKopieren(vid, user, setMeldung)); setMeldung(""); }
+    catch(e){ setMeldung("Fehler: "+(e&&e.message||e)+" – Sind die neuen Firestore-Regeln veröffentlicht?"); }
+    setLaeuft(false);
+  }
+  async function zugang(){
+    if(laeuft) return; setLaeuft(true); setMeldung("Gleiche Zugangsliste ab …");
+    try{
+      const rs=await getDoc(doc(db,"config","rollen"));
+      const z=await zugangAbgleichen(vid, players, rs.exists()?rs.data():ROLLEN_STANDARD);
+      setMeldung(`Zugangsliste: ${z.anzahl} Adressen (${z.neu} neu/geändert, ${z.entfernt} entfernt).`);
+    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    setLaeuft(false);
+  }
+  async function wiederherstellen(e){
+    const f=e.target.files&&e.target.files[0]; e.target.value="";
+    if(!f || laeuft) return;
+    try{
+      const daten=JSON.parse(await f.text());
+      const zielWurzel = wiederZiel==="verein" ? ["vereine",vid] : [];
+      const zielText = wiederZiel==="verein" ? `Vereinsbereich (vereine/${vid})` : "bisherige Ablage (oberste Ebene) – das ist der LAUFENDE BETRIEB";
+      if(!window.confirm(`Sicherung vom ${new Date(daten.erstellt).toLocaleString("de-DE")} wiederherstellen?\n\nZiel: ${zielText}\n\nVorhandene Dokumente mit gleicher Kennung werden überschrieben, fehlende ergänzt; zusätzliche Dokumente bleiben bestehen.`)) return;
+      if(wiederZiel!=="verein" && window.prompt("Zur Bestätigung bitte WIEDERHERSTELLEN eingeben:")!=="WIEDERHERSTELLEN") return;
+      setLaeuft(true); setMeldung("Lese Datei …");
+      const n=await ausSicherungWiederherstellen(daten, zielWurzel, setMeldung);
+      setMeldung(`✅ ${n} Dokumente wiederhergestellt.`);
+    }catch(err){ setMeldung("Fehler: "+(err&&err.message||err)); }
+    setLaeuft(false);
+  }
+  if(!istBetreiber) return <div style={{fontSize:12,color:"var(--text3)"}}>Nur für den Betreiber der App ({PLATTFORM_ADMIN_EMAILS.join(", ")}).</div>;
+  const kopie=info&&info.kopie;
+  const bericht=(ergebnis&&ergebnis.bericht)||(kopie&&kopie.bericht)||null;
+  const btn={flex:"1 1 160px",padding:"10px 12px",borderRadius:9,fontSize:13,fontWeight:800,cursor:laeuft?"wait":"pointer",border:"none"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.55}}>
+      Schritt 2b der Umstellung: Alle Daten werden in den eigenen Bereich <b>vereine/{vid}</b> kopiert
+      und danach Dokument für Dokument verglichen. Die App arbeitet weiterhin mit den bisherigen Daten –
+      umgeschaltet wird erst in einer späteren Version. Die Kopie kann jederzeit erneuert werden.
+      Vorher bitte eine aktuelle Sicherung erstellen.
+    </div>
+    <div style={{fontSize:11,color:"var(--text2)",marginBottom:10}}>
+      Stand Vereinsbereich: {info===null?"⏳":info.fehler?"nicht lesbar (Regeln veröffentlicht?)":kopie?
+        <><b>{new Date(kopie.stand).toLocaleString("de-DE")}</b> · {kopie.alleOk?"✅ alles identisch":"⚠️ Abweichungen"}{kopie.zugang?` · Zugangsliste ${kopie.zugang.anzahl} Adressen`:""}</>
+        :"noch nicht angelegt"}
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button onClick={kopieren} disabled={laeuft} style={{...btn,background:laeuft?"#9ca3af":"#3b82f6",color:"#fff"}}>
+        {laeuft?"⏳ läuft …":(kopie?"🔁 Kopie erneuern + prüfen":"📦 In Vereinsbereich kopieren")}</button>
+      <button onClick={zugang} disabled={laeuft} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>👥 Zugangsliste abgleichen</button>
+    </div>
+    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")?"#ef4444":"var(--text2)",marginTop:8}}>{meldung}</div>}
+    {bericht && <div style={{marginTop:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"2px 10px",fontSize:11,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>
+        <b>Bereich</b><b style={{textAlign:"right"}}>bisher</b><b style={{textAlign:"right"}}>Kopie</b><b></b>
+        {Object.entries(bericht).map(([k,b])=><React.Fragment key={k}>
+          <span>{k}</span><span style={{textAlign:"right"}}>{b.quelle}</span><span style={{textAlign:"right"}}>{b.ziel}</span>
+          <span title={b.ok?"identisch":`${b.abweichend} abweichend, ${b.ueberzaehlig} überzählig`}>{b.ok?"✅":"⚠️"}</span>
+        </React.Fragment>)}
+      </div>
+      {ergebnis && ergebnis.zugang && <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>
+        Zugangsliste: {ergebnis.zugang.anzahl} Adressen ({ergebnis.zugang.neu} neu/geändert, {ergebnis.zugang.entfernt} entfernt)
+      </div>}
+    </div>}
+    <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--border2)"}}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:6}}>♻️ Aus Sicherung wiederherstellen</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.5}}>
+        Schreibt alle Dokumente einer Sicherungsdatei zurück. Nur für den Notfall.
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={wiederZiel} onChange={e=>setWiederZiel(e.target.value)} style={{padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,flex:"1 1 200px"}}>
+          <option value="verein">Ziel: Vereinsbereich (vereine/{vid})</option>
+          <option value="oben">Ziel: bisherige Ablage (laufender Betrieb)</option>
+        </select>
+        <button onClick={()=>dateiRef.current&&dateiRef.current.click()} disabled={laeuft} style={{...btn,background:"#f59e0b",color:"#fff"}}>📂 Sicherungsdatei wählen …</button>
+        <input ref={dateiRef} type="file" accept="application/json,.json" onChange={wiederherstellen} style={{display:"none"}}/>
+      </div>
+    </div>
+  </div>;
+}
+
 function VereinsdatenEditor({showToast}){
   const [werte,setWerte]=useState(null);
   const [busy,setBusy]=useState(false);
@@ -11858,6 +12085,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showVereinsdaten,setShowVereinsdaten]=useState(false);   // V497
   const [showRollen,setShowRollen]=useState(false);               // V504
   const [showSicherung,setShowSicherung]=useState(false);         // V506
+  const [showVereinsbereich,setShowVereinsbereich]=useState(false); // V507
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showGrp,setShowGrp]=useState({});
@@ -13684,6 +13912,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <SicherungPanel showToast={showToast} user={user}/>
       </div></ErrorBoundary>}
     </div>
+    {/* V507: Vereinsbereich (Kopie, Prüfung, Zugangsliste, Wiederherstellen) – nur Betreiber */}
+    {PLATTFORM_ADMIN_EMAILS.includes(mailNorm(user&&user.email)) &&
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowVereinsbereich(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏗️ Vereinsbereich (Umstellung)</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showVereinsbereich?"▲":"▼"}</span>
+      </div>
+      {showVereinsbereich&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <VereinsbereichPanel user={user} players={players}/>
+      </div></ErrorBoundary>}
+    </div>}
     {/* App-Design — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
