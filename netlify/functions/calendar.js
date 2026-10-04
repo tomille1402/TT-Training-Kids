@@ -1,4 +1,4 @@
-// === TTC-App · Version 506 · netlify/functions/calendar.js · erstellt 04.10.2026 (V506: zentraler Datenpfad je Verein) ===
+// === TTC-App · Version 508 · netlify/functions/calendar.js · erstellt 04.10.2026 (V508: Datenbereich aus system/datenbereich) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -28,9 +28,25 @@ let VEREIN_NAME="TTC Niederzeuzheim";
 // V506: Datenbereich des Vereins ("" = bisherige Ablage; später z. B. "vereine/ttc-niederzeuzheim/").
 let DATEN_PREFIX = "";
 function datenPfad(path){ return DATEN_PREFIX + String(path||"").replace(/^\/+/,""); }
+// V508: aktiven Datenbereich aus system/datenbereich (öffentlich lesbar) bestimmen.
+let _bereichStand = 0;
+async function ladeDatenbereich(){
+  if(Date.now()-_bereichStand < 60000) return;
+  try{
+    const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/system/datenbereich${API_KEY?`?key=${API_KEY}`:""}`;
+    const r=await fetch(url);
+    if(r.ok){
+      const j=await r.json(); const f=j.fields?convertFields(j.fields):{};
+      const vid=String(f.vereinId||"ttc-niederzeuzheim").replace(/[^a-z0-9-]/gi,"");
+      DATEN_PREFIX = f.modus==="verein" ? `vereine/${vid}/` : "";
+    } else if(r.status===404){ DATEN_PREFIX=""; }
+    _bereichStand=Date.now();
+  }catch(e){}
+}
 let AKT_SPIELPLAN="spielplan_2026_2027";   // V501: aus clubConfig.aktuelleSaison
 async function ladeVereinsname(){
   try{
+    await ladeDatenbereich();
     const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${datenPfad("config/clubConfig")}?mask.fieldPaths=name&mask.fieldPaths=verein&mask.fieldPaths=aktuelleSaison${API_KEY?`&key=${API_KEY}`:""}`;
     const r=await fetch(url); if(!r.ok) return;
     const j=await r.json(); const f=j.fields?convertFields(j.fields):{};
@@ -42,6 +58,7 @@ async function ladeVereinsname(){
 
 // Firestore REST: ein Dokument lesen und in JS-Objekt wandeln
 async function getDocData(path){
+  await ladeDatenbereich();
   const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${datenPfad(path)}${API_KEY?`?key=${API_KEY}`:""}`;
   const r=await fetch(url);
   if(!r.ok) return null;

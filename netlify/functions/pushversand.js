@@ -1,4 +1,4 @@
-// === TTC-App · Version 506 · netlify/functions/pushversand.js · erstellt 04.10.2026 (V506: zentraler Datenpfad je Verein) ===
+// === TTC-App · Version 508 · netlify/functions/pushversand.js · erstellt 04.10.2026 (V508: Datenbereich aus system/datenbereich) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -66,13 +66,32 @@ async function getAccessToken(){
 // "" = bisherige Ablage auf oberster Ebene; nach der Umstellung z. B.
 // "vereine/ttc-niederzeuzheim/". Bis dahin ändert sich nichts.
 let DATEN_PREFIX = "";
+let DATEN_MODUS = "oben";
 function datenPfad(path){ return DATEN_PREFIX + String(path||"").replace(/^\/+/,""); }
+// V508: aktiven Datenbereich aus system/datenbereich lesen (höchstens alle 60 s neu).
+let _bereichStand = 0;
+async function ladeDatenbereich(){
+  if(Date.now()-_bereichStand < 60000) return { modus:DATEN_MODUS, prefix:DATEN_PREFIX };
+  try{
+    const token = await getAccessToken();
+    const r = await fetch(`${fsBase()}/system/datenbereich`, { headers:{ Authorization:`Bearer ${token}` } });
+    if(r.ok){
+      const j = await r.json(); const f = j.fields ? convertFields(j.fields) : {};
+      DATEN_MODUS = f.modus || "oben";
+      const vid = String(f.vereinId || "ttc-niederzeuzheim").replace(/[^a-z0-9-]/gi,"");
+      DATEN_PREFIX = DATEN_MODUS==="verein" ? `vereine/${vid}/` : "";
+    } else if(r.status===404){ DATEN_MODUS="oben"; DATEN_PREFIX=""; }
+    _bereichStand = Date.now();
+  }catch(e){}
+  return { modus:DATEN_MODUS, prefix:DATEN_PREFIX };
+}
 
 // ── Firestore REST mit Service-Account-Token ──
 function fsBase(){
   return `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 }
 async function getDocData(path){
+  await ladeDatenbereich();
   const token = await getAccessToken();
   const r = await fetch(`${fsBase()}/${datenPfad(path)}`, { headers:{ Authorization:`Bearer ${token}` } });
   if(!r.ok) return null;
@@ -102,6 +121,7 @@ let _vereinGeladen=false;
 async function ladeVereinsdaten(){
   if(_vereinGeladen) return VEREIN;
   try{
+    await ladeDatenbereich();
     const token = await getAccessToken();
     const r = await fetch(`${fsBase()}/${datenPfad("config/clubConfig")}?mask.fieldPaths=verein`, { headers:{ Authorization:`Bearer ${token}` } });
     if(r.ok){
@@ -115,6 +135,7 @@ async function ladeVereinsdaten(){
   return VEREIN;
 }
 async function getCollection(path){
+  await ladeDatenbereich();
   const token = await getAccessToken();
   const out = [];
   let pageToken = "";
@@ -145,6 +166,8 @@ function convertValue(v){
 
 // ── Firestore REST: schreiben (für die Versand-Historie) ──
 async function patchDoc(path, dataObj){
+  await ladeDatenbereich();
+  if(DATEN_MODUS==="umstellung") return false;   // V508: während der Umstellung nichts schreiben
   const token = await getAccessToken();
   const fields = toFields(dataObj);
   const r = await fetch(`${fsBase()}/${datenPfad(path)}`, {
@@ -244,7 +267,7 @@ function uhrzeitMinusStunden(uhr, stunden){
   return `${hh}:${mm}`;
 }
 
-module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue, datenPfad };
+module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue, datenPfad, ladeDatenbereich };
 // V485: für nachrichtaktualisieren.js (Funktionen werden weiter unten deklariert und gehoben).
 module.exports.nachwuchsNachrichtenNachziehen = (...a)=>nachwuchsNachrichtenNachziehen(...a);
 // V501: als Getter, damit Aufrufer immer die zur Laufzeit ermittelte Saison erhalten.
