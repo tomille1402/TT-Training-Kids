@@ -1,4 +1,4 @@
-// === TTC-App · Version 512 · erstellt 05.10.2026 ===
+// === TTC-App · Version 513 · erstellt 05.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "512";
+const APP_VERSION = "513";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -164,8 +164,17 @@ const KALENDER_STANDARD_TTC = {
     "Fortgeschrittene":["2026-07-28","2026-08-04"],
     "Profis":          ["2026-07-28","2026-07-31","2026-08-04","2026-08-07"],
   },
+  // V513: Trainingswochentage je Gruppe; „_standard" gilt für alle übrigen Gruppen.
+  gruppenTage:{ "Profis":["Di","Fr"], "Fortgeschrittene":["Di"], "Anfänger":["Di"], "_standard":["Di"] },
 };
-const KALENDER_LEER = { ferien:[], freieTage:[], fronleichnam:false, sonder:{} };
+const KALENDER_LEER = { ferien:[], freieTage:[], fronleichnam:false, sonder:{},
+  gruppenTage:{ "Profis":["Di"], "Fortgeschrittene":["Di"], "Anfänger":["Di"], "_standard":["Di"] } };
+const WT_KURZ = ["So","Mo","Di","Mi","Do","Fr","Sa"];               // Index = getDay()
+const WT_REIHE = ["Mo","Di","Mi","Do","Fr","Sa","So"];              // Anzeige-Reihenfolge
+const WT_LANG = { Mo:"Montag", Di:"Dienstag", Mi:"Mittwoch", Do:"Donnerstag", Fr:"Freitag", Sa:"Samstag", So:"Sonntag" };
+let TAGE_JE_WT = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};   // alle trainingsfähigen Tage je Wochentag
+let GRUPPEN_TAGE = KALENDER_STANDARD_TTC.gruppenTage;
+let VEREINS_WOCHENTAGE = ["Di","Fr"];                       // Vereinigung aller Gruppen-Wochentage
 let TRAININGSKALENDER = KALENDER_STANDARD_TTC;
 let FERIEN = [];
 let FEIERTAGE = new Set();
@@ -209,20 +218,32 @@ function inFerien(dateStr) {
 }
 
 function generateTrainingDays() {
-  const tuesdays = [], fridays = [];
+  const je = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
   for (const jahr of kalenderJahre()) {
     for (let m = 1; m <= 12; m++) {
       const days = new Date(jahr, m, 0).getDate();
       for (let d = 1; d <= days; d++) {
         const ds = dateStr(jahr, m, d);
-        const dow = new Date(ds).getDay();
         if (inFerien(ds) || FEIERTAGE.has(ds)) continue;
-        if (dow === 2) tuesdays.push(ds); // Tuesday
-        if (dow === 5) fridays.push(ds);  // Friday
+        je[new Date(ds).getDay()].push(ds);
       }
     }
   }
-  return { tuesdays, fridays };
+  return je;
+}
+// V513: Trainingstage für eine Liste von Wochentag-Kürzeln (z. B. ["Di","Fr"])
+function tageFuerWochentage(liste){
+  const idx=(liste||[]).map(k=>WT_KURZ.indexOf(k)).filter(i=>i>=0);
+  return [...new Set(idx.flatMap(i=>TAGE_JE_WT[i]||[]))].sort();
+}
+function wochentageDerGruppe(group){
+  return (GRUPPEN_TAGE && (GRUPPEN_TAGE[group] || GRUPPEN_TAGE._standard)) || ["Di"];
+}
+function gruppeTrainiertAn(group, ds){ return wochentageDerGruppe(group).includes(WT_KURZ[new Date(ds).getDay()]); }
+// Alle regulären Trainingstage des Vereins (alle Gruppen)
+function alleVereinsTrainingstage(){ return tageFuerWochentage(VEREINS_WOCHENTAGE); }
+function letzterTrainingstag(heuteIso){
+  const t=alleVereinsTrainingstage(); return [...t].reverse().find(d=>d<=heuteIso) || t[0] || "";
 }
 // Übernimmt den Trainingskalender (null = Standard: TTC-Werte bzw. leer bei anderen Vereinen)
 function setzeTrainingskalender(cfg){
@@ -238,32 +259,33 @@ function setzeTrainingskalender(cfg){
   for(const [g,tage] of Object.entries(k.sonder||{})) SONDER_TRAINING[g]=(Array.isArray(tage)?tage:[]).filter(Boolean).sort();
   // Alle Sondertrainings-Tage über alle Gruppen (für die Tagesauswahl im Trainer-Bereich).
   ALLE_SONDER_TAGE = [...new Set(Object.values(SONDER_TRAINING).flat())].sort();
-  const r = generateTrainingDays();
-  ALL_TUESDAYS = r.tuesdays; ALL_FRIDAYS = r.fridays;
+  TAGE_JE_WT = generateTrainingDays();
+  ALL_TUESDAYS = TAGE_JE_WT[2]; ALL_FRIDAYS = TAGE_JE_WT[5];
+  // V513: Wochentage je Gruppe
+  // Fehlt die Angabe (z. B. Kalender in V510 gespeichert), gilt der Vereins-Standard.
+  const gt = (cfg && cfg.gruppenTage && typeof cfg.gruppenTage==="object") ? cfg.gruppenTage
+    : (istUrsprungsverein() ? KALENDER_STANDARD_TTC.gruppenTage : KALENDER_LEER.gruppenTage);
+  GRUPPEN_TAGE = {};
+  for(const [g,l] of Object.entries(gt)){ const w=(Array.isArray(l)?l:[]).filter(x=>WT_KURZ.includes(x)); if(w.length) GRUPPEN_TAGE[g]=WT_REIHE.filter(x=>w.includes(x)); }
+  if(!GRUPPEN_TAGE._standard) GRUPPEN_TAGE._standard=["Di"];
+  const alle=new Set(Object.values(GRUPPEN_TAGE).flat());
+  VEREINS_WOCHENTAGE = WT_REIHE.filter(x=>alle.has(x));
 }
 setzeTrainingskalender(null);
 
 function getTrainingDaysForGroup(group, trainerDays) {
   const sonder = SONDER_TRAINING[group] || [];
   const mitSonder = (tage) => [...new Set([...tage, ...sonder])].sort();
-  if (group === "Profis") return mitSonder([...ALL_TUESDAYS, ...ALL_FRIDAYS]);
   if (group === "Trainer") {
-    // Trainer: days from their trainingDays field ("Di", "Fr", "Di+Fr")
-    if (!trainerDays || trainerDays === "Di+Fr") return [...ALL_TUESDAYS, ...ALL_FRIDAYS].sort();
-    if (trainerDays === "Fr") return ALL_FRIDAYS;
-    return ALL_TUESDAYS; // default: Di only
+    // Trainer: Tage aus dem Personenfeld trainingDays („Di", „Fr", „Di+Fr" …);
+    // ohne Angabe alle Trainingstage des Vereins.
+    if (!trainerDays) return alleVereinsTrainingstage();
+    return tageFuerWochentage(String(trainerDays).split("+").map(x=>x.trim()));
   }
-  return mitSonder(ALL_TUESDAYS);
+  // V513: Wochentage aus dem Trainingskalender (Verwaltung → Training)
+  return mitSonder(tageFuerWochentage(wochentageDerGruppe(group)));
 }
 
-function getTrainingTime(group, dateStr) {
-  const dow = new Date(dateStr).getDay();
-  const g = group;
-  if (g === "Anfänger") return "17:00–18:00";
-  if (g === "Fortgeschrittene") return "17:00–18:30";
-  if (g === "Profis") return dow === 5 ? "16:00–18:00" : "17:00–19:00";
-  return "";
-}
 
 // Find nearest training day to today
 function getNearestTrainingDay(days) {
@@ -8755,11 +8777,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   // (Anfänger/Fortgeschrittene trainieren nur Di → wir nehmen den frühesten letzten Tag)
   const today = new Date(); today.setHours(0,0,0,0);
   const todayStr2 = today.toLocaleDateString("sv");
-  const lastTue = [...ALL_TUESDAYS].reverse().find(d=>d<=todayStr2) || ALL_TUESDAYS[0];
-  const lastFri = [...ALL_FRIDAYS].reverse().find(d=>d<=todayStr2)  || ALL_FRIDAYS[0];
-  // Use the LATER of the two = most recent training day (not the earlier/broader window)
-  // Anfänger/Fortgeschrittene only train Tuesday, so lastTue is the correct reference
-  const lastTraining = lastTue > lastFri ? lastTue : lastFri; // most recent training
+  const lastTraining = letzterTrainingstag(todayStr2); // V513: letzter Trainingstag des Vereins
   const birthdaySince = lastTraining ? new Date(lastTraining) : today;
 
   function getBirthdaysSince(since) {
@@ -9121,7 +9139,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
 // ─── ADMIN TRAINING TAB ───────────────────────────────────────────────────────
 function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
-  const allDays = [...new Set([...ALL_TUESDAYS,...ALL_FRIDAYS,...ALLE_SONDER_TAGE])].sort();
+  const allDays = [...new Set([...alleVereinsTrainingstage(),...ALLE_SONDER_TAGE])].sort();
   const nearest = getNearestTrainingDay(allDays);
   const [selDate,setSelDate]=useState(nearest);
   const [sessionData,setSessionData]=useState(null);
@@ -9152,8 +9170,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     setSessionData(prev=>({...prev,attendances:{...Object.fromEntries(players.map(p=>[p.id,val]))}}));
   }
 
-  const isFriday = selDate ? new Date(selDate).getDay()===5 : false;
-  const isTuesday = selDate ? new Date(selDate).getDay()===2 : false;
+  const wtSel = selDate ? WT_KURZ[new Date(selDate).getDay()] : "";   // V513
   const istSonderTag = selDate ? ALLE_SONDER_TAGE.includes(selDate) : false;
   // An einem Sondertrainings-Tag nur die Gruppen zeigen, für die er vorgesehen ist.
   const sonderGruppen = istSonderTag
@@ -9161,15 +9178,14 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     : null;
   const relevantPlayers = players.filter(p=>{
     if (p.group==="Trainer") {
-      // Trainer nur an ihren Trainingstagen zeigen
-      const td = p.trainingDays||"Di";
-      if (isFriday && td==="Di") return false;  // Fr-Training aber nur Di-Trainer
-      if (isTuesday && td==="Fr") return false; // Di-Training aber nur Fr-Trainer
+      // Trainer nur an ihren Trainingstagen zeigen (V513: beliebige Wochentage)
+      const td = String(p.trainingDays || VEREINS_WOCHENTAGE[0] || "Di").split("+").map(x=>x.trim());
+      if (wtSel && VEREINS_WOCHENTAGE.includes(wtSel) && !td.includes(wtSel)) return false;
       return true;
     }
     // Sondertag: nur die dafür vorgesehenen Gruppen
     if (sonderGruppen && !sonderGruppen.includes(p.group)) return false;
-    if (!istSonderTag && isFriday && p.group!=="Profis") return false;
+    if (!istSonderTag && selDate && !gruppeTrainiertAn(p.group||"Anfänger", selDate)) return false;   // V513
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
@@ -10764,7 +10780,7 @@ function TrainingskalenderEditor({showToast}){
   useEffect(()=>{
     const u=onSnapshot(doc(db,"config","trainingskalender"),snap=>{
       setNieGespeichert(!snap.exists());
-      setK(alt=> alt || JSON.parse(JSON.stringify(snap.exists()? {...KALENDER_LEER,...snap.data()} : TRAININGSKALENDER)));
+      setK(alt=> alt || JSON.parse(JSON.stringify(snap.exists()? {...KALENDER_LEER,...snap.data(), gruppenTage:snap.data().gruppenTage||GRUPPEN_TAGE} : {...TRAININGSKALENDER, gruppenTage:GRUPPEN_TAGE})));
     },()=>setK(alt=>alt||JSON.parse(JSON.stringify(TRAININGSKALENDER))));
     return u;
   },[]);
@@ -10777,6 +10793,7 @@ function TrainingskalenderEditor({showToast}){
         freieTage:(k.freieTage||[]).filter(f=>f.datum).map(f=>({datum:f.datum, name:String(f.name||"").trim()}))
           .sort((a,b)=>a.datum.localeCompare(b.datum)),
         fronleichnam:!!k.fronleichnam,
+        gruppenTage:Object.fromEntries(Object.entries(k.gruppenTage||{}).filter(([,l])=>Array.isArray(l)&&l.length)),
         sonder:Object.fromEntries(Object.entries(k.sonder||{}).map(([g,t])=>[g,[...new Set(t||[])].sort()]).filter(([,t])=>t.length)),
         stand:Date.now(),
       };
@@ -10803,6 +10820,22 @@ function TrainingskalenderEditor({showToast}){
     {nieGespeichert && <div style={{fontSize:11,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px",marginTop:10,lineHeight:1.55}}>
       Noch nicht gespeichert – angezeigt wird die bisherige Vorbelegung. Bitte die Ferien der kommenden Zeit ergänzen und speichern.
     </div>}
+
+    <div style={titel}>📅 Trainingstage je Gruppe</div>
+    <div style={{fontSize:10,color:"var(--text3)",marginBottom:6,lineHeight:1.5}}>
+      An diesen Wochentagen entstehen die Trainingstage (Anwesenheit, Teilnahme, Rangliste).
+      „Übrige Gruppen“ gilt für alle nicht eigens aufgeführten Gruppen. Trainer wählen ihre Tage im Profil.
+    </div>
+    {[["Profis","Profis"],["Fortgeschrittene","Fortgeschrittene"],["Anfänger","Anfänger"],["_standard","Übrige Gruppen"]].map(([g,lab])=>{
+      const akt=(k.gruppenTage&&k.gruppenTage[g])||[];
+      return <div key={g} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:5}}>
+        <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",minWidth:120}}>{lab}</span>
+        {WT_REIHE.map(w=><label key={w} style={{display:"flex",alignItems:"center",gap:3,fontSize:11,color:"var(--text2)",cursor:"pointer"}}>
+          <input type="checkbox" checked={akt.includes(w)} onChange={e=>setK(x=>{ const alt=(x.gruppenTage&&x.gruppenTage[g])||[];
+            const neu=e.target.checked?[...alt,w]:alt.filter(y=>y!==w);
+            return {...x,gruppenTage:{...(x.gruppenTage||{}),[g]:WT_REIHE.filter(y=>neu.includes(y))}}; })}/>{w}</label>)}
+      </div>;
+    })}
 
     <div style={titel}>🏖️ Schulferien</div>
     {(k.ferien||[]).map((f,i)=><div key={i} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
@@ -13048,7 +13081,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         joinDate:      editPlayer.joinDate||"",
         leaveDate:     editPlayer.leaveDate||"",
         roles:         editPlayer.roles||{},
-        trainingDays:  editPlayer.trainingDays||"Di",
+        trainingDays:  editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di",
         phone:         editPlayer.phone||"",
         tshirtSize:    editPlayer.tshirtSize||"",
         anzugSize:     editPlayer.anzugSize||"",
@@ -14139,10 +14172,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               {/* Trainingstage (nur für Trainer-Gruppe) */}
               {editPlayer.group==="Trainer"&&<div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage</label>
-                <select value={editPlayer.trainingDays||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
-                  <option value="Di">Nur Dienstag</option>
-                  <option value="Fr">Nur Freitag</option>
-                  <option value="Di+Fr">Dienstag + Freitag</option>
+                <select value={editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
+                  {/* V513: Optionen aus den Trainingswochentagen des Vereins */}
+                  {VEREINS_WOCHENTAGE.map(w=><option key={w} value={w}>Nur {WT_LANG[w]}</option>)}
+                  {VEREINS_WOCHENTAGE.length>1 && <option value={VEREINS_WOCHENTAGE.join("+")}>{VEREINS_WOCHENTAGE.map(w=>WT_LANG[w]).join(" + ")}</option>}
+                  {editPlayer.trainingDays && ![...VEREINS_WOCHENTAGE, VEREINS_WOCHENTAGE.join("+")].includes(editPlayer.trainingDays) &&
+                    <option value={editPlayer.trainingDays}>{editPlayer.trainingDays}</option>}
                 </select>
               </div>}
 
@@ -16426,9 +16461,7 @@ function GeburtstageTab({players,showToast}) {
 
   const today=new Date();today.setHours(0,0,0,0);
   const todayStr3=today.toLocaleDateString("sv");
-  const lastTue3=[...ALL_TUESDAYS].reverse().find(d=>d<=todayStr3)||ALL_TUESDAYS[0];
-  const lastFri3=[...ALL_FRIDAYS].reverse().find(d=>d<=todayStr3)||ALL_FRIDAYS[0];
-  const lastTraining=lastTue3>lastFri3?lastTue3:lastFri3; // letzten Trainingstag nehmen
+  const lastTraining=letzterTrainingstag(todayStr3); // V513: letzter Trainingstag des Vereins
 
   function isRecentBirthday(p) {
     if (!lastTraining||!p.birthdate) return false;
@@ -18021,8 +18054,8 @@ function EinheitenTab({user, players}) {
           <b>Ablauf:</b><br/>
           🤝 Alle Kinder kommen zusammen<br/>
           📋 Trainer begrüßt alle, macht die Anwesenheitsliste<br/>
-          👥 Dienstags: Aufteilung in Profis, Fortgeschrittene, Anfänger<br/>
-          🏓 Freitags: Nur Profis trainieren<br/>
+          {VEREINS_WOCHENTAGE.map(w=>{ const gr=["Profis","Fortgeschrittene","Anfänger"].filter(g=>wochentageDerGruppe(g).includes(w));
+            return <React.Fragment key={w}>👥 {WT_LANG[w]}s: {gr.length>1?"Aufteilung in ":gr.length===1?"Nur ":""}{gr.join(", ")||"—"}<br/></React.Fragment>; })}
           📌 Festlegung wer welche Gruppe übernimmt
         </div>
         <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Notizen zur Begrüßung</label>
