@@ -1,4 +1,4 @@
-// === TTC-App · Version 511 · erstellt 04.10.2026 ===
+// === TTC-App · Version 512 · erstellt 05.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "511";
+const APP_VERSION = "512";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9850,6 +9850,41 @@ function UebungsUrkundenEditor({showToast}) {
     setBusy("");
   }
 
+  // V512: Layout (Ort/Datum, Logo, Rahmen) mit Vorschau
+  const [layout,setLayout]=useState(null);
+  const [logo,setLogo]=useState("");
+  const [farbe,setFarbe]=useState([200,16,46]);
+  const [layoutGeaendert,setLayoutGeaendert]=useState(false);
+  const [vorschauKey,setVorschauKey]=useState("");
+  const [probe,setProbe]=useState(null);
+  useEffect(()=>{
+    getDoc(doc(db,"config","clubConfig")).then(snap=>{
+      const d=snap.exists()?snap.data():{};
+      setLayout(urkLayoutMitStandard(d.uebungsUrkundenLayout)); setLogo(d.logo||""); setFarbe(vereinsFarbeRgb(d.farbschema));
+    }).catch(()=>setLayout(urkLayoutMitStandard(null)));
+  },[]);
+  const setL=(teil,feld,wert)=>{ setLayout(l=>({...l,[teil]:{...l[teil],[feld]:wert}})); setLayoutGeaendert(true); };
+  async function layoutSpeichern(){
+    setBusy("layout");
+    try{
+      await setDoc(doc(db,"config","clubConfig"),{uebungsUrkundenLayout:layout},{merge:true});
+      URK_CACHE.muster=null; URK_CACHE.jpeg={}; URK_CACHE.cfg=null; setLayoutGeaendert(false);
+      showToast("Urkunden-Layout gespeichert","✅");
+    }catch(e){ window.alert("Fehler:\n"+(e.message||e)); }
+    setBusy("");
+  }
+  async function probeUrkunde(){
+    const key=vorschauKey || Object.keys(muster).find(k=>muster[k]);
+    if(!key){ window.alert("Bitte zuerst ein Muster hochladen."); return; }
+    setProbe({laeuft:true, titel:"Probe-Urkunde"});
+    try{
+      await urkundenMusterLaden();
+      const blob=await uebungsUrkundePdfErzeugen({ musterKey:key, vor:"Maximilian", nach:"Mustermann",
+        datumIso:new Date().toLocaleDateString("sv"), layoutUeberschreiben:layout });
+      setProbe({ blob, url:URL.createObjectURL(blob), dateiname:"Probe-Urkunde.pdf", titel:"Probe-Urkunde" });
+    }catch(e){ setProbe(null); window.alert("Probe-Urkunde fehlgeschlagen:\n"+(e&&e.message||e)); }
+  }
+
   async function entferne(key){
     const neu={...muster}; delete neu[key];
     setMuster(neu);
@@ -9860,7 +9895,8 @@ function UebungsUrkundenEditor({showToast}) {
   const gruppen=["Anfänger","Fortgeschrittene"];
   return <div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-      Lade je Stufe das Urkundenmuster als JPEG hoch (A4 hochkant). Beim Erzeugen einer Urkunde werden nur Name und Datum auf das Muster gesetzt.
+      Lade je Stufe das Urkundenmuster als JPEG hoch (A4 hochkant). Beim Erzeugen einer Urkunde setzt die App
+      Name, Ort und Datum, das Logo der App und einen Rahmen in der Vereinsfarbe auf das Muster (Einstellungen unten).
     </div>
     {gruppen.map(gr=>(
       <div key={gr} style={{marginBottom:16}}>
@@ -9883,6 +9919,105 @@ function UebungsUrkundenEditor({showToast}) {
         </div>
       </div>
     ))}
+    {layout && <UrkundenLayoutBereich layout={layout} setL={setL} logo={logo} farbe={farbe}
+      muster={muster} vorschauKey={vorschauKey} setVorschauKey={setVorschauKey}
+      geaendert={layoutGeaendert} busy={busy==="layout"} onSpeichern={layoutSpeichern} onProbe={probeUrkunde}/>}
+    {probe && <UrkundenAusgabeDialog ausgabe={probe} onClose={()=>setProbe(null)}/>}
+  </div>;
+}
+
+// V512: Einstellungen + Vorschau für Ort/Datum, Logo und Rahmen der Übungs-Urkunden
+let _urkVorschauFont=null;
+function urkVorschauFontLaden(){
+  if(_urkVorschauFont) return _urkVorschauFont;
+  _urkVorschauFont=(async()=>{ try{
+    const f=new FontFace("UrkParisienne", `url(data:font/ttf;base64,${PARISIENNE_TTF_BASE64})`);
+    await f.load(); document.fonts.add(f); return true; }catch(e){ return false; } })();
+  return _urkVorschauFont;
+}
+function UrkundenLayoutBereich({layout, setL, logo, farbe, muster, vorschauKey, setVorschauKey, geaendert, busy, onSpeichern, onProbe}){
+  const canvasRef=useRef(null);
+  const verfuegbar=UEBUNGS_URKUNDEN_TYPEN.filter(t=>muster[t.key]);
+  const key=vorschauKey || (verfuegbar[0]&&verfuegbar[0].key) || "";
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      await urkVorschauFontLaden();
+      const c=canvasRef.current; if(!c||ab) return;
+      const s=3, g=c.getContext("2d"); c.width=210*s; c.height=297*s;
+      g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height);
+      const bild=src=>new Promise(res=>{ if(!src) return res(null); const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=src; });
+      const m=await bild(muster[key]); if(ab) return;
+      if(m) g.drawImage(m,0,0,c.width,c.height);
+      const L=urkLayoutMitStandard(layout); const rgb=`rgb(${farbe.join(",")})`;
+      g.fillStyle="#fff";
+      if(L.ortDatum.an && L.ortDatum.abdecken) g.fillRect((L.ortDatum.x-2)*s,(L.ortDatum.y-L.ortDatum.groesse*0.42)*s,L.ortDatum.abdeckBreite*s,L.ortDatum.groesse*0.56*s);
+      const lb=urkLogoBox(L);
+      if(L.logo.an && L.logo.abdecken && logo) g.fillRect((lb.x-1)*s,(lb.y-1)*s,(lb.w+2)*s,(lb.h+2)*s);
+      if(L.rahmen.an){
+        const a=Number(L.rahmen.abstand)||6, st=Number(L.rahmen.staerke)||1.8;
+        g.strokeStyle=rgb; g.lineWidth=st*s; g.strokeRect(a*s,a*s,(210-2*a)*s,(297-2*a)*s);
+        if(L.rahmen.innenlinie){ const i=a+st/2+1.6; g.lineWidth=0.4*s; g.strokeRect(i*s,i*s,(210-2*i)*s,(297-2*i)*s);
+          g.fillStyle=rgb; const q=3.2, o=a-q/2;
+          [[o,o],[210-o-q,o],[o,297-o-q],[210-o-q,297-o-q]].forEach(([x,y])=>g.fillRect(x*s,y*s,q*s,q*s)); }
+      }
+      if(L.logo.an && logo){ const li=await bild(logo); if(ab) return;
+        if(li){ const r=Math.min(lb.w/li.naturalWidth, lb.h/li.naturalHeight); const w=li.naturalWidth*r, h=li.naturalHeight*r;
+          g.drawImage(li,(lb.x+(lb.w-w)/2)*s,(lb.y+(lb.h-h)/2)*s,w*s,h*s); } }
+      g.fillStyle=rgb; g.textAlign="center"; g.textBaseline="alphabetic";
+      g.font=`${64*0.3528*s}px UrkParisienne, cursive`;
+      g.fillText("Maximilian",105*s,190*s); g.fillText("Mustermann",105*s,213*s);
+      if(L.ortDatum.an){ g.fillStyle="#141414"; g.textAlign="left";
+        g.font=`bold ${L.ortDatum.groesse*0.3528*s}px "Comic Sans MS", "Chalkboard SE", cursive`;
+        const heute=new Date().toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"});
+        g.fillText(`${VEREIN.ort?VEREIN.ort+", den ":""}${heute}`, L.ortDatum.x*s, L.ortDatum.y*s); }
+    })();
+    return ()=>{ ab=true; };
+  },[layout, logo, farbe, key, muster]);
+  const inp={width:"100%",padding:"6px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
+  const lab={fontSize:10,color:"var(--text3)",display:"block",marginBottom:2};
+  const zahl=(teil,feld,label,schritt=0.5)=><div><span style={lab}>{label}</span>
+    <input type="number" step={schritt} value={layout[teil][feld]} onChange={e=>setL(teil,feld,e.target.value===""?"":Number(e.target.value))} style={inp}/></div>;
+  const haken=(teil,feld,label)=><label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text2)",cursor:"pointer"}}>
+    <input type="checkbox" checked={!!layout[teil][feld]} onChange={e=>setL(teil,feld,e.target.checked)}/>{label}</label>;
+  const box={background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10,marginBottom:8};
+  const raster={display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(105px,1fr))",gap:6,marginTop:6};
+  return <div style={{marginTop:6,paddingTop:12,borderTop:"1px solid var(--border2)"}}>
+    <div style={{fontSize:13,fontWeight:800,color:"var(--text)",marginBottom:4}}>📐 Ort/Datum, Logo und Rahmen</div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:10}}>
+      Angaben in Millimetern (A4: 210 × 297). „Abdecken“ legt eine weiße Fläche über den bisherigen Eintrag
+      im Muster (z. B. „{VEREIN.ort||"Ort"}, den“ oder das alte Logo). Ort kommt aus den Vereinsdaten, Logo und Farbe aus Darstellung.
+      Zum Prüfen „Probe-Urkunde“ erzeugen – die Vorschau ist nur eine Annäherung.
+    </div>
+    <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}>
+      <div style={{flex:"1 1 260px",minWidth:240}}>
+        <div style={box}>{haken("ortDatum","an","Ort und Datum setzen")}
+          <div style={raster}>{zahl("ortDatum","x","Abstand links")}{zahl("ortDatum","y","Grundlinie von oben")}{zahl("ortDatum","groesse","Schriftgröße (pt)",1)}</div>
+          <div style={{marginTop:6}}>{haken("ortDatum","abdecken","bisherigen Eintrag abdecken")}</div>
+          {layout.ortDatum.abdecken && <div style={raster}>{zahl("ortDatum","abdeckBreite","Breite Abdeckung",1)}</div>}
+        </div>
+        <div style={box}>{haken("logo","an",logo?"Logo der App setzen (rechts unten)":"Logo der App setzen – noch kein Logo hinterlegt")}
+          <div style={raster}>{zahl("logo","breite","Breite",1)}{zahl("logo","hoehe","Höhe",1)}{zahl("logo","rechts","Abstand rechts")}{zahl("logo","unten","Abstand unten")}</div>
+          <div style={{marginTop:6}}>{haken("logo","abdecken","altes Logo abdecken")}</div>
+        </div>
+        <div style={box}>{haken("rahmen","an","Rahmen in der Vereinsfarbe")}
+          <div style={raster}>{zahl("rahmen","abstand","Abstand zum Rand")}{zahl("rahmen","staerke","Linienstärke",0.1)}</div>
+          <div style={{marginTop:6}}>{haken("rahmen","innenlinie","feine Innenlinie mit Eckquadraten")}</div>
+        </div>
+      </div>
+      <div style={{flex:"0 1 240px",minWidth:200}}>
+        {verfuegbar.length>1 && <select value={key} onChange={e=>setVorschauKey(e.target.value)} style={{...inp,marginBottom:6}}>
+          {verfuegbar.map(t=><option key={t.key} value={t.key}>{t.gruppe} – {t.stufe}</option>)}
+        </select>}
+        <canvas ref={canvasRef} style={{width:"100%",maxWidth:240,border:"1px solid var(--border2)",borderRadius:6,background:"#fff",display:"block"}}/>
+        {!verfuegbar.length && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Noch kein Muster hochgeladen.</div>}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+      <button onClick={onProbe} style={{flex:"1 1 160px",padding:"10px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>📄 Probe-Urkunde</button>
+      <button onClick={onSpeichern} disabled={busy||!geaendert} style={{flex:"1 1 160px",padding:"10px 12px",background:(busy||!geaendert)?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:(busy||!geaendert)?"default":"pointer"}}>
+        {busy?"⏳ Speichern …":"Layout speichern"}</button>
+    </div>
   </div>;
 }
 
@@ -12197,12 +12332,16 @@ const URKUNDE_RUECKKEHR_KEY = "ttc_urkundeRueckkehr";
 // V496: Beschleunigung. Muster und Schriften werden nur EINMAL geladen und im Speicher
 // gehalten; PNG-Muster werden einmalig in JPEG umgewandelt (jsPDF bettet JPEG direkt
 // ein, PNG muss es aufwendig neu komprimieren – das kostete auf dem iPad Sekunden).
-const URK_CACHE = { muster:null, jpeg:{}, kalam:undefined, laden:null };
+const URK_CACHE = { muster:null, jpeg:{}, kalam:undefined, laden:null, cfg:null };
 async function urkundenMusterLaden(){
   if(URK_CACHE.muster) return URK_CACHE.muster;
   if(!URK_CACHE.laden){
     URK_CACHE.laden = getDoc(doc(db,"config","clubConfig"))
-      .then(snap=>{ URK_CACHE.muster = (snap.exists() && snap.data().uebungsUrkunden) || {}; return URK_CACHE.muster; })
+      .then(snap=>{ const d=snap.exists()?snap.data():{};
+        URK_CACHE.muster = d.uebungsUrkunden || {};
+        // V512: Layout (Ort/Datum, Logo, Rahmen), Logo der App und Vereinsfarbe
+        URK_CACHE.cfg = { layout:urkLayoutMitStandard(d.uebungsUrkundenLayout), logo:d.logo||"", farbe:vereinsFarbeRgb(d.farbschema) };
+        return URK_CACHE.muster; })
       .catch(()=>({}))
       .finally(()=>{ URK_CACHE.laden=null; });
   }
@@ -12230,6 +12369,147 @@ async function urkundenMusterJpeg(musterKey){
   URK_CACHE.jpeg[musterKey]=jpg;
   return jpg;
 }
+async function ladeJsPDF_V(){
+  if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+  await new Promise((res,rej)=>{ const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden.")); document.head.appendChild(s); });
+  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
+  return window.jspdf.jsPDF;
+}
+async function fontBase64(url){
+  const r=await fetch(url); if(!r.ok) throw new Error("Font-Download fehlgeschlagen");
+  const buf=await r.arrayBuffer(); let bin=""; const bytes=new Uint8Array(buf);
+  for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+// Registriert die Schriften in jsPDF. Gibt zurück, ob die Namensschrift (Parisienne)
+// verfügbar ist. Parisienne ist fest eingebettet (kein Netz nötig), Kalam optional per CDN.
+async function kalamVorladen(){
+  if(URK_CACHE.kalam!==undefined) return;
+  try{
+    URK_CACHE.kalam = await Promise.race([
+      fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf"),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("Zeitüberschreitung")),4000)),
+    ]);
+  }catch(e){ URK_CACHE.kalam = null; }
+}
+async function registriereFonts(pdf){
+  let nameOk=false;
+  try{
+    // Parisienne aus der fest eingebetteten Base64-Konstante – kein CDN, kein fetch.
+    pdf.addFileToVFS("Parisienne.ttf", PARISIENNE_TTF_BASE64);
+    pdf.addFont("Parisienne.ttf","Parisienne","normal");
+    const fonts=pdf.getFontList();
+    nameOk = !!(fonts && fonts.Parisienne);
+  }catch(e){ nameOk=false; }
+  try{
+    // V496: Kalam nur einmal laden (max. 4 s); ein Fehlschlag wird gemerkt, damit nicht
+    // jede weitere Urkunde erneut auf das Netz wartet.
+    if(URK_CACHE.kalam===undefined) await kalamVorladen();
+    if(!URK_CACHE.kalam) throw new Error("Kalam nicht verfügbar");
+    VerwaltungTab._fontDate = URK_CACHE.kalam;
+    pdf.addFileToVFS("Kalam.ttf", VerwaltungTab._fontDate);
+    pdf.addFont("Kalam.ttf","Kalam","normal");
+  }catch(e){}
+  return { nameOk };
+}
+
+
+// ─── V512: Übungs-Urkunden – Layout (Ort/Datum, Logo, Rahmen) ──────────────
+// Alle Maße in mm (A4 hochkant, 210 × 297). Gepflegt in Verwaltung → Training →
+// „Übungs-Urkunden“, gespeichert in config/clubConfig.uebungsUrkundenLayout.
+const URK_LAYOUT_STANDARD = {
+  ortDatum:{ an:true, x:12, y:284.5, groesse:16, abdecken:true, abdeckBreite:100 },
+  logo:    { an:true, breite:34, hoehe:34, rechts:12, unten:10, abdecken:true },
+  rahmen:  { an:true, abstand:6, staerke:1.8, innenlinie:true },
+};
+function urkLayoutMitStandard(l){
+  const x=l||{};
+  return { ortDatum:{...URK_LAYOUT_STANDARD.ortDatum, ...(x.ortDatum||{})},
+           logo:{...URK_LAYOUT_STANDARD.logo, ...(x.logo||{})},
+           rahmen:{...URK_LAYOUT_STANDARD.rahmen, ...(x.rahmen||{})} };
+}
+function vereinsFarbeRgb(schemaKey){
+  const sch=FARBSCHEMATA.find(f=>f.key===schemaKey)||FARBSCHEMATA[0];
+  const h=/^#([0-9a-f]{6})$/i.exec(sch.prim||"")?.[1]||"c8102e";
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];
+}
+function urkLogoBox(L){ const g=L.logo; return { x:210-g.rechts-g.breite, y:297-g.unten-g.hoehe, w:g.breite, h:g.hoehe }; }
+// Zeichnet eine komplette Übungs-Urkunde in ein jsPDF-Dokument (eine Seite).
+function zeichneUebungsUrkunde(pdf, { muster, musterKey, vor, nach, datumTxt, layout, logo, farbe, nameOk }){
+  const PW=210, PH=297, mid=PW/2;
+  const L=urkLayoutMitStandard(layout);
+  const [fr,fg,fb]=farbe||[200,16,46];
+  const bildTyp=/^data:image\/png/i.test(muster)?"PNG":"JPEG";
+  // Alias = Muster-Schlüssel: jsPDF verarbeitet das Bild nur einmal je Muster.
+  try{ pdf.addImage(muster,bildTyp,0,0,PW,PH,"muster_"+musterKey,"FAST"); }catch(e){}
+  pdf.setFillColor(255,255,255);
+  // Abdecken der bisherigen Angaben im Muster (Ort-Zeile, Logo)
+  if(L.ortDatum.an && L.ortDatum.abdecken) pdf.rect(L.ortDatum.x-2, L.ortDatum.y-L.ortDatum.groesse*0.42, L.ortDatum.abdeckBreite, L.ortDatum.groesse*0.56, "F");
+  if(L.logo.an && L.logo.abdecken && logo){ const b=urkLogoBox(L); pdf.rect(b.x-1, b.y-1, b.w+2, b.h+2, "F"); }
+  // Rahmen in der Vereinsfarbe: kräftige Außenlinie + feine Innenlinie, Eckquadrate
+  if(L.rahmen.an){
+    const a=Number(L.rahmen.abstand)||6, st=Number(L.rahmen.staerke)||1.8;
+    pdf.setDrawColor(fr,fg,fb); pdf.setLineWidth(st);
+    pdf.rect(a, a, PW-2*a, PH-2*a, "S");
+    if(L.rahmen.innenlinie){
+      const i=a+st/2+1.6;
+      pdf.setLineWidth(0.4); pdf.rect(i, i, PW-2*i, PH-2*i, "S");
+      pdf.setFillColor(fr,fg,fb);
+      const q=3.2, o=a-q/2;
+      [[o,o],[PW-o-q,o],[o,PH-o-q],[PW-o-q,PH-o-q]].forEach(([qx,qy])=>pdf.rect(qx,qy,q,q,"F"));
+      pdf.setFillColor(255,255,255);
+    }
+  }
+  // Logo der App rechts unten (Seitenverhältnis bleibt erhalten)
+  if(L.logo.an && logo){
+    try{
+      const b=urkLogoBox(L);
+      const pr=pdf.getImageProperties(logo); const r=Math.min(b.w/pr.width, b.h/pr.height);
+      const w=pr.width*r, h=pr.height*r;
+      pdf.addImage(logo, /^data:image\/png/i.test(logo)?"PNG":"JPEG", b.x+(b.w-w)/2, b.y+(b.h-h)/2, w, h, "urk_logo", "FAST");
+    }catch(e){}
+  }
+  // Name: Vorname (Zeile 1) + Nachname (Zeile 2), Handschrift (Parisienne) in Vereinsfarbe.
+  pdf.setFont(nameOk?"Parisienne":"times", nameOk?"normal":"bold");
+  pdf.setTextColor(fr,fg,fb);
+  const maxBreite=186;
+  const fitSize=(txt,start)=>{ let sz=start; pdf.setFontSize(sz);
+    while(sz>26 && pdf.getTextWidth(txt)>maxBreite){ sz-=2; pdf.setFontSize(sz); } return sz; };
+  // „Fett“ simulieren: Text mehrfach minimal versetzt zeichnen (Parisienne hat nur einen Schnitt).
+  const fettText=(txt,x,yy)=>{ const d=0.18;
+    [[0,0],[d,0],[-d,0],[0,d],[0,-d],[d,d],[-d,-d]].forEach(([ox,oy])=>pdf.text(txt, x+ox, yy+oy, {align:"center"})); };
+  let ny=190;
+  if(vor){ fitSize(vor,64); fettText(vor, mid, ny); ny+=23; }
+  if(nach){ fitSize(nach,64); fettText(nach, mid, ny); }
+  // Ort und Datum (links unten), Handschrift Kalam falls verfügbar
+  if(L.ortDatum.an && datumTxt){
+    let dateFont="times", dateBold=true;
+    try{ const fl=pdf.getFontList(); if(fl && fl.Kalam){ dateFont="Kalam"; dateBold=false; } }catch(e){}
+    pdf.setFont(dateFont, dateBold?"bold":"normal");
+    pdf.setFontSize(Number(L.ortDatum.groesse)||16); pdf.setTextColor(20,20,20);
+    const txt=`${VEREIN.ort?VEREIN.ort+", den ":""}${datumTxt}`;
+    const dx=Number(L.ortDatum.x), dyy=Number(L.ortDatum.y);
+    if(dateBold) pdf.text(txt, dx, dyy);
+    else { const d=0.15; [[0,0],[d,0],[-d,0],[0,d],[0,-d]].forEach(([ox,oy])=>pdf.text(txt, dx+ox, dyy+oy)); }
+  }
+}
+// Erzeugt die PDF einer Übungs-Urkunde (für Ausgabe und Probe-Urkunde)
+async function uebungsUrkundePdfErzeugen({ musterKey, vor, nach, datumIso, layoutUeberschreiben=null }){
+  const muster = await urkundenMusterJpeg(musterKey);
+  if(!muster) return null;
+  const cfg = URK_CACHE.cfg || { layout:urkLayoutMitStandard(null), logo:"", farbe:[200,16,46] };
+  const jsPDF=await ladeJsPDF_V();
+  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const { nameOk } = await registriereFonts(pdf);
+  const teile=String(datumIso||"").split("-");
+  const datumTxt = !datumIso ? "" : (teile.length===3 ? `${teile[2]}.${teile[1]}.${teile[0]}` : String(datumIso));
+  zeichneUebungsUrkunde(pdf, { muster, musterKey, vor, nach, datumTxt,
+    layout: layoutUeberschreiben || cfg.layout, logo: cfg.logo, farbe: cfg.farbe, nameOk });
+  return pdf.output("blob");
+}
+
 function urkundeDatumFeldId(playerId, key){ return `urkdatum-${playerId}-${key}`; }
 function zumUrkundenDatum(playerId, key){
   if(typeof document==="undefined") return;
@@ -12308,52 +12588,6 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   // ── Übungs-Urkunde als PDF (Muster-Hintergrund + Name + Datum) ───────────────
   // Name: rote Handschrift (Parisienne, verschnörkelt), Datum: handschriftlich
   // (Kalam ≈ Chalkboard). Fonts + jsPDF werden per CDN geladen und eingebettet.
-  async function ladeJsPDF_V(){
-    if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
-    await new Promise((res,rej)=>{ const s=document.createElement("script");
-      s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-      s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden.")); document.head.appendChild(s); });
-    if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
-    return window.jspdf.jsPDF;
-  }
-  async function fontBase64(url){
-    const r=await fetch(url); if(!r.ok) throw new Error("Font-Download fehlgeschlagen");
-    const buf=await r.arrayBuffer(); let bin=""; const bytes=new Uint8Array(buf);
-    for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
-    return btoa(bin);
-  }
-  // Registriert die Schriften in jsPDF. Gibt zurück, ob die Namensschrift (Parisienne)
-  // verfügbar ist. Parisienne ist fest eingebettet (kein Netz nötig), Kalam optional per CDN.
-  async function kalamVorladen(){
-    if(URK_CACHE.kalam!==undefined) return;
-    try{
-      URK_CACHE.kalam = await Promise.race([
-        fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf"),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error("Zeitüberschreitung")),4000)),
-      ]);
-    }catch(e){ URK_CACHE.kalam = null; }
-  }
-  async function registriereFonts(pdf){
-    let nameOk=false;
-    try{
-      // Parisienne aus der fest eingebetteten Base64-Konstante – kein CDN, kein fetch.
-      pdf.addFileToVFS("Parisienne.ttf", PARISIENNE_TTF_BASE64);
-      pdf.addFont("Parisienne.ttf","Parisienne","normal");
-      const fonts=pdf.getFontList();
-      nameOk = !!(fonts && fonts.Parisienne);
-    }catch(e){ nameOk=false; }
-    try{
-      // V496: Kalam nur einmal laden (max. 4 s); ein Fehlschlag wird gemerkt, damit nicht
-      // jede weitere Urkunde erneut auf das Netz wartet.
-      if(URK_CACHE.kalam===undefined) await kalamVorladen();
-      if(!URK_CACHE.kalam) throw new Error("Kalam nicht verfügbar");
-      VerwaltungTab._fontDate = URK_CACHE.kalam;
-      pdf.addFileToVFS("Kalam.ttf", VerwaltungTab._fontDate);
-      pdf.addFont("Kalam.ttf","Kalam","normal");
-    }catch(e){}
-    return { nameOk };
-  }
-
   async function uebungsUrkundePdf(player, label, musterKey, datumIso, datumKey){
     if(!musterKey){ window.alert("Für diese Urkunde ist kein Muster-Typ zugeordnet."); return; }
     if(urkErstelltRef.current) return;             // V496: Doppelklick ignorieren
@@ -12361,60 +12595,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     // V496: sofortige Rückmeldung – Dialog mit „Urkunde wird erstellt …"
     setUrkAusgabe({ laeuft:true, titel:`${label} – ${(player.firstName||"").trim()} ${(player.lastName||"").trim()}`.trim() });
     await new Promise(r=>setTimeout(r,30));        // Dialog zeichnen lassen, bevor gerechnet wird
-    const muster = await urkundenMusterJpeg(musterKey);
-    if(!muster){ urkErstelltRef.current=false; setUrkAusgabe(null);
-      window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
+    const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
     try{
-      const jsPDF=await ladeJsPDF_V();
-      const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
-      const { nameOk } = await registriereFonts(pdf);
-      const PW=210, PH=297, mid=PW/2;
-      const bildTyp=/^data:image\/png/i.test(muster)?"PNG":"JPEG";
-      // Alias = Muster-Schlüssel: jsPDF verarbeitet das Bild nur einmal je Muster.
-      try{ pdf.addImage(muster,bildTyp,0,0,PW,PH,"muster_"+musterKey,"FAST"); }catch(e){}
-      // Name: Vorname (Zeile 1) + Nachname (Zeile 2), rote Handschrift (Parisienne), unter dem Stern.
-      const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
-      // Parisienne ist fest eingebettet; nur falls das Registrieren scheitert, Fallback.
-      pdf.setFont(nameOk?"Parisienne":"times", nameOk?"normal":"bold");
-      pdf.setTextColor(200,16,46);   // TTC-Rot
-      // Schriftgröße so wählen, dass auch längere Namen auf die Seite passen (max ~186mm).
-      const maxBreite=186;
-      const fitSize=(txt,start)=>{ let s=start; pdf.setFontSize(s);
-        while(s>26 && pdf.getTextWidth(txt)>maxBreite){ s-=2; pdf.setFontSize(s); } return s; };
-      // „Fett“ simulieren: Text mehrfach minimal versetzt zeichnen (Parisienne hat nur
-      // einen Schnitt, daher kein echtes Bold – dieser Versatz verdickt die Striche sichtbar).
-      const fettText=(txt,x,yy)=>{
-        const d=0.18;
-        const offs=[[0,0],[d,0],[-d,0],[0,d],[0,-d],[d,d],[-d,-d]];
-        offs.forEach(([ox,oy])=>pdf.text(txt, x+ox, yy+oy, {align:"center"}));
-      };
-      // Positionen aus dem Muster (A4): Stern endet ~161mm, Text ab ~230mm.
-      // Grundgröße 30 % größer als zuvor (52 → 68); Zeilenabstand entsprechend größer.
-      let ny=190;
-      if(vor){ fitSize(vor,64); fettText(vor, mid, ny); ny+=23; }
-      if(nach){ fitSize(nach,64); fettText(nach, mid, ny); }
-      // Datum hinter „Niederzeuzheim, den " (links unten). Robust: nutzt Kalam falls
-      // vorhanden, sonst die Standardschrift – wird IMMER gezeichnet, wenn ein Datum da ist.
-      if(datumIso){
-        const teile=String(datumIso).split("-");
-        const datumTxt = teile.length===3 ? `${teile[2]}.${teile[1]}.${teile[0]}` : String(datumIso);
-        let dateFont="times", dateBold=true;
-        try{ const fl=pdf.getFontList(); if(fl && fl.Kalam){ dateFont="Kalam"; dateBold=false; } }catch(e){}
-        pdf.setFont(dateFont, dateBold?"bold":"normal");
-        pdf.setFontSize(16); pdf.setTextColor(20,20,20);
-        // „Niederzeuzheim, den " endet im Muster bei ~63mm; Datum knapp dahinter,
-        // Grundlinie auf Höhe der Zeile (284,5mm – 1 mm tiefer als zuvor).
-        const dx=67, dyy=284.5;
-        if(dateBold){
-          pdf.text(datumTxt, dx, dyy);   // times bold = echtes Fett
-        } else {
-          // Kalam hat nur einen Schnitt → Fett per minimalem Mehrfachversatz simulieren.
-          const d=0.15;
-          [[0,0],[d,0],[-d,0],[0,d],[0,-d]].forEach(([ox,oy])=>pdf.text(datumTxt, dx+ox, dyy+oy));
-        }
-      }
+      // V512: gemeinsame Zeichenfunktion (Muster, Rahmen, Logo, Name, Ort/Datum)
+      const blob=await uebungsUrkundePdfErzeugen({ musterKey, vor, nach, datumIso });
+      if(!blob){ urkErstelltRef.current=false; setUrkAusgabe(null);
+        window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
-      const blob=pdf.output("blob");
       const url=URL.createObjectURL(blob);
       // V493: kein Seitenwechsel mehr – Ausgabe-Dialog in der App. Rückkehrziel merken,
       // falls das Gerät die App trotzdem neu lädt (z. B. beim Speichern auf dem iPhone).
