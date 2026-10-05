@@ -1,4 +1,4 @@
-// === TTC-App · Version 513 · erstellt 05.10.2026 ===
+// === TTC-App · Version 514 · erstellt 05.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "513";
+const APP_VERSION = "514";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -730,6 +730,11 @@ const VEREIN_NEUTRAL = {
 };
 function vereinsStandard(){ return (typeof AKTIVER_VEREIN_ID==="undefined" || AKTIVER_VEREIN_ID==="ttc-niederzeuzheim") ? VEREIN_STANDARD : VEREIN_NEUTRAL; }
 let VEREIN = {...VEREIN_STANDARD};
+// V514: Anzeige-Bezeichnungen der Gruppen (interne Schlüssel bleiben „Profis", „Anfänger" …).
+// Gepflegt in Verwaltung → Training → „Gruppenbezeichnungen" (config/clubConfig.gruppenNamen).
+const GRUPPEN_SCHLUESSEL = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+let GRUPPEN_NAMEN = {};
+function gName(g){ const n=GRUPPEN_NAMEN[g]; return (typeof n==="string" && n.trim()) ? n.trim() : (g||""); }
 // Übernimmt gespeicherte Vereinsdaten; leere Felder fallen auf den Standard zurück.
 function setzeVereinsdaten(cfg){
   const v = (cfg && cfg.verein) || {};
@@ -740,6 +745,7 @@ function setzeVereinsdaten(cfg){
   }
   if(cfg && cfg.name && !(v.kurzname||"").trim()) neu.kurzname = cfg.name;
   VEREIN = neu;
+  GRUPPEN_NAMEN = (cfg && cfg.gruppenNamen && typeof cfg.gruppenNamen==="object") ? {...cfg.gruppenNamen} : {};   // V514
 }
 function escRegExp(t){ return String(t||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 // Pfad des Vereins bei myTischtennis, z. B. "verein/33053/TTC_Niederzeuzheim".
@@ -1127,7 +1133,7 @@ function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
       </div>
       <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Gruppe</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {gruppen.map(g=><span key={g} onClick={()=>toggleIn(gruppeFilter,setGruppeFilter,g)} style={chip(gruppeFilter.includes(g))}>{g}</span>)}
+        {gruppen.map(g=><span key={g} onClick={()=>toggleIn(gruppeFilter,setGruppeFilter,g)} style={chip(gruppeFilter.includes(g))}>{gName(g)}</span>)}
       </div>
     </div>
 
@@ -8840,7 +8846,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             return <button key={g} onClick={()=>toggleGroupFilter(g)} style={{
               padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
               border:`2px solid ${on?c:c+"44"}`,background:on?c+"22":"transparent",color:on?c:c+"66",transition:"all .15s",
-            }}>{g}</button>;
+            }}>{gName(g)}</button>;
           })}
         </div>
         <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2,alignItems:"center"}}>
@@ -8943,7 +8949,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                 <div>
                   <div style={{fontSize:17,fontWeight:800,color:curPlayer.color}}>{curPlayer.firstName} {curPlayer.lastName}</div>
-                  <div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{curPlayer.group||"Anfänger"} · {totalStars} Sterne</div>
+                  <div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{gName(curPlayer.group||"Anfänger")} · {totalStars} Sterne</div>
                 </div>
                 {currentAward?<AwardBadge award={currentAward} small/>:<span style={{fontSize:11,color:"var(--text3)"}}>Noch keine Urkunde</span>}
               </div>
@@ -9039,7 +9045,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:2}}>{player.firstName} {player.lastName}</div>
               {currentAward&&<div style={{marginBottom:2}}><AwardBadge award={currentAward} small/></div>}
-              <div style={{fontSize:11,color:"var(--text3)"}}>{player.group||"Anfänger"}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{gName(player.group||"Anfänger")}</div>
             </div>
             <div style={{flexShrink:0,textAlign:"center",background:"linear-gradient(135deg,var(--bg3),var(--bg2))",border:`2px solid ${player.color}66`,borderRadius:12,padding:"8px 12px",minWidth:54}}>
               <div style={{fontSize:26,fontWeight:900,color:player.color,lineHeight:1}}>{totalStars}</div>
@@ -9293,7 +9299,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
           return <div key={group} style={{marginBottom:12,marginTop:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{group}</div>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{gName(group)}</div>
             {groupPlayers.map(p=>{
               const val=sessionData.attendances?.[p.id]||"a";
               return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 44px 44px 44px",gap:4,marginBottom:5,alignItems:"center",background:"var(--bg)",borderRadius:8,padding:"7px 8px"}}>
@@ -9402,7 +9408,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
             >{player.firstName} {player.lastName}</span>
             {medal&&<span style={{fontSize:16}}>{medal}</span>}
           </div>
-          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{player.group||"Anfänger"}</div>
+          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{gName(player.group||"Anfänger")}</div>
           <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
             <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
           </div>
@@ -9916,7 +9922,7 @@ function UebungsUrkundenEditor({showToast}) {
     </div>
     {gruppen.map(gr=>(
       <div key={gr} style={{marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:8}}>{gr}</div>
+        <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:8}}>{gName(gr)}</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {UEBUNGS_URKUNDEN_TYPEN.filter(t=>t.gruppe===gr).map(t=>{
             const bild=muster[t.key]; const key=t.key;
@@ -10023,7 +10029,7 @@ function UrkundenLayoutBereich({layout, setL, logo, farbe, muster, vorschauKey, 
       </div>
       <div style={{flex:"0 1 240px",minWidth:200}}>
         {verfuegbar.length>1 && <select value={key} onChange={e=>setVorschauKey(e.target.value)} style={{...inp,marginBottom:6}}>
-          {verfuegbar.map(t=><option key={t.key} value={t.key}>{t.gruppe} – {t.stufe}</option>)}
+          {verfuegbar.map(t=><option key={t.key} value={t.key}>{gName(t.gruppe)} – {t.stufe}</option>)}
         </select>}
         <canvas ref={canvasRef} style={{width:"100%",maxWidth:240,border:"1px solid var(--border2)",borderRadius:6,background:"#fff",display:"block"}}/>
         {!verfuegbar.length && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Noch kein Muster hochgeladen.</div>}
@@ -10826,7 +10832,7 @@ function TrainingskalenderEditor({showToast}){
       An diesen Wochentagen entstehen die Trainingstage (Anwesenheit, Teilnahme, Rangliste).
       „Übrige Gruppen“ gilt für alle nicht eigens aufgeführten Gruppen. Trainer wählen ihre Tage im Profil.
     </div>
-    {[["Profis","Profis"],["Fortgeschrittene","Fortgeschrittene"],["Anfänger","Anfänger"],["_standard","Übrige Gruppen"]].map(([g,lab])=>{
+    {[["Profis",gName("Profis")],["Fortgeschrittene",gName("Fortgeschrittene")],["Anfänger",gName("Anfänger")],["_standard","Übrige Gruppen"]].map(([g,lab])=>{
       const akt=(k.gruppenTage&&k.gruppenTage[g])||[];
       return <div key={g} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:5}}>
         <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",minWidth:120}}>{lab}</span>
@@ -10864,7 +10870,7 @@ function TrainingskalenderEditor({showToast}){
 
     <div style={titel}>➕ Sondertrainings (zusätzlich, auch in den Ferien)</div>
     {SONDER_GRUPPEN.map(g=><div key={g} style={{marginBottom:8}}>
-      <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>{g}</div>
+      <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>{gName(g)}</div>
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
         {((k.sonder||{})[g]||[]).map(t=><span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:12,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text)"}}>
           {deD(t)}<span onClick={()=>setK(x=>({...x,sonder:{...(x.sonder||{}),[g]:((x.sonder||{})[g]||[]).filter(y=>y!==t)}}))} style={{cursor:"pointer",color:"#ef4444",fontWeight:800}}>×</span>
@@ -10968,7 +10974,7 @@ function BestellartikelEditor({showToast}){
       {!a.druck && a.fuer!=="nachwuchs" && <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:6,fontSize:11,color:"var(--text2)"}}>
         <span style={{color:"var(--text3)"}}>zusätzlich für:</span>
         {NACHWUCHS_GRUPPEN.filter(g=>g!=="Gast").map(g=><label key={g} style={{display:"flex",alignItems:"center",gap:4}}>
-          <input type="checkbox" checked={(a.auchFuer||[]).includes(g)} onChange={e=>upd(i,{auchFuer:e.target.checked?[...(a.auchFuer||[]),g]:(a.auchFuer||[]).filter(x=>x!==g)})}/>{g}</label>)}
+          <input type="checkbox" checked={(a.auchFuer||[]).includes(g)} onChange={e=>upd(i,{auchFuer:e.target.checked?[...(a.auchFuer||[]),g]:(a.auchFuer||[]).filter(x=>x!==g)})}/>{gName(g)}</label>)}
       </div>}
       {a.druck && <div style={{marginTop:6,fontSize:11,color:"var(--text2)"}}>
         <span style={{color:"var(--text3)"}}>gekoppelt an (Menge folgt):</span>
@@ -10990,6 +10996,48 @@ function BestellartikelEditor({showToast}){
     </div>)}
     <button onClick={speichern} disabled={busy} style={{width:"100%",marginTop:8,padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
       {busy?"⏳ Speichern …":"Bestellartikel speichern"}
+    </button>
+  </div>;
+}
+
+// ─── Gruppenbezeichnungen (V514) ───────────────────────────────────────────
+function GruppenNamenEditor({showToast}){
+  const [werte,setWerte]=useState(null);
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","clubConfig"),snap=>{
+      const g=(snap.exists()&&snap.data().gruppenNamen)||{};
+      setWerte(w=>w||Object.fromEntries(GRUPPEN_SCHLUESSEL.map(k=>[k,g[k]||""])));
+    },()=>setWerte(w=>w||Object.fromEntries(GRUPPEN_SCHLUESSEL.map(k=>[k,""]))));
+    return u;
+  },[]);
+  async function speichern(){
+    setBusy(true);
+    try{
+      const sauber=Object.fromEntries(Object.entries(werte).map(([k,v])=>[k,String(v||"").trim()]).filter(([,v])=>v));
+      await setDoc(doc(db,"config","clubConfig"),{gruppenNamen:sauber},{merge:true});
+      GRUPPEN_NAMEN=sauber;
+      showToast&&showToast("Gruppenbezeichnungen gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    setBusy(false);
+  }
+  if(!werte) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const ROLLE={Profis:"Leistungsgruppe des Nachwuchses (Bestellartikel wie Erwachsene)",
+    Fortgeschrittene:"Nachwuchs, Übungsprogramm und Urkunden „Fortgeschrittene“", Anfänger:"Nachwuchs, Übungsprogramm und Urkunden „Anfänger“",
+    Gast:"Gastspieler (nur für Admins sichtbar)", Trainer:"Trainer ohne eigene Spielergruppe", Erwachsene:"Erwachsene Mitglieder"};
+  const inp={width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.55}}>
+      Eigene Bezeichnungen für die Anzeige in der App. Die Gruppen selbst und ihre Bedeutung (Übungen, Urkunden,
+      Trainingstage, Bestellartikel) bleiben unverändert. Leeres Feld = Standardbezeichnung.
+    </div>
+    {GRUPPEN_SCHLUESSEL.map(k=><div key={k} style={{marginBottom:10}}>
+      <label style={{fontSize:11,color:"var(--text2)",fontWeight:700,display:"block",marginBottom:3}}>{k}</label>
+      <input value={werte[k]||""} placeholder={k} onChange={e=>setWerte(w=>({...w,[k]:e.target.value}))} style={inp}/>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:3}}>{ROLLE[k]}</div>
+    </div>)}
+    <button onClick={speichern} disabled={busy} style={{width:"100%",padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+      {busy?"⏳ Speichern …":"Gruppenbezeichnungen speichern"}
     </button>
   </div>;
 }
@@ -12694,6 +12742,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showKalender,setShowKalender]=useState(false);   // V510
+  const [showGruppenNamen,setShowGruppenNamen]=useState(false);   // V514
   const [showGrp,setShowGrp]=useState({});
   const [showP,setShowP]=useState({});                   // je Personen-Abschnitt auf/zu
   // Kapitel-Einstieg: null = Kachelübersicht, sonst der Schlüssel des offenen Kapitels
@@ -13489,7 +13538,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <div>
           <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Gruppe</label>
           <select value={newData.group} onChange={e=>setNewData(p=>({...p,group:e.target.value}))}>
-            {GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
+            {GROUPS.map(g=><option key={g} value={g}>{gName(g)}</option>)}
           </select>
         </div>
       </div>
@@ -13643,7 +13692,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
                 padding:"6px 8px",background:idx===0?"#10b98111":"transparent",borderRadius:6,marginBottom:4}}>
                 <div style={{fontSize:11,color:"var(--text2)"}}>
-                  <b>{p.firstName} {p.lastName}</b> · {p.group||"—"} · ID {String(p.id).slice(0,8)}…
+                  <b>{p.firstName} {p.lastName}</b> · {p.group?gName(p.group):"—"} · ID {String(p.id).slice(0,8)}…
                   {idx===0 && <span style={{color:"#10b981",fontWeight:700}}> · neuestes</span>}
                 </div>
                 <button onClick={async()=>{
@@ -13784,7 +13833,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 background:"var(--bg2)",border:`1px solid ${krit?"#f59e0b55":"var(--border)"}`,borderRadius:8,padding:"7px 10px"}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:12,fontWeight:600}}>{p.firstName} {p.lastName}
-                  <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{p.group}</span></div>
+                  <span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>{gName(p.group)}</span></div>
                 <div style={{fontSize:10,color:st.farbe,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {krit?"⚠️ ":"✅ "}{st.txt}</div>
               </div>
@@ -14037,7 +14086,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <div>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Gruppe</label>
                   <select value={editPlayer.group||"Anfänger"} onChange={e=>setEditPlayer(prev=>({...prev,group:e.target.value}))}>
-                    {GROUPS.map(g=><option key={g} value={g}>{g}</option>)}
+                    {GROUPS.map(g=><option key={g} value={g}>{gName(g)}</option>)}
                   </select>
                 </div>
               </div>
@@ -14632,6 +14681,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
       {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <UebungsUrkundenEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* V514: Gruppenbezeichnungen */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowGruppenNamen(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏷️ Gruppenbezeichnungen</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showGruppenNamen?"▲":"▼"}</span>
+      </div>
+      {showGruppenNamen&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <GruppenNamenEditor showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
@@ -15876,7 +15936,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
                   {sp.filter==="select"
                     ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
                         <option value="">alle</option>
-                        {gruppenWerte.map(g=><option key={g} value={g}>{g}</option>)}
+                        {gruppenWerte.map(g=><option key={g} value={g}>{gName(g)}</option>)}
                       </select>
                     : sp.filter==="uebergabe"
                     ? <select value={filter[sp.key]||""} onChange={e=>setSpaltenFilter(sp.key,e.target.value)} style={filterInput}>
@@ -16404,7 +16464,7 @@ function MeineVerwaltung({me, showToast, group}) {
       <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:12}}>🔒 Nur durch Admin änderbar</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <RO label="Funktionen" value={funktionen}/>
-        <RO label="Gruppe" value={me.group||"—"}/>
+        <RO label="Gruppe" value={me.group?gName(me.group):"—"}/>
         <RO label="Vorname" value={me.firstName}/>
         <RO label="Nachname" value={me.lastName}/>
         <RO label="Geburtstag" value={fmtDate(me.birthdate)}/>
@@ -17010,7 +17070,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
         </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{myPlayer.group||"Anfänger"}{sortedRanking.length>0?` · Rang #${myRank} von ${sortedRanking.length}`:""}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{gName(myPlayer.group||"Anfänger")}{sortedRanking.length>0?` · Rang #${myRank} von ${sortedRanking.length}`:""}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           {[{label:"Gesamt",val:totalStars,color:myPlayer.color},{label:"Anfänger",val:beginnerStars,color:"#10b981"},{label:"Fortgeschr.",val:advancedStars,color:"#3b82f6"}].map(s=>(
@@ -17998,7 +18058,7 @@ function EinheitenTab({user, players}) {
         <div>
           <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:3}}>Gruppe</label>
           <select value={form.gruppe} onChange={e=>setForm(p=>({...p,gruppe:e.target.value}))} style={{fontSize:13}}>
-            {["Anfänger","Fortgeschrittene","Profis"].map(g=><option key={g}>{g}</option>)}
+            {["Anfänger","Fortgeschrittene","Profis"].map(g=><option key={g} value={g}>{gName(g)}</option>)}
           </select>
         </div>
         <div>
@@ -18055,7 +18115,7 @@ function EinheitenTab({user, players}) {
           🤝 Alle Kinder kommen zusammen<br/>
           📋 Trainer begrüßt alle, macht die Anwesenheitsliste<br/>
           {VEREINS_WOCHENTAGE.map(w=>{ const gr=["Profis","Fortgeschrittene","Anfänger"].filter(g=>wochentageDerGruppe(g).includes(w));
-            return <React.Fragment key={w}>👥 {WT_LANG[w]}s: {gr.length>1?"Aufteilung in ":gr.length===1?"Nur ":""}{gr.join(", ")||"—"}<br/></React.Fragment>; })}
+            return <React.Fragment key={w}>👥 {WT_LANG[w]}s: {gr.length>1?"Aufteilung in ":gr.length===1?"Nur ":""}{gr.map(gName).join(", ")||"—"}<br/></React.Fragment>; })}
           📌 Festlegung wer welche Gruppe übernimmt
         </div>
         <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Notizen zur Begrüßung</label>
@@ -26749,7 +26809,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
               return <button key={g} onClick={()=>setGroupFilter(g)} style={{
                 flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
                 border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:"var(--text2)",
-              }}>{g}</button>;
+              }}>{gName(g)}</button>;
             })}
           </>}
           {(activeView==="admin"||activeView==="trainer")&&
@@ -26758,7 +26818,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
               return <button key={g} onClick={()=>setAdminGroupFilters(p=>({...p,[g]:!on}))} style={{
                 flexShrink:0,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",
                 border:`2px solid ${on?col:col+"44"}`,background:on?col+"22":"transparent",color:on?col:"var(--text2)",
-              }}>{g}</button>;
+              }}>{gName(g)}</button>;
             })}
           {/* Punkt 4: Text-Label über der Namensliste entfernt (galt nur für Admins ohnehin) */}
         </div>
