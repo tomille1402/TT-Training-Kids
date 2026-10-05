@@ -1,4 +1,4 @@
-// === TTC-App · Version 508 · erstellt 04.10.2026 ===
+// === TTC-App · Version 511 · erstellt 04.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "508";
+const APP_VERSION = "511";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -67,7 +67,13 @@ function datenbereichAnwenden(m){
   DATEN_MODUS = (m && m.modus) || "oben";
   AKTIVER_VEREIN_ID = (m && m.vereinId) || "ttc-niederzeuzheim";
   DATEN_WURZEL = DATEN_MODUS==="verein" ? ["vereine", AKTIVER_VEREIN_ID] : [];
+  VEREIN = {...vereinsStandard()};   // V509: anderer Verein → neutrale Standardwerte
+  setzeTrainingskalender(null);      // V510: Kalender-Standard des Vereins
+  setzeBestellartikel(null);         // V511: Artikel-Standard des Vereins
 }
+// V509: Ist der aktive Verein der Ursprungsverein (TTC)? Nur dann gelten die fest
+// eingebauten Vorbelegungen (Vereinsdaten, Spiellokale, frühere Aufstellungen).
+function istUrsprungsverein(){ return AKTIVER_VEREIN_ID==="ttc-niederzeuzheim"; }
 function doc(d, ...seg){ return d===db ? fsDoc(d, ...DATEN_WURZEL, ...seg) : fsDoc(d, ...seg); }
 function collection(d, ...seg){ return d===db ? fsCollection(d, ...DATEN_WURZEL, ...seg) : fsCollection(d, ...seg); }
 function globalDoc(...seg){ return fsDoc(db, ...seg); }
@@ -135,38 +141,64 @@ function isSuperAdminEmail(email) {
   return PLATTFORM_ADMIN_EMAILS.includes(m) || ROLLEN.superAdmins.includes(m);
 }
 
-// ─── TRAINING DATES 2026 ─────────────────────────────────────────────────────
-// Hessische Schulferien 2026 — exakte Termine laut Kultusministerium
-const FERIEN = [
-  // Weihnachtsferien 2025/26: 22.12.2025–09.01.2026
-  // → Nur der Teil in 2026 ist relevant: 01.01–09.01.2026
-  ["2026-01-01","2026-01-09"],
+// ─── TRAININGSKALENDER (V510 · Etappe 3, Teil 2) ─────────────────────────────
+// Bis V509 standen Schulferien, Feiertage und Sondertrainings für Hessen 2026 fest im
+// Code – Trainingstage gab es nur für 2026. Jetzt: Pflege in der Verwaltung (Training →
+// „Ferien, Feiertage & Sondertrainings“, gespeichert in config/trainingskalender).
+// Gesetzliche Feiertage werden je Jahr automatisch berechnet (bundesweit, optional
+// Fronleichnam). Trainingstage entstehen ab 2026 bis Ende des Folgejahres.
+const KALENDER_STANDARD_TTC = {
+  ferien:[
+    {name:"Weihnachtsferien 2025/26", von:"2025-12-22", bis:"2026-01-09"},
+    {name:"Osterferien 2026",         von:"2026-03-30", bis:"2026-04-10"},
+    {name:"Sommerferien 2026",        von:"2026-06-29", bis:"2026-08-07"},
+    {name:"Herbstferien 2026",        von:"2026-10-05", bis:"2026-10-17"},
+    {name:"Weihnachtsferien 2026/27", von:"2026-12-23", bis:"2027-01-12"},
+  ],
+  freieTage:[
+    {datum:"2026-05-15", name:"Brückentag nach Christi Himmelfahrt"},
+    {datum:"2026-06-05", name:"Brückentag nach Fronleichnam"},
+  ],
+  fronleichnam:true,
+  sonder:{
+    "Fortgeschrittene":["2026-07-28","2026-08-04"],
+    "Profis":          ["2026-07-28","2026-07-31","2026-08-04","2026-08-07"],
+  },
+};
+const KALENDER_LEER = { ferien:[], freieTage:[], fronleichnam:false, sonder:{} };
+let TRAININGSKALENDER = KALENDER_STANDARD_TTC;
+let FERIEN = [];
+let FEIERTAGE = new Set();
+let SONDER_TRAINING = {};
+let ALLE_SONDER_TAGE = [];
+let ALL_TUESDAYS = [], ALL_FRIDAYS = [];
 
-  // Osterferien: 30.03.–10.04.2026
-  ["2026-03-30","2026-04-10"],
-
-  // Sommerferien: 29.06.–07.08.2026
-  ["2026-06-29","2026-08-07"],
-
-  // Herbstferien: 05.10.–17.10.2026
-  ["2026-10-05","2026-10-17"],
-
-  // Weihnachtsferien 2026/27: 23.12.2026–12.01.2027
-  // → Nur der Teil in 2026: 23.12.–31.12.2026
-  ["2026-12-23","2026-12-31"],
-];
-
-// Hessische Feiertage 2026 die auf Dienstag oder Freitag fallen
-// + bewegliche Schulfreie Tage (Brückentage)
-const FEIERTAGE = new Set([
-  // Feiertage auf Di/Fr:
-  "2026-05-01", // Tag der Arbeit (Fr)
-  "2026-12-25", // 1. Weihnachtstag (Fr)
-
-  // Bewegliche Ferientage Hessen 2026 (schulfreie Brückentage):
-  "2026-05-15", // Fr nach Christi Himmelfahrt (Do 14.05.)
-  "2026-06-05", // Fr nach Fronleichnam (Do 04.06.)
-]);
+function pad(n) { return String(n).padStart(2,"0"); }
+function dateStr(y,m,d) { return `${y}-${pad(m)}-${pad(d)}`; }
+// Ostersonntag (Gaußsche Osterformel, gregorianisch)
+function osterSonntag(j){
+  const a=j%19, b=Math.floor(j/100), c=j%100, d=Math.floor(b/4), e=b%4, f=Math.floor((b+8)/25),
+    g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30, i=Math.floor(c/4), k=c%4,
+    l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451),
+    monat=Math.floor((h+l-7*m+114)/31), tag=((h+l-7*m+114)%31)+1;
+  return new Date(Date.UTC(j, monat-1, tag));
+}
+function gesetzlicheFeiertage(jahr, mitFronleichnam){
+  const os=osterSonntag(jahr);
+  const rel=(n,name)=>{ const d=new Date(os.getTime()+n*86400000); return {datum:d.toISOString().slice(0,10), name}; };
+  const liste=[
+    {datum:`${jahr}-01-01`, name:"Neujahr"},
+    rel(-2,"Karfreitag"), rel(1,"Ostermontag"),
+    {datum:`${jahr}-05-01`, name:"Tag der Arbeit"},
+    rel(39,"Christi Himmelfahrt"), rel(50,"Pfingstmontag"),
+    {datum:`${jahr}-10-03`, name:"Tag der Deutschen Einheit"},
+    {datum:`${jahr}-12-25`, name:"1. Weihnachtstag"},
+    {datum:`${jahr}-12-26`, name:"2. Weihnachtstag"},
+  ];
+  if(mitFronleichnam) liste.push(rel(60,"Fronleichnam"));
+  return liste.sort((x,y)=>x.datum.localeCompare(y.datum));
+}
+function kalenderJahre(){ const bis=Math.max(new Date().getFullYear()+1, 2027); const j=[]; for(let y=2026;y<=bis;y++) j.push(y); return j; }
 
 function inFerien(dateStr) {
   const d = new Date(dateStr);
@@ -176,35 +208,40 @@ function inFerien(dateStr) {
   return false;
 }
 
-function pad(n) { return String(n).padStart(2,"0"); }
-function dateStr(y,m,d) { return `${y}-${pad(m)}-${pad(d)}`; }
-
 function generateTrainingDays() {
   const tuesdays = [], fridays = [];
-  for (let m = 1; m <= 12; m++) {
-    const days = new Date(2026, m, 0).getDate();
-    for (let d = 1; d <= days; d++) {
-      const ds = dateStr(2026, m, d);
-      const dow = new Date(ds).getDay();
-      if (inFerien(ds) || FEIERTAGE.has(ds)) continue;
-      if (dow === 2) tuesdays.push(ds); // Tuesday
-      if (dow === 5) fridays.push(ds);  // Friday
+  for (const jahr of kalenderJahre()) {
+    for (let m = 1; m <= 12; m++) {
+      const days = new Date(jahr, m, 0).getDate();
+      for (let d = 1; d <= days; d++) {
+        const ds = dateStr(jahr, m, d);
+        const dow = new Date(ds).getDay();
+        if (inFerien(ds) || FEIERTAGE.has(ds)) continue;
+        if (dow === 2) tuesdays.push(ds); // Tuesday
+        if (dow === 5) fridays.push(ds);  // Friday
+      }
     }
   }
   return { tuesdays, fridays };
 }
-
-const { tuesdays: ALL_TUESDAYS, fridays: ALL_FRIDAYS } = generateTrainingDays();
-
-// Zusätzliche Sondertrainings (z.B. in den Ferien), je Gruppe. Diese Tage werden
-// zusätzlich zu den regulären Trainingstagen berücksichtigt – auch wenn sie in
-// Ferien oder auf einen sonst trainingsfreien Wochentag fallen.
-const SONDER_TRAINING = {
-  "Fortgeschrittene": ["2026-07-28","2026-08-04"],
-  "Profis":           ["2026-07-28","2026-07-31","2026-08-04","2026-08-07"],
-};
-// Alle Sondertrainings-Tage über alle Gruppen (für die Tagesauswahl im Trainer-Bereich).
-const ALLE_SONDER_TAGE = [...new Set(Object.values(SONDER_TRAINING).flat())].sort();
+// Übernimmt den Trainingskalender (null = Standard: TTC-Werte bzw. leer bei anderen Vereinen)
+function setzeTrainingskalender(cfg){
+  const k = (cfg && typeof cfg==="object") ? { ...KALENDER_LEER, ...cfg }
+    : (istUrsprungsverein() ? KALENDER_STANDARD_TTC : KALENDER_LEER);
+  TRAININGSKALENDER = k;
+  FERIEN = (k.ferien||[]).filter(f=>f && f.von && f.bis).map(f=>[f.von, f.bis]);
+  FEIERTAGE = new Set([
+    ...(k.freieTage||[]).map(x=>x && x.datum).filter(Boolean),
+    ...kalenderJahre().flatMap(j=>gesetzlicheFeiertage(j, !!k.fronleichnam).map(x=>x.datum)),
+  ]);
+  SONDER_TRAINING = {};
+  for(const [g,tage] of Object.entries(k.sonder||{})) SONDER_TRAINING[g]=(Array.isArray(tage)?tage:[]).filter(Boolean).sort();
+  // Alle Sondertrainings-Tage über alle Gruppen (für die Tagesauswahl im Trainer-Bereich).
+  ALLE_SONDER_TAGE = [...new Set(Object.values(SONDER_TRAINING).flat())].sort();
+  const r = generateTrainingDays();
+  ALL_TUESDAYS = r.tuesdays; ALL_FRIDAYS = r.fridays;
+}
+setzeTrainingskalender(null);
 
 function getTrainingDaysForGroup(group, trainerDays) {
   const sonder = SONDER_TRAINING[group] || [];
@@ -424,11 +461,14 @@ function sizesForGroup(group){
 // groesse=true → Größenauswahl nötig. geschlecht: "h"/"d"/null (nur Info).
 // Größenlisten für Bestellungen
 // Trikots (Polo, Short, Rock): XXS–5XL + Kindergrößen 140 & 152
-const TRIKOT_SIZES = ["140","152","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
-// Anzüge (Hose, Jacke): 3XS–5XL
-const ANZUG_SIZES  = ["3XS","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"];
-// Hoodie (JOOLA Unisex Fleece): XS–2XL
-const HOODIE_SIZES = ["XS","S","M","L","XL","2XL"];
+// V511: Standard-Größenlisten; pflegbar in der Verwaltung (config/bestellartikel.groessen).
+const GROESSEN_STANDARD = {
+  trikot: ["140","152","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"],
+  anzug:  ["3XS","XXS","XS","S","M","L","XL","XXL","3XL","4XL","5XL"],
+  hoodie: ["XS","S","M","L","XL","2XL"],
+  kinder: ["116","128","140","152","164"],
+};
+let BESTELL_GROESSEN = {...GROESSEN_STANDARD};
 
 // Katalog. geschlecht: "h"=Herren, "d"=Damen, "u"=unisex.
 // sizeType: "trikot" | "anzug" | "hoodie" | null (Druck ohne Größe).
@@ -436,11 +476,11 @@ const HOODIE_SIZES = ["XS","S","M","L","XL","2XL"];
 // folgtArtikel: (nur Druck) Menge = Menge dieses Hauptartikels; bei Array = Summe.
 // Anzeige-Reihenfolge = Reihenfolge in diesem Array (NICHT die id). Der Hoodie steht
 // daher direkt unter der Anzug-Jacke; seine Druck-Artikel (14/15) stehen am Listenende.
-const BESTELL_ARTIKEL = [
+const BESTELL_ARTIKEL_STANDARD_TTC = [
   {id:1,  name:"Polo Donic Nuvon Herren",            preisKatalog:44.90, preisSpin:31.43, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"h", sizeType:"trikot", sizeQuelle:"tshirt"},
   {id:2,  name:"Polo Donic Nuvon Damen",             preisKatalog:43.90, preisSpin:30.73, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot", sizeQuelle:"tshirt"},
   {id:3,  name:"Short Donic Velora Herren",          preisKatalog:38.90, preisSpin:27.23, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"h", sizeType:"trikot"},
-  {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot"},
+  {id:4,  name:"Rock Donic Irion Damen",             preisKatalog:35.90, preisSpin:25.13, preisTTC:25.00, groesse:true,  druck:false, geschlecht:"d", sizeType:"trikot", auchFuer:["Fortgeschrittene"]},
   {id:5,  name:"Anzug Hose Andro Salivan unisex",    preisKatalog:44.95, preisSpin:31.47, preisTTC:30.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
   {id:6,  name:"Anzug Jacke Andro Salivan unisex",   preisKatalog:54.95, preisSpin:38.47, preisTTC:35.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"anzug",  sizeQuelle:"anzug"},
   {id:13, name:"JOOLA Unisex Fleece Hoodie",         preisKatalog:64.90, preisSpin:45.43, preisTTC:40.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"hoodie"},
@@ -449,19 +489,31 @@ const BESTELL_ARTIKEL = [
   {id:9,  name:"Druck Vorname vorne Anzug Jacke",    preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
   {id:10, name:"Druck Vorname vorne Anzug Hose",     preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[5]},
   {id:11, name:"Druck Vereinsname hinten Anzug Jacke",preisKatalog:6.50, preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[6]},
-  {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"trikot", sizeQuelle:"tshirt"},
+  {id:12, name:"T-Shirt Nimatsu Nachwuchs",          preisKatalog:16.90, preisSpin:16.90, preisTTC:15.00, groesse:true,  druck:false, geschlecht:"u", sizeType:"kinder", sizeQuelle:"tshirt", fuer:"nachwuchs"},
   {id:14, name:"Druck Vorname vorne Hoodie",         preisKatalog:4.50,  preisSpin:3.60,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[13]},
   {id:15, name:"Druck Vereinsname hinten Hoodie",    preisKatalog:6.50,  preisSpin:5.20,  preisTTC:0.00,  groesse:false, druck:true,  geschlecht:"u", folgtArtikel:[13]},
 ];
+// V511: aktiver Katalog (pflegbar in Verwaltung → Uploads → „Bestellartikel & Preise",
+// gespeichert in config/bestellartikel). Ohne Eintrag: TTC-Katalog bzw. leer.
+let BESTELL_ARTIKEL = BESTELL_ARTIKEL_STANDARD_TTC;
+function setzeBestellartikel(cfg){
+  if(cfg && Array.isArray(cfg.artikel)){
+    BESTELL_ARTIKEL = cfg.artikel.map(a=>({ ...a, id:Number(a.id),
+      preisKatalog:Number(a.preisKatalog)||0, preisSpin:Number(a.preisSpin)||0, preisTTC:Number(a.preisTTC)||0,
+      druck:!!a.druck, groesse:!a.druck && !!a.sizeType && a.sizeType!=="keine",
+      folgtArtikel:Array.isArray(a.folgtArtikel)?a.folgtArtikel.map(Number):undefined }));
+  } else {
+    BESTELL_ARTIKEL = istUrsprungsverein() ? BESTELL_ARTIKEL_STANDARD_TTC : [];
+  }
+  const g = (cfg && cfg.groessen) || {};
+  BESTELL_GROESSEN = {};
+  for(const k of Object.keys(GROESSEN_STANDARD))
+    BESTELL_GROESSEN[k] = Array.isArray(g[k]) && g[k].length ? g[k] : GROESSEN_STANDARD[k];
+}
 // Größenliste je Artikel
-const NACHWUCHS_TSHIRT_SIZES = ["116","128","140","152","164"];
 function sizesForArtikel(a){
-  // Punkt 9: T-Shirt Nimatsu Nachwuchs hat eigene Kindergrößen
-  if(a.id===12) return NACHWUCHS_TSHIRT_SIZES;
-  if(a.sizeType==="anzug") return ANZUG_SIZES;
-  if(a.sizeType==="hoodie") return HOODIE_SIZES;
-  if(a.sizeType==="trikot") return TRIKOT_SIZES;
-  return [];
+  if(a.id===12 && !a.sizeType) return BESTELL_GROESSEN.kinder;   // Altbestand
+  return BESTELL_GROESSEN[a.sizeType] || [];
 }
 // Anfänger/Fortgeschrittene/Gast dürfen nur den Nachwuchs-Artikel (id 12),
 // nur Profis und Erwachsene die übrigen Artikel — inkl. Hoodie (13) und dessen
@@ -556,25 +608,21 @@ function ttrDelta(werte, stAktuell, stVergleich){
   return a-b;
 }
 
-// Artikel, die diese Gruppen sehen dürfen: T-Shirt Nimatsu Nachwuchs (12) und
-// alle Druck-Artikel, die an diesem T-Shirt hängen (folgtArtikel enthält 12).
-const NACHWUCHS_ARTIKEL_IDS = [12];
-// Zusätzliche Artikel je Nachwuchs-Gruppe: Fortgeschrittene dürfen neben dem
-// T-Shirt auch den Rock (id 4) bestellen (der Geschlechter-Filter blendet ihn bei
-// männlichen Personen ohnehin aus).
-const NACHWUCHS_ZUSATZ_ARTIKEL = { "Fortgeschrittene": [4] };
+// V511: Zielgruppe steht am Artikel: fuer:"nachwuchs" (Nachwuchs-Gruppen) bzw. sonst
+// Profis & Erwachsene; auchFuer:[Gruppe…] gibt einen Artikel zusätzlich frei
+// (TTC: Rock auch für Fortgeschrittene). Druck-Artikel folgen ihren Hauptartikeln.
 function istNachwuchsArtikel(a){
-  if(NACHWUCHS_ARTIKEL_IDS.includes(a.id)) return true;
+  if(a.fuer==="nachwuchs") return true;
   // Druck-Artikel, der ausschließlich an Nachwuchs-Artikeln hängt
   if(a.druck && Array.isArray(a.folgtArtikel) && a.folgtArtikel.length>0){
-    return a.folgtArtikel.every(id=>NACHWUCHS_ARTIKEL_IDS.includes(id));
+    return a.folgtArtikel.every(id=>{ const h=BESTELL_ARTIKEL.find(x=>x.id===id); return !!h && h.fuer==="nachwuchs"; });
   }
   return false;
 }
 function bestellArtikelForGroup(group, gender){
   const g = group||"Anfänger";
   const nurNachwuchs = NACHWUCHS_GRUPPEN.includes(g);
-  const zusatzIds = NACHWUCHS_ZUSATZ_ARTIKEL[g] || [];
+  const zusatzIds = BESTELL_ARTIKEL.filter(a=>(a.auchFuer||[]).includes(g)).map(a=>a.id);
   let list = nurNachwuchs
     ? BESTELL_ARTIKEL.filter(a=>istNachwuchsArtikel(a) || zusatzIds.includes(a.id))
     : BESTELL_ARTIKEL.filter(a=>!istNachwuchsArtikel(a));
@@ -645,13 +693,27 @@ const VEREIN_STANDARD = {
   bic:"NASSDE55XXX",
   bank:"Naspa",
   datenschutzVerantwortlicher:"TTC Niederzeuzheim, vertreten durch den Vereinsvorsitzenden Thomas Meilinger, Mühlenstraße 33, 65620 Waldbrunn-Hausen, E-Mail: thomas@meilinger.net.",
+  // V509 (Etappe 3)
+  kuerzel:"TTC",                              // Kurzbezeichnung, z. B. Funktion „TTC", Spalte „Preis TTC"
+  haendler:"Spin & Speed",                    // Ausrüster/Händler (Spalte „Preis <Händler>" bei Bestellungen)
+  aufsichtsbehoerde:"der Hessische Beauftragte für Datenschutz und Informationsfreiheit",
+  terminOrte:"Feuerwehr-Gerätehaus, Gasthaus Horn, Mehrzweckhalle",
 };
+// V509: Standardwerte für jeden anderen Verein – bewusst ohne Daten des TTC
+// (sonst stünde z. B. dessen Bankverbindung bei fremden Bestellungen).
+const VEREIN_NEUTRAL = {
+  kurzname:"Mein Verein", vollname:"", ort:"", suchname:"", vereinNr:"", verband:"", verbandKuerzel:"",
+  kontoInhaber:"", iban:"", bic:"", bank:"", datenschutzVerantwortlicher:"",
+  kuerzel:"Verein", haendler:"Händler", aufsichtsbehoerde:"", terminOrte:"",
+};
+function vereinsStandard(){ return (typeof AKTIVER_VEREIN_ID==="undefined" || AKTIVER_VEREIN_ID==="ttc-niederzeuzheim") ? VEREIN_STANDARD : VEREIN_NEUTRAL; }
 let VEREIN = {...VEREIN_STANDARD};
 // Übernimmt gespeicherte Vereinsdaten; leere Felder fallen auf den Standard zurück.
 function setzeVereinsdaten(cfg){
   const v = (cfg && cfg.verein) || {};
-  const neu = {...VEREIN_STANDARD};
-  for(const k of Object.keys(VEREIN_STANDARD)){
+  const basis = vereinsStandard();
+  const neu = {...basis};
+  for(const k of Object.keys(basis)){
     const w = v[k]; if(typeof w==="string" && w.trim()) neu[k]=w.trim();
   }
   if(cfg && cfg.name && !(v.kurzname||"").trim()) neu.kurzname = cfg.name;
@@ -670,9 +732,19 @@ const VEREIN_KONTO = {
 function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
 
 // Künstliche Platzhalter-Adresse (bei Anlage ohne echte E-Mail vergeben).
-// An @ttc-intern.de existiert kein Postfach → kein Passwort-Reset möglich.
+// Dort existiert kein Postfach → kein Passwort-Reset möglich.
+// V509: TTC behält @ttc-intern.de, andere Vereine @<vereinId>.intern-vereinsapp.de.
+function istPlatzhalterMail(email){
+  const m=String(email||"").toLowerCase().trim();
+  return m.endsWith("@ttc-intern.de") || /@[a-z0-9-]+\.intern-vereinsapp\.de$/.test(m);
+}
+function platzhalterMail(basis){
+  const rand=Math.random().toString(36).slice(2,8);
+  const dom = istUrsprungsverein() ? "ttc-intern.de" : `${AKTIVER_VEREIN_ID}.intern-vereinsapp.de`;
+  return `${basis||"person"}.${rand}@${dom}`;
+}
 function istKuenstlicheEmail(email){
-  return !email || !email.includes("@") || email.toLowerCase().includes("@ttc-intern.de");
+  return !email || !email.includes("@") || istPlatzhalterMail(email);
 }
 // Person hat KEIN nutzbares Login, wenn kein Login gewünscht ODER die Adresse künstlich ist.
 function hatKeinEchtesLogin(p){
@@ -1138,9 +1210,10 @@ function useTurniereListe(){
   return {turniere:liste, geladen};
 }
 
-const TURNIER_SICHTBAR_ROLLEN = [
+// V509: als Funktion – die Bezeichnung der Funktion „ttc" ist das Vereinskürzel.
+const turnierSichtbarRollen = () => [
   ["player","Spieler"],["erwachsene","Erwachsene"],
-  ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],["ttc","TTC"],
+  ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],["ttc",VEREIN.kuerzel||"Verein"],
 ];
 // V505: Funktion „TTC" darf in Turnieren nur Ergebnisse eintragen (keine Tableau-/
 // Doppel-Änderungen). Wird über diesen Kontext an die Turnier-Bausteine gereicht.
@@ -1654,7 +1727,7 @@ const TURNIER_TYP_LABEL = {
   vereinsintern:  "Vereinsintern",
   extern_kreis:   "Extern – Kreis",
   extern_bezirk:  "Extern – Bezirk",
-  extern_verband: "Extern – Verband (Hessen)",
+  extern_verband: "Extern – Verband",
 };
 // Import versteht sowohl die Beschriftung als auch den internen Wert.
 function turnierTypAusText(v){
@@ -2463,7 +2536,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null, 
                   {darfAnlegen && <div style={{fontSize:10,marginTop:4,fontWeight:600,color:(t.sichtbarFuer||[]).length===0?"#f59e0b":"#10b981"}}>
                     {(t.sichtbarFuer||[]).length===0
                       ? "🔒 für niemanden sichtbar"
-                      : "👁 sichtbar für: "+(t.sichtbarFuer||[]).map(rk=>{const f=TURNIER_SICHTBAR_ROLLEN.find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
+                      : "👁 sichtbar für: "+(t.sichtbarFuer||[]).map(rk=>{const f=turnierSichtbarRollen().find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
                   </div>}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -2691,7 +2764,7 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
           Standard: für niemanden sichtbar. Admins und Trainer haben immer Zugriff. Mehrfachauswahl möglich.
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {TURNIER_SICHTBAR_ROLLEN.map(([rk,label])=>{
+          {turnierSichtbarRollen().map(([rk,label])=>{
             const aktiv=(t.sichtbarFuer||[]).includes(rk);
             return <span key={rk} onClick={()=>{
               const cur=t.sichtbarFuer||[];
@@ -8695,10 +8768,10 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     for (const p of allPeople) {
       const bd = new Date(p.birthdate);
       // Geburtstag dieses Jahr
-      const thisYear = new Date(2026, bd.getMonth(), bd.getDate());
+      const thisYear = new Date(today.getFullYear(), bd.getMonth(), bd.getDate());   // V510: aktuelles Jahr
       thisYear.setHours(0,0,0,0);
       if (thisYear >= since && thisYear <= today) {
-        const age = 2026 - bd.getFullYear();
+        const age = today.getFullYear() - bd.getFullYear();
         result.push({...p, age, bday: thisYear});
       }
     }
@@ -9295,7 +9368,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
   const ranked = [...allActive].map(p=>({...p,...getStats(p)})).sort((a,b)=>b.pct-a.pct);
 
   return <div style={{padding:13}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung 2026</div>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung {(trainingRange.start||new Date().toLocaleDateString("sv")).slice(0,4)}</div>
     {trainingRange.start&&trainingRange.end&&(
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
         Zeitraum: {formatDateDE(trainingRange.start)} – {formatDateDE(trainingRange.end)}
@@ -9377,7 +9450,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
       getDoc(doc(db,"config",k))
         .then(s=>{
           const fsSpieler = s.exists()?(s.data().spieler||[]):null;
-          const embedded = AUFSTELLUNG_DATA[k]||null;
+          const embedded = aufstellungEingebettet()[k]||null;
           // Firestore hat Vorrang (echte hochgeladene Daten), sonst eingebettet
           const spieler = (fsSpieler && fsSpieler.length>0) ? fsSpieler : embedded;
           if(!spieler || spieler.length===0) return null;
@@ -9391,7 +9464,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
           };
         })
         .catch(()=>{
-          const embedded = AUFSTELLUNG_DATA[k]||null;
+          const embedded = aufstellungEingebettet()[k]||null;
           if(!embedded) return null;
           return {id:k,saison:saisonFromKey(k),runde:rundeFromKey(k),spieler:embedded,inFirestore:false,source:"embedded"};
         })
@@ -9406,8 +9479,8 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
       setLoading(false);
     }).catch(()=>{
       // Absoluter Fallback: eingebettete Daten
-      const embedded=Object.keys(AUFSTELLUNG_DATA).map(k=>({
-        id:k,saison:saisonFromKey(k),runde:rundeFromKey(k),spieler:AUFSTELLUNG_DATA[k],inFirestore:false,source:"embedded"
+      const embedded=Object.keys(aufstellungEingebettet()).map(k=>({
+        id:k,saison:saisonFromKey(k),runde:rundeFromKey(k),spieler:aufstellungEingebettet()[k],inFirestore:false,source:"embedded"
       }));
       setAufstellungen(embedded);
       if(embedded.length>0) setSelId(embedded[0].id);
@@ -9997,6 +10070,10 @@ const VEREINSDATEN_FELDER = [
   {k:"bic", label:"BIC", hilfe:""},
   {k:"bank", label:"Bank", hilfe:""},
   {k:"datenschutzVerantwortlicher", label:"Datenschutz: Verantwortlicher", hilfe:"Name, Anschrift und E-Mail – erscheint in der Datenschutzerklärung.", lang:true},
+  {k:"aufsichtsbehoerde", label:"Datenschutz: zuständige Aufsichtsbehörde", hilfe:"Satzteil nach „Zuständig ist …“, z. B. „der Hessische Beauftragte für Datenschutz und Informationsfreiheit“."},
+  {k:"kuerzel", label:"Vereinskürzel", hilfe:"Kurzbezeichnung, z. B. „TTC“ – Name der Funktion für Vereins-iPads/Helfer und der Preisspalte bei Bestellungen."},
+  {k:"haendler", label:"Ausrüster / Händler", hilfe:"Für die Preisspalte „Preis <Händler>“ bei Bestellungen."},
+  {k:"terminOrte", label:"Orte für Vereinstermine", hilfe:"Kommagetrennt, z. B. „Vereinsheim, Sporthalle“ – Auswahlliste beim Anlegen von Terminen.", lang:true},
 ];
 // ─── Admins & Rechte (V504) ─────────────────────────────────────────────────
 // Pflegt config/rollen. Nur Super-Admins dürfen speichern (auch per Firestore-Regel).
@@ -10026,7 +10103,7 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
   function hinzufuegen(email){
     const m=mailNorm(email);
     if(!m || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){ showToast&&showToast("Bitte eine gültige E-Mail-Adresse eingeben","⚠️"); return; }
-    if(m.endsWith("@ttc-intern.de")){ showToast&&showToast("Interne Platzhalter-Adressen können sich nicht anmelden","⚠️"); return; }
+    if(istPlatzhalterMail(m)){ showToast&&showToast("Interne Platzhalter-Adressen können sich nicht anmelden","⚠️"); return; }
     if((liste||[]).some(x=>x.email===m)){ showToast&&showToast("Adresse ist bereits eingetragen","ℹ️"); return; }
     aendern(l=>[...(l||[]), {email:m, superAdmin:false}]); setNeu("");
   }
@@ -10047,9 +10124,9 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
   if(!liste) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
   const eingetragen=new Set(liste.map(x=>x.email));
   // Personen mit der Funktion „Admin“ im Profil, aber ohne Schreibrechte
-  const ohneRechte = players.filter(p=>p.roles?.admin===true && mailNorm(p.email) && !mailNorm(p.email).endsWith("@ttc-intern.de")
+  const ohneRechte = players.filter(p=>p.roles?.admin===true && mailNorm(p.email) && !istPlatzhalterMail(p.email)
     && !eingetragen.has(mailNorm(p.email)) && !istPlattform(mailNorm(p.email)));
-  const vorschlaege = players.filter(p=>{ const m=mailNorm(p.email); return m && !m.endsWith("@ttc-intern.de") && !eingetragen.has(m) && !istPlattform(m); })
+  const vorschlaege = players.filter(p=>{ const m=mailNorm(p.email); return m && !istPlatzhalterMail(m) && !eingetragen.has(m) && !istPlattform(m); })
     .sort((a,b)=>(`${a.firstName} ${a.lastName}`).localeCompare(`${b.firstName} ${b.lastName}`,"de"));
   const inp={padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
   const kann = isSuperAdmin && !busy && (geaendert || nieGespeichert);
@@ -10542,6 +10619,213 @@ function VereinsbereichPanel({user, players=[]}){
   </div>;
 }
 
+// ─── Ferien, Feiertage & Sondertrainings (V510) ─────────────────────────────
+const SONDER_GRUPPEN = ["Profis","Fortgeschrittene","Anfänger"];
+function TrainingskalenderEditor({showToast}){
+  const [k,setK]=useState(null);
+  const [nieGespeichert,setNieGespeichert]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [neuTag,setNeuTag]=useState({});   // je Gruppe Eingabefeld für Sondertraining
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","trainingskalender"),snap=>{
+      setNieGespeichert(!snap.exists());
+      setK(alt=> alt || JSON.parse(JSON.stringify(snap.exists()? {...KALENDER_LEER,...snap.data()} : TRAININGSKALENDER)));
+    },()=>setK(alt=>alt||JSON.parse(JSON.stringify(TRAININGSKALENDER))));
+    return u;
+  },[]);
+  async function speichern(){
+    setBusy(true);
+    try{
+      const sauber={
+        ferien:(k.ferien||[]).filter(f=>f.von&&f.bis).map(f=>({name:String(f.name||"").trim(), von:f.von, bis:f.bis<f.von?f.von:f.bis}))
+          .sort((a,b)=>a.von.localeCompare(b.von)),
+        freieTage:(k.freieTage||[]).filter(f=>f.datum).map(f=>({datum:f.datum, name:String(f.name||"").trim()}))
+          .sort((a,b)=>a.datum.localeCompare(b.datum)),
+        fronleichnam:!!k.fronleichnam,
+        sonder:Object.fromEntries(Object.entries(k.sonder||{}).map(([g,t])=>[g,[...new Set(t||[])].sort()]).filter(([,t])=>t.length)),
+        stand:Date.now(),
+      };
+      await setDoc(doc(db,"config","trainingskalender"),sauber);
+      setzeTrainingskalender(sauber); setK(JSON.parse(JSON.stringify(sauber))); setNieGespeichert(false);
+      showToast&&showToast("Trainingskalender gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    setBusy(false);
+  }
+  if(!k) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const inp={padding:"7px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
+  const titel={fontSize:12,fontWeight:800,color:"var(--text)",margin:"14px 0 6px"};
+  const klein={padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"};
+  const weg={padding:"4px 8px",background:"transparent",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:12,cursor:"pointer"};
+  const deD=iso=>iso?iso.split("-").reverse().join("."):"";
+  const jahre=kalenderJahre();
+  const feiertageAnzeige=jahre.map(j=>({j, liste:gesetzlicheFeiertage(j,!!k.fronleichnam)}));
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.55}}>
+      An diesen Tagen findet kein reguläres Training statt; Sondertrainings gelten zusätzlich (auch in
+      den Ferien). Bereits erfasste Anwesenheiten bleiben erhalten. Trainingstage werden ab 2026 bis
+      Ende {jahre[jahre.length-1]} gebildet.
+    </div>
+    {nieGespeichert && <div style={{fontSize:11,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px",marginTop:10,lineHeight:1.55}}>
+      Noch nicht gespeichert – angezeigt wird die bisherige Vorbelegung. Bitte die Ferien der kommenden Zeit ergänzen und speichern.
+    </div>}
+
+    <div style={titel}>🏖️ Schulferien</div>
+    {(k.ferien||[]).map((f,i)=><div key={i} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+      <input value={f.name||""} placeholder="Bezeichnung" onChange={e=>setK(x=>({...x,ferien:x.ferien.map((y,j)=>j===i?{...y,name:e.target.value}:y)}))} style={{...inp,flex:"2 1 160px"}}/>
+      <input type="date" value={f.von||""} onChange={e=>setK(x=>({...x,ferien:x.ferien.map((y,j)=>j===i?{...y,von:e.target.value}:y)}))} style={{...inp,flex:"1 1 120px"}}/>
+      <input type="date" value={f.bis||""} onChange={e=>setK(x=>({...x,ferien:x.ferien.map((y,j)=>j===i?{...y,bis:e.target.value}:y)}))} style={{...inp,flex:"1 1 120px"}}/>
+      <button onClick={()=>setK(x=>({...x,ferien:x.ferien.filter((_,j)=>j!==i)}))} style={weg}>✕</button>
+    </div>)}
+    <button onClick={()=>setK(x=>({...x,ferien:[...(x.ferien||[]),{name:"",von:"",bis:""}]}))} style={klein}>+ Ferien</button>
+
+    <div style={titel}>📌 Weitere trainingsfreie Tage (z. B. Brückentage)</div>
+    {(k.freieTage||[]).map((f,i)=><div key={i} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+      <input type="date" value={f.datum||""} onChange={e=>setK(x=>({...x,freieTage:x.freieTage.map((y,j)=>j===i?{...y,datum:e.target.value}:y)}))} style={{...inp,flex:"1 1 120px"}}/>
+      <input value={f.name||""} placeholder="Bezeichnung" onChange={e=>setK(x=>({...x,freieTage:x.freieTage.map((y,j)=>j===i?{...y,name:e.target.value}:y)}))} style={{...inp,flex:"2 1 160px"}}/>
+      <button onClick={()=>setK(x=>({...x,freieTage:x.freieTage.filter((_,j)=>j!==i)}))} style={weg}>✕</button>
+    </div>)}
+    <button onClick={()=>setK(x=>({...x,freieTage:[...(x.freieTage||[]),{datum:"",name:""}]}))} style={klein}>+ Tag</button>
+
+    <div style={titel}>🎉 Gesetzliche Feiertage (automatisch)</div>
+    <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--text2)",marginBottom:6,cursor:"pointer"}}>
+      <input type="checkbox" checked={!!k.fronleichnam} onChange={e=>setK(x=>({...x,fronleichnam:e.target.checked}))}/> Fronleichnam ist Feiertag (z. B. Hessen, Bayern, NRW)
+    </label>
+    <div style={{fontSize:10,color:"var(--text3)",lineHeight:1.6}}>
+      {feiertageAnzeige.map(({j,liste})=><div key={j}><b>{j}:</b> {liste.map(f=>`${deD(f.datum).slice(0,6)} ${f.name}`).join(" · ")}</div>)}
+    </div>
+
+    <div style={titel}>➕ Sondertrainings (zusätzlich, auch in den Ferien)</div>
+    {SONDER_GRUPPEN.map(g=><div key={g} style={{marginBottom:8}}>
+      <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>{g}</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+        {((k.sonder||{})[g]||[]).map(t=><span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,padding:"3px 8px",borderRadius:12,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text)"}}>
+          {deD(t)}<span onClick={()=>setK(x=>({...x,sonder:{...(x.sonder||{}),[g]:((x.sonder||{})[g]||[]).filter(y=>y!==t)}}))} style={{cursor:"pointer",color:"#ef4444",fontWeight:800}}>×</span>
+        </span>)}
+        <input type="date" value={neuTag[g]||""} onChange={e=>setNeuTag(n=>({...n,[g]:e.target.value}))} style={{...inp,width:140}}/>
+        <button onClick={()=>{ const t=neuTag[g]; if(!t) return;
+          setK(x=>({...x,sonder:{...(x.sonder||{}),[g]:[...new Set([...((x.sonder||{})[g]||[]),t])].sort()}})); setNeuTag(n=>({...n,[g]:""})); }} style={klein}>Hinzufügen</button>
+      </div>
+    </div>)}
+
+    <button onClick={speichern} disabled={busy} style={{width:"100%",marginTop:12,padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+      {busy?"⏳ Speichern …":"Trainingskalender speichern"}
+    </button>
+  </div>;
+}
+
+// ─── Bestellartikel & Preise (V511) ─────────────────────────────────────────
+const GROESSEN_TYPEN = [["trikot","Trikot (Polo, Short, Rock)"],["anzug","Anzug"],["hoodie","Hoodie"],["kinder","Kindergrößen"],["keine","keine Größe"]];
+function BestellartikelEditor({showToast}){
+  const [liste,setListe]=useState(null);
+  const [groessen,setGroessen]=useState(null);
+  const [nieGespeichert,setNieGespeichert]=useState(false);
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","bestellartikel"),snap=>{
+      setNieGespeichert(!snap.exists());
+      setListe(l=> l || JSON.parse(JSON.stringify(BESTELL_ARTIKEL)).map(a=>({...a, sizeType:a.druck?"keine":(a.sizeType||"keine")})));
+      setGroessen(g=> g || Object.fromEntries(Object.entries(BESTELL_GROESSEN).map(([k,v])=>[k,v.join(", ")])));
+    },()=>{});
+    return u;
+  },[]);
+  if(!liste || !groessen) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
+  const upd=(i,f)=>setListe(l=>l.map((a,j)=>j===i?{...a,...f}:a));
+  const nextId=()=>Math.max(0,...liste.map(a=>Number(a.id)||0))+1;
+  const haupt=liste.filter(a=>!a.druck);
+  async function speichern(){
+    const fehlerName=liste.find(a=>!String(a.name||"").trim());
+    if(fehlerName){ showToast&&showToast("Jeder Artikel braucht einen Namen","⚠️"); return; }
+    setBusy(true);
+    try{
+      const artikel=liste.map(a=>{
+        const o={ id:Number(a.id), name:String(a.name).trim(), aktiv:a.aktiv!==false,
+          preisKatalog:Number(String(a.preisKatalog).replace(",","."))||0,
+          preisSpin:Number(String(a.preisSpin).replace(",","."))||0,
+          preisTTC:Number(String(a.preisTTC).replace(",","."))||0,
+          druck:!!a.druck, geschlecht:a.geschlecht||"u" };
+        if(a.druck){ o.folgtArtikel=(a.folgtArtikel||[]).map(Number); o.groesse=false; }
+        else {
+          o.sizeType=a.sizeType||"keine"; o.groesse=o.sizeType!=="keine";
+          if(a.sizeQuelle) o.sizeQuelle=a.sizeQuelle;
+          if(a.fuer==="nachwuchs") o.fuer="nachwuchs";
+          if((a.auchFuer||[]).length) o.auchFuer=a.auchFuer;
+        }
+        return o;
+      });
+      const gr=Object.fromEntries(Object.entries(groessen).map(([k,v])=>[k,String(v).split(/[,;]/).map(x=>x.trim()).filter(Boolean)]));
+      await setDoc(doc(db,"config","bestellartikel"),{ artikel, groessen:gr, stand:Date.now() });
+      setzeBestellartikel({artikel, groessen:gr}); setNieGespeichert(false);
+      showToast&&showToast("Bestellartikel gespeichert","✅");
+    }catch(e){ showToast&&showToast("Konnte nicht speichern","❌"); }
+    setBusy(false);
+  }
+  const inp={padding:"6px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
+  const lab={fontSize:10,color:"var(--text3)",display:"block",marginBottom:2};
+  const klein={padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"};
+  const schieben=(i,d)=>setListe(l=>{ const n=[...l]; const j=i+d; if(j<0||j>=n.length) return l; [n[i],n[j]]=[n[j],n[i]]; return n; });
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.55,marginBottom:10}}>
+      Artikel, Preise und Größen für den Reiter „Bestellung“. Die Reihenfolge hier ist die Anzeige-Reihenfolge.
+      Druck-Artikel haben keine Größe; ihre Menge folgt automatisch den gekoppelten Hauptartikeln.
+      Nicht mehr angebotene Artikel bitte <b>deaktivieren</b> statt löschen – bestehende Bestellungen bleiben so vollständig.
+    </div>
+    {nieGespeichert && <div style={{fontSize:11,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
+      Noch nicht gespeichert – angezeigt wird der bisherige Katalog.
+    </div>}
+    {liste.map((a,i)=><div key={a.id} style={{background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10,marginBottom:8,opacity:a.aktiv===false?0.55:1}}>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:6}}>
+        <span style={{fontSize:10,color:"var(--text4)",minWidth:34}}>#{a.id}</span>
+        <span style={{fontSize:10,fontWeight:800,color:a.druck?"#8b5cf6":"#10b981"}}>{a.druck?"DRUCK":"ARTIKEL"}</span>
+        <input value={a.name||""} placeholder="Bezeichnung" onChange={e=>upd(i,{name:e.target.value})} style={{...inp,flex:"1 1 200px"}}/>
+        <label style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
+          <input type="checkbox" checked={a.aktiv!==false} onChange={e=>upd(i,{aktiv:e.target.checked})}/> aktiv</label>
+        <button onClick={()=>schieben(i,-1)} style={klein}>↑</button>
+        <button onClick={()=>schieben(i,1)} style={klein}>↓</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:6}}>
+        <div><span style={lab}>Preis Katalog €</span><input value={a.preisKatalog??""} onChange={e=>upd(i,{preisKatalog:e.target.value})} inputMode="decimal" style={{...inp,width:"100%"}}/></div>
+        <div><span style={lab}>Preis {VEREIN.haendler} €</span><input value={a.preisSpin??""} onChange={e=>upd(i,{preisSpin:e.target.value})} inputMode="decimal" style={{...inp,width:"100%"}}/></div>
+        <div><span style={lab}>Preis {VEREIN.kuerzel} €</span><input value={a.preisTTC??""} onChange={e=>upd(i,{preisTTC:e.target.value})} inputMode="decimal" style={{...inp,width:"100%"}}/></div>
+        {!a.druck && <>
+          <div><span style={lab}>Geschlecht</span><select value={a.geschlecht||"u"} onChange={e=>upd(i,{geschlecht:e.target.value})} style={{...inp,width:"100%"}}>
+            <option value="u">unisex</option><option value="h">Herren</option><option value="d">Damen</option></select></div>
+          <div><span style={lab}>Größen</span><select value={a.sizeType||"keine"} onChange={e=>upd(i,{sizeType:e.target.value})} style={{...inp,width:"100%"}}>
+            {GROESSEN_TYPEN.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></div>
+          <div><span style={lab}>Größe vorbelegen aus</span><select value={a.sizeQuelle||""} onChange={e=>upd(i,{sizeQuelle:e.target.value||undefined})} style={{...inp,width:"100%"}}>
+            <option value="">–</option><option value="tshirt">T-Shirt-Größe</option><option value="anzug">Anzug-Größe</option></select></div>
+          <div><span style={lab}>Angeboten für</span><select value={a.fuer==="nachwuchs"?"nachwuchs":"aktive"} onChange={e=>upd(i,{fuer:e.target.value==="nachwuchs"?"nachwuchs":undefined})} style={{...inp,width:"100%"}}>
+            <option value="aktive">Profis & Erwachsene</option><option value="nachwuchs">Nachwuchs (Anfänger, Fortgeschrittene)</option></select></div>
+        </>}
+      </div>
+      {!a.druck && a.fuer!=="nachwuchs" && <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:6,fontSize:11,color:"var(--text2)"}}>
+        <span style={{color:"var(--text3)"}}>zusätzlich für:</span>
+        {NACHWUCHS_GRUPPEN.filter(g=>g!=="Gast").map(g=><label key={g} style={{display:"flex",alignItems:"center",gap:4}}>
+          <input type="checkbox" checked={(a.auchFuer||[]).includes(g)} onChange={e=>upd(i,{auchFuer:e.target.checked?[...(a.auchFuer||[]),g]:(a.auchFuer||[]).filter(x=>x!==g)})}/>{g}</label>)}
+      </div>}
+      {a.druck && <div style={{marginTop:6,fontSize:11,color:"var(--text2)"}}>
+        <span style={{color:"var(--text3)"}}>gekoppelt an (Menge folgt):</span>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:3}}>
+          {haupt.map(h=><label key={h.id} style={{display:"flex",alignItems:"center",gap:4}}>
+            <input type="checkbox" checked={(a.folgtArtikel||[]).map(Number).includes(Number(h.id))}
+              onChange={e=>upd(i,{folgtArtikel:e.target.checked?[...(a.folgtArtikel||[]),Number(h.id)]:(a.folgtArtikel||[]).filter(x=>Number(x)!==Number(h.id))})}/>{h.name||`#${h.id}`}</label>)}
+        </div>
+      </div>}
+    </div>)}
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+      <button onClick={()=>setListe(l=>[...l,{id:nextId(),name:"",preisKatalog:"",preisSpin:"",preisTTC:"",druck:false,geschlecht:"u",sizeType:"trikot",aktiv:true}])} style={klein}>+ Artikel</button>
+      <button onClick={()=>setListe(l=>[...l,{id:nextId(),name:"",preisKatalog:"",preisSpin:"",preisTTC:"",druck:true,geschlecht:"u",folgtArtikel:[],aktiv:true}])} style={klein}>+ Druck-Artikel</button>
+    </div>
+    <div style={{fontSize:12,fontWeight:800,color:"var(--text)",margin:"6px 0"}}>📏 Größenlisten</div>
+    {GROESSEN_TYPEN.filter(([k])=>k!=="keine").map(([k,l])=><div key={k} style={{marginBottom:6}}>
+      <span style={lab}>{l} (kommagetrennt)</span>
+      <input value={groessen[k]||""} onChange={e=>setGroessen(g=>({...g,[k]:e.target.value}))} style={{...inp,width:"100%"}}/>
+    </div>)}
+    <button onClick={speichern} disabled={busy} style={{width:"100%",marginTop:8,padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+      {busy?"⏳ Speichern …":"Bestellartikel speichern"}
+    </button>
+  </div>;
+}
+
 function VereinsdatenEditor({showToast}){
   const [werte,setWerte]=useState(null);
   const [busy,setBusy]=useState(false);
@@ -11019,7 +11303,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     return betreuungCount[n]||0;
   };
 
-  const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"],["ttc","TTC"]];
+  const ROLLEN=[["admin","Admin"],["trainer","Trainer"],["player","Spieler"],["erwachsene","Erwachsene"],["mannschaftsfuehrer","MF"],["ttc",VEREIN.kuerzel||"Verein"]];
   const rollenKurz=(p)=>{
     const r=p.roles||{};
     const list=[];
@@ -11028,7 +11312,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     if(r.player) list.push("S");
     if(r.erwachsene) list.push("E");
     if(r.mannschaftsfuehrer) list.push("MF");
-    if(r.ttc) list.push("TTC");
+    if(r.ttc) list.push(VEREIN.kuerzel||"Verein");
     return list.join("·")||"—";
   };
   const dsText=(p)=> p.datenschutzAccepted ? String(p.datenschutzAccepted).split("-").reverse().join(".") : "—";
@@ -11310,7 +11594,7 @@ function PushRegelnVerwaltung({showToast}){
     const aufKey=aufKeyAkt;   // V501
     const u=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+        ? snap.data().spieler : (aufstellungEingebettet()[aufKey]||[]);
       const namen=[...new Set(data.map(r=>r.mannschaft).filter(Boolean))]
         .sort((a,b)=>a.localeCompare(b,"de"));
       setMannschaften(namen);
@@ -11677,7 +11961,7 @@ function TtrView({ players }) {
       {pdfVorhanden && <button onClick={openTtrPdf} style={{padding:"7px 12px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>📄 PDF öffnen</button>}
     </div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12}}>
-      Offizielle Q-TTR-Liste des Hessischen TT-Verbands. Spalten anklicken zum Sortieren.
+      Offizielle Q-TTR-Liste{VEREIN.verband?` (${VEREIN.verband})`:""}. Spalten anklicken zum Sortieren.
     </div>
 
     {(!daten || daten.personen.length===0)
@@ -12189,6 +12473,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showVereinsbereich,setShowVereinsbereich]=useState(false); // V507
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
+  const [showKalender,setShowKalender]=useState(false);   // V510
   const [showGrp,setShowGrp]=useState({});
   const [showP,setShowP]=useState({});                   // je Personen-Abschnitt auf/zu
   // Kapitel-Einstieg: null = Kachelübersicht, sonst der Schlüssel des offenen Kapitels
@@ -12490,8 +12775,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           try {
             const hasEmail=!!(data.email&&data.email.includes("@"));
             const safeName=(fn+"."+ln).toLowerCase().replace(/[^a-z0-9.]/g,"");
-            const rand=Math.random().toString(36).slice(2,8);
-            const intMail=`${safeName||"person"}.${rand}@ttc-intern.de`;
+            const intMail=platzhalterMail(safeName||"person");   // V509
             // Bei echter E-Mail: Account mit dieser anlegen → Passwort-Reset per Mail möglich.
             // Sonst: interne Login-lose Adresse.
             const authMail=hasEmail?data.email.trim():intMail;
@@ -12808,8 +13092,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       let uid;
       if (newData.noLogin||!finalEmail) {
         const safeName=(newData.firstName.trim()+"."+newData.lastName.trim()).toLowerCase().replace(/[^a-z0-9.]/g,"");
-        const rand=Math.random().toString(36).slice(2,8);
-        finalEmail=`${safeName||"spieler"}.${rand}@ttc-intern.de`;
+        finalEmail=platzhalterMail(safeName||"spieler");   // V509
         const dummyPass="Tt"+Math.random().toString(36).slice(2,12)+"1!";
         const {user:nu}=await createUserWithEmailAndPassword(authHelper,finalEmail,dummyPass);
         await signOut(authHelper); uid=nu.uid;
@@ -13000,7 +13283,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
         <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>🎭 Funktionen</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},{key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:"TTC"}].map(role=>{
+          {[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},{key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},{key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:VEREIN.kuerzel||"Verein"}].map(role=>{
             const isOn=(newData.roles||{})[role.key]===true;
             return <button key={role.key} onClick={()=>setNewData(p=>({...p,roles:{...(p.roles||{}),[role.key]:!isOn}}))} style={{
               padding:"6px 11px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -13057,9 +13340,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={async()=>{
             const id = "admin_"+Date.now();
+            // V509: Namen abfragen statt fest „Thomas Meilinger"
+            const vorschlag=(user.email||"").split("@")[0].split(/[._-]/).map(x=>x? x[0].toUpperCase()+x.slice(1):"");
+            const vn=window.prompt("Vorname für dein Profil:", vorschlag[0]||""); if(vn===null) return;
+            const nn=window.prompt("Nachname für dein Profil:", vorschlag[1]||""); if(nn===null) return;
             await setDoc(doc(db,"players",id),{
               id, email:user.email,
-              firstName:"Thomas", lastName:"Meilinger",
+              firstName:vn.trim(), lastName:nn.trim(),
               group:"Trainer", status:"aktiv",
               avatar:"🏓", color:"#10b981",
               noLogin:false,
@@ -13102,7 +13389,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const proSchluessel={};
       for(const p of players){
         const mail=(p.email||"").toLowerCase().trim();
-        if(!mail || mail.endsWith("@ttc-intern.de")) continue;
+        if(!mail || istPlatzhalterMail(mail)) continue;
         const vn=(p.firstName||"").toLowerCase().trim();
         const nn=(p.lastName||"").toLowerCase().trim();
         const key=mail+"|"+vn+"|"+nn;
@@ -13368,7 +13655,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
                     {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},
                     {key:"vorstand",icon:"🏛️",label:"Vorstand"},
-                    {key:"ttc",icon:"🎽",label:"TTC"}].map(role=>{
+                    {key:"ttc",icon:"🎽",label:VEREIN.kuerzel||"Verein"}].map(role=>{
                     const isOn=(editPlayer.roles||{})[role.key]===true;
                     return <button key={role.key} onClick={()=>setEditPlayer(prev=>({...prev,roles:{...(prev.roles||{}),[role.key]:!isOn}}))} style={{
                       padding:"7px 12px",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",
@@ -13861,7 +14148,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                             <option value="vereinsintern">Vereinsintern</option>
                             <option value="extern_kreis">Extern – Kreis</option>
                             <option value="extern_bezirk">Extern – Bezirk</option>
-                            <option value="extern_verband">Extern – Verband (Hessen)</option>
+                            <option value="extern_verband">Extern – Verband</option>
                           </select>
                         </div>
                         <div>
@@ -14126,6 +14413,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div></ErrorBoundary>}
     </div>
 
+    {/* V510: Ferien, Feiertage & Sondertrainings */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowKalender(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🗓️ Ferien, Feiertage & Sondertrainings</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showKalender?"▲":"▼"}</span>
+      </div>
+      {showKalender&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <TrainingskalenderEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
     {/* Trainingszeitraum — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowTrainingZR(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -14137,13 +14435,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
         <div>
           <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Start Training</label>
-          <input type="date" value={trainingRange.start||""} min="2026-01-01" max="2026-12-31"
+          <input type="date" value={trainingRange.start||""} min="2026-01-01"
             onChange={e=>setTrainingRange(p=>({...p,start:e.target.value}))}
             style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
         </div>
         <div>
           <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Ende Training</label>
-          <input type="date" value={trainingRange.end||""} min="2026-01-01" max="2026-12-31"
+          <input type="date" value={trainingRange.end||""} min="2026-01-01"
             onChange={e=>setTrainingRange(p=>({...p,end:e.target.value}))}
             style={{width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
         </div>
@@ -14163,6 +14461,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     {(()=>{
       const inhalt = {
         artikelfotos:     <ArtikelFotoVerwaltung showToast={showToast}/>,
+        bestellartikel:   <BestellartikelEditor showToast={showToast}/>,
         aufstellungen:    <SpielplanUpload abschnitt="aufstellungen" showToast={showToast} onJoinImport={handleJoinImport} joinImporting={joinImporting}/>,
         ehrungen:         (isSuperAdmin ? <EhrungenImport players={players} showToast={showToast}/> : <div style={{fontSize:11,color:"var(--text4)"}}>Nur für Super-Admins.</div>),
         mannschaftsfotos: <MannschaftsfotosUpload showToast={showToast}/>,
@@ -14213,6 +14512,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       };
       const abschnitte = [
         {k:"artikelfotos",     icon:"🖼️", label:"Artikel-Fotos für Bestellungen"},
+        {k:"bestellartikel",   icon:"🛒", label:"Bestellartikel & Preise"},
         {k:"aufstellungen",    icon:"📋", label:"Aufstellungen"},
         {k:"ehrungen",         icon:"🏅", label:"Ehrungen"},
         {k:"historie",         icon:"📈", label:"Historie Spiele (Bilanzen)"},
@@ -14675,7 +14975,8 @@ function BestellungenView({me, isAdmin=false, showToast}) {
   const [items,setItems]   = useState({});     // lokaler Bearbeitungsstand {id:{anzahl,groesse}}
   const [zoomFoto,setZoomFoto] = useState(null); // {url,name} für Großansicht
 
-  const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger", me.gender) : [];
+  const artikel = me ? bestellArtikelForGroup(me.group||"Anfänger", me.gender)
+    .filter(a=>a.aktiv!==false || (best?.items?.[a.id]?.anzahl>0)) : [];   // V511: inaktive nur bei bestehender Bestellung
 
   // Bestellung laden; Größen ggf. aus Verwaltung (tshirtSize/anzugSize) vorbelegen
   useEffect(()=>{
@@ -14918,9 +15219,9 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     const aufKey=aufKeyAkt;   // V501
     const u=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+        ? snap.data().spieler : (aufstellungEingebettet()[aufKey]||[]);
       setAufSpieler(data);
-    },()=>setAufSpieler(AUFSTELLUNG_DATA[aufKey]||[]));
+    },()=>setAufSpieler(aufstellungEingebettet()[aufKey]||[]));
     return u;
   },[aufKeyAkt]);
 
@@ -15082,10 +15383,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             "Anzahl": anz,
             "Größe": it.groesse||"",
             "Preis Katalog": a.preisKatalog,
-            "Preis Spin & Speed": a.preisSpin,
-            "Preis Spin & Speed gesamt": +(anz*a.preisSpin).toFixed(2),
-            "Preis TTC": a.preisTTC,
-            "Preis TTC gesamt": +(anz*a.preisTTC).toFixed(2),
+            [`Preis ${VEREIN.haendler}`]: a.preisSpin,
+            [`Preis ${VEREIN.haendler} gesamt`]: +(anz*a.preisSpin).toFixed(2),
+            [`Preis ${VEREIN.kuerzel}`]: a.preisTTC,
+            [`Preis ${VEREIN.kuerzel} gesamt`]: +(anz*a.preisTTC).toFixed(2),
             "bestellt": b.final?"ja":"nein",
             "bezahlt": b.bezahlt?"ja":"nein",
             "Geldeingang": b.geldeingang?"ja":"nein",
@@ -15100,7 +15401,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       const range=XLSX.utils.decode_range(ws["!ref"]);
 
       // Betragsspalten mit 2 Nachkommastellen (0.00) formatieren.
-      const geldSpalten=["Preis Katalog","Preis Spin & Speed","Preis Spin & Speed gesamt","Preis TTC","Preis TTC gesamt"];
+      const geldSpalten=["Preis Katalog",`Preis ${VEREIN.haendler}`,`Preis ${VEREIN.haendler} gesamt`,`Preis ${VEREIN.kuerzel}`,`Preis ${VEREIN.kuerzel} gesamt`];
       const geldIdx=geldSpalten.map(n=>header.indexOf(n)).filter(i=>i>=0);
       for(let r=1;r<=range.e.r;r++){       // ab Zeile 1 (0 = Kopf)
         for(const c of geldIdx){
@@ -15278,10 +15579,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     {key:"groesse",label:"Größe",align:"center",filter:"text"},
     {key:"uebergabe",label:"Übergabe",align:"center",filter:"uebergabe"},
     {key:"preisKatalog",label:"Preis Katalog",align:"right",filter:"text"},
-    {key:"preisSpin",label:"Preis Spin & Speed",align:"right",filter:"text"},
-    {key:"preisSpinGesamt",label:"Preis Spin & Speed gesamt",align:"right",filter:"text"},
-    {key:"preisTTC",label:"Preis TTC",align:"right",filter:"text"},
-    {key:"preisTTCGesamt",label:"Preis TTC gesamt",align:"right",filter:"text"},
+    {key:"preisSpin",label:`Preis ${VEREIN.haendler}`,align:"right",filter:"text"},
+    {key:"preisSpinGesamt",label:`Preis ${VEREIN.haendler} gesamt`,align:"right",filter:"text"},
+    {key:"preisTTC",label:`Preis ${VEREIN.kuerzel}`,align:"right",filter:"text"},
+    {key:"preisTTCGesamt",label:`Preis ${VEREIN.kuerzel} gesamt`,align:"right",filter:"text"},
     {key:"final",label:"bestellt",align:"center",filter:"janein"},
     {key:"bezahlt",label:"bezahlt",align:"center",filter:"janein"},
     {key:"geldeingang",label:"Geldeingang",align:"center",filter:"janein"},
@@ -15733,7 +16034,7 @@ function MeineVerwaltung({me, showToast, group}) {
   // Rollen/Funktionen als lesbare Liste
   const ROLE_DEF=[{key:"player",icon:"🏓",label:"Spieler"},{key:"trainer",icon:"🛡️",label:"Trainer"},
     {key:"admin",icon:"⚙️",label:"Admin"},{key:"erwachsene",icon:"👪",label:"Erwachsene"},
-    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:"TTC"}];
+    {key:"mannschaftsfuehrer",icon:"📋",label:"Mannschaftsführer"},{key:"ttc",icon:"🎽",label:VEREIN.kuerzel||"Verein"}];
   const funktionen = ROLE_DEF.filter(r=>me.roles?.[r.key]).map(r=>`${r.icon} ${r.label}`).join(", ")||"—";
 
   const istErw = (me.group||"Anfänger")==="Erwachsene" || me.roles?.erwachsene===true;
@@ -16168,8 +16469,8 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
   useEffect(() => {
     const unsub = onSnapshot(doc(db,"config",aufKeyAkt), snap=>{
       const d = snap.exists() ? (snap.data().spieler||[]) : [];
-      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA[aufKeyAkt]||[]));
-    }, ()=> setAufSpieler(AUFSTELLUNG_DATA[aufKeyAkt]||[]));
+      setAufSpieler(d.length ? d : (aufstellungEingebettet()[aufKeyAkt]||[]));
+    }, ()=> setAufSpieler(aufstellungEingebettet()[aufKeyAkt]||[]));
     return unsub;
   }, [aufKeyAkt]);
   useEffect(() => {
@@ -16896,7 +17197,7 @@ function ErfolgeTab({player, hideTraining=false}) {
         {externBezirk.map((t,i)=><TournamentBadge key={i} t={t}/>)}
       </>}
       {externVerband.length>0&&<>
-        <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,paddingLeft:2,marginTop:8}}>Verband Hessen</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,paddingLeft:2,marginTop:8}}>Verband{VEREIN.verbandKuerzel?` (${VEREIN.verbandKuerzel})`:""}</div>
         {externVerband.map((t,i)=><TournamentBadge key={i} t={t}/>)}
       </>}
     </div>}
@@ -18278,7 +18579,7 @@ function AufstellungUpload({showToast}) {
       const ts=Date.now();
 
       if(!spielerData || spielerData.length===0){
-        spielerData = AUFSTELLUNG_DATA[key] || [];
+        spielerData = aufstellungEingebettet()[key] || [];
         if(spielerData.length===0){ showToast("Keine Aufstellungsdaten im PDF erkannt","❌"); setUploading(false); return; }
       }
 
@@ -18844,7 +19145,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
       try{
         const sl=await getDoc(doc(db,"config","spiellokale"));
         d.lokale=spiellokaleMitVorbelegung(sl.exists()?sl.data().vereine:null);
-      }catch(e){ d.lokale=SPIELLOKALE_SEED; }
+      }catch(e){ d.lokale=spiellokaleMitVorbelegung(null); }
       try{
         const tz=await getDoc(doc(db,"config","trainingszeiten"));
         d.zeiten=(tz.exists()&&tz.data().eintraege)||[];
@@ -20109,6 +20410,7 @@ function findeSpiellokal(vereine, vereinName, halleNr){
 // die es dort noch nicht gibt, und bei vorhandenen Vereinen die Spiellokal-Nummern,
 // die noch fehlen. Zuordnung ueber die Vereinsnummer, ersatzweise ueber den Namen.
 function spiellokaleMitVorbelegung(gespeichert){
+  if(!istUrsprungsverein()) return Array.isArray(gespeichert) ? gespeichert : [];   // V509
   if(!Array.isArray(gespeichert) || !gespeichert.length) return SPIELLOKALE_SEED;
   const gleich=(a,b)=> (a.vereinNr && b.vereinNr) ? String(a.vereinNr)===String(b.vereinNr)
     : normVereinName(a.verein)===normVereinName(b.verein);
@@ -20125,7 +20427,7 @@ function spiellokaleMitVorbelegung(gespeichert){
   return liste.sort((a,b)=>String(a.verein).localeCompare(String(b.verein),"de"));
 }
 function useSpiellokale(){
-  const [vereine,setVereine]=useState(SPIELLOKALE_SEED);
+  const [vereine,setVereine]=useState(()=>spiellokaleMitVorbelegung(null));
   useEffect(()=>{
     const u=onSnapshot(doc(db,"config","spiellokale"),snap=>{
       const d=snap.exists()?snap.data().vereine:null;
@@ -20149,11 +20451,11 @@ const ICON_APPLE_KARTEN = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAB
 // V501: aus der aktuellen Saison (Vor-/Rückrunde laut Saisons-Editor).
 function useAufstellungSpieler(){
   const id = aktAufstellungKey();
-  const [liste,setListe]=useState(AUFSTELLUNG_DATA[id]||[]);
+  const [liste,setListe]=useState(aufstellungEingebettet()[id]||[]);
   useEffect(()=>{
     const u=onSnapshot(doc(db,"config",id), snap=>{
       const d=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[id]||[]);
+        ? snap.data().spieler : (aufstellungEingebettet()[id]||[]);
       setListe(d);
     },()=>{});
     return u;
@@ -22006,9 +22308,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
       },()=>{ setSpielplaene(p=>({...p,[so.id]:SPIELPLAN_DATA[so.id]||[]})); }));
       unsubs.push(onSnapshot(doc(db,"config",so.auf),snap=>{
         const data = snap.exists()&&(snap.data().spieler||[]).length>0
-          ? snap.data().spieler : (AUFSTELLUNG_DATA[so.auf]||[]);
+          ? snap.data().spieler : (aufstellungEingebettet()[so.auf]||[]);
         setAufstellungen(p=>({...p,[so.auf]:data}));
-      },()=>{ setAufstellungen(p=>({...p,[so.auf]:AUFSTELLUNG_DATA[so.auf]||[]})); }));
+      },()=>{ setAufstellungen(p=>({...p,[so.auf]:aufstellungEingebettet()[so.auf]||[]})); }));
     }
     return ()=>unsubs.forEach(u=>u());
   },[seasonOptsSig]);
@@ -23069,6 +23371,8 @@ const AUFSTELLUNG_2024_2025_V = [
 ];
 
 // Lookup-Tabelle für alle Aufstellungen
+// V509: Eingebaute Aufstellungen früherer Saisons gibt es nur für den Ursprungsverein.
+function aufstellungEingebettet(){ return istUrsprungsverein() ? AUFSTELLUNG_DATA : {}; }
 const AUFSTELLUNG_DATA = {
   "aufstellung_2025_2026_R": AUFSTELLUNG_2025_2026_R,
   "aufstellung_2025_2026_V": AUFSTELLUNG_2025_2026_V,
@@ -23519,9 +23823,9 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
     const aufKey=`aufstellung_${jahre}_V`;
     const unsub=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+        ? snap.data().spieler : (aufstellungEingebettet()[aufKey]||[]);
       setAufSpielerKal(data);
-    },()=>setAufSpielerKal(AUFSTELLUNG_DATA[`aufstellung_${jahre}_V`]||[]));
+    },()=>setAufSpielerKal(aufstellungEingebettet()[`aufstellung_${jahre}_V`]||[]));
     return unsub;
   },[vorauswahlPlayer,selSaison]);
 
@@ -23867,7 +24171,8 @@ const SPIELPLAN_COLS = [
 ];
 
 // ─── VEREINS-TERMINE ─────────────────────────────────────────────────────────
-const TERMIN_ORTE = ["Feuerwehr-Gerätehaus","Gasthaus Horn","Mehrzweckhalle"];
+// V509: Terminorte aus den Vereinsdaten (kommagetrennt)
+const terminOrte = () => String(VEREIN.terminOrte||"").split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
 const TERMIN_RUBRIKEN = ["Alle","Erwachsene","Nachwuchs","Halle zu","Vorstand","Grenzau-Spiele"];
 const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 function terminTag(isoDatum){
@@ -24007,10 +24312,10 @@ function TerminVerwaltung({showToast}) {
       <div style={{marginBottom:12}}>
         <label style={lab}>Ort</label>
         <div style={{display:"flex",gap:8}}>
-          <select value={TERMIN_ORTE.includes(form.ort)?form.ort:""} onChange={e=>{if(e.target.value)setForm(f=>({...f,ort:e.target.value}));}}
+          <select value={terminOrte().includes(form.ort)?form.ort:""} onChange={e=>{if(e.target.value)setForm(f=>({...f,ort:e.target.value}));}}
             style={{...inp,flex:"0 0 auto",width:"auto",minWidth:150,cursor:"pointer"}}>
             <option value="">— Auswählen —</option>
-            {TERMIN_ORTE.map(o=><option key={o} value={o}>{o}</option>)}
+            {terminOrte().map(o=><option key={o} value={o}>{o}</option>)}
           </select>
           <input value={form.ort} onChange={e=>setForm(f=>({...f,ort:e.target.value}))} placeholder="oder frei eingeben" style={{...inp,flex:1}}/>
         </div>
@@ -24278,9 +24583,9 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     const aufKey = selSeason===aktSpielplanKey() ? aktAufstellungKey() : `aufstellung_${jahre}_V`;
     const unsub=onSnapshot(doc(db,"config",aufKey),snap=>{
       const data=snap.exists()&&(snap.data().spieler||[]).length>0
-        ? snap.data().spieler : (AUFSTELLUNG_DATA[aufKey]||[]);
+        ? snap.data().spieler : (aufstellungEingebettet()[aufKey]||[]);
       setAufSpielerSP(data);
-    },()=>setAufSpielerSP(AUFSTELLUNG_DATA[aufKey]||[]));
+    },()=>setAufSpielerSP(aufstellungEingebettet()[aufKey]||[]));
     return unsub;
   },[vorauswahlPlayer,selSeason]);
 
@@ -25642,8 +25947,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
   useEffect(() => {
     const unsub = onSnapshot(doc(db,"config",aufKeyAkt), snap=>{
       const d = snap.exists() ? (snap.data().spieler||[]) : [];
-      setAufSpieler(d.length ? d : (AUFSTELLUNG_DATA[aufKeyAkt]||[]));
-    }, ()=> setAufSpieler(AUFSTELLUNG_DATA[aufKeyAkt]||[]));
+      setAufSpieler(d.length ? d : (aufstellungEingebettet()[aufKeyAkt]||[]));
+    }, ()=> setAufSpieler(aufstellungEingebettet()[aufKeyAkt]||[]));
     return unsub;
   }, [aufKeyAkt]);
   // Spielcodes + PINs laden (für Spielbericht-Link und PIN in der Hero-Karte).
@@ -26094,7 +26399,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
     admin:      {icon:"⚙️", label:"Admin",      color:"#f59e0b"},
     erwachsene: {icon:"👪", label:"Erwachsene", color:"#ec4899"},
     mannschaftsfuehrer: {icon:"📋", label:"MF", color:"#8b5cf6"},
-    ttc:        {icon:"🎽", label:"TTC",        color:"#c8102e"},   // V505
+    ttc:        {icon:"🎽", label:VEREIN.kuerzel||"Verein", color:"#c8102e"},   // V505/V509: Vereinskürzel
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
@@ -26181,7 +26486,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           const cfg=VIEW_CONFIG[v]; const isActive=activeView===v;
           // Punkt 4: Für Admins die Rollen-Buttons abkürzen, damit auf dem Handy in der
           // obersten Leiste mehr Platz bleibt. Nur für Admin-Login, sonst volle Labels.
-          const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF",ttc:"TTC"};
+          const KURZ={player:"SP",trainer:"TR",admin:"AD",erwachsene:"ERW",mannschaftsfuehrer:"MF",ttc:(VEREIN.kuerzel||"Verein")};
           const label = hasAdminRole ? (KURZ[v]||cfg.label) : cfg.label;
           return <button key={v} onClick={()=>{setActiveView(v);setViewAsPlayer(null);setGroupFilter("all");}} style={{
             padding:"5px 7px",borderRadius:20,border:`1px solid ${isActive?cfg.color:cfg.color+"44"}`,
@@ -26395,7 +26700,7 @@ const datenschutzText = () => [
   ]},
   {h:"8. Ihre Rechte", t:[
     "Sie haben das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20), Widerspruch (Art. 21) sowie auf Widerruf einer Einwilligung mit Wirkung für die Zukunft (Art. 7 Abs. 3).",
-    "Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist der Hessische Beauftragte für Datenschutz und Informationsfreiheit.",
+    "Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). "+(VEREIN.aufsichtsbehoerde ? `Zuständig ist ${VEREIN.aufsichtsbehoerde}.` : "Zuständig ist die Datenschutz-Aufsichtsbehörde des Bundeslandes, in dem der Verein seinen Sitz hat."),
   ]},
   {h:"9. Einwilligung", t:[
     `Die Nutzung der Trainings-App des ${VEREIN.kurzname} setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.`,
@@ -26649,7 +26954,17 @@ function AppInhalt() {
       setzeSaisons(snap.exists()?snap.data().saisons:null);
       setSaisonStand(n=>n+1);
     }, ()=>{});
-    return u;
+    // V511: Bestellartikel & Preise
+    const u3=onSnapshot(doc(db,"config","bestellartikel"), snap=>{
+      setzeBestellartikel(snap.exists()?snap.data():null);
+      setSaisonStand(n=>n+1);
+    }, ()=>{});
+    // V510: Trainingskalender (Ferien, Feiertage, Sondertrainings)
+    const u2=onSnapshot(doc(db,"config","trainingskalender"), snap=>{
+      setzeTrainingskalender(snap.exists()?snap.data():null);
+      setSaisonStand(n=>n+1);
+    }, ()=>{});
+    return ()=>{ u(); u2(); u3(); };
   },[authUser?.uid]);
   const [rackets,      setRackets]      = useState([]);
   const [loginErr,     setLoginErr]     = useState("");
