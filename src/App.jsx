@@ -1,4 +1,4 @@
-// === TTC-App · Version 514 · erstellt 05.10.2026 ===
+// === TTC-App · Version 516 · erstellt 05.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "514";
+const APP_VERSION = "516";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -237,8 +237,15 @@ function tageFuerWochentage(liste){
   return [...new Set(idx.flatMap(i=>TAGE_JE_WT[i]||[]))].sort();
 }
 function wochentageDerGruppe(group){
-  return (GRUPPEN_TAGE && (GRUPPEN_TAGE[group] || GRUPPEN_TAGE._standard)) || ["Di"];
+  // V516: robust gegen Schreibvarianten („ Anfänger", „anfänger") und leere Einträge
+  const gt=GRUPPEN_TAGE||{};
+  const norm=x=>String(x||"").trim().toLowerCase();
+  const key=Object.keys(gt).find(k=>k!=="_standard" && norm(k)===norm(group));
+  const eigene=key && Array.isArray(gt[key]) && gt[key].length ? gt[key] : null;
+  return eigene || (Array.isArray(gt._standard) && gt._standard.length ? gt._standard : ["Di"]);
 }
+// V516: regulärer Trainingstag einer Gruppe (Wochentag passt, keine Ferien/Feiertag)
+function regulaererTrainingstag(group, ds){ return !!ds && !inFerien(ds) && !FEIERTAGE.has(ds) && gruppeTrainiertAn(group, ds); }
 function gruppeTrainiertAn(group, ds){ return wochentageDerGruppe(group).includes(WT_KURZ[new Date(ds).getDay()]); }
 // Alle regulären Trainingstage des Vereins (alle Gruppen)
 function alleVereinsTrainingstage(){ return tageFuerWochentage(VEREINS_WOCHENTAGE); }
@@ -735,6 +742,12 @@ let VEREIN = {...VEREIN_STANDARD};
 const GRUPPEN_SCHLUESSEL = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
 let GRUPPEN_NAMEN = {};
 function gName(g){ const n=GRUPPEN_NAMEN[g]; return (typeof n==="string" && n.trim()) ? n.trim() : (g||""); }
+// V515: Anzeigename → interner Schlüssel (für Importe; unbekannte Werte bleiben unverändert)
+function gruppeAusText(t){
+  const x=String(t||"").trim(); if(!x) return x;
+  const k=GRUPPEN_SCHLUESSEL.find(k=>k.toLowerCase()===x.toLowerCase() || gName(k).toLowerCase()===x.toLowerCase());
+  return k||x;
+}
 // Übernimmt gespeicherte Vereinsdaten; leere Felder fallen auf den Standard zurück.
 function setzeVereinsdaten(cfg){
   const v = (cfg && cfg.verein) || {};
@@ -1161,7 +1174,7 @@ function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
           {sorted.map(r=>(
             <tr key={r.id}>
               <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
-              <td style={td}>{r.gruppe}</td>
+              <td style={td}>{gName(r.gruppe)}</td>
               <td style={{...tdSpieler,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>
                 {onSpielerKlick
                   ? <span onClick={()=>onSpielerKlick(r.id)} title="Zur Verwaltung dieses Spielers springen"
@@ -8322,13 +8335,13 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
             <th style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 3px",borderBottom:"1px solid var(--border)"}}>
               <div style={{position:"relative"}}>
                 <button onClick={()=>setGruppenOffen(o=>!o)} style={{width:"100%",boxSizing:"border-box",padding:"3px 4px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title="Gruppen filtern">
-                  {gruppenSel.length===0?"alle":gruppenSel.length<=2?gruppenSel.join(", "):`${gruppenSel.length} gewählt`} ▾
+                  {gruppenSel.length===0?"alle":gruppenSel.length<=2?gruppenSel.map(gName).join(", "):`${gruppenSel.length} gewählt`} ▾
                 </button>
                 {gruppenOffen && <div style={{position:"absolute",top:"100%",left:0,zIndex:20,marginTop:2,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,padding:"5px",minWidth:120,boxShadow:"0 4px 12px rgba(0,0,0,0.25)"}}>
                   {alleGruppen.map(g=>(
                     <label key={g} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 4px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",color:"var(--text)"}}>
                       <input type="checkbox" checked={gruppenSel.includes(g)} onChange={()=>toggleGruppe(g)} style={{width:13,height:13,cursor:"pointer"}}/>
-                      {g}
+                      {gName(g)}
                     </label>
                   ))}
                   <div style={{display:"flex",gap:4,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
@@ -8352,7 +8365,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
           {gefiltert.length===0 && <tr><td colSpan={5+urkCols.length} style={{...td,textAlign:"center",color:"var(--text4)",padding:20}}>Keine Spieler gefunden.</td></tr>}
           {gefiltert.map(z=>(
             <tr key={z.id}>
-              <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",hyphens:"manual",lineHeight:1.2}}>{z.group==="Fortgeschrittene"?"Fortge\u00ADschrittene":z.group}</td>
+              <td style={{...td,textAlign:"left",color:"var(--text3)",whiteSpace:"normal",wordBreak:"break-word",hyphens:"manual",lineHeight:1.2}}>{(GRUPPEN_NAMEN.Fortgeschrittene||z.group!=="Fortgeschrittene")?gName(z.group):"Fortge\u00ADschrittene"}</td>
               <td style={{...td,...nameStick,textAlign:"left",fontWeight:700,color:"var(--text)",whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,maxWidth:W_NAME}}>
                 {onSpielerKlick
                   ? <span onClick={()=>onSpielerKlick(z.id, z.sprungKey)} title="Zur Verwaltung springen – zum Datum der letzten fälligen Urkunde"
@@ -9189,9 +9202,11 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       if (wtSel && VEREINS_WOCHENTAGE.includes(wtSel) && !td.includes(wtSel)) return false;
       return true;
     }
-    // Sondertag: nur die dafür vorgesehenen Gruppen
-    if (sonderGruppen && !sonderGruppen.includes(p.group)) return false;
-    if (!istSonderTag && selDate && !gruppeTrainiertAn(p.group||"Anfänger", selDate)) return false;   // V513
+    // V516: Eine Gruppe erscheint, wenn der Tag für sie ein regulärer Trainingstag ist
+    // ODER ein für sie eingetragenes Sondertraining. (Bis V515 blendete ein Sondertraining
+    // an einem regulären Tag alle übrigen Gruppen aus.)
+    const grp = p.group||"Anfänger";
+    if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))) return false;
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
@@ -9214,10 +9229,22 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       <select value={selDate} onChange={e=>setSelDate(e.target.value)}>
         {allDays.map(d=>{
           const dow=new Date(d).getDay();
-          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${dow===5?" (Fr – nur Profis)":""}`;
+          // V515: Hinweis, wenn an diesem Wochentag nur eine Gruppe trainiert
+          const nurGr=["Profis","Fortgeschrittene","Anfänger"].filter(g=>gruppeTrainiertAn(g,d));
+          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${nurGr.length===1?` (nur ${gName(nurGr[0])})`:""}`;
           return <option key={d} value={d}>{label}</option>;
         })}
       </select>
+      {/* V516: welche Gruppen an diesem Tag erscheinen – und warum */}
+      {selDate && (()=>{
+        const reg=["Profis","Fortgeschrittene","Anfänger"].filter(g=>regulaererTrainingstag(g,selDate));
+        const extra=(sonderGruppen||[]).filter(g=>!reg.includes(g));
+        return <div style={{fontSize:10,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
+          An diesem Tag: {reg.length?reg.map(gName).join(", "):"keine Gruppe regulär"}
+          {extra.length?` · Sondertraining: ${extra.map(gName).join(", ")}`:""}
+          <span style={{color:"var(--text4)"}}> (Einstellung: Verwaltung → Training → Ferien, Feiertage & Sondertrainings)</span>
+        </div>;
+      })()}
     </div>
 
     {sessionData&&<>
@@ -9289,7 +9316,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
               const cnt=countFor(g);
               if(!relevantPlayers.some(p=>(p.group||"Anfänger")===g)) return null;
-              return <SumRow key={g} label={g} counts={cnt}/>;
+              return <SumRow key={g} label={gName(g)} counts={cnt}/>;
             })}
           </>;
         })()}
@@ -10968,7 +10995,7 @@ function BestellartikelEditor({showToast}){
           <div><span style={lab}>Größe vorbelegen aus</span><select value={a.sizeQuelle||""} onChange={e=>upd(i,{sizeQuelle:e.target.value||undefined})} style={{...inp,width:"100%"}}>
             <option value="">–</option><option value="tshirt">T-Shirt-Größe</option><option value="anzug">Anzug-Größe</option></select></div>
           <div><span style={lab}>Angeboten für</span><select value={a.fuer==="nachwuchs"?"nachwuchs":"aktive"} onChange={e=>upd(i,{fuer:e.target.value==="nachwuchs"?"nachwuchs":undefined})} style={{...inp,width:"100%"}}>
-            <option value="aktive">Profis & Erwachsene</option><option value="nachwuchs">Nachwuchs (Anfänger, Fortgeschrittene)</option></select></div>
+            <option value="aktive">{gName("Profis")} & {gName("Erwachsene")}</option><option value="nachwuchs">Nachwuchs ({gName("Anfänger")}, {gName("Fortgeschrittene")})</option></select></div>
         </>}
       </div>
       {!a.druck && a.fuer!=="nachwuchs" && <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:6,fontSize:11,color:"var(--text2)"}}>
@@ -11645,7 +11672,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
         <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name filtern…"
           style={{width:"100%",padding:"6px 8px",fontSize:11,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",boxSizing:"border-box",marginBottom:8}}/>
         <FilterChips title="Funktionen (mehrere möglich)" options={ROLLEN} sel={funktFilter} setSel={setFunktFilter}/>
-        <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>[g,g])} sel={gruppeFilter} setSel={setGruppeFilter}/>
+        <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>[g,gName(g)])} sel={gruppeFilter} setSel={setGruppeFilter}/>
         <FilterChips title="Status" options={[["aktiv","aktiv"],["passiv","passiv"]]} sel={statusFilter} setSel={setStatusFilter}/>
         <FilterChips title="Datenschutz" options={[["ja","zugestimmt"],["nein","offen"]]} sel={dsFilter} setSel={setDsFilter}/>
         <FilterChips title="Push-Nachrichten" options={[["erteilt","✅ erteilt"],["abgelehnt","🚫 abgelehnt"],["offen","⏳ offen"]]} sel={pushFilter} setSel={setPushFilter}/>
@@ -11673,7 +11700,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
               <tr key={r.id}>
                 <td style={{...td,fontWeight:700,color:"var(--text)"}}>{r.name}</td>
                 <td style={td}>{r.funktionen}</td>
-                <td style={td}>{r.group}</td>
+                <td style={td}>{gName(r.group)}</td>
                 <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
                 <td style={td}>{r.datenschutz}</td>
                 <td style={{...td,fontWeight:700,whiteSpace:"nowrap",
@@ -12219,7 +12246,7 @@ function TtrView({ players }) {
               {sorted.map((r,i)=>(
                 <tr key={i}>
                   <td style={{...td,fontWeight:700,color:"var(--text)",position:"sticky",left:0,background:"var(--bg)",zIndex:1}}>{r.name}</td>
-                  <td style={td}>{r.gruppe}</td>
+                  <td style={td}>{gName(r.gruppe)}</td>
                   <td style={{...td,color:r.status==="aktiv"?"#10b981":"var(--text4)",fontWeight:700}}>{r.status}</td>
                   <td style={td}>{deltaZelle(r.dQ)}</td>
                   <td style={td}>{deltaZelle(r.dJ)}</td>
@@ -12981,6 +13008,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           else if(key==="_roleMF") r[label]=p.roles?.mannschaftsfuehrer?"ja":"";
           else if(key==="_roleVorstand") r[label]=p.roles?.vorstand?"ja":"";
           else if(key==="_roleTTC") r[label]=p.roles?.ttc?"ja":"";
+          else if(key==="group") r[label]=p.group?gName(p.group):"";   // V515: Anzeigename
           else r[label]=p[key]??"";
         });
         return r;
@@ -13020,6 +13048,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           val=String(val).trim();
           if(["birthdate","joinDate","leaveDate","trainingStart","trainingEnd","racketStart","racketEnd","datenschutzAccepted"].includes(key))
             val=parseDateStr(val)||val;
+          if(key==="group") val=gruppeAusText(val);   // V515: Anzeigename → Gruppe
           data[key]=val;
         });
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
@@ -13903,7 +13932,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const gc = GRP_COL[group]||"#6b7280";
       return <div key={group} style={{marginBottom:8,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden",borderLeft:`4px solid ${gc}`}}>
         <div onClick={()=>setShowGrp(p=>({...p,[group]:!grpOpen}))} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:13,fontWeight:700,color:gc}}>{group} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
+          <div style={{fontSize:13,fontWeight:700,color:gc}}>{gName(group)} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
           <span style={{fontSize:11,color:"var(--text4)"}}>{grpOpen?"▲":"▼"}</span>
         </div>
         {grpOpen&&groupPlayers.map(p=>(
@@ -15659,7 +15688,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
             "Nachname": pl?.lastName||"",
             "Vorname": pl?.firstName||"",
             "Person": b.playerName||(pl?`${pl.firstName} ${pl.lastName}`:""),
-            "Gruppe": grp,
+            "Gruppe": gName(grp),
             "Mannschaft": mannschaft,
             "Artikel": a.name,
             "Anzahl": anz,
@@ -15962,7 +15991,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
               // Person ohne Bestellung: eine Platzhalterzeile mit "keine Bestellung".
               if(!z.hatBestellung){
                 return <tr key={z.id}>
-                  <td style={{...td,fontWeight:600}}>{z.gruppe||"—"}</td>
+                  <td style={{...td,fontWeight:600}}>{z.gruppe?gName(z.gruppe):"—"}</td>
                   <td style={{...td,fontWeight:700}}>{z.name||"?"}</td>
                   <td style={{...td,color:"var(--text4)",fontStyle:"italic"}}>keine Bestellung</td>
                   <td style={{...td,textAlign:"center",color:"var(--text4)"}}>—</td>
@@ -15981,7 +16010,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
               const n=z.artikelZeilen.length;
               return z.artikelZeilen.map((az,idx)=>(
                 <tr key={z.id+"_"+idx}>
-                  {idx===0 && <td style={{...td,fontWeight:600}} rowSpan={n}>{z.gruppe||"—"}</td>}
+                  {idx===0 && <td style={{...td,fontWeight:600}} rowSpan={n}>{z.gruppe?gName(z.gruppe):"—"}</td>}
                   {idx===0 && <td style={{...td,fontWeight:700}} rowSpan={n}>{z.name||"?"}</td>}
                   <td style={td}>{az.artikel}</td>
                   <td style={{...td,textAlign:"center"}}>{az.anzahl}</td>
@@ -18317,9 +18346,9 @@ function EinheitenTab({user, players}) {
         border:"1px solid var(--border2)",color:"var(--text)",outline:"none",
       }}>
         <option value="alle">Alle Gruppen</option>
-        <option value="Anfänger">Anfänger</option>
-        <option value="Fortgeschrittene">Fortgeschrittene</option>
-        <option value="Profis">Profis</option>
+        <option value="Anfänger">{gName("Anfänger")}</option>
+        <option value="Fortgeschrittene">{gName("Fortgeschrittene")}</option>
+        <option value="Profis">{gName("Profis")}</option>
       </select>
     </div>
 
@@ -18345,8 +18374,8 @@ function EinheitenTab({user, players}) {
           {/* Header */}
           <div onClick={()=>setExpandedId(isExp?null:e.id)} style={{padding:"11px 13px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${e.gruppe}`}</div>
-              <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {e.gruppe}</div>
+              <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${gName(e.gruppe)}`}</div>
+              <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {gName(e.gruppe)}</div>
               {(e.trainer1||e.trainer2)&&<div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>
                 👤 {[e.trainer1,e.trainer2].filter(Boolean).map(id=>{
                   const p=players.find(x=>x.id===id);
@@ -19467,7 +19496,7 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
     }
     for(const z of (d.zeiten||[])){
       if(hat(z.gruppe,z.tag))
-        out.push({art:"Trainingszeit",icon:"🕒",ziel:"zeiten",titel:`${z.gruppe||""} · ${z.tag||""}`,
+        out.push({art:"Trainingszeit",icon:"🕒",ziel:"zeiten",titel:`${gName(z.gruppe||"")} · ${z.tag||""}`,
           zusatz:[z.zeitVon,z.zeitBis].filter(Boolean).join("–")});
     }
     return out.slice(0,60);
@@ -21672,7 +21701,7 @@ function TrainingszeitenView({ players=[] }){
               <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,marginBottom:tids.length>0?9:0}}>
                 <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{z.tag||"—"}</span>
                 <span style={{fontSize:13,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>{zeitraum||"—"}</span>
-                <span style={{marginLeft:"auto",background:"var(--club-18, #c8102e18)",color:TTC_ROT,borderRadius:5,padding:"2px 9px",fontSize:11,fontWeight:700}}>{z.gruppe||"—"}</span>
+                <span style={{marginLeft:"auto",background:"var(--club-18, #c8102e18)",color:TTC_ROT,borderRadius:5,padding:"2px 9px",fontSize:11,fontWeight:700}}>{z.gruppe?gName(z.gruppe):"—"}</span>
               </div>
               {/* Trainer (mehrere möglich, mit Foto) */}
               {tids.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px"}}>
@@ -21793,7 +21822,7 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
         <input list="ttc-gruppen-liste" placeholder="Gruppe (wählen oder frei)" value={neu.gruppe}
           onChange={e=>setNeu(p=>({...p,gruppe:e.target.value}))} style={{...inp,minWidth:170}}/>
         <datalist id="ttc-gruppen-liste">
-          {gruppenVorschlaege.map(g=><option key={g} value={g}/>)}
+          {gruppenVorschlaege.map(g=><option key={g} value={gName(g)}/>)}
         </datalist>
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
@@ -21823,7 +21852,7 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
           {zeiten.map((z,i)=><tr key={i} style={{borderBottom:"1px solid var(--border)"}}>
             <td style={{padding:"6px 8px",color:"var(--text)"}}>{z.tag}</td>
             <td style={{padding:"6px 8px",color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>{[z.zeitVon,z.zeitBis].filter(Boolean).join("–")}</td>
-            <td style={{padding:"6px 8px",color:"var(--text)"}}>{z.gruppe}</td>
+            <td style={{padding:"6px 8px",color:"var(--text)"}}>{gName(z.gruppe)}</td>
             <td style={{padding:"6px 8px",color:"var(--text)"}}>{trainerIdsVon(z).map(id=>trainerName(id)).filter(Boolean).join(", ")||"—"}</td>
             <td style={{padding:"6px 8px",textAlign:"right"}}>
               <button onClick={()=>bearbeiten(i)} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text2)",fontSize:11,cursor:"pointer",fontWeight:700,marginRight:4}}>✏️</button>
