@@ -1,4 +1,4 @@
-// === TTC-App · Version 516 · erstellt 05.10.2026 ===
+// === TTC-App · Version 517 · erstellt 06.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "516";
+const APP_VERSION = "517";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -10623,6 +10623,32 @@ async function ausVereinsbereichZurueckkopieren(vid, meldung){
   return { alleOk:ok, bericht };
 }
 const warte = ms => new Promise(r=>setTimeout(r,ms));
+// V517 (Etappe 2d): Alte Ablage (oberste Ebene) vollständig löschen. Nur Betreiber, nur im
+// Modus „verein". system/ und vereine/ bleiben unberührt.
+async function alteAblageLoeschen(meldung){
+  const bericht={};
+  const obsIds=new Set();
+  for(const name of SICHERUNG_SAMMLUNGEN){
+    meldung(`Lösche ${name} …`);
+    const snap=await getDocsFromServer(fsCollection(db,name));
+    if(name==="observations"||name==="players") snap.docs.forEach(d=>obsIds.add(d.id));
+    if(name==="observations"){
+      // Unter-Sammlung zuerst (Dokument-ID der Person)
+      let n=0;
+      for(const id of obsIds){
+        const e=await getDocsFromServer(fsCollection(db,"observations",id,"entries"));
+        if(e.size){ await inPaketenSchreiben([], e.docs.map(d=>d.ref)); n+=e.size; }
+      }
+      bericht["observations/*/entries"]=n;
+    }
+    await inPaketenSchreiben([], snap.docs.map(d=>d.ref), (f,g)=>meldung(`Lösche ${name} … ${f}/${g}`));
+    bericht[name]=snap.size;
+  }
+  // Kontrolle: alles leer?
+  let rest=0;
+  for(const name of SICHERUNG_SAMMLUNGEN){ const c=await getDocsFromServer(fsCollection(db,name)); rest+=c.size; }
+  return { bericht, rest };
+}
 
 async function ausSicherungWiederherstellen(daten, zielWurzel, meldung){
   if(!daten || daten.format!=="ttc-app-sicherung") throw new Error("Keine gültige Sicherungsdatei.");
@@ -10716,6 +10742,24 @@ function VereinsbereichPanel({user, players=[]}){
       window.__ttcUmschaltungHier=false; setLaeuft(false);
     }
   }
+  // V517: Etappe 2d – alte Ablage entfernen
+  const [aufraeumBericht,setAufraeumBericht]=useState(null);
+  async function alteDatenEntfernen(){
+    if(laeuft) return;
+    if(!(bereich && bereich.modus==="verein")){ window.alert("Nur möglich, wenn der Vereinsbereich aktiv ist."); return; }
+    const alter = sicherung&&sicherung.letzte ? (Date.now()-new Date(sicherung.letzte).getTime()) : Infinity;
+    if(alter > 3*3600*1000){ window.alert("Bitte zuerst eine aktuelle Sicherung erstellen (höchstens 3 Stunden alt)."); return; }
+    if(!window.confirm("Alte Ablage (oberste Ebene) endgültig löschen?\n\nDie App arbeitet seit "+(bereich.seit?new Date(bereich.seit).toLocaleString("de-DE"):"der Umschaltung")+" mit dem Vereinsbereich. Die Daten dort bleiben unverändert.\n\nEine Rückschaltung bleibt möglich (sie kopiert den Vereinsbereich zurück).")) return;
+    if(window.prompt("Zur Bestätigung bitte LÖSCHEN eingeben:")!=="LÖSCHEN") return;
+    setLaeuft(true); setAufraeumBericht(null);
+    try{
+      const erg=await alteAblageLoeschen(setMeldung);
+      setAufraeumBericht(erg);
+      await setDoc(flagRef,{ altGeloescht:Date.now(), altGeloeschtVon:(user&&user.email)||"" },{merge:true});
+      setMeldung(erg.rest===0 ? "✅ Alte Ablage vollständig entfernt. Jetzt die neuen Firestore- und Storage-Regeln veröffentlichen." : `⚠️ Es sind noch ${erg.rest} Dokumente vorhanden – bitte erneut ausführen.`);
+    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    setLaeuft(false);
+  }
   async function zugang(){
     if(laeuft) return; setLaeuft(true); setMeldung("Gleiche Zugangsliste ab …");
     try{
@@ -10784,6 +10828,18 @@ function VereinsbereichPanel({user, players=[]}){
       </div>
       {ergebnis && ergebnis.zugang && <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>
         Zugangsliste: {ergebnis.zugang.anzahl} Adressen ({ergebnis.zugang.neu} neu/geändert, {ergebnis.zugang.entfernt} entfernt)
+      </div>}
+    </div>}
+    {bereich && bereich.modus==="verein" && <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--border2)"}}>
+      <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:6}}>🧹 Alte Ablage entfernen (Etappe 2d)</div>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.5}}>
+        Löscht die bisherigen Daten auf der obersten Ebene (Stand der Umschaltung). Der Vereinsbereich bleibt unverändert.
+        Voraussetzung: aktuelle Sicherung. Danach die neuen Regeln veröffentlichen.
+        {bereich.altGeloescht ? <b style={{color:"#10b981"}}> Bereits erledigt am {new Date(bereich.altGeloescht).toLocaleString("de-DE")}.</b> : null}
+      </div>
+      <button onClick={alteDatenEntfernen} disabled={laeuft} style={{...btn,width:"100%",background:laeuft?"#9ca3af":"#ef4444",color:"#fff"}}>🧹 Alte Ablage jetzt löschen</button>
+      {aufraeumBericht && <div style={{fontSize:11,color:"var(--text2)",marginTop:8,display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 10px"}}>
+        {Object.entries(aufraeumBericht.bericht).map(([k,v])=><React.Fragment key={k}><span>{k}</span><span style={{textAlign:"right"}}>{v} gelöscht</span></React.Fragment>)}
       </div>}
     </div>}
     <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--border2)"}}>
@@ -27586,7 +27642,7 @@ function AppInhalt() {
           try{
             const {id, ...daten} = myPlayer;
             // 1) Daten unter der richtigen Kennung (Auth-UID) speichern.
-            await setDoc(doc(db,"players",authUser.uid), {...daten, id:authUser.uid, updatedAt:Date.now()});
+            await setDoc(doc(db,"players",authUser.uid), {...daten, id:authUser.uid, updatedAt:Date.now(), verknuepftVon:id});   // V517: Herkunft für Firestore-Regel
             // 2) Alle Altprofile mit derselben E-Mail und abweichender ID entfernen.
             //    Das verhindert Doppel-Einträge in den Übersichten. Es betrifft nur
             //    Profile derselben Person (gleiche Login-Adresse), deren Daten gerade
