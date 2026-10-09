@@ -1,4 +1,4 @@
-// === TTC-App · Version 519 · erstellt 07.10.2026 ===
+// === TTC-App · Version 520 · erstellt 09.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "519";
+const APP_VERSION = "520";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1289,6 +1289,80 @@ const turnierSichtbarRollen = () => [
   ["player","Spieler"],["erwachsene","Erwachsene"],
   ["mannschaftsfuehrer","Mannschaftsführer"],["trainer","Trainer"],["ttc",VEREIN.kuerzel||"Verein"],
 ];
+// ─── V520: Schiedsrichterzettel (DIN A6) ────────────────────────────────────
+// Gedruckt wird als HTML-Seite in einem unsichtbaren Rahmen (@page A6). Auf der
+// Druckstation (Chrome mit --kiosk-printing) erfolgt der Druck ohne Dialog auf den
+// Standarddrucker dieses Geräts – also den Zetteldrucker, getrennt vom Urkundendrucker.
+const zettelEsc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function zettelPhase(x){
+  if(!x) return "";
+  if(String(x.key).startsWith("g_")) return (x.mehrGr?`Gruppe ${(x.gi??0)+1} · `:"")+`Runde ${(x.runde??0)+1}`;
+  if(String(x.key).startsWith("sw_")) return `Runde ${(x.runde??0)+1}`;
+  if(String(x.key).startsWith("k_")) return x.runde===99 ? "Finale" : `KO-Runde ${(x.runde??0)+1}`;
+  return "";
+}
+// z: {turnier, konkurrenz, phase, nr, tisch, a, b, schiri, gewinnsaetze}
+function zettelHtmlSeite(z){
+  const saetze=Math.max(1, 2*(Number(z.gewinnsaetze)||3)-1);
+  const zeilen=Array.from({length:saetze},(_,i)=>`<tr><td class="n">${i+1}. Satz</td><td></td><td class="d">:</td><td></td></tr>`).join("");
+  return `<section class="z">
+    <div class="kopf"><div><div class="t">${zettelEsc(z.turnier)}</div><div class="k">${zettelEsc(z.konkurrenz)}${z.phase?` · ${zettelEsc(z.phase)}`:""}</div></div>
+      <div class="tisch"><span>Tisch</span>${zettelEsc(z.tisch||"–")}</div></div>
+    <div class="nr">Spiel #${zettelEsc(z.nr)}</div>
+    <table class="sp"><tr><td class="l">A</td><td class="nm">${zettelEsc(z.a)}</td></tr><tr><td class="l">B</td><td class="nm">${zettelEsc(z.b)}</td></tr></table>
+    <table class="s"><tr><th></th><th>A</th><th></th><th>B</th></tr>${zeilen}
+      <tr class="erg"><td class="n">Sätze</td><td></td><td class="d">:</td><td></td></tr></table>
+    <div class="unt"><div>Sieger: ______________________</div>
+      <div class="sig"><span>Schiedsrichter${z.schiri?`: ${zettelEsc(z.schiri)}`:""}</span><span>Unterschrift</span></div></div>
+    <div class="fuss">${zettelEsc(VEREIN.kurzname||"")} · ${new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+  </section>`;
+}
+function zettelHtmlDokument(liste){
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Schiedsrichterzettel</title><style>
+    @page{size:A6 portrait;margin:0}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111}
+    .z{width:105mm;height:148mm;padding:6mm 6mm 5mm;page-break-after:always;break-after:page;display:flex;flex-direction:column;overflow:hidden}
+    .z:last-child{page-break-after:auto;break-after:auto}
+    .kopf{display:flex;justify-content:space-between;align-items:flex-start;gap:3mm;border-bottom:.6mm solid #111;padding-bottom:2mm}
+    .t{font-size:10pt;font-weight:700}.k{font-size:9pt;margin-top:.5mm}
+    .tisch{border:.6mm solid #111;border-radius:2mm;min-width:17mm;text-align:center;font-size:20pt;font-weight:800;line-height:1;padding:1mm 2mm}
+    .tisch span{display:block;font-size:6.5pt;font-weight:700;letter-spacing:.3mm;text-transform:uppercase}
+    .nr{font-size:8pt;color:#444;margin:1.5mm 0}
+    .sp{width:100%;border-collapse:collapse;margin-bottom:2.5mm}
+    .sp td{border-bottom:.3mm solid #999;padding:1.5mm 1mm;font-size:12pt}
+    .sp .l{width:7mm;font-weight:800}.sp .nm{font-weight:700}
+    .s{width:100%;border-collapse:collapse;font-size:9.5pt}
+    .s th{font-size:9pt;padding:.8mm}.s td{border:.3mm solid #555;height:7.2mm;text-align:center}
+    .s td.n{border:none;text-align:left;width:17mm;font-size:8.5pt}.s td.d{border:none;width:4mm}
+    .s tr.erg td{border-width:.6mm}.s tr.erg td.n,.s tr.erg td.d{border:none;font-weight:700}
+    .unt{margin-top:auto;font-size:9pt}
+    .sig{display:flex;justify-content:space-between;gap:4mm;margin-top:7mm;border-top:.3mm solid #555;padding-top:1mm;font-size:7.5pt}
+    .fuss{font-size:6.5pt;color:#666;margin-top:2mm;text-align:right}
+  </style></head><body>${liste.map(zettelHtmlSeite).join("")}</body></html>`;
+}
+// Druckt eine oder mehrere Zettel über einen unsichtbaren Rahmen. Liefert ein Promise,
+// das nach dem Druck (bzw. spätestens nach 8 s) erfüllt ist.
+function zettelDrucken(liste){
+  return new Promise(res=>{
+    try{
+      const f=document.createElement("iframe");
+      f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+      document.body.appendChild(f);
+      const fertig=()=>{ setTimeout(()=>{ try{ document.body.removeChild(f); }catch(e){} },1000); res(); };
+      const d=f.contentWindow.document; d.open(); d.write(zettelHtmlDokument(liste)); d.close();
+      setTimeout(()=>{
+        try{
+          f.contentWindow.addEventListener("afterprint", fertig, {once:true});
+          f.contentWindow.focus(); f.contentWindow.print();
+        }catch(e){ fertig(); }
+        setTimeout(fertig, 8000);
+      }, 250);
+    }catch(e){ res(); }
+  });
+}
+const DRUCKSTATION_LS = id => `ttc_druckstation_${id}`;
+
 // V505: Funktion „TTC" darf in Turnieren nur Ergebnisse eintragen (keine Tableau-/
 // Doppel-Änderungen). Wird über diesen Kontext an die Turnier-Bausteine gereicht.
 const TurnierRechteCtx = React.createContext({ nurErgebnisse:false });
@@ -2729,6 +2803,14 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
           onBlur={e=>{ const n=Number(e.target.value)||1; set("anzahlTische",Math.min(50,Math.max(1,n))); }}
           style={{...selT2,width:90,maxWidth:90,display:"block"}}/>
       </Feld>
+      {/* V520: Schiedsrichterzettel (DIN A6) – Druckauslösung; Nutzung je Konkurrenz unten */}
+      <Feld label="Schiedsrichterzettel drucken">
+        <select value={t.zettelDruck||"manuell"} onChange={e=>set("zettelDruck",e.target.value)} style={{...selT2,width:"100%"}}>
+          <option value="auto">automatisch, sobald ein Spiel einem Tisch zugewiesen wird</option>
+          <option value="manuell">nur manuell (Druck-Knopf am Spiel)</option>
+        </select>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>Gedruckt wird an der Druckstation (eigenes Gerät mit dem Zetteldrucker). Ob eine Konkurrenz Zettel nutzt, wird je Konkurrenz festgelegt.</div>
+      </Feld>
 
       {/* P4: Schiedsrichter turnierweit — sie hängen an den Tischen und gelten
           konkurrenzübergreifend. Auswahl hier zentral, nicht mehr je Konkurrenz. */}
@@ -2899,6 +2981,14 @@ function TurnierForm({ start, players=[], onAbbrechenAll, onSpeichern }){
                       <option value="3">3 Gewinnsätze (Best of 5)</option>
                       <option value="4">4 Gewinnsätze (Best of 7)</option>
                     </select>
+                  </Feld>
+
+                  {/* V520: Schiedsrichterzettel je Konkurrenz */}
+                  <Feld label="Schiri-Zettel" klein>
+                    <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,height:34}}>
+                      <input type="checkbox" checked={!!k.schiriZettel} onChange={e=>updKonk(k.key,{schiriZettel:e.target.checked})} style={{width:16,height:16}}/>
+                      DIN-A6-Zettel
+                    </label>
                   </Feld>
 
                   {/* Turnierart je Konkurrenz (kann pro Konkurrenz unterschiedlich sein) */}
@@ -6009,6 +6099,92 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     updTurnier({ tische });
   }
 
+  // ── V520: Schiedsrichterzettel ──
+  // Druck-Zustand in eigenem Dokument turnierDruck/<id> (nicht im Turnier-Dokument, damit sich
+  // Druckstation und Ergebniseingabe nicht gegenseitig überschreiben):
+  //   gedruckt:{gkey:tisch}  auftraege:{id:{gkey,zeit}}  station:{zeit,geraet}
+  const zettelKonks=(t.konkurrenzen||[]).filter(k=>k.schiriZettel);
+  const zettelAktiv=zettelKonks.length>0;
+  const druckRef=t.id ? doc(db,"turnierDruck",t.id) : null;
+  const [druck,setDruck]=useState({});
+  const [istStation,setIstStation]=useState(()=>{ try{ return localStorage.getItem(DRUCKSTATION_LS(turnier.id))==="1"; }catch(e){ return false; } });
+  useEffect(()=>{
+    if(!druckRef || !zettelAktiv) return;
+    const u=onSnapshot(druckRef, sn=>setDruck(sn.exists()?sn.data():{}), ()=>{});
+    return u;
+    // eslint-disable-next-line
+  },[t.id, zettelAktiv]);
+  const stationAktiv = !!(druck.station && Date.now()-(druck.station.zeit||0) < 3*60*1000);
+  // Herzschlag der Druckstation
+  useEffect(()=>{
+    if(!istStation || !druckRef || !zettelAktiv) return;
+    const melde=()=>setDoc(druckRef,{ station:{ zeit:Date.now(), geraet:(navigator.platform||"Gerät") } },{merge:true}).catch(()=>{});
+    melde(); const iv=setInterval(melde, 60000);
+    return ()=>clearInterval(iv);
+    // eslint-disable-next-line
+  },[istStation, t.id, zettelAktiv]);
+  function stationUmschalten(an){
+    try{ an ? localStorage.setItem(DRUCKSTATION_LS(t.id),"1") : localStorage.removeItem(DRUCKSTATION_LS(t.id)); }catch(e){}
+    setIstStation(an);
+    if(!an && druckRef) setDoc(druckRef,{ station:{ zeit:0, geraet:"" } },{merge:true}).catch(()=>{});
+  }
+  function zettelDaten(x){
+    const kX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
+    return { turnier:t.name||"Turnier", konkurrenz:x.konkName||kX?.name||"", phase:zettelPhase(x), nr:x.nr,
+      tisch:x.tisch||tischMapG[x.gkey]||"", a:nameVon(x.a), b:nameVon(x.b),
+      schiri: x.schiri ? nameVon(x.schiri) : "", gewinnsaetze:kX?.gewinnsaetze??3 };
+  }
+  // Druckwarteschlange der Station (nacheinander, nie doppelt)
+  const druckQueue=useRef([]); const druckLaeuft=useRef(false); const inQueue=useRef(new Set());
+  async function queueAbarbeiten(){
+    if(druckLaeuft.current) return; druckLaeuft.current=true;
+    try{
+      while(druckQueue.current.length){
+        const job=druckQueue.current.shift();
+        await zettelDrucken([job.daten]);
+        if(druckRef){
+          const patch={ gedruckt:{ [job.gkey]: job.daten.tisch||true } };
+          if(job.auftrag) patch.auftraege={ [job.auftrag]: deleteField() };
+          await setDoc(druckRef, patch, {merge:true}).catch(()=>{});
+        }
+        inQueue.current.delete(job.id);
+        await new Promise(r=>setTimeout(r,600));
+      }
+    } finally { druckLaeuft.current=false; }
+  }
+  function inDruckQueue(id, gkey, daten, auftrag){
+    if(inQueue.current.has(id)) return;
+    inQueue.current.add(id); druckQueue.current.push({id, gkey, daten, auftrag}); queueAbarbeiten();
+  }
+  // Station: automatische Zettel bei Tischzuweisung + Aufträge anderer Geräte
+  useEffect(()=>{
+    if(!istStation || !zettelAktiv) return;
+    const bg=alleBegegnungen();
+    if((t.zettelDruck||"manuell")==="auto"){
+      for(const x of bg){
+        if(x.fertig || !x.nurGestartet || !x.tisch) continue;
+        if(!zettelKonks.some(k=>k.key===x.konkKey)) continue;
+        if(String((druck.gedruckt||{})[x.gkey]??"")===String(x.tisch)) continue;
+        inDruckQueue(`auto:${x.gkey}@${x.tisch}`, x.gkey, zettelDaten(x));
+      }
+    }
+    for(const [id,a] of Object.entries(druck.auftraege||{})){
+      const x=bg.find(y=>y.gkey===a.gkey); if(!x) continue;
+      inDruckQueue(`auftrag:${id}`, x.gkey, zettelDaten(x), id);
+    }
+    // eslint-disable-next-line
+  },[istStation, zettelAktiv, JSON.stringify(tischMapG), JSON.stringify(druck.gedruckt||{}), JSON.stringify(druck.auftraege||{}), t.zettelDruck]);
+  // Manueller Druck: an die Druckstation schicken, sonst auf diesem Gerät (mit Druckdialog)
+  async function zettelManuell(x){
+    if(istStation){ inDruckQueue(`manuell:${x.gkey}:${Date.now()}`, x.gkey, zettelDaten(x)); return; }
+    if(stationAktiv && druckRef){
+      const id=`a${Date.now()}${Math.random().toString(36).slice(2,6)}`;
+      await setDoc(druckRef,{ auftraege:{ [id]:{ gkey:x.gkey, zeit:Date.now() } } },{merge:true}).catch(()=>{});
+      return;
+    }
+    await zettelDrucken([zettelDaten(x)]);
+  }
+
   // Automatische Neuvergabe bei jeder relevanten Änderung + Push für neue Zuweisungen.
   const benachrichtigt=useRef({});
   const schiriBenachrichtigt=useRef({});   // gkey -> "{schiriId}@{tisch}" (schon gepusht)
@@ -6228,6 +6404,34 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       </button>
     </div>}
 
+    {/* V520: Schiedsrichterzettel – Druckstation (nur Admin/Trainer) */}
+    {zettelAktiv && (isAdmin||isTrainer) && <div style={{marginBottom:12,padding:"9px 12px",borderRadius:10,
+      background:istStation?"#0ea5e915":"var(--bg2)",border:istStation?"1px solid #0ea5e955":"1px solid var(--border)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+        <div style={{fontSize:12}}>
+          <div style={{fontWeight:700,color:istStation?"#0ea5e9":"var(--text2)"}}>🖨️ Schiedsrichterzettel · {(t.zettelDruck||"manuell")==="auto"?"automatisch bei Tischzuweisung":"manueller Druck"}</div>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>
+            {istStation ? "Dieses Gerät ist die Druckstation."
+              : stationAktiv ? `Druckstation aktiv (${druck.station.geraet||"Gerät"}) – Zettel werden dort gedruckt.`
+              : "Keine Druckstation aktiv – manueller Druck öffnet hier den Druckdialog."}
+            {" "}Konkurrenzen: {zettelKonks.map(k=>k.name).join(", ")}
+          </div>
+        </div>
+        <button onClick={()=>stationUmschalten(!istStation)} title="Dieses Gerät als Druckstation verwenden"
+          style={{flexShrink:0,width:52,height:28,borderRadius:14,border:"none",cursor:"pointer",position:"relative",
+            background:istStation?"#0ea5e9":"var(--bg3)",transition:"background .15s"}}>
+          <span style={{position:"absolute",top:3,left:istStation?27:3,width:22,height:22,borderRadius:"50%",
+            background:"#fff",transition:"left .15s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
+        </button>
+      </div>
+      {istStation && <div style={{fontSize:10,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
+        Für Druck ohne Dialog: Chrome auf diesem Gerät mit <code>--kiosk-printing</code> starten und den A6-Zetteldrucker als
+        Standarddrucker einstellen. Dieses Turnier hier geöffnet lassen.
+        <button onClick={()=>zettelDrucken([{ turnier:t.name||"Turnier", konkurrenz:"Testzettel", phase:"", nr:"0", tisch:"1", a:"Spieler A", b:"Spieler B", schiri:"", gewinnsaetze:3 }])}
+          style={{...miniBtn("#0ea5e9"),marginLeft:6}}>Testzettel</button>
+      </div>}
+    </div>}
+
     {/* Laufende Spiele & Als Nächstes – TURNIERWEIT über alle gestarteten Konkurrenzen,
         oberhalb der Konkurrenz-Auswahl. Alle Spiele teilen sich denselben Tisch-Pool. */}
     {anzahlTische>0 && (()=>{
@@ -6310,6 +6514,11 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                       </select>
                     : <span style={{flexShrink:0,minWidth:52,height:34,borderRadius:8,background:"#10b981",color:"#ffffff",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 8px"}}>T{x.tisch}</span>}
                   {nameZeile(x)}
+                  {/* V520: Schiedsrichterzettel drucken (Konkurrenz mit Zettel) */}
+                  {(isAdmin||isTrainer) && zettelKonks.some(k=>k.key===x.konkKey) &&
+                    <button onClick={()=>zettelManuell(x)} title={(druck.gedruckt||{})[x.gkey]?"Zettel erneut drucken":"Schiedsrichterzettel drucken"}
+                      style={{flexShrink:0,padding:"4px 8px",borderRadius:7,border:"1px solid var(--border2)",background:(druck.gedruckt||{})[x.gkey]?"var(--bg3)":"#0ea5e922",color:"var(--text)",fontSize:13,cursor:"pointer"}}>
+                      🖨️{(druck.gedruckt||{})[x.gkey]?"✓":""}</button>}
                   {/* P1: Ergebnis direkt hier eintragen (Admin/Trainer). Sonst nur Anzeige. */}
                   {(()=>{
                     const kX=(t.konkurrenzen||[]).find(kk=>kk.key===x.konkKey);
