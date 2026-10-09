@@ -1,4 +1,7 @@
-// === TTC-App · Version 520 · erstellt 09.10.2026 ===
+// === TTC-App · Version 522 · erstellt 09.10.2026 ===
+/** @jsxRuntime classic */
+/** @jsx ttcH */
+/** @jsxFrag React.Fragment */
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -19,10 +22,81 @@ import {
   getDownloadURL, deleteObject
 } from "firebase/storage";
 import { firebaseConfig } from "./firebaseConfig";
+import { EN_TEXTE } from "./i18n_en";
+
+// ─── V521: Zweisprachigkeit (Deutsch / Englisch) ─────────────────────────────
+// Die Sprache gilt je Nutzer und Gerät (localStorage „ttc_sprache“, Standard Deutsch).
+// Übersetzt wird beim Darstellen: Alle Texte, die als Inhalt oder als title/placeholder/alt
+// in HTML-Elemente gelangen, laufen über ttcH (JSX-Fabrik dieser Datei, siehe Pragma oben)
+// und werden im Wörterbuch src/i18n_en.js nachgeschlagen. Daten (Gruppen, Mannschaften,
+// Status …) bleiben intern deutsch – nur die Anzeige wird übersetzt. Zusammengesetzte Texte
+// (Vorlagen mit ${…}) sind mit T`…` markiert; alert/confirm/prompt-Texte mit T("…").
+// Ausdrucke, Exporte, Urkunden, Kalender und Push-Nachrichten bleiben deutsch.
+const SPRACHE = (()=>{ try{ return localStorage.getItem("ttc_sprache")==="en" ? "en" : "de"; }catch(e){ return "de"; } })();
+const IST_EN = SPRACHE==="en";
+const SPR_LOC = IST_EN ? "en-GB" : "de-DE";
+let _trExakt=null, _trNorm=null;
+function _trLaden(){
+  if(_trExakt) return;
+  _trExakt=new Map(); _trNorm=new Map();
+  for(const k of Object.keys(EN_TEXTE)){ const v=EN_TEXTE[k]; _trExakt.set(k,v); _trNorm.set(k.replace(/\s+/g," ").trim(),v); }
+}
+function trText(s){
+  if(!IST_EN || typeof s!=="string" || s.length<2) return s;
+  _trLaden();
+  const d=_trExakt.get(s); if(d!==undefined) return d;
+  const m=/^(\s*)([\s\S]*?)(\s*)$/.exec(s); const kern=m[2];
+  if(!kern || !/[A-Za-zÄÖÜäöüß]/.test(kern)) return s;
+  const e=_trNorm.get(kern.replace(/\s+/g," "));
+  return e!==undefined ? m[1]+e+m[3] : s;
+}
+const _trVorlagen=new WeakMap();
+function _trJoin(st,v){ let r=st[0]; for(let i=1;i<st.length;i++) r+=String(v[i-1])+st[i]; return r; }
+// T("Text") oder T`Text ${x}` – liefert den Text in der eingestellten Sprache.
+function T(s,...v){
+  if(Array.isArray(s) && s.raw){
+    if(!IST_EN) return _trJoin(s,v);
+    let pat=_trVorlagen.get(s);
+    if(pat===undefined){
+      const key=s.map((x,i)=>x+(i<s.length-1?"{"+i+"}":"")).join("");
+      const tr=trText(key); pat = tr===key ? null : tr; _trVorlagen.set(s,pat);
+    }
+    if(pat===null) return _trJoin(s,v);
+    return pat.replace(/\{(\d+)\}/g,(m,i)=> (+i)<v.length ? String(v[+i]) : m);
+  }
+  return trText(s);
+}
+// Beginnt eine (ggf. übersetzte) Meldung mit einem bestimmten Wort?
+function beginntMit(text, wort){ const s=String(text||""); return s.startsWith(wort) || (IST_EN && s.startsWith(trText(wort))); }
+const _TR_ATTR=["title","placeholder","alt","aria-label"];
+// JSX-Fabrik: übersetzt Texte an HTML-Elementen, Komponenten bleiben unverändert.
+function ttcH(type, props, ...children){
+  if(IST_EN && typeof type==="string" && type!=="style" && type!=="script"){
+    for(let i=0;i<children.length;i++){
+      const c=children[i];
+      if(typeof c==="string") children[i]=trText(c);
+      else if(Array.isArray(c)) children[i]=c.map(x=>typeof x==="string"?trText(x):x);
+    }
+    if(props){
+      let np=null;
+      for(const a of _TR_ATTR){ const w=props[a]; if(typeof w==="string"){ const t=trText(w); if(t!==w){ np=np||{...props}; np[a]=t; } } }
+      if((type==="optgroup"||type==="option") && typeof props.label==="string"){ const t=trText(props.label); if(t!==props.label){ np=np||{...props}; np.label=t; } }
+      if(np) props=np;
+    }
+  }
+  return React.createElement(type, props, ...children);
+}
+// Sprache wechseln: speichern und App neu laden (alle Texte werden neu aufgebaut).
+function spracheSetzen(sp){
+  try{ if(sp==="en") localStorage.setItem("ttc_sprache","en"); else localStorage.removeItem("ttc_sprache"); }catch(e){}
+  try{ window.location.reload(); }catch(e){}
+}
+if(typeof window!=="undefined"){ window.__ttcSprache={ sprache:SPRACHE, h:ttcH, T }; }
+try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }catch(e){}
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "520";
+const APP_VERSION = "522";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -957,7 +1031,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
     if (!resetEmail.trim()) {setResetErr("Bitte E-Mail eingeben.");return;}
     setResetLoad(true);setResetErr("");
     try { await sendPasswordResetEmail(auth,resetEmail.trim()); setResetSent(true); }
-    catch(e) { setResetErr(e.code==="auth/user-not-found"?"Kein Konto gefunden.":"Fehler: "+e.message); }
+    catch(e) { setResetErr(e.code==="auth/user-not-found"?"Kein Konto gefunden.":T("Fehler: ")+e.message); }
     setResetLoad(false);
   }
 
@@ -1015,6 +1089,24 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
       )}
       <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>{clubConfig.loginFooter||"Noch kein Konto? Wende dich an deinen Trainer."}</div>
       <div style={{textAlign:"center",fontSize:11,color:"var(--text4)",marginTop:10,opacity:0.7}}>Version {APP_VERSION} · {APP_DATUM}</div>
+    </div>
+  </div>;
+}
+
+// V521: Spracheinstellung in der Verwaltung (V522: auch in „Meine Verwaltung“ aller Nutzer)
+function SprachEinstellung(){
+  const opt=[{sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"}];
+  return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
+    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
+      Persönliche Einstellung für dieses Gerät · Personal setting for this device
+    </div>
+    <div style={{display:"flex",gap:8}}>
+      {opt.map(o=>{ const aktiv=SPRACHE===o.sp;
+        return <button key={o.sp} onClick={()=>{ if(!aktiv) spracheSetzen(o.sp); }} style={{
+          flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:aktiv?"default":"pointer",fontSize:13,
+          border:`2px solid ${aktiv?"#10b981":"var(--border2)"}`,background:aktiv?"#10b98122":"var(--bg3)",
+          color:aktiv?"#10b981":"var(--text2)"}}>{o.flag} {o.label}{aktiv?" ✓":""}</button>; })}
     </div>
   </div>;
 }
@@ -1296,7 +1388,7 @@ const turnierSichtbarRollen = () => [
 const zettelEsc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function zettelPhase(x){
   if(!x) return "";
-  if(String(x.key).startsWith("g_")) return (x.mehrGr?`Gruppe ${(x.gi??0)+1} · `:"")+`Runde ${(x.runde??0)+1}`;
+  if(String(x.key).startsWith("g_")) return (x.mehrGr?T`Gruppe ${(x.gi??0)+1} · `:"")+`Runde ${(x.runde??0)+1}`;
   if(String(x.key).startsWith("sw_")) return `Runde ${(x.runde??0)+1}`;
   if(String(x.key).startsWith("k_")) return x.runde===99 ? "Finale" : `KO-Runde ${(x.runde??0)+1}`;
   return "";
@@ -2059,7 +2151,7 @@ function parseTurniererfolgeZeilen(rows, players){
     const partner=String(hol("partner")??"").trim();
     if(partner) eintrag.partner=partner;      // V482: Doppelpartner, nur wenn angegeben
     if(!eintrag.name && !eintrag.place && !eintrag.date){
-      hinweise.push(`Zeile ${zeile}: weder Turniername noch Platz oder Datum – übersprungen`); return;
+      hinweise.push(T`Zeile ${zeile}: weder Turniername noch Platz oder Datum – übersprungen`); return;
     }
     if(p){
       if(!proPerson.has(p.id)) proPerson.set(p.id, []);
@@ -2067,7 +2159,7 @@ function parseTurniererfolgeZeilen(rows, players){
     } else {
       // Person nicht im Spielerstamm (historische Mitglieder, Ausgetretene): eigener
       // Datensatz, damit ihre Erfolge in den Statistiken nicht verloren gehen (V480).
-      if(!vorname && !nachname){ hinweise.push(`Zeile ${zeile}: ohne Namen – übersprungen`); return; }
+      if(!vorname && !nachname){ hinweise.push(T`Zeile ${zeile}: ohne Namen – übersprungen`); return; }
       const key=historieKey(nachname, vorname);
       if(!extern.has(key)) extern.set(key, {vorname, nachname, erfolge:[]});
       extern.get(key).erfolge.push(eintrag);
@@ -2147,13 +2239,13 @@ function parseHistorieExcelZeilen(rows, players){
   };
   const fehlend=Object.entries(S).filter(([,i])=>i<0).map(([k])=>k);
   if(["saison","team","name"].some(k=>S[k]<0))
-    return {fehler:"Pflichtspalten fehlen: "+fehlend.join(", ")};
-  if(fehlend.length) hinweise.push("Spalten nicht gefunden (als 0 gewertet): "+fehlend.join(", "));
+    return {fehler:T("Pflichtspalten fehlen: ")+fehlend.join(", ")};
+  if(fehlend.length) hinweise.push(T("Spalten nicht gefunden (als 0 gewertet): ")+fehlend.join(", "));
 
   const zahl=(v,zeile,feld)=>{
     if(v===null||v===undefined||v==="") return 0;
     const n=Number(String(v).replace(",","."));
-    if(!Number.isFinite(n)){ hinweise.push(`Zeile ${zeile}: „${feld}“ ist keine Zahl („${v}“) – als 0 gewertet`); return 0; }
+    if(!Number.isFinite(n)){ hinweise.push(T`Zeile ${zeile}: „${feld}“ ist keine Zahl („${v}“) – als 0 gewertet`); return 0; }
     return Math.round(n);
   };
   const proSaison={};
@@ -2165,9 +2257,9 @@ function parseHistorieExcelZeilen(rows, players){
     const saison=historieSaisonNorm(r[S.saison]);
     const team=String(r[S.team]??"").replace(/\s+/g," ").trim();
     const nameRoh=String(r[S.name]??"").trim();
-    if(!saison||!team||!nameRoh){ hinweise.push(`Zeile ${zeile}: Saison, Mannschaft oder Name fehlt – übersprungen`); return; }
+    if(!saison||!team||!nameRoh){ hinweise.push(T`Zeile ${zeile}: Saison, Mannschaft oder Name fehlt – übersprungen`); return; }
     const person=historieNameAusVollname(nameRoh, players);
-    if(!person){ hinweise.push(`Zeile ${zeile}: Name „${nameRoh}“ nicht auswertbar – übersprungen`); return; }
+    if(!person){ hinweise.push(T`Zeile ${zeile}: Name „${nameRoh}“ nicht auswertbar – übersprungen`); return; }
     const b={ name:person.anzeige,
       einsaetze:zahl(S.spiele>=0?r[S.spiele]:0,zeile,"Anzahl Spiele"),
       einzelEinsaetze:zahl(S.einzel>=0?r[S.einzel]:0,zeile,"Anzahl Einzel"),
@@ -2594,12 +2686,12 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null, 
         // Detailansicht gezielt neu aufbauen (damit geänderte Parameter greifen).
         setFormOffen(false); setEditTurnier(null); setSelId(id); setParamVersion(v=>v+1);
       }
-    }catch(e){ alert("Speichern fehlgeschlagen: "+(e.message||e)); }
+    }catch(e){ alert(T("Speichern fehlgeschlagen: ")+(e.message||e)); }
   }
   async function loeschen(id){
-    if(!window.confirm("Dieses Turnier wirklich löschen?")) return;
+    if(!window.confirm(T("Dieses Turnier wirklich löschen?"))) return;
     try{ await deleteDoc(doc(db,"turniere",id)); setTurniere(prev=>prev.filter(x=>x.id!==id)); if(selId===id) setSelId(null); }
-    catch(e){ alert("Löschen fehlgeschlagen: "+(e.message||e)); }
+    catch(e){ alert(T("Löschen fehlgeschlagen: ")+(e.message||e)); }
   }
   function duplizieren(t){
     const kopie={...JSON.parse(JSON.stringify(t)), id:null, name:t.name+" (Kopie)", erstellt:null, aktualisiert:null};
@@ -2684,7 +2776,7 @@ function TurniereView({ players, isAdmin=false, isTrainer=false, myPlayer=null, 
                   {darfAnlegen && <div style={{fontSize:10,marginTop:4,fontWeight:600,color:(t.sichtbarFuer||[]).length===0?"#f59e0b":"#10b981"}}>
                     {(t.sichtbarFuer||[]).length===0
                       ? "🔒 für niemanden sichtbar"
-                      : "👁 sichtbar für: "+(t.sichtbarFuer||[]).map(rk=>{const f=turnierSichtbarRollen().find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
+                      : T("👁 sichtbar für: ")+(t.sichtbarFuer||[]).map(rk=>{const f=turnierSichtbarRollen().find(r=>r[0]===rk);return f?f[1]:rk;}).join(", ")}
                   </div>}
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -3836,7 +3928,7 @@ function TurniererfolgeExportImport({ players=[], showToast }){
       const blob=new Blob([await wb.xlsx.writeBuffer()],
         {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
       dateiHerunterladen(blob, dateiname);
-      setMeldung(`${zeilen.length-1} Turniererfolg(e) exportiert.`);
+      setMeldung(T`${zeilen.length-1} Turniererfolg(e) exportiert.`);
     }catch(err){
       // Rückfallebene ohne Formatierung: besser eine einfache Datei als gar keine.
       try{
@@ -3848,9 +3940,9 @@ function TurniererfolgeExportImport({ players=[], showToast }){
         XLSX.utils.book_append_sheet(wb,ws,"Turniererfolge");
         const ab=XLSX.write(wb,{bookType:"xlsx",type:"array"});
         dateiHerunterladen(new Blob([ab],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), dateiname);
-        setMeldung(`${zeilen.length-1} Turniererfolg(e) exportiert – allerdings ohne Rahmen und fixierte Kopfzeile, weil die Formatierungs-Bibliothek nicht geladen werden konnte (${err?.message||"unbekannt"}).`);
+        setMeldung(T`${zeilen.length-1} Turniererfolg(e) exportiert – allerdings ohne Rahmen und fixierte Kopfzeile, weil die Formatierungs-Bibliothek nicht geladen werden konnte (${err?.message||"unbekannt"}).`);
       }catch(err2){
-        setMeldung("Export fehlgeschlagen: "+(err2?.message||"unbekannt"));
+        setMeldung(T("Export fehlgeschlagen: ")+(err2?.message||"unbekannt"));
       }
     }
     setExportLaeuft(false);
@@ -3868,13 +3960,13 @@ function TurniererfolgeExportImport({ players=[], showToast }){
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[blatt],{header:1,defval:null,raw:false,cellDates:true});
       const erg=parseTurniererfolgeZeilen(rows, players);
       if(erg.fehler){ setMeldung(`${file.name}: ${erg.fehler}`); setImportLaeuft(false); return; }
-      if(!erg.zeilen){ setMeldung(`${file.name}: keine auswertbaren Zeilen gefunden.`); setImportLaeuft(false); return; }
+      if(!erg.zeilen){ setMeldung(T`${file.name}: keine auswertbaren Zeilen gefunden.`); setImportLaeuft(false); return; }
       if(!window.confirm(
-        `${erg.zeilen} Turniererfolg(e) einlesen?\n\n`+
-        `${erg.proPerson.size} Person(en) aus dem Spielerstamm: bisherige Turniererfolge werden vollständig ersetzt. `+
-        `Personen, die in der Datei nicht vorkommen, bleiben unverändert.\n\n`+
-        `${erg.extern.size} Person(en) sind nicht im Spielerstamm (frühere Mitglieder). Ihre Erfolge werden `+
-        `gesondert gespeichert und in den Statistiken mitgezählt.`)){ setImportLaeuft(false); return; }
+        T`${erg.zeilen} Turniererfolg(e) einlesen?\n\n`+
+        T`${erg.proPerson.size} Person(en) aus dem Spielerstamm: bisherige Turniererfolge werden vollständig ersetzt. `+
+        T(`Personen, die in der Datei nicht vorkommen, bleiben unverändert.\n\n`)+
+        T`${erg.extern.size} Person(en) sind nicht im Spielerstamm (frühere Mitglieder). Ihre Erfolge werden `+
+        T(`gesondert gespeichert und in den Statistiken mitgezählt.`))){ setImportLaeuft(false); return; }
       let ok=0, fehler=0;
       for(const [playerId, liste] of erg.proPerson){
         try{ await updateDoc(doc(db,"players",playerId),{tournaments:liste}); ok++; }
@@ -3886,17 +3978,17 @@ function TurniererfolgeExportImport({ players=[], showToast }){
         const personen={};
         for(const [key,e] of erg.extern) personen[key]=e;
         await setDoc(doc(db,"config","turniererfolge_extern"),{personen,lastUpdated:Date.now()});
-      }catch(err){ externFehler="Speichern der Personen außerhalb des Spielerstamms fehlgeschlagen: "+(err?.message||"unbekannt"); }
+      }catch(err){ externFehler=T("Speichern der Personen außerhalb des Spielerstamms fehlgeschlagen: ")+(err?.message||"unbekannt"); }
       setMeldung([
-        `${erg.zeilen} Turniererfolg(e) aus Reiter „${blatt}“ eingelesen.`,
-        `${ok} Person(en) im Spielerstamm aktualisiert${fehler?`, ${fehler} fehlgeschlagen`:""}.`,
-        `${erg.extern.size} Person(en) außerhalb des Spielerstamms gespeichert.`,
+        T`${erg.zeilen} Turniererfolg(e) aus Reiter „${blatt}“ eingelesen.`,
+        T`${ok} Person(en) im Spielerstamm aktualisiert${fehler?T`, ${fehler} fehlgeschlagen`:""}.`,
+        T`${erg.extern.size} Person(en) außerhalb des Spielerstamms gespeichert.`,
         externFehler,
         ...erg.hinweise,
       ].filter(Boolean).join("\n"));
       if(ok) showToast?.("Turniererfolge importiert","🏆");
     }catch(err){
-      setMeldung(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
+      setMeldung(T`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
     }
     setImportLaeuft(false);
   }
@@ -3920,7 +4012,7 @@ function TurniererfolgeExportImport({ players=[], showToast }){
         borderRadius:9,border:"none",fontSize:12,fontWeight:800,
         background:exportLaeuft?"var(--bg3)":"#15803d", color:exportLaeuft?"var(--text4)":"#fff",
         cursor:exportLaeuft?"wait":"pointer"}}>
-        {exportLaeuft?"⏳ Wird erstellt…":`⬇️ Export (${anzahlErfolge})`}
+        {exportLaeuft?"⏳ Wird erstellt…":T`⬇️ Export (${anzahlErfolge})`}
       </button>
       <label style={{flex:"1 1 180px",padding:"10px 12px",borderRadius:9,textAlign:"center",
         fontSize:12,fontWeight:800,color:importLaeuft?"var(--text4)":"#fff",
@@ -3960,7 +4052,7 @@ function HistorieSpieleUpload({ showToast, players=[] }){
       const erg=parseHistorieExcelZeilen(rows, players);
       if(erg.fehler){ setExcelMeldung(`${file.name}: ${erg.fehler}`); setExcelLaeuft(false); return; }
       const saisons=Object.keys(erg.proSaison).sort();
-      if(!saisons.length){ setExcelMeldung(`${file.name}: keine auswertbaren Zeilen gefunden.`); setExcelLaeuft(false); return; }
+      if(!saisons.length){ setExcelMeldung(T`${file.name}: keine auswertbaren Zeilen gefunden.`); setExcelLaeuft(false); return; }
       const neu={...(store.dateien||{})};
       let ersetzt=0;
       for(const k of Object.keys(neu)) if(neu[k]?.manuell){ delete neu[k]; ersetzt++; }
@@ -3974,20 +4066,20 @@ function HistorieSpieleUpload({ showToast, players=[] }){
       // Ohne merge: Nur so verschwinden die ersetzten manuellen Einträge wirklich.
       await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()});
       const zeilen=[
-        `Reiter „${blatt}“: ${erg.zeilen} Zeilen · ${personen} Personeneinträge · Saison${saisons.length>1?"s":""} ${saisons.join(", ")}`,
-        ersetzt ? `Bisherige manuelle Einträge ersetzt (${ersetzt} Saison${ersetzt>1?"s":""}).` : "",
-        erg.zusammengefasst ? `${erg.zusammengefasst} doppelte Zeile(n) derselben Person, Saison und Mannschaft zusammengezählt.` : "",
+        T`Reiter „${blatt}“: ${erg.zeilen} Zeilen · ${personen} Personeneinträge · Saison${saisons.length>1?"s":""} ${saisons.join(", ")}`,
+        ersetzt ? T`Bisherige manuelle Einträge ersetzt (${ersetzt} Saison${ersetzt>1?"s":""}).` : "",
+        erg.zusammengefasst ? T`${erg.zusammengefasst} doppelte Zeile(n) derselben Person, Saison und Mannschaft zusammengezählt.` : "",
         ...erg.hinweise,
       ].filter(Boolean);
       setExcelMeldung(zeilen.join("\n"));
       showToast?.("Manuelle Bilanzen gespeichert","📈");
     }catch(err){
-      setExcelMeldung(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
+      setExcelMeldung(T`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"}).`);
     }
     setExcelLaeuft(false);
   }
   async function manuelleLoeschen(){
-    if(!window.confirm("Alle manuell hochgeladenen Bilanzen entfernen? Die PDF-Bilanzen bleiben erhalten.")) return;
+    if(!window.confirm(T("Alle manuell hochgeladenen Bilanzen entfernen? Die PDF-Bilanzen bleiben erhalten."))) return;
     const neu={...(store.dateien||{})};
     for(const k of Object.keys(neu)) if(neu[k]?.manuell) delete neu[k];
     try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); setExcelMeldung(""); }catch(e){}
@@ -4026,32 +4118,32 @@ function HistorieSpieleUpload({ showToast, players=[] }){
         // Ist es wirklich ein PDF? Jede PDF-Datei beginnt mit "%PDF".
         const kopf=new Uint8Array(await file.slice(0,5).arrayBuffer());
         if(String.fromCharCode(...kopf).slice(0,4)!=="%PDF"){
-          berichte.push(`${file.name}: keine PDF-Datei`); continue;
+          berichte.push(T`${file.name}: keine PDF-Datei`); continue;
         }
         const saison=bilanzSaisonAusDateiname(file.name);
-        if(!saison){ berichte.push(`${file.name}: Saison nicht erkannt (erwartet z. B. „…_2025_26_…")`); continue; }
+        if(!saison){ berichte.push(T`${file.name}: Saison nicht erkannt (erwartet z. B. „…_2025_26_…")`); continue; }
         const quelle=bilanzQuelleAusDateiname(file.name);
         const spieler=parseBilanzZeilen(await pdfZeilen(file), quelle);
         const anzahl=Object.keys(spieler).length;
-        if(anzahl===0){ berichte.push(`${file.name}: keine Bilanzen gefunden`); continue; }
+        if(anzahl===0){ berichte.push(T`${file.name}: keine Bilanzen gefunden`); continue; }
         neu[`${saison}::${quelle}`]={saison, quelle, dateiname:file.name, stand:Date.now(), spieler};
-        berichte.push(`${saison} · ${quelle}: ${anzahl} Personen`);
+        berichte.push(T`${saison} · ${quelle}: ${anzahl} Personen`);
       }catch(err){
-        berichte.push(`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"})`);
+        berichte.push(T`${file.name}: Fehler beim Lesen (${err?.message||"unbekannt"})`);
       }
     }
     try{
       await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()},{merge:true});
       showToast?.("Historie gespeichert","📈");
     }catch(err){
-      berichte.push("Speichern fehlgeschlagen: "+(err?.message||"unbekannt"));
+      berichte.push(T("Speichern fehlgeschlagen: ")+(err?.message||"unbekannt"));
     }
     setMeldung(berichte.join("\n"));
     setLaeuft(false);
   }
 
   async function eintragLoeschen(key){
-    if(!window.confirm("Diese Datei aus der Historie entfernen?")) return;
+    if(!window.confirm(T("Diese Datei aus der Historie entfernen?"))) return;
     const neu={...(store.dateien||{})};
     delete neu[key];
     try{ await setDoc(doc(db,"config","historie_spiele"),{dateien:neu,lastUpdated:Date.now()}); }catch(e){}
@@ -4148,7 +4240,7 @@ function HistorieSpieleUpload({ showToast, players=[] }){
                 <div style={{fontSize:10,color:"var(--text4)"}}>
                   {Object.keys(eintrag?.spieler||{}).length} Personen
                   {teamsVon(eintrag).length?" · "+teamsVon(eintrag).join(", "):""}
-                  {eintrag?.dateiname?` · aus „${eintrag.dateiname}“`:""}
+                  {eintrag?.dateiname?T` · aus „${eintrag.dateiname}“`:""}
                 </div>
               </div>
               <button onClick={()=>eintragLoeschen(key)} title="entfernen" style={{background:"#ef444422",
@@ -4217,7 +4309,7 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
   }
   function gastEntfernen(id){
     if(!isAdmin) return;
-    if(!window.confirm("Diesen Gast aus der Konkurrenz entfernen? Seine Spiele werden gelöscht.")) return;
+    if(!window.confirm(T("Diesen Gast aus der Konkurrenz entfernen? Seine Spiele werden gelöscht."))) return;
     updKonk({
       gaeste: gaeste.filter(g=>g.id!==id),
       teilnehmer: teilnehmer.filter(x=>x!==id),
@@ -4238,7 +4330,7 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
   }
   function letzteRundeVerwerfen(){
     if(!isAdmin || gespielteRunden<1) return;
-    if(!window.confirm(`Runde ${gespielteRunden} mit allen Ergebnissen verwerfen?`)) return;
+    if(!window.confirm(T`Runde ${gespielteRunden} mit allen Ergebnissen verwerfen?`)) return;
     updKonk({ swSpiele: spiele.filter(s=> Number(s.runde)!==gespielteRunden) });
   }
   // Alle Paarungen der laufenden Runde entschieden?
@@ -4296,7 +4388,7 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
         Hinweis: Beim VR-Cup sind 9 bis 16 Teilnehmer vorgesehen – aktuell sind es {anzahl}.
       </div>}
       {ueberVertreten.length>0 && <div style={{fontSize:11,color:"#f59e0b",marginTop:6}}>
-        Hinweis: {ueberVertreten.map(([v,n])=>`${v} stellt ${n} von ${anzahl}`).join(", ")} –
+        Hinweis: {ueberVertreten.map(([v,n])=>T`${v} stellt ${n} von ${anzahl}`).join(", ")} –
         beim VR-Cup ist ein Verein auf weniger als die Hälfte der Teilnehmer beschränkt.
       </div>}
     </div>
@@ -4498,9 +4590,9 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
   konkurrenzen.forEach((k,ki)=>{
     const hatKO = Array.isArray(k.koSlots) && k.koSlots.some(Boolean);
     const hatGruppen = Array.isArray(k.gruppen) && k.gruppen.length>0;
-    if(hatKO)      folien.push({typ:"tableau",    ki, label:`${k.name} · Tableau`});
-    if(hatGruppen) folien.push({typ:"gruppen",    ki, label:`${k.name} · Tabelle`});
-    if(k.abgeschlossen) folien.push({typ:"platz",  ki, label:`${k.name} · Platzierungen`});
+    if(hatKO)      folien.push({typ:"tableau",    ki, label:T`${k.name} · Tableau`});
+    if(hatGruppen) folien.push({typ:"gruppen",    ki, label:T`${k.name} · Tabelle`});
+    if(k.abgeschlossen) folien.push({typ:"platz",  ki, label:T`${k.name} · Platzierungen`});
     if(!hatKO && !hatGruppen && !k.abgeschlossen) folien.push({typ:"gruppen", ki, label:`${k.name}`});
   });
   folien.push({typ:"laufende", ki:-1, label:"Alle laufenden Spiele"});
@@ -4677,7 +4769,7 @@ function BeamerModus({ turnier, players, qttrVon, koHelpers, onClose }){
       <div style={{display:"flex",flexDirection:"column",gap:8,alignItems:"flex-end",flexShrink:0}}>
         <button onClick={()=>setCtrlOffen(o=>!o)} style={beamerBtn("#374151")}>{ctrlOffen?"Steuerung ausblenden":"Steuerung einblenden"}</button>
         <button onClick={()=>setRotieren(r=>!r)} style={beamerBtn(rotieren?"#10b981":"#374151",rotieren)}>
-          {rotieren?`⏸ Auto-Durchlauf (${intervall}s)`:"▶ Auto-Durchlauf"}
+          {rotieren?T`⏸ Auto-Durchlauf (${intervall}s)`:"▶ Auto-Durchlauf"}
         </button>
       </div>
     </div>
@@ -5138,13 +5230,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   // die Erstplatzierten oben verteilt, dann die Zweitplatzierten „über Kreuz“.
   function koPhaseStarten(){
     if(!alleGruppenspieleFertig()){
-      alert("Die KO-Phase kann erst gestartet werden, wenn alle Gruppenspiele gespielt und gespeichert sind.");
+      alert(T("Die KO-Phase kann erst gestartet werden, wenn alle Gruppenspiele gespielt und gespeichert sind."));
       return;
     }
     // Schutz gegen doppeltes Starten (z.B. zwei Admins gleichzeitig): existiert bereits
     // ein Tableau, wird es NICHT neu gesetzt, sondern der vorhandene Stand behalten.
     if(konk?.koGestartet && Array.isArray(konk?.koSlots) && konk.koSlots.some(Boolean)){
-      alert("Die KO-Phase wurde bereits gestartet. Das bestehende Tableau bleibt erhalten.");
+      alert(T("Die KO-Phase wurde bereits gestartet. Das bestehende Tableau bleibt erhalten."));
       return;
     }
     const proGruppe=ermittleAufsteiger();
@@ -5159,13 +5251,13 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(proGruppe[gi][pl]) seedReihe.push(proGruppe[gi][pl]);
       }
     }
-    if(seedReihe.length<2){ alert("Zu wenige Aufsteiger für ein KO-Tableau."); return; }
+    if(seedReihe.length<2){ alert(T("Zu wenige Aufsteiger für ein KO-Tableau.")); return; }
     const koSlots=ko_erstRunde(seedReihe);   // Freilose an die Bestgesetzten
     updKonk({ koSlots, koSpiele:{}, koGestartet:true });
   }
   // KO-Phase zurücksetzen (zurück zur Gruppenansicht/-korrektur).
   function koPhaseZuruecksetzen(){
-    if(!window.confirm("KO-Phase verwerfen und zur Gruppenphase zurück? Die im KO eingetragenen Ergebnisse gehen verloren.")) return;
+    if(!window.confirm(T("KO-Phase verwerfen und zur Gruppenphase zurück? Die im KO eingetragenen Ergebnisse gehen verloren."))) return;
     updKonk({ koSlots:[], koSpiele:{}, koGestartet:false });
   }
 
@@ -5209,10 +5301,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
   async function konkurrenzAbschliessen(){
     if(!isAdmin || !konk) return;
     if(!konkAbschliessbar(konk)){
-      alert("Die Konkurrenz kann erst abgeschlossen werden, wenn alle Spiele gespielt und gespeichert sind.");
+      alert(T("Die Konkurrenz kann erst abgeschlossen werden, wenn alle Spiele gespielt und gespeichert sind."));
       return;
     }
-    if(!window.confirm(`Konkurrenz „${konk.name}" abschließen?\n\nDanach kann nur noch der Admin Ergebnisse ändern. Die Platzierungen werden automatisch in die Turniererfolge der Teilnehmer übertragen.`)) return;
+    if(!window.confirm(T`Konkurrenz „${konk.name}" abschließen?\n\nDanach kann nur noch der Admin Ergebnisse ändern. Die Platzierungen werden automatisch in die Turniererfolge der Teilnehmer übertragen.`)) return;
 
     // 1) Konkurrenz sperren
     updKonk({ abgeschlossen:true, abgeschlossenAm:new Date().toISOString() });
@@ -5249,9 +5341,9 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         updates.push(updateDoc(doc(db,"players",p.id),{ tournaments:neu }).catch(()=>{}));
       }
       await Promise.all(updates);
-      alert(`Konkurrenz „${konk.name}" abgeschlossen. ${updates.length} Turniererfolg(e) wurden in die Spielerprofile übertragen.`);
+      alert(T`Konkurrenz „${konk.name}" abgeschlossen. ${updates.length} Turniererfolg(e) wurden in die Spielerprofile übertragen.`);
     }catch(e){
-      alert("Die Konkurrenz wurde abgeschlossen, aber beim Übertrag der Erfolge gab es ein Problem: "+(e?.message||e));
+      alert(T("Die Konkurrenz wurde abgeschlossen, aber beim Übertrag der Erfolge gab es ein Problem: ")+(e?.message||e));
     }
   }
   // ─── Turnierbericht einer abgeschlossenen Konkurrenz (ansprechende HTML-Seite) ──
@@ -5284,7 +5376,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     const art = k.art || "—";
     const hatVorg = k.vorgabe==="ja" && (k.vorgabeArt||"QTTR")==="QTTR";
     const vorgabeText = hatVorg
-      ? `QTTR-Vorgabe aktiv · je ${k.diffQTTR||"?"} QTTR-Punkte 1 Vorgabepunkt${k.maxVorgabe?` · max. ${k.maxVorgabe}`:""}`
+      ? T`QTTR-Vorgabe aktiv · je ${k.diffQTTR||"?"} QTTR-Punkte 1 Vorgabepunkt${k.maxVorgabe?T` · max. ${k.maxVorgabe}`:""}`
       : "keine Vorgabe";
 
     // Platzierungen (alle Teilnehmer)
@@ -5481,7 +5573,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
 </body></html>`;
 
     const w=window.open("","_blank");
-    if(!w){ alert("Bitte Popups für diese Seite erlauben, um den Bericht anzuzeigen."); return; }
+    if(!w){ alert(T("Bitte Popups für diese Seite erlauben, um den Bericht anzuzeigen.")); return; }
     w.document.open(); w.document.write(html); w.document.close();
   }
 
@@ -5522,7 +5614,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       }
     }
     einheiten.sort((a,b)=>a.platz-b.platz);
-    if(einheiten.length===0){ alert("Keine Teilnehmer mit Platzierung gefunden."); return; }
+    if(einheiten.length===0){ alert(T("Keine Teilnehmer mit Platzierung gefunden.")); return; }
 
     // Vorlage + Wappen + aktive Faksimile-Unterschriften aus clubConfig laden.
     let urkundeBg="", wappen="", faksVerein="", faksTL="";
@@ -5730,14 +5822,14 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
     }catch(err){
       // Fallback: HTML-Fenster (mit Browser-Druck) öffnen, falls jsPDF nicht lädt.
       const w=window.open("","_blank");
-      if(!w){ alert("Bitte Popups erlauben oder erneut versuchen.\n"+(err&&err.message||"")); return; }
+      if(!w){ alert(T("Bitte Popups erlauben oder erneut versuchen.\n")+(err&&err.message||"")); return; }
       w.document.open(); w.document.write(html); w.document.close();
     }
   }
 
   function konkurrenzWiederOeffnen(){
     if(!isAdmin || !konk) return;
-    if(!window.confirm(`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
+    if(!window.confirm(T`Abschluss der Konkurrenz „${konk.name}" aufheben? Ergebnisse können dann wieder bearbeitet werden.`)) return;
     updKonk({ abgeschlossen:false });
   }
   // Zuteilung: primär „antippen & Ziel wählen“ (funktioniert auf Touch/Handy),
@@ -6412,7 +6504,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           <div style={{fontWeight:700,color:istStation?"#0ea5e9":"var(--text2)"}}>🖨️ Schiedsrichterzettel · {(t.zettelDruck||"manuell")==="auto"?"automatisch bei Tischzuweisung":"manueller Druck"}</div>
           <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>
             {istStation ? "Dieses Gerät ist die Druckstation."
-              : stationAktiv ? `Druckstation aktiv (${druck.station.geraet||"Gerät"}) – Zettel werden dort gedruckt.`
+              : stationAktiv ? T`Druckstation aktiv (${druck.station.geraet||"Gerät"}) – Zettel werden dort gedruckt.`
               : "Keine Druckstation aktiv – manueller Druck öffnet hier den Druckdialog."}
             {" "}Konkurrenzen: {zettelKonks.map(k=>k.name).join(", ")}
           </div>
@@ -6488,7 +6580,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
           {badge(`#${x.nr}`,"var(--text3)")}
           {x.mehrKonk && badge(x.konkName,"#8b5cf6")}
           <span>{teil(x.a,sumA,"a")} <span style={{color:"var(--text4)"}}>vs</span> {teil(x.b,sumB,"b")}</span>
-          {x.mehrGr && x.key.startsWith("g_") && badge(`Gr. ${(x.gi??0)+1}`)}
+          {x.mehrGr && x.key.startsWith("g_") && badge(T`Gr. ${(x.gi??0)+1}`)}
         </span>;
       };
       const kopf=(offen,setOffen,titel,farbe)=>(
@@ -6609,7 +6701,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         </div>
 
         {wartendAlle.length>0 && <div style={{background:"var(--bg2)",borderRadius:12,padding:12,border:"1px solid var(--border)"}}>
-          {kopf(naechstesOffen,setNaechstesOffen,`Als Nächstes (${wartendAlle.length})`)}
+          {kopf(naechstesOffen,setNaechstesOffen,T`Als Nächstes (${wartendAlle.length})`)}
           {naechstesOffen && <div style={{marginTop:8}}>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {wartend.map(x=>(
@@ -6657,7 +6749,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       }
       return <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,background:"var(--bg2)",border:"1px solid var(--border)"}}>
         <span style={{fontSize:12,color:"var(--text3)",flex:1}}>
-          {spielbar ? `„${konk.name}“ ist noch nicht gestartet.` : `„${konk.name}“ hat noch keine Spiele – erst Gruppen/Tableau anlegen.`}
+          {spielbar ? T`„${konk.name}“ ist noch nicht gestartet.` : T`„${konk.name}“ hat noch keine Spiele – erst Gruppen/Tableau anlegen.`}
         </span>
         <button onClick={()=>updKonk({gestartet:true})} disabled={!spielbar}
           style={{flexShrink:0,padding:"7px 14px",background:spielbar?"#10b981":"var(--bg3)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:spielbar?"pointer":"default"}}>
@@ -6695,7 +6787,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
               padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",
               border:drin?"1px solid #10b981":"1px solid var(--border2)",
               background:drin?"#10b98122":"var(--bg2)",color:drin?"#10b981":"var(--text2)",
-            }}>{p.firstName} {p.lastName}{q!=null?` (${q})`:""}{alter!=null?` (${alter} Jahre)`:""}</span>;
+            }}>{p.firstName} {p.lastName}{q!=null?` (${q})`:""}{alter!=null?T` (${alter} Jahre)`:""}</span>;
           })}
         </div>
       </details>}
@@ -6716,7 +6808,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         if(sortiert.length===0) return null;
         return <details style={{marginBottom:14}}>
           <summary style={{cursor:"pointer",fontSize:13,fontWeight:700,color:"#f59e0b"}}>
-            ⏸ Spieler pausieren{pausierteSp.length>0?` (${pausierteSp.length} pausiert)`:""}
+            ⏸ Spieler pausieren{pausierteSp.length>0?T` (${pausierteSp.length} pausiert)`:""}
           </summary>
           <div style={{fontSize:10,color:"var(--text4)",margin:"6px 0"}}>
             Ein pausierter Spieler setzt automatisch alle seine offenen Spiele aus. Bereits gespeicherte Ergebnisse bleiben erhalten.
@@ -7066,7 +7158,7 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
   function teamAnlegen(){
     if(!darfAlle || !teamS1 || !teamS2 || teamS1===teamS2) return;
     if(mixed && !gemischtesPaar(teamS1,teamS2)){
-      alert("Mixed: Ein Team muss aus einer Frau und einem Mann bestehen. Bitte beim Spieler/Erwachsenen das Geschlecht prüfen.");
+      alert(T("Mixed: Ein Team muss aus einer Frau und einem Mann bestehen. Bitte beim Spieler/Erwachsenen das Geschlecht prüfen."));
       return;
     }
     const neu=[...doppelTeams, { id:`d_${Date.now()}_${Math.floor(Math.random()*1000)}`, s1:teamS1, s2:teamS2 }];
@@ -7097,13 +7189,13 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
       const frauen =ids.filter(istFrau ).sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
       const n=Math.min(maenner.length, frauen.length);
       for(let i=0;i<n;i++) paare.push([maenner[i], frauen[i]]);
-      if(n===0){ alert("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein."); return; }
+      if(n===0){ alert(T("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein.")); return; }
     } else {
       const sortiert=ids.sort((x,y)=>(qttrNumVon(y)??-1)-(qttrNumVon(x)??-1));
       let lo=0, hi=sortiert.length-1;
       while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
     }
-    if(!window.confirm(`Doppel nach QTTR auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    if(!window.confirm(T`Doppel nach QTTR auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
   function auslosungZufall(){
@@ -7118,12 +7210,12 @@ function DoppelTeamVerwaltung({ konk, players, qttrVon, darfAlle, updKonk, koSlo
       for(let i=frauen.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [frauen[i],frauen[j]]=[frauen[j],frauen[i]]; }
       const n=Math.min(maenner.length, frauen.length);
       for(let i=0;i<n;i++) paare.push([maenner[i], frauen[i]]);
-      if(n===0){ alert("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein."); return; }
+      if(n===0){ alert(T("Mixed: Es müssen sowohl Frauen als auch Männer als Teilnehmer vorhanden sein.")); return; }
     } else {
       for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
       for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
     }
-    if(!window.confirm(`Doppel zufällig auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    if(!window.confirm(T`Doppel zufällig auslosen? Bestehende Paarungen${koSlots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
 
@@ -7712,7 +7804,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
   function fehlendeEinfuegen(){
     if(fehlende.length===0) return;
     if(fehlende.length>freieSlots){
-      if(!window.confirm(`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
+      if(!window.confirm(T`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
       updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
       return;
     }
@@ -7725,7 +7817,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     updKonk({ koSlots:neu });
   }
   function tableauNeuSetzen(){
-    if(!window.confirm("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren.")) return;
+    if(!window.confirm(T("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren."))) return;
     updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
   }
 
@@ -7819,7 +7911,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     const paare=[]; let lo=0, hi=sortiert.length-1;
     while(lo<hi){ paare.push([sortiert[lo], sortiert[hi]]); lo++; hi--; }
     // Bei ungerader Anzahl bleibt der mittlere Spieler ohne Partner (übrig).
-    if(!window.confirm(`Doppel nach QTTR auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    if(!window.confirm(T`Doppel nach QTTR auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
   // Button B „Zufällige Auslosung": Teilnehmer mischen und paarweise koppeln.
@@ -7829,7 +7921,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     if(ids.length<2) return;
     for(let i=ids.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [ids[i],ids[j]]=[ids[j],ids[i]]; }
     const paare=[]; for(let i=0;i+1<ids.length;i+=2) paare.push([ids[i], ids[i+1]]);
-    if(!window.confirm(`Doppel zufällig auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
+    if(!window.confirm(T`Doppel zufällig auslosen? Bestehende Paarungen${slots?" und das aktuelle Tableau":""} werden ersetzt.`)) return;
     teamsSetzen(paare);
   }
 
@@ -7926,7 +8018,7 @@ function KoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer, updKo
     </div>}
     {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
-      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{istDoppel?" (nach QTTR-Summe des Teams)":""}{konk.maxVorgabe?` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{istDoppel?" (nach QTTR-Summe des Teams)":""}{konk.maxVorgabe?T` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
     </div>}
 
     {/* Tableau: Runden nebeneinander, horizontal scrollbar. Jede spätere Runde ist
@@ -8121,13 +8213,13 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
 
   function tableauAnlegen(){ updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} }); }
   function tableauNeuSetzen(){
-    if(!window.confirm("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren.")) return;
+    if(!window.confirm(T("Tableau neu nach QTTR setzen? Bereits eingetragene Ergebnisse gehen verloren."))) return;
     updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
   }
   function fehlendeEinfuegen(){
     if(fehlende.length===0) return;
     if(fehlende.length>freieSlots){
-      if(!window.confirm(`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
+      if(!window.confirm(T`Es gibt ${fehlende.length} neue Teilnehmer, aber nur ${freieSlots} freie Plätze. Das Tableau muss dazu neu (größer) gesetzt werden — bereits eingetragene Ergebnisse gehen verloren. Fortfahren?`)) return;
       updKonk({ koSlots:ko_erstRunde(teilnehmerSortiert), koSpiele:{} });
       return;
     }
@@ -8380,7 +8472,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
     </div>}
     {hatVorgabe && <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
       <span style={{background:"#f59e0b22",borderRadius:4,padding:"1px 6px"}}>Vorgabeturnier</span>
-      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{konk.maxVorgabe?` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
+      <span style={{color:"var(--text4)",fontWeight:600}}>+N = Punkte-Vorgabe pro Satz für den Schwächeren{konk.maxVorgabe?T` · max. ${konk.maxVorgabe} pro Satz`:""}</span>
     </div>}
 
     <div style={{display:"flex",gap:16,marginBottom:8}}>
@@ -8577,7 +8669,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
             <th style={{position:"sticky",top:28,zIndex:2,background:"var(--bg3)",padding:"3px 3px",borderBottom:"1px solid var(--border)"}}>
               <div style={{position:"relative"}}>
                 <button onClick={()=>setGruppenOffen(o=>!o)} style={{width:"100%",boxSizing:"border-box",padding:"3px 4px",fontSize:10,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title="Gruppen filtern">
-                  {gruppenSel.length===0?"alle":gruppenSel.length<=2?gruppenSel.map(gName).join(", "):`${gruppenSel.length} gewählt`} ▾
+                  {gruppenSel.length===0?"alle":gruppenSel.length<=2?gruppenSel.map(gName).join(", "):T`${gruppenSel.length} gewählt`} ▾
                 </button>
                 {gruppenOffen && <div style={{position:"absolute",top:"100%",left:0,zIndex:20,marginTop:2,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,padding:"5px",minWidth:120,boxShadow:"0 4px 12px rgba(0,0,0,0.25)"}}>
                   {alleGruppen.map(g=>(
@@ -9424,7 +9516,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     try {
       await setDoc(doc(db,"attendance",selDate),{...sessionData,date:selDate,updatedAt:Date.now()});
       showToast("Gespeichert","💾");
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
     setLoading(false);
   }
 
@@ -9484,7 +9576,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
         const extra=(sonderGruppen||[]).filter(g=>!reg.includes(g));
         return <div style={{fontSize:10,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
           An diesem Tag: {reg.length?reg.map(gName).join(", "):"keine Gruppe regulär"}
-          {extra.length?` · Sondertraining: ${extra.map(gName).join(", ")}`:""}
+          {extra.length?T` · Sondertraining: ${extra.map(gName).join(", ")}`:""}
           <span style={{color:"var(--text4)"}}> (Einstellung: Verwaltung → Training → Ferien, Feiertage & Sondertrainings)</span>
         </div>;
       })()}
@@ -9885,7 +9977,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
             const mainSnap=await getDoc(doc(db,"config",selId)).catch(()=>null);
             if(mainSnap?.exists()) pdfUrl=mainSnap.data().pdfUrl;
           }
-          if(!pdfUrl){alert("Kein PDF gespeichert. Bitte Aufstellung erneut hochladen.");return;}
+          if(!pdfUrl){alert(T("Kein PDF gespeichert. Bitte Aufstellung erneut hochladen."));return;}
           const b64=pdfUrl.split(",")[1];
           const bin=atob(b64);const bytes=new Uint8Array(bin.length);
           for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
@@ -10014,7 +10106,7 @@ function FaksimileEditor({showToast}) {
 
   async function speichere(feld, wert){
     try{ await setDoc(doc(db,"config","clubConfig"),{[feld]:wert},{merge:true}); }
-    catch(e){ window.alert("Fehler beim Speichern:\n"+(e.message||e)); }
+    catch(e){ window.alert(T("Fehler beim Speichern:\n")+(e.message||e)); }
   }
 
   async function upload(rolle, idx, file){
@@ -10029,7 +10121,7 @@ function FaksimileEditor({showToast}) {
         const neu=[...tl]; neu[idx]=dataUrl; setTl(neu); await speichere("faksimileTL",neu);
       }
       showToast("Faksimile gespeichert ✍️","✍️");
-    }catch(err){ window.alert(err&&err.message?err.message:"Bild konnte nicht verarbeitet werden."); }
+    }catch(err){ window.alert(err&&err.message?err.message:T("Bild konnte nicht verarbeitet werden.")); }
     setBusy("");
   }
 
@@ -10138,7 +10230,7 @@ function UebungsUrkundenEditor({showToast}) {
       await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true});
       URK_CACHE.muster=null; URK_CACHE.jpeg={};   // V496: neues Muster sofort verwenden
       showToast("Muster gespeichert 🏅","🏅");
-    }catch(err){ window.alert(err&&err.message?err.message:"Bild konnte nicht verarbeitet werden."); }
+    }catch(err){ window.alert(err&&err.message?err.message:T("Bild konnte nicht verarbeitet werden.")); }
     setBusy("");
   }
 
@@ -10162,26 +10254,26 @@ function UebungsUrkundenEditor({showToast}) {
       await setDoc(doc(db,"config","clubConfig"),{uebungsUrkundenLayout:layout},{merge:true});
       URK_CACHE.muster=null; URK_CACHE.jpeg={}; URK_CACHE.cfg=null; setLayoutGeaendert(false);
       showToast("Urkunden-Layout gespeichert","✅");
-    }catch(e){ window.alert("Fehler:\n"+(e.message||e)); }
+    }catch(e){ window.alert(T("Fehler:\n")+(e.message||e)); }
     setBusy("");
   }
   async function probeUrkunde(){
     const key=vorschauKey || Object.keys(muster).find(k=>muster[k]);
-    if(!key){ window.alert("Bitte zuerst ein Muster hochladen."); return; }
+    if(!key){ window.alert(T("Bitte zuerst ein Muster hochladen.")); return; }
     setProbe({laeuft:true, titel:"Probe-Urkunde"});
     try{
       await urkundenMusterLaden();
       const blob=await uebungsUrkundePdfErzeugen({ musterKey:key, vor:"Maximilian", nach:"Mustermann",
         datumIso:new Date().toLocaleDateString("sv"), layoutUeberschreiben:layout });
       setProbe({ blob, url:URL.createObjectURL(blob), dateiname:"Probe-Urkunde.pdf", titel:"Probe-Urkunde" });
-    }catch(e){ setProbe(null); window.alert("Probe-Urkunde fehlgeschlagen:\n"+(e&&e.message||e)); }
+    }catch(e){ setProbe(null); window.alert(T("Probe-Urkunde fehlgeschlagen:\n")+(e&&e.message||e)); }
   }
 
   async function entferne(key){
     const neu={...muster}; delete neu[key];
     setMuster(neu);
     try{ await setDoc(doc(db,"config","clubConfig"),{uebungsUrkunden:neu},{merge:true}); URK_CACHE.muster=null; URK_CACHE.jpeg={}; showToast("Muster entfernt","✅"); }
-    catch(e){ window.alert("Fehler:\n"+(e.message||e)); }
+    catch(e){ window.alert(T("Fehler:\n")+(e.message||e)); }
   }
 
   const gruppen=["Anfänger","Fortgeschrittene"];
@@ -10351,31 +10443,31 @@ function SaisonsEditor({showToast, onGespeichert}){
     const x=liste.find(y=>y.key===key); if(!x) return;
     const fehlt=[];
     try{ const sp=await getDoc(doc(db,"config",spielplanKeyVon(x)));
-      if(!(sp.exists() && (sp.data().spiele||[]).length)) fehlt.push(`Vereinsspielplan (${spielplanKeyVon(x)})`); }catch(e){}
+      if(!(sp.exists() && (sp.data().spiele||[]).length)) fehlt.push(T`Vereinsspielplan (${spielplanKeyVon(x)})`); }catch(e){}
     try{ const au=await getDoc(doc(db,"config",aufstellungKeyVon(x)));
-      if(!(au.exists() && (au.data().spieler||[]).length)) fehlt.push(`Aufstellung ${x.halbserie==="R"?"Rückrunde":"Vorrunde"} (${aufstellungKeyVon(x)})`); }catch(e){}
-    if(fehlt.length && !window.confirm(`Für ${key} ist noch nicht hochgeladen:\n• ${fehlt.join("\n• ")}\n\nSpielplan, Einsätze, Spielkacheln und Benachrichtigungen wären dann leer. Trotzdem als aktuell setzen?`)) return;
+      if(!(au.exists() && (au.data().spieler||[]).length)) fehlt.push(T`Aufstellung ${x.halbserie==="R"?"Rückrunde":"Vorrunde"} (${aufstellungKeyVon(x)})`); }catch(e){}
+    if(fehlt.length && !window.confirm(T`Für ${key} ist noch nicht hochgeladen:\n• ${fehlt.join("\n• ")}\n\nSpielplan, Einsätze, Spielkacheln und Benachrichtigungen wären dann leer. Trotzdem als aktuell setzen?`)) return;
     aendere(l=>l.map(y=>({...y,current:y.key===key})));
   };
   const teamDazu=(key)=>aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:[...x.teams,{id:"",name:"",liga:"",color:"#3b82f6"}]}));
-  const teamWeg=(key,i)=>{ if(!window.confirm("Diese Mannschaft aus der Saison entfernen?")) return;
+  const teamWeg=(key,i)=>{ if(!window.confirm(T("Diese Mannschaft aus der Saison entfernen?"))) return;
     aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.filter((_,j)=>j!==i)})); };
   const teamSchieben=(key,i,d)=>aendere(l=>l.map(x=>{ if(x.key!==key) return x;
     const t=[...x.teams]; const j=i+d; if(j<0||j>=t.length) return x; [t[i],t[j]]=[t[j],t[i]]; return {...x,teams:t}; }));
   const linkUebernehmen=(key,i)=>{
-    const url=window.prompt("Link der Mannschaft bei myTischtennis einfügen (Seite Spielplan, Tabelle oder Bilanzen):");
+    const url=window.prompt(T("Link der Mannschaft bei myTischtennis einfügen (Seite Spielplan, Tabelle oder Bilanzen):"));
     if(!url) return;
     const t=teamAusMyttLink(url);
-    if(!t){ window.alert("Im Link wurden keine Liga-/Gruppen-Angaben gefunden."); return; }
+    if(!t){ window.alert(T("Im Link wurden keine Liga-/Gruppen-Angaben gefunden.")); return; }
     aendere(l=>l.map(x=>x.key!==key?x:{...x,teams:x.teams.map((tm,j)=>j!==i?tm:{...tm,...Object.fromEntries(Object.entries(t).filter(([,v])=>v))})}));
   };
   const neueSaison=()=>{
     const akt=liste.find(x=>x.current)||liste[0];
     const m=/^(\d{4})\/(\d{2})$/.exec(akt.key);
     const vorschlag = m ? `${+m[1]+1}/${String(+m[2]+1).padStart(2,"0")}` : "";
-    const key=(window.prompt("Neue Saison (Schreibweise wie „2027/28“):", vorschlag)||"").trim();
+    const key=(window.prompt(T("Neue Saison (Schreibweise wie „2027/28“):"), vorschlag)||"").trim();
     if(!key) return;
-    if(liste.some(x=>x.key===key)){ window.alert("Diese Saison gibt es bereits."); return; }
+    if(liste.some(x=>x.key===key)){ window.alert(T("Diese Saison gibt es bereits.")); return; }
     const mm=/^(\d{4})\/(\d{2})$/.exec(key);
     const code = mm ? `${mm[1].slice(2)}--${mm[2]}` : "";
     // Mannschaften übernehmen (gleiche IDs → hochgeladene Dateien/Fotos bleiben zuordenbar),
@@ -10386,18 +10478,18 @@ function SaisonsEditor({showToast, onGespeichert}){
   };
   const saisonWeg=(key)=>{
     const x=liste.find(y=>y.key===key);
-    if(x.current){ window.alert("Die aktuelle Saison kann nicht gelöscht werden. Zuerst eine andere als aktuell setzen."); return; }
-    if(!window.confirm(`Saison ${key} mit ${x.teams.length} Mannschaft(en) entfernen?`)) return;
+    if(x.current){ window.alert(T("Die aktuelle Saison kann nicht gelöscht werden. Zuerst eine andere als aktuell setzen.")); return; }
+    if(!window.confirm(T`Saison ${key} mit ${x.teams.length} Mannschaft(en) entfernen?`)) return;
     aendere(l=>l.filter(y=>y.key!==key));
   };
   async function speichern(){
     const sauber=saisonsBereinigt(liste.map(x=>({...x,teams:x.teams.map(t=>{
       const o={}; for(const [k,v] of Object.entries(t)){ if(v!==undefined && v!==null && String(v).trim()!=="") o[k]=typeof v==="string"?v.trim():v; }
       return o; })})));
-    if(!sauber){ window.alert("Mindestens eine Saison mit Namen ist nötig."); return; }
+    if(!sauber){ window.alert(T("Mindestens eine Saison mit Namen ist nötig.")); return; }
     for(const x of sauber){
       const ids=x.teams.map(t=>t.id); const doppelt=ids.find((id,i)=>ids.indexOf(id)!==i);
-      if(doppelt){ window.alert(`Saison ${x.key}: Die Mannschafts-ID „${doppelt}“ kommt doppelt vor.`); return; }
+      if(doppelt){ window.alert(T`Saison ${x.key}: Die Mannschafts-ID „${doppelt}“ kommt doppelt vor.`); return; }
     }
     setBusy(true);
     try{
@@ -10454,7 +10546,7 @@ function SaisonsEditor({showToast, onGespeichert}){
           </div>
           {x.teams.map((t,i)=><div key={i} style={{border:"1px solid var(--border2)",borderLeft:`4px solid ${t.color||"#6b7280"}`,borderRadius:9,padding:9,marginBottom:8,background:"var(--bg2)"}}>
             <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-              <span style={{fontSize:12,fontWeight:800,color:"var(--text)",flex:1}}>{t.name||"Neue Mannschaft"} <span style={{fontSize:10,color:"var(--text4)",fontWeight:400}}>{t.id?`ID ${t.id}`:"(ID wird aus dem Namen gebildet)"}</span></span>
+              <span style={{fontSize:12,fontWeight:800,color:"var(--text)",flex:1}}>{t.name||"Neue Mannschaft"} <span style={{fontSize:10,color:"var(--text4)",fontWeight:400}}>{t.id?T`ID ${t.id}`:"(ID wird aus dem Namen gebildet)"}</span></span>
               <button onClick={()=>linkUebernehmen(x.key,i)} style={knopf} title="Angaben aus myTischtennis-Link übernehmen">🔗 Link</button>
               <button onClick={()=>teamSchieben(x.key,i,-1)} style={knopf} title="nach oben">▲</button>
               <button onClick={()=>teamSchieben(x.key,i,1)} style={knopf} title="nach unten">▼</button>
@@ -10545,7 +10637,7 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
       if(DATEN_MODUS==="verein"){ try{ await zugangAbgleichen(AKTIVER_VEREIN_ID, players, {admins, superAdmins}); }catch(e){} }   // V508
       geaendertRef.current=false; setGeaendert(false); setNieGespeichert(false);
       showToast&&showToast("Admins & Rechte gespeichert","✅");
-    }catch(e){ showToast&&showToast("Konnte nicht speichern: "+(e&&e.message||e),"❌"); }
+    }catch(e){ showToast&&showToast(T("Konnte nicht speichern: ")+(e&&e.message||e),"❌"); }
     setBusy(false);
   }
   if(!liste) return <div style={{fontSize:12,color:"var(--text3)"}}>⏳ Lade …</div>;
@@ -10585,7 +10677,7 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
             onChange={e=>aendern(l=>l.map(y=>y.email===x.email?{...y,superAdmin:e.target.checked}:y))}/> Verwaltung
         </label>
         {isSuperAdmin && <button onClick={()=>{
-            if(mailNorm(user&&user.email)===x.email && !window.confirm("Du entfernst deine eigenen Rechte. Fortfahren?")) return;
+            if(mailNorm(user&&user.email)===x.email && !window.confirm(T("Du entfernst deine eigenen Rechte. Fortfahren?"))) return;
             aendern(l=>l.filter(y=>y.email!==x.email));
           }} style={{padding:"4px 9px",background:"transparent",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:12,cursor:"pointer"}}>✕</button>}
       </div>)}
@@ -10631,7 +10723,7 @@ function fuerSicherung(v){
 async function erstelleSicherung(meldung){
   const sammlungen={}, zaehler={}, fehler={};
   for(const name of SICHERUNG_SAMMLUNGEN){
-    meldung && meldung(`Lese ${name} …`);
+    meldung && meldung(T`Lese ${name} …`);
     try{
       const snap=await getDocs(collection(db,name));
       const m={}; snap.forEach(d=>{ m[d.id]=fuerSicherung(d.data()); });
@@ -10683,7 +10775,7 @@ function SicherungPanel({showToast, user}){
           appVersion:APP_VERSION, zaehler:daten.zaehler, fehlerAnzahl:Object.keys(daten.fehler).length, dateiname },{merge:true});
       }catch(e){}
       setMeldung("");
-    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    }catch(e){ setMeldung(T("Fehler: ")+(e&&e.message||e)); }
     setLaeuft(false);
   }
   async function teilen(){
@@ -10708,12 +10800,12 @@ function SicherungPanel({showToast, user}){
       am Computer oder iPad im WLAN ausführen – die Datei kann wegen der Fotos groß werden.
     </div>
     {letzte && letzte.letzte && <div style={{fontSize:11,color:"var(--text2)",marginBottom:10}}>
-      Letzte Sicherung: <b>{new Date(letzte.letzte).toLocaleString("de-DE")}</b>{letzte.von?` · ${letzte.von}`:""}{letzte.appVersion?` · V${letzte.appVersion}`:""}
+      Letzte Sicherung: <b>{new Date(letzte.letzte).toLocaleString(SPR_LOC)}</b>{letzte.von?` · ${letzte.von}`:""}{letzte.appVersion?` · V${letzte.appVersion}`:""}
     </div>}
     <button onClick={starten} disabled={laeuft} style={{...btn,width:"100%",background:laeuft?"#9ca3af":"#10b981",color:"#fff",cursor:laeuft?"wait":"pointer"}}>
       {laeuft?"⏳ Sicherung läuft …":"💾 Sicherung jetzt erstellen"}
     </button>
-    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")?"#ef4444":"var(--text3)",marginTop:8}}>{meldung}</div>}
+    {meldung && <div style={{fontSize:11,color:beginntMit(meldung,"Fehler")?"#ef4444":"var(--text3)",marginTop:8}}>{meldung}</div>}
     {ergebnis && <div style={{marginTop:12,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:12}}>
       <div style={{fontSize:13,fontWeight:800,color:"var(--text)",marginBottom:6}}>✅ Sicherung erstellt · {mb(ergebnis.groesse)}</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 12px",fontSize:11,color:"var(--text2)",marginBottom:8}}>
@@ -10860,14 +10952,14 @@ function VereineVerwaltungPanel({user}){
     if(!vid || vid.length<2){ setMeldung("Bitte eine Vereinskennung angeben."); return; }
     if(!form.kurzname.trim()){ setMeldung("Bitte den Vereinsnamen angeben."); return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mailNorm(form.adminMail))){ setMeldung("Bitte eine gültige E-Mail-Adresse für den ersten Admin angeben."); return; }
-    if((liste||[]).some(v=>v.id===vid)){ setMeldung(`Die Kennung „${vid}“ ist bereits vergeben.`); return; }
-    if(!window.confirm(`Verein „${form.kurzname}“ mit der Kennung „${vid}“ anlegen?\nErster Admin: ${mailNorm(form.adminMail)}`)) return;
+    if((liste||[]).some(v=>v.id===vid)){ setMeldung(T`Die Kennung „${vid}“ ist bereits vergeben.`); return; }
+    if(!window.confirm(T`Verein „${form.kurzname}“ mit der Kennung „${vid}“ anlegen?\nErster Admin: ${mailNorm(form.adminMail)}`)) return;
     setBusy(true); setMeldung("Lege Verein an …");
     try{
       const r=await vereinAnlegen({ vid, kurzname:form.kurzname.trim(), vollname:form.vollname.trim(), ort:form.ort.trim(), farbschema:form.farbschema, adminMail:form.adminMail, user });
-      setMeldung(`✅ Verein angelegt. Login-Konto des Admins: ${r.konto==="neu"?"neu angelegt – eine E-Mail zum Setzen des Passworts wurde verschickt":r.konto==="vorhanden"?"bestand bereits – Anmeldung mit dem bisherigen Passwort":r.konto}. Aufruf: ${vereinsAdresse(vid)?`https://${vereinsAdresse(vid)}/`:`${window.location.origin}/?verein=${vid}`}`);
+      setMeldung(T`✅ Verein angelegt. Login-Konto des Admins: ${r.konto==="neu"?"neu angelegt – eine E-Mail zum Setzen des Passworts wurde verschickt":r.konto==="vorhanden"?"bestand bereits – Anmeldung mit dem bisherigen Passwort":r.konto}. Aufruf: ${vereinsAdresse(vid)?`https://${vereinsAdresse(vid)}/`:`${window.location.origin}/?verein=${vid}`}`);
       setForm({vid:"",kurzname:"",vollname:"",ort:"",farbschema:"blau",adminMail:""}); laden();
-    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    }catch(e){ setMeldung(T("Fehler: ")+(e&&e.message||e)); }
     setBusy(false);
   }
   const inp={width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
@@ -10878,7 +10970,7 @@ function VereineVerwaltungPanel({user}){
       <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
         {liste.map(v=><div key={v.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8}}>
           <div style={{flex:1,minWidth:160}}><div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{v.name||v.id}</div>
-            <div style={{fontSize:10,color:"var(--text3)"}}>{v.id}{v.angelegt?` · angelegt ${new Date(v.angelegt).toLocaleDateString("de-DE")}`:""}</div></div>
+            <div style={{fontSize:10,color:"var(--text3)"}}>{v.id}{v.angelegt?T` · angelegt ${new Date(v.angelegt).toLocaleDateString(SPR_LOC)}`:""}</div></div>
           {v.id!==AKTIVER_VEREIN_ID
             ? <button onClick={()=>vereinWaehlen(v.id)} style={{padding:"5px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Öffnen</button>
             : <span style={{fontSize:10,fontWeight:800,color:"#10b981"}}>aktiv</span>}
@@ -10901,7 +10993,7 @@ function VereineVerwaltungPanel({user}){
     </div>
     <button onClick={anlegen} disabled={busy} style={{width:"100%",marginTop:10,padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
       {busy?"⏳ Lege an …":"Verein anlegen"}</button>
-    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")||meldung.startsWith("Bitte")||meldung.startsWith("Die Kennung")?"#ef4444":"var(--text2)",marginTop:8,lineHeight:1.5,wordBreak:"break-word"}}>{meldung}</div>}
+    {meldung && <div style={{fontSize:11,color:beginntMit(meldung,"Fehler")||beginntMit(meldung,"Bitte")||beginntMit(meldung,"Die Kennung")?"#ef4444":"var(--text2)",marginTop:8,lineHeight:1.5,wordBreak:"break-word"}}>{meldung}</div>}
   </div>;
 }
 // V519 (Etappe 4c): Basis-Domain und eigene Domains je Verein (system/datenbereich)
@@ -10917,7 +11009,7 @@ function DomainEinstellungen({liste}){
       await setDoc(globalDoc("system","datenbereich"),{ basisDomain:host(basis), domains },{merge:true});
       domainKonfigSetzen({basisDomain:host(basis),domains});
       setMsg("✅ Gespeichert. Die Adressen zusätzlich bei Netlify (Domains) eintragen.");
-    }catch(e){ setMsg("Fehler: "+(e&&e.message||e)); }
+    }catch(e){ setMsg(T("Fehler: ")+(e&&e.message||e)); }
     setBusy(false);
   }
   const inp={width:"100%",padding:"7px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
@@ -10935,7 +11027,7 @@ function DomainEinstellungen({liste}){
       <input value={eigen[v.id]||""} onChange={e=>setEigen(x=>({...x,[v.id]:e.target.value}))} placeholder={basis?`${v.id}.${host(basis)}`:"eigene Domain (optional)"} style={{...inp,flex:"1 1 200px",width:"auto"}}/>
     </div>)}
     <button onClick={speichern} disabled={busy} style={{marginTop:4,padding:"8px 12px",background:busy?"#9ca3af":"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer"}}>Adressen speichern</button>
-    {msg && <div style={{fontSize:11,color:msg.startsWith("Fehler")?"#ef4444":"var(--text2)",marginTop:6}}>{msg}</div>}
+    {msg && <div style={{fontSize:11,color:beginntMit(msg,"Fehler")?"#ef4444":"var(--text2)",marginTop:6}}>{msg}</div>}
   </div>;
 }
 // V518: kleiner Vereinswechsler für die Kopfleiste (nur bei mehreren Vereinen)
@@ -10951,7 +11043,7 @@ async function inVereinsbereichKopieren(vid, user, meldung){
   await setDoc(fsDoc(db,"vereine",vid),{ name:VEREIN.kurzname||"", vollname:VEREIN.vollname||"",
     kopie:{ stand:Date.now(), von:(user&&user.email)||"", appVersion:APP_VERSION } },{merge:true});
   for(const name of SICHERUNG_SAMMLUNGEN){
-    meldung(`Kopiere ${name} …`);
+    meldung(T`Kopiere ${name} …`);
     bericht[name]=await sammlungSpiegeln(fsCollection(db,name), ()=>fsCollection(db,"vereine",vid,name),
       (f,g)=>meldung(`Kopiere ${name} … ${f}/${g}`));
   }
@@ -10980,7 +11072,7 @@ async function inVereinsbereichKopieren(vid, user, meldung){
 async function ausVereinsbereichZurueckkopieren(vid, meldung){
   const bericht={};
   for(const name of SICHERUNG_SAMMLUNGEN){
-    meldung(`Kopiere ${name} zurück …`);
+    meldung(T`Kopiere ${name} zurück …`);
     bericht[name]=await sammlungSpiegeln(fsCollection(db,"vereine",vid,name), ()=>fsCollection(db,name));
   }
   const ids=[...new Set([...(bericht.observations?.ids||[]), ...(bericht.players?.ids||[])])];
@@ -10998,7 +11090,7 @@ async function alteAblageLoeschen(meldung){
   const bericht={};
   const obsIds=new Set();
   for(const name of SICHERUNG_SAMMLUNGEN){
-    meldung(`Lösche ${name} …`);
+    meldung(T`Lösche ${name} …`);
     const snap=await getDocsFromServer(fsCollection(db,name));
     if(name==="observations"||name==="players") snap.docs.forEach(d=>obsIds.add(d.id));
     if(name==="observations"){
@@ -11048,10 +11140,10 @@ function VereinsbereichPanel({user, players=[]}){
   },[]);
   async function kopieren(){
     if(laeuft) return;
-    if(!window.confirm("Alle Daten jetzt in den Vereinsbereich kopieren?\n\nDie bisherigen Daten bleiben unverändert und in Betrieb. Ein vorhandener Vereinsbereich wird exakt an den aktuellen Stand angeglichen.")) return;
+    if(!window.confirm(T("Alle Daten jetzt in den Vereinsbereich kopieren?\n\nDie bisherigen Daten bleiben unverändert und in Betrieb. Ein vorhandener Vereinsbereich wird exakt an den aktuellen Stand angeglichen."))) return;
     setLaeuft(true); setErgebnis(null);
     try{ setErgebnis(await inVereinsbereichKopieren(vid, user, setMeldung)); setMeldung(""); }
-    catch(e){ setMeldung("Fehler: "+(e&&e.message||e)+" – Sind die neuen Firestore-Regeln veröffentlicht?"); }
+    catch(e){ setMeldung(T("Fehler: ")+(e&&e.message||e)+T(" – Sind die neuen Firestore-Regeln veröffentlicht?")); }
     setLaeuft(false);
   }
   const [bereich,setBereich]=useState(null);
@@ -11067,8 +11159,8 @@ function VereinsbereichPanel({user, players=[]}){
   async function umschalten(){
     if(laeuft) return;
     const alter = sicherung&&sicherung.letzte ? (Date.now()-new Date(sicherung.letzte).getTime()) : Infinity;
-    if(alter > 3*3600*1000){ window.alert("Bitte zuerst eine aktuelle Sicherung erstellen (Abschnitt „💾 Datensicherung“, höchstens 3 Stunden alt)."); return; }
-    if(!window.confirm("Jetzt auf den Vereinsbereich umschalten?\n\n1. Die App geht für alle kurz in den Wartungsmodus.\n2. Die Kopie wird ein letztes Mal erneuert und geprüft.\n3. Nur wenn alles identisch ist, arbeiten App und Server-Funktionen ab sofort mit vereine/"+vid+".\n\nBei Abweichungen bleibt alles beim Alten.")) return;
+    if(alter > 3*3600*1000){ window.alert(T("Bitte zuerst eine aktuelle Sicherung erstellen (Abschnitt „💾 Datensicherung“, höchstens 3 Stunden alt).")); return; }
+    if(!window.confirm(T("Jetzt auf den Vereinsbereich umschalten?\n\n1. Die App geht für alle kurz in den Wartungsmodus.\n2. Die Kopie wird ein letztes Mal erneuert und geprüft.\n3. Nur wenn alles identisch ist, arbeiten App und Server-Funktionen ab sofort mit vereine/")+vid+T(".\n\nBei Abweichungen bleibt alles beim Alten."))) return;
     window.__ttcUmschaltungHier=true; setLaeuft(true); setErgebnis(null);
     const von=(user&&user.email)||"";
     try{
@@ -11086,14 +11178,14 @@ function VereinsbereichPanel({user, players=[]}){
       setMeldung("✅ Umgeschaltet. Die App wird neu geladen …");
       setTimeout(()=>window.location.reload(),1500);
     }catch(e){
-      try{ await flagSetzen({ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: "+(e&&e.message||e) }); }catch(e2){}
-      setMeldung("Fehler: "+(e&&e.message||e)+" – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage.");
+      try{ await flagSetzen({ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:T("Umschaltung abgebrochen: ")+(e&&e.message||e) }); }catch(e2){}
+      setMeldung(T("Fehler: ")+(e&&e.message||e)+T(" – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage."));
       window.__ttcUmschaltungHier=false; setLaeuft(false);
     }
   }
   async function zurueckschalten(){
     if(laeuft) return;
-    if(!window.confirm("Zurück auf die bisherige Ablage schalten?\n\nDie Daten aus dem Vereinsbereich (inkl. aller Änderungen seit der Umschaltung) werden zuvor in die bisherige Ablage zurückkopiert und geprüft.")) return;
+    if(!window.confirm(T("Zurück auf die bisherige Ablage schalten?\n\nDie Daten aus dem Vereinsbereich (inkl. aller Änderungen seit der Umschaltung) werden zuvor in die bisherige Ablage zurückkopiert und geprüft."))) return;
     window.__ttcUmschaltungHier=true; setLaeuft(true);
     const von=(user&&user.email)||"";
     try{
@@ -11109,7 +11201,7 @@ function VereinsbereichPanel({user, players=[]}){
       setMeldung("✅ Zurückgeschaltet. Die App wird neu geladen …");
       setTimeout(()=>window.location.reload(),1500);
     }catch(e){
-      setMeldung("Fehler: "+(e&&e.message||e)+" – bitte Stand oben prüfen.");
+      setMeldung(T("Fehler: ")+(e&&e.message||e)+T(" – bitte Stand oben prüfen."));
       window.__ttcUmschaltungHier=false; setLaeuft(false);
     }
   }
@@ -11117,18 +11209,18 @@ function VereinsbereichPanel({user, players=[]}){
   const [aufraeumBericht,setAufraeumBericht]=useState(null);
   async function alteDatenEntfernen(){
     if(laeuft) return;
-    if(!(bereich && bereich.modus==="verein")){ window.alert("Nur möglich, wenn der Vereinsbereich aktiv ist."); return; }
+    if(!(bereich && bereich.modus==="verein")){ window.alert(T("Nur möglich, wenn der Vereinsbereich aktiv ist.")); return; }
     const alter = sicherung&&sicherung.letzte ? (Date.now()-new Date(sicherung.letzte).getTime()) : Infinity;
-    if(alter > 3*3600*1000){ window.alert("Bitte zuerst eine aktuelle Sicherung erstellen (höchstens 3 Stunden alt)."); return; }
-    if(!window.confirm("Alte Ablage (oberste Ebene) endgültig löschen?\n\nDie App arbeitet seit "+(bereich.seit?new Date(bereich.seit).toLocaleString("de-DE"):"der Umschaltung")+" mit dem Vereinsbereich. Die Daten dort bleiben unverändert.\n\nEine Rückschaltung bleibt möglich (sie kopiert den Vereinsbereich zurück).")) return;
-    if(window.prompt("Zur Bestätigung bitte LÖSCHEN eingeben:")!=="LÖSCHEN") return;
+    if(alter > 3*3600*1000){ window.alert(T("Bitte zuerst eine aktuelle Sicherung erstellen (höchstens 3 Stunden alt).")); return; }
+    if(!window.confirm(T("Alte Ablage (oberste Ebene) endgültig löschen?\n\nDie App arbeitet seit ")+(bereich.seit?new Date(bereich.seit).toLocaleString(SPR_LOC):T("der Umschaltung"))+T(" mit dem Vereinsbereich. Die Daten dort bleiben unverändert.\n\nEine Rückschaltung bleibt möglich (sie kopiert den Vereinsbereich zurück)."))) return;
+    if(window.prompt(T("Zur Bestätigung bitte LÖSCHEN eingeben:"))!=="LÖSCHEN") return;
     setLaeuft(true); setAufraeumBericht(null);
     try{
       const erg=await alteAblageLoeschen(setMeldung);
       setAufraeumBericht(erg);
       await setDoc(flagRef,{ altGeloescht:Date.now(), altGeloeschtVon:(user&&user.email)||"" },{merge:true});
-      setMeldung(erg.rest===0 ? "✅ Alte Ablage vollständig entfernt. Jetzt die neuen Firestore- und Storage-Regeln veröffentlichen." : `⚠️ Es sind noch ${erg.rest} Dokumente vorhanden – bitte erneut ausführen.`);
-    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+      setMeldung(erg.rest===0 ? "✅ Alte Ablage vollständig entfernt. Jetzt die neuen Firestore- und Storage-Regeln veröffentlichen." : T`⚠️ Es sind noch ${erg.rest} Dokumente vorhanden – bitte erneut ausführen.`);
+    }catch(e){ setMeldung(T("Fehler: ")+(e&&e.message||e)); }
     setLaeuft(false);
   }
   async function zugang(){
@@ -11136,8 +11228,8 @@ function VereinsbereichPanel({user, players=[]}){
     try{
       const rs=await getDoc(doc(db,"config","rollen"));
       const z=await zugangAbgleichen(vid, players, rs.exists()?rs.data():ROLLEN_STANDARD);
-      setMeldung(`Zugangsliste: ${z.anzahl} Adressen (${z.neu} neu/geändert, ${z.entfernt} entfernt).`);
-    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+      setMeldung(T`Zugangsliste: ${z.anzahl} Adressen (${z.neu} neu/geändert, ${z.entfernt} entfernt).`);
+    }catch(e){ setMeldung(T("Fehler: ")+(e&&e.message||e)); }
     setLaeuft(false);
   }
   async function wiederherstellen(e){
@@ -11147,12 +11239,12 @@ function VereinsbereichPanel({user, players=[]}){
       const daten=JSON.parse(await f.text());
       const zielWurzel = wiederZiel==="verein" ? ["vereine",vid] : [];
       const zielText = wiederZiel==="verein" ? `Vereinsbereich (vereine/${vid})` : "bisherige Ablage (oberste Ebene) – das ist der LAUFENDE BETRIEB";
-      if(!window.confirm(`Sicherung vom ${new Date(daten.erstellt).toLocaleString("de-DE")} wiederherstellen?\n\nZiel: ${zielText}\n\nVorhandene Dokumente mit gleicher Kennung werden überschrieben, fehlende ergänzt; zusätzliche Dokumente bleiben bestehen.`)) return;
-      if(wiederZiel!=="verein" && window.prompt("Zur Bestätigung bitte WIEDERHERSTELLEN eingeben:")!=="WIEDERHERSTELLEN") return;
+      if(!window.confirm(T`Sicherung vom ${new Date(daten.erstellt).toLocaleString(SPR_LOC)} wiederherstellen?\n\nZiel: ${zielText}\n\nVorhandene Dokumente mit gleicher Kennung werden überschrieben, fehlende ergänzt; zusätzliche Dokumente bleiben bestehen.`)) return;
+      if(wiederZiel!=="verein" && window.prompt(T("Zur Bestätigung bitte WIEDERHERSTELLEN eingeben:"))!=="WIEDERHERSTELLEN") return;
       setLaeuft(true); setMeldung("Lese Datei …");
       const n=await ausSicherungWiederherstellen(daten, zielWurzel, setMeldung);
-      setMeldung(`✅ ${n} Dokumente wiederhergestellt.`);
-    }catch(err){ setMeldung("Fehler: "+(err&&err.message||err)); }
+      setMeldung(T`✅ ${n} Dokumente wiederhergestellt.`);
+    }catch(err){ setMeldung(T("Fehler: ")+(err&&err.message||err)); }
     setLaeuft(false);
   }
   if(!istBetreiber) return <div style={{fontSize:12,color:"var(--text3)"}}>Nur für den Betreiber der App ({PLATTFORM_ADMIN_EMAILS.join(", ")}).</div>;
@@ -11168,14 +11260,14 @@ function VereinsbereichPanel({user, players=[]}){
     </div>
     <div style={{fontSize:11,color:"var(--text2)",marginBottom:10}}>
       Stand Vereinsbereich: {info===null?"⏳":info.fehler?"nicht lesbar (Regeln veröffentlicht?)":kopie?
-        <><b>{new Date(kopie.stand).toLocaleString("de-DE")}</b> · {kopie.alleOk?"✅ alles identisch":"⚠️ Abweichungen"}{kopie.zugang?` · Zugangsliste ${kopie.zugang.anzahl} Adressen`:""}</>
+        <><b>{new Date(kopie.stand).toLocaleString(SPR_LOC)}</b> · {kopie.alleOk?"✅ alles identisch":"⚠️ Abweichungen"}{kopie.zugang?T` · Zugangsliste ${kopie.zugang.anzahl} Adressen`:""}</>
         :"noch nicht angelegt"}
     </div>
     <div style={{fontSize:12,fontWeight:800,marginBottom:10,padding:"8px 10px",borderRadius:8,
       background:bereich&&bereich.modus==="verein"?"#10b98118":"#3b82f618",
       color:bereich&&bereich.modus==="verein"?"#059669":"#2563eb",border:"1px solid var(--border2)"}}>
       Aktiver Datenbereich: {bereich===null?"⏳":bereich.modus==="verein"?`Vereinsbereich vereine/${bereich.vereinId||vid}`:bereich.modus==="umstellung"?"⚙️ Umstellung läuft":"bisherige Ablage (oberste Ebene)"}
-      {bereich&&bereich.seit?<span style={{fontWeight:500}}> · seit {new Date(bereich.seit).toLocaleString("de-DE")}</span>:null}
+      {bereich&&bereich.seit?<span style={{fontWeight:500}}> · seit {new Date(bereich.seit).toLocaleString(SPR_LOC)}</span>:null}
       {bereich&&bereich.hinweis?<div style={{fontWeight:500,color:"#b45309",marginTop:3}}>{bereich.hinweis}</div>:null}
     </div>
     {bereich && bereich.modus!=="verein" && <button onClick={umschalten} disabled={laeuft} style={{...btn,width:"100%",marginBottom:8,background:laeuft?"#9ca3af":"#10b981",color:"#fff"}}>
@@ -11188,13 +11280,13 @@ function VereinsbereichPanel({user, players=[]}){
       <button onClick={zugang} disabled={laeuft} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>👥 Zugangsliste abgleichen</button>
     </div>}
     {bereich && bereich.modus==="verein" && <button onClick={zugang} disabled={laeuft} style={{...btn,width:"100%",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>👥 Zugangsliste abgleichen</button>}
-    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")?"#ef4444":"var(--text2)",marginTop:8}}>{meldung}</div>}
+    {meldung && <div style={{fontSize:11,color:beginntMit(meldung,"Fehler")?"#ef4444":"var(--text2)",marginTop:8}}>{meldung}</div>}
     {bericht && <div style={{marginTop:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"2px 10px",fontSize:11,color:"var(--text2)",fontVariantNumeric:"tabular-nums"}}>
         <b>Bereich</b><b style={{textAlign:"right"}}>bisher</b><b style={{textAlign:"right"}}>Kopie</b><b></b>
         {Object.entries(bericht).map(([k,b])=><React.Fragment key={k}>
           <span>{k}</span><span style={{textAlign:"right"}}>{b.quelle}</span><span style={{textAlign:"right"}}>{b.ziel}</span>
-          <span title={b.ok?"identisch":`${b.abweichend} abweichend, ${b.ueberzaehlig} überzählig`}>{b.ok?"✅":"⚠️"}</span>
+          <span title={b.ok?"identisch":T`${b.abweichend} abweichend, ${b.ueberzaehlig} überzählig`}>{b.ok?"✅":"⚠️"}</span>
         </React.Fragment>)}
       </div>
       {ergebnis && ergebnis.zugang && <div style={{fontSize:11,color:"var(--text3)",marginTop:6}}>
@@ -11206,7 +11298,7 @@ function VereinsbereichPanel({user, players=[]}){
       <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.5}}>
         Löscht die bisherigen Daten auf der obersten Ebene (Stand der Umschaltung). Der Vereinsbereich bleibt unverändert.
         Voraussetzung: aktuelle Sicherung. Danach die neuen Regeln veröffentlichen.
-        {bereich.altGeloescht ? <b style={{color:"#10b981"}}> Bereits erledigt am {new Date(bereich.altGeloescht).toLocaleString("de-DE")}.</b> : null}
+        {bereich.altGeloescht ? <b style={{color:"#10b981"}}> Bereits erledigt am {new Date(bereich.altGeloescht).toLocaleString(SPR_LOC)}.</b> : null}
       </div>
       <button onClick={alteDatenEntfernen} disabled={laeuft} style={{...btn,width:"100%",background:laeuft?"#9ca3af":"#ef4444",color:"#fff"}}>🧹 Alte Ablage jetzt löschen</button>
       {aufraeumBericht && <div style={{fontSize:11,color:"var(--text2)",marginTop:8,display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 10px"}}>
@@ -11573,7 +11665,7 @@ function BrandingEditor({showToast, teil="alles"}) {
       await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde},{merge:true});
       showToast("Gespeichert ✅","✅");
     } catch(e) {
-      window.alert("Fehler:\n"+e.code+"\n"+e.message);
+      window.alert(T("Fehler:\n")+e.code+"\n"+e.message);
     }
     setSaving(false);
   }
@@ -11587,7 +11679,7 @@ function BrandingEditor({showToast, teil="alles"}) {
       await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:dataUrl,urkunde},{merge:true});
       showToast("Wappen gespeichert 🖼️","🖼️");
     }catch(err){
-      window.alert(err && err.message ? err.message : "Das Wappen konnte nicht verarbeitet werden.");
+      window.alert(err && err.message ? err.message : T("Das Wappen konnte nicht verarbeitet werden."));
     }
     setLogoSaving(false);
   }
@@ -11598,7 +11690,7 @@ function BrandingEditor({showToast, teil="alles"}) {
       await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo:"",urkunde},{merge:true});
       showToast("Wappen entfernt","✅");
     } catch(e) {
-      window.alert("Fehler:\n"+e.code+"\n"+e.message);
+      window.alert(T("Fehler:\n")+e.code+"\n"+e.message);
     }
   }
 
@@ -11611,7 +11703,7 @@ function BrandingEditor({showToast, teil="alles"}) {
       await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:dataUrl},{merge:true});
       showToast("Urkunden-Vorlage gespeichert 📜","📜");
     }catch(err){
-      window.alert(err && err.message ? err.message : "Die Vorlage konnte nicht verarbeitet werden.");
+      window.alert(err && err.message ? err.message : T("Die Vorlage konnte nicht verarbeitet werden."));
     }
     setUrkundeSaving(false);
   }
@@ -11622,7 +11714,7 @@ function BrandingEditor({showToast, teil="alles"}) {
       await setDoc(doc(db,"config","clubConfig"),{name:name.trim(),subtitle:subtitle.trim(),loginFooter:loginFooter.trim(),logo,urkunde:""},{merge:true});
       showToast("Urkunden-Vorlage entfernt","✅");
     } catch(e) {
-      window.alert("Fehler:\n"+e.code+"\n"+e.message);
+      window.alert(T("Fehler:\n")+e.code+"\n"+e.message);
     }
   }
 
@@ -11720,11 +11812,11 @@ function ArtikelFotoVerwaltung({showToast}) {
 
   async function uploadFoto(artikelId,file){
     if(!file) return;
-    if(file.size>1200000){ window.alert("Bild ist zu groß (max. ~1 MB). Bitte kleineres Foto wählen."); return; }
+    if(file.size>1200000){ window.alert(T("Bild ist zu groß (max. ~1 MB). Bitte kleineres Foto wählen.")); return; }
     const reader=new FileReader();
     reader.onload=async e=>{
       const updated={...fotos,[artikelId]:e.target.result};
-      await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated},{merge:true}).catch(err=>window.alert("Fehler: "+(err.message||"")));
+      await setDoc(doc(db,"config","bestellungKatalog"),{fotos:updated},{merge:true}).catch(err=>window.alert(T("Fehler: ")+(err.message||"")));
       notify("Foto gespeichert 🖼️","🖼️");
     };
     reader.readAsDataURL(file);
@@ -11841,7 +11933,7 @@ function EhrungenImport({players, showToast}) {
             personenAktualisiert++;
             aktualisierteNamen.push(`${match.firstName} ${match.lastName} (+${addedForPerson})`);
           }catch(err){
-            nichtGefunden.push(`${pers.vorname} ${pers.nachname} — Speicherfehler`);
+            nichtGefunden.push(T`${pers.vorname} ${pers.nachname} — Speicherfehler`);
           }
         }
       }
@@ -11852,9 +11944,9 @@ function EhrungenImport({players, showToast}) {
         ehrungenErgaenzt, personenAktualisiert,
         nichtGefunden, unbekannteArten, aktualisierteNamen,
       });
-      showToast&&showToast(`${ehrungenErgaenzt} Ehrung(en) ergänzt`, "🏅");
+      showToast&&showToast(T`${ehrungenErgaenzt} Ehrung(en) ergänzt`, "🏅");
     }catch(err){
-      showToast&&showToast("Import-Fehler: "+err.message,"❌");
+      showToast&&showToast(T("Import-Fehler: ")+err.message,"❌");
     }
     setImporting(false);
   }
@@ -12014,13 +12106,13 @@ function PersonenUebersicht({players, eingebettet=false}) {
         }
       }
     }
-    if(updates.length===0){ alert("Nichts nachzuziehen: alle zusammenhängenden Spieler haben bereits ein Datum."); return; }
-    if(!window.confirm(`${updates.length} Spieler erhalten das Datenschutz-Datum eines an derselben E-Mail hängenden Spielers. Fortfahren?`)) return;
+    if(updates.length===0){ alert(T("Nichts nachzuziehen: alle zusammenhängenden Spieler haben bereits ein Datum.")); return; }
+    if(!window.confirm(T`${updates.length} Spieler erhalten das Datenschutz-Datum eines an derselben E-Mail hängenden Spielers. Fortfahren?`)) return;
     setDsSyncLauft(true);
     try {
       await Promise.all(updates.map(u=>updateDoc(doc(db,"players",u.id),{datenschutzAccepted:u.datum})));
-      alert(`Fertig: ${updates.length} Spieler aktualisiert.`);
-    } catch(e){ alert("Fehler: "+e.message); }
+      alert(T`Fertig: ${updates.length} Spieler aktualisiert.`);
+    } catch(e){ alert(T("Fehler: ")+e.message); }
     setDsSyncLauft(false);
   }
   const rows=players.map(p=>({
@@ -12281,7 +12373,7 @@ function PushRegelnVerwaltung({showToast}){
       await setDoc(doc(db,"config","pushRegeln"),{regeln,lastUpdated:Date.now()});
       setDirty(false); notify("Push-Regeln gespeichert","🔔");
     }catch(e){
-      notify("Fehler beim Speichern: "+(e?.message||""),"❌");
+      notify(T("Fehler beim Speichern: ")+(e?.message||""),"❌");
     }
     setSpeichern(false);
   }
@@ -12581,7 +12673,7 @@ function TtrView({ players }) {
     try{
       const snap=await getDoc(doc(db,"config","ttrListe"));
       const pdfUrl=snap.exists()?snap.data().pdfUrl:null;
-      if(!pdfUrl){ alert("Es ist keine PDF gespeichert."); return; }
+      if(!pdfUrl){ alert(T("Es ist keine PDF gespeichert.")); return; }
       const b64=pdfUrl.split(",")[1];
       const bin=atob(b64); const bytes=new Uint8Array(bin.length);
       for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
@@ -12589,7 +12681,7 @@ function TtrView({ players }) {
       const a=document.createElement("a"); a.href=blobUrl; a.download="TTR_Liste.pdf";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
-    }catch(e){ alert("PDF konnte nicht geöffnet werden."); }
+    }catch(e){ alert(T("PDF konnte nicht geöffnet werden.")); }
   }
 
   const th={padding:"7px 6px",textAlign:"left",fontSize:11,fontWeight:800,color:"var(--text)",cursor:"pointer",whiteSpace:"nowrap",borderBottom:"2px solid var(--border2)",background:"var(--bg3)",position:"sticky",top:0,zIndex:2};
@@ -12702,7 +12794,7 @@ function TtrUpload({ showToast }){
 
   function mesz(ts){
     if(!ts) return "—";
-    return new Date(ts).toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+    return new Date(ts).toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+T(" Uhr");
   }
   async function reload(){
     try{
@@ -12763,9 +12855,9 @@ function TtrUpload({ showToast }){
       const istNeuesQuartal=!bestehend || !(bestehend.stichtage||[]).includes(neuerStichtag);
 
       const ok=window.confirm(
-        `Erkannt: ${neu.personen.length} Personen, Stichtag ${neuerStichtag}.\n`+
-        (istNeuesQuartal?`Neues Quartal wird vorne hinzugefügt.`:`Vorhandenes Quartal wird aktualisiert.`)+
-        `\n\nJetzt speichern?`
+        T`Erkannt: ${neu.personen.length} Personen, Stichtag ${neuerStichtag}.\n`+
+        (istNeuesQuartal?T(`Neues Quartal wird vorne hinzugefügt.`):T(`Vorhandenes Quartal wird aktualisiert.`))+
+        T(`\n\nJetzt speichern?`)
       );
       if(!ok){ setUploading(false); return; }
 
@@ -12801,9 +12893,9 @@ function TtrUpload({ showToast }){
         await Promise.all(updates);
         aktualisiert=updates.length;
       }catch(e){ /* QTTR-Sync ist Zusatz; TTR-Liste ist bereits gespeichert */ }
-      showToast(`TTR-Liste gespeichert: ${merged.personen.length} Personen, ${merged.stichtage.length} Quartale · ${aktualisiert} QTTR-Werte aktualisiert`,"📊");
+      showToast(T`TTR-Liste gespeichert: ${merged.personen.length} Personen, ${merged.stichtage.length} Quartale · ${aktualisiert} QTTR-Werte aktualisiert`,"📊");
       reload();
-    }catch(e){ showToast("Fehler: "+(e.message||e),"❌"); }
+    }catch(e){ showToast(T("Fehler: ")+(e.message||e),"❌"); }
     finally{ setUploading(false); }
   }
 
@@ -13124,7 +13216,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   // Name: rote Handschrift (Parisienne, verschnörkelt), Datum: handschriftlich
   // (Kalam ≈ Chalkboard). Fonts + jsPDF werden per CDN geladen und eingebettet.
   async function uebungsUrkundePdf(player, label, musterKey, datumIso, datumKey){
-    if(!musterKey){ window.alert("Für diese Urkunde ist kein Muster-Typ zugeordnet."); return; }
+    if(!musterKey){ window.alert(T("Für diese Urkunde ist kein Muster-Typ zugeordnet.")); return; }
     if(urkErstelltRef.current) return;             // V496: Doppelklick ignorieren
     urkErstelltRef.current=true;
     // V496: sofortige Rückmeldung – Dialog mit „Urkunde wird erstellt …"
@@ -13135,7 +13227,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       // V512: gemeinsame Zeichenfunktion (Muster, Rahmen, Logo, Name, Ort/Datum)
       const blob=await uebungsUrkundePdfErzeugen({ musterKey, vor, nach, datumIso });
       if(!blob){ urkErstelltRef.current=false; setUrkAusgabe(null);
-        window.alert("Für „"+label+"“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen."); return; }
+        window.alert(T("Für „")+label+T("“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung unter „Muster Übungs-Urkunden“ hochladen.")); return; }
       const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
       const url=URL.createObjectURL(blob);
       // V493: kein Seitenwechsel mehr – Ausgabe-Dialog in der App. Rückkehrziel merken,
@@ -13143,7 +13235,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       try{ sessionStorage.setItem(URKUNDE_RUECKKEHR_KEY, JSON.stringify({playerId:player.id, key:datumKey||"", t:Date.now()})); }catch(e){}
       setUrkAusgabe({ blob, url, dateiname:`Urkunde_${safe(label)}_${safe(vor+"_"+nach)}.pdf`,
         titel:`Urkunde ${label} – ${vor} ${nach}`.trim(), playerId:player.id, key:datumKey||"" });
-    }catch(err){ setUrkAusgabe(null); window.alert("Die Urkunde konnte nicht erzeugt werden.\n"+(err&&err.message||"")); }
+    }catch(err){ setUrkAusgabe(null); window.alert(T("Die Urkunde konnte nicht erzeugt werden.\n")+(err&&err.message||"")); }
     finally{ urkErstelltRef.current=false; }
   }
 
@@ -13380,13 +13472,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         );
         if(!p){notFound.push(`${fn} ${ln}`);continue;}
         const dateStr=parseDateStr(rawDate);
-        if(!dateStr){notFound.push(`${fn} ${ln} (Datum: ${rawDate})`);continue;}
+        if(!dateStr){notFound.push(T`${fn} ${ln} (Datum: ${rawDate})`);continue;}
         await updateDoc(doc(db,"players",p.id),{joinDate:dateStr}).catch(()=>{});
         count++;
       }
       if(notFound.length) setJoinNotFound(notFound);
-      showToast(count>0?`${count} Beitrittsdaten importiert`:"Keine importiert","📅");
-    } catch(err){showToast("Fehler: "+err.message,"❌");}
+      showToast(count>0?T`${count} Beitrittsdaten importiert`:"Keine importiert","📅");
+    } catch(err){showToast(T("Fehler: ")+err.message,"❌");}
     setJoinImporting(false); e.target.value="";
   }
 
@@ -13446,8 +13538,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       XLSX.utils.book_append_sheet(wb,ws,"Personen");
       const today=new Date().toLocaleDateString("sv");
       XLSX.writeFile(wb,`TTC_Personen_${today}.xlsx`);
-      showToast(`${rows.length} Personen exportiert`,"📊");
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+      showToast(T`${rows.length} Personen exportiert`,"📊");
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   // Import: Personen anreichern ODER neu anlegen
@@ -13522,8 +13614,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         }
       }
       setPersonImportLog({updated,created,errors,withLogin:createdWithLogin});
-      showToast(`${updated} aktualisiert, ${created} neu angelegt`,"✅");
-    } catch(err){showToast("Fehler: "+err.message,"❌");}
+      showToast(T`${updated} aktualisiert, ${created} neu angelegt`,"✅");
+    } catch(err){showToast(T("Fehler: ")+err.message,"❌");}
     setPersonImporting(false); e.target.value="";
   }
 
@@ -13634,7 +13726,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         const el=document.querySelector(`[data-playerid="${savedId}"]`);
         if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
       },200);
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
     setSaving(false);
   }
 
@@ -13693,7 +13785,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         catch(_) { mailInfo = " — bitte „Passwort vergessen“ nutzen"; }
       }
 
-      showToast(`${loginUpgradeFor.firstName} hat jetzt einen Login${mailInfo}`,"🎉");
+      showToast(T`${loginUpgradeFor.firstName} hat jetzt einen Login${mailInfo}`,"🎉");
       setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
     } catch(e) {
       if (e.code==="auth/email-already-in-use") {
@@ -13711,7 +13803,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         } catch(_) {}
         try {
           await sendPasswordResetEmail(auth, upgradeEmail.trim());
-          showToast(`Login bestand bereits — als „mit Login“ markiert, Passwort-Mail an ${upgradeEmail.trim()} verschickt`,"📧");
+          showToast(T`Login bestand bereits — als „mit Login“ markiert, Passwort-Mail an ${upgradeEmail.trim()} verschickt`,"📧");
           setLoginUpgradeFor(null); setUpgradeEmail(""); setUpgradePass("");
         } catch(_) {
           showToast("Login bestand bereits — als „mit Login“ markiert. Bitte „Passwort vergessen“ nutzen.","📧");
@@ -13720,7 +13812,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       }
       else if (e.code==="auth/weak-password")    setUpgradeErr("Passwort zu schwach.");
       else if (e.code==="auth/invalid-email")    setUpgradeErr("Ungültige E-Mail-Adresse.");
-      else setUpgradeErr("Fehler: "+e.message);
+      else setUpgradeErr(T("Fehler: ")+e.message);
     }
     setUpgrading(false);
   }
@@ -13733,14 +13825,14 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   async function doFlagReparatur() {
     const betroffen = players.filter(p=>p.status!=="passiv" && p.noLogin===true && !istKuenstlicheEmail(p.email));
     if(betroffen.length===0){ showToast("Keine solchen Faelle gefunden","ℹ️"); return; }
-    if(!window.confirm(`${betroffen.length} ${betroffen.length===1?"Person":"Personen"} haben eine echte E-Mail, sind aber als „kein Login" markiert. Jetzt als „mit Login" markieren?`)) return;
+    if(!window.confirm(T`${betroffen.length} ${betroffen.length===1?"Person":"Personen"} haben eine echte E-Mail, sind aber als „kein Login" markiert. Jetzt als „mit Login" markieren?`)) return;
     setFlagFixLaeuft(true);
     let ok=0;
     for(const p of betroffen){
       try{ await updateDoc(doc(db,"players",p.id),{noLogin:false,updatedAt:Date.now()}); ok++; }catch(_){}
     }
     setFlagFixLaeuft(false);
-    showToast(`${ok} Person(en) korrigiert`,"✅");
+    showToast(T`${ok} Person(en) korrigiert`,"✅");
   }
 
   // Sammel-Reparatur: für alle Personen mit echter, hinterlegter E-Mail das
@@ -13753,7 +13845,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       showToast("Keine Personen mit hinterlegter echter E-Mail gefunden","ℹ️");
       return;
     }
-    if(!window.confirm(`Für ${kandidaten.length} ${kandidaten.length===1?"Person":"Personen"} mit echter E-Mail das Login sicherstellen und Passwort-Mail verschicken?\n\nBereits funktionierende Logins erhalten einfach eine neue Passwort-Mail.`)) return;
+    if(!window.confirm(T`Für ${kandidaten.length} ${kandidaten.length===1?"Person":"Personen"} mit echter E-Mail das Login sicherstellen und Passwort-Mail verschicken?\n\nBereits funktionierende Logins erhalten einfach eine neue Passwort-Mail.`)) return;
     setSammelLauft(true);
     const ok=[], fehler=[], mail=[];
     for(const p of kandidaten){
@@ -13801,7 +13893,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     }
     setSammelLog({ok,fehler,mail});
     setSammelLauft(false);
-    showToast(`${ok.length} repariert, ${fehler.length} Fehler`,"🎉");
+    showToast(T`${ok.length} repariert, ${fehler.length} Fehler`,"🎉");
   }
 
   async function doDelete(id) {
@@ -13839,10 +13931,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       if (onPlayerAdded) onPlayerAdded(newData.firstName.trim());
       setNewData({firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:""});
       setShowAdd(false);
-      showToast(`${newData.firstName} hinzugefügt!`,"🎉");
+      showToast(T`${newData.firstName} hinzugefügt!`,"🎉");
     } catch(e){
       if (e.code==="auth/email-already-in-use") showToast("E-Mail bereits verwendet","❌");
-      else showToast("Fehler: "+e.message,"❌");
+      else showToast(T("Fehler: ")+e.message,"❌");
     }
     setSaving(false);
   }
@@ -14068,8 +14160,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             const id = "admin_"+Date.now();
             // V509: Namen abfragen statt fest „Thomas Meilinger"
             const vorschlag=(user.email||"").split("@")[0].split(/[._-]/).map(x=>x? x[0].toUpperCase()+x.slice(1):"");
-            const vn=window.prompt("Vorname für dein Profil:", vorschlag[0]||""); if(vn===null) return;
-            const nn=window.prompt("Nachname für dein Profil:", vorschlag[1]||""); if(nn===null) return;
+            const vn=window.prompt(T("Vorname für dein Profil:"), vorschlag[0]||""); if(vn===null) return;
+            const nn=window.prompt(T("Nachname für dein Profil:"), vorschlag[1]||""); if(nn===null) return;
             await setDoc(doc(db,"players",id),{
               id, email:user.email,
               firstName:vn.trim(), lastName:nn.trim(),
@@ -14077,7 +14169,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
               avatar:"🏓", color:"#10b981",
               noLogin:false,
               roles:{player:true, trainer:true, admin:true},
-            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            }).catch(e=>showToast(T("Fehler: ")+e.message,"❌"));
             showToast("Profil angelegt! Seite neu laden.","✅");
             setTimeout(()=>window.location.reload(),1500);
           }} style={{padding:"7px 14px",background:"#f59e0b",border:"none",borderRadius:8,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer"}}>
@@ -14087,7 +14179,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             await updateDoc(doc(db,"players",trainerEntry.id),{
               email:user.email,
               roles:{player:true,trainer:true,admin:true},
-            }).catch(e=>showToast("Fehler: "+e.message,"❌"));
+            }).catch(e=>showToast(T("Fehler: ")+e.message,"❌"));
             showToast("E-Mail verknüpft! Seite neu laden.","✅");
             setTimeout(()=>window.location.reload(),1500);
           }} style={{padding:"7px 14px",background:"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
@@ -14153,7 +14245,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {idx===0 && <span style={{color:"#10b981",fontWeight:700}}> · neuestes</span>}
                 </div>
                 <button onClick={async()=>{
-                  if(!window.confirm(`Dieses Profil von ${p.firstName} ${p.lastName} (ID ${String(p.id).slice(0,10)}…) wirklich löschen?`)) return;
+                  if(!window.confirm(T`Dieses Profil von ${p.firstName} ${p.lastName} (ID ${String(p.id).slice(0,10)}…) wirklich löschen?`)) return;
                   try{
                     // Falls das zu löschende Profil eine Bestellung hat und ein anderes
                     // Profil derselben Mail keine, Bestellung dorthin übernehmen.
@@ -14170,7 +14262,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                     }
                     await deleteDoc(doc(db,"players",p.id));
                     showToast("Profil gelöscht","🗑️");
-                  }catch(e){ showToast("Fehler: "+(e?.message||""),"❌"); }
+                  }catch(e){ showToast(T("Fehler: ")+(e?.message||""),"❌"); }
                 }} style={{padding:"4px 10px",background:"#ef444422",border:"1px solid #ef444466",
                   borderRadius:6,color:"#ef4444",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>
                   löschen
@@ -14207,13 +14299,13 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
           <div style={{fontSize:13,color:"var(--text3)",padding:"10px 0"}}>Noch keine Einsatz-Benachrichtigungen protokolliert.</div>}
         {!alarmLogLaedt && alarmLog && alarmLog.map(a=>{
           const d = a.ts ? new Date(a.ts) : null;
-          const wann = d ? d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
+          const wann = d ? d.toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "";
           return <div key={a.id} style={{background:"var(--bg2)",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
             <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>
               {a.spielerName} → {STATUS_LABEL_EINSATZ(a.neuerStatus)}
             </div>
             <div style={{fontSize:11,color:"var(--text3)",marginBottom:6}}>
-              {a.mannschaft}{a.gegner?` gegen ${a.gegner}`:""}{a.datum?` · Spiel am ${deDatumApp(a.datum)}`:""}{wann?` · gemeldet ${wann}`:""}
+              {a.mannschaft}{a.gegner?T` gegen ${a.gegner}`:""}{a.datum?T` · Spiel am ${deDatumApp(a.datum)}`:""}{wann?T` · gemeldet ${wann}`:""}
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               {(a.empfaenger||[]).map((e,i)=>{
@@ -14278,7 +14370,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             <button onClick={doFlagReparatur} disabled={flagFixLaeuft} style={{
               padding:"7px 13px",background:flagFixLaeuft?"var(--border)":"linear-gradient(135deg,#10b981,#059669)",
               border:"none",borderRadius:8,color:flagFixLaeuft?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:flagFixLaeuft?"wait":"pointer"}}>
-              {flagFixLaeuft?"⏳ Korrigiere…":`✅ ${flagFaelle.length} als „mit Login" markieren`}
+              {flagFixLaeuft?"⏳ Korrigiere…":T`✅ ${flagFaelle.length} als „mit Login" markieren`}
             </button>
           </div>;
         })()}
@@ -14322,11 +14414,11 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <button onClick={doSammelReparatur} disabled={sammelLauft||mitEchterMail.length===0} style={{
           padding:"9px 16px",background:(sammelLauft||mitEchterMail.length===0)?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",
           border:"none",borderRadius:8,color:(sammelLauft||mitEchterMail.length===0)?"#6b7280":"#fff",fontSize:12,fontWeight:700,cursor:sammelLauft?"wait":"pointer"}}>
-          {sammelLauft?"⏳ Läuft…":`🔧 Sammel-Reparatur für ${mitEchterMail.length} ${mitEchterMail.length===1?"Person":"Personen"} starten`}
+          {sammelLauft?"⏳ Läuft…":T`🔧 Sammel-Reparatur für ${mitEchterMail.length} ${mitEchterMail.length===1?"Person":"Personen"} starten`}
         </button>
         {sammelLog && <div style={{marginTop:10,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,fontSize:11}}>
           <div style={{fontWeight:700,marginBottom:4}}>Ergebnis</div>
-          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
+          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?T`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
           {sammelLog.fehler.length>0 && <div style={{color:"#ef4444",marginTop:4}}>
             ⚠️ {sammelLog.fehler.length} Fehler:
             {sammelLog.fehler.map((f,i)=><div key={i} style={{color:"#fca5a5",marginLeft:8}}>• {f.p.firstName} {f.p.lastName}: {f.grund}</div>)}
@@ -14360,7 +14452,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const gc = GRP_COL[group]||"#6b7280";
       return <div key={group} style={{marginBottom:8,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden",borderLeft:`4px solid ${gc}`}}>
         <div onClick={()=>setShowGrp(p=>({...p,[group]:!grpOpen}))} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:13,fontWeight:700,color:gc}}>{gName(group)} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
+          <div style={{fontSize:13,fontWeight:700,color:gc}}>{gName(group)} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?T`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
           <span style={{fontSize:11,color:"var(--text4)"}}>{grpOpen?"▲":"▼"}</span>
         </div>
         {grpOpen&&groupPlayers.map(p=>(
@@ -14974,7 +15066,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   {p.roles&&Object.entries({player:"🏓",trainer:"🛡️",admin:"⚙️"}).map(([k,icon])=>
                     p.roles[k]&&<span key={k} style={{fontSize:10,background:"var(--border)",borderRadius:4,padding:"1px 4px"}}>{icon}</span>
                   )}
-                  {p.joinDate&&<span style={{fontSize:10,color:"var(--text4)"}}>🏅 {new Date(p.joinDate).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}</span>}
+                  {p.joinDate&&<span style={{fontSize:10,color:"var(--text4)"}}>🏅 {new Date(p.joinDate).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"2-digit",year:"numeric"})}</span>}
                   {p.racketType==="TTC"&&p.racketNr&&(
                     <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
                       🏓 Nr.{String(p.racketNr).padStart(3,"0")}
@@ -15050,6 +15142,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <VereinsbereichPanel user={user} players={players}/>
       </div></ErrorBoundary>}
     </div>}
+    {/* V521: Sprache je Nutzer */}
+    <SprachEinstellung/>
     {/* App-Design — P4 ausblendbar */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
       <div onClick={()=>setShowAppDesign(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
@@ -15067,7 +15161,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
             return <button key={opt.mode} onClick={async()=>{
               setLocalGlobalTheme(opt.mode);
               await setDoc(doc(db,"config","theme"),{mode:opt.mode}).catch(()=>{});
-              showToast(`Grundeinstellung: ${opt.label} aktiv`,"🎨");
+              showToast(T`Grundeinstellung: ${opt.label} aktiv`,"🎨");
             }} style={{
               flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:"pointer",fontSize:13,
               border:`2px solid ${isActive?"#10b981":"var(--border2)"}`,
@@ -15534,7 +15628,7 @@ function SchlaegerTab({rackets,players,showToast}) {
 
       showToast("Gespeichert & synchronisiert","💾");
       setEditId(null);
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
     setSaving(false);
   }
 
@@ -15652,7 +15746,7 @@ function SchlaegerTab({rackets,players,showToast}) {
                   <button onClick={()=>setEditId(null)} style={{padding:"3px 8px",background:"var(--border2)",border:"none",borderRadius:4,color:"var(--text2)",fontSize:11,cursor:"pointer",marginRight:3}}>✕</button>
                   <button onClick={async(e)=>{
                     e.stopPropagation();
-                    if(!window.confirm(`Schläger Nr. ${String(form.nr).padStart(3,"0")} wirklich löschen?`)) return;
+                    if(!window.confirm(T`Schläger Nr. ${String(form.nr).padStart(3,"0")} wirklich löschen?`)) return;
                     setSaving(true);
                     try {
                       // Spieler-Sync: racketNr und racketStart zurücksetzen
@@ -15666,9 +15760,9 @@ function SchlaegerTab({rackets,players,showToast}) {
                         await updateDoc(doc(db,"players",p.id),{racketNr:"",racketType:"",racketStart:"",racketEnd:""}).catch(()=>{});
                       }
                       await deleteDoc(doc(db,"rackets",String(form.nr)));
-                      showToast(`Schläger Nr. ${String(form.nr).padStart(3,"0")} gelöscht`,"🗑️");
+                      showToast(T`Schläger Nr. ${String(form.nr).padStart(3,"0")} gelöscht`,"🗑️");
                       setEditId(null);
-                    } catch(e){showToast("Fehler: "+e.message,"❌");}
+                    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
                     setSaving(false);
                   }} style={{padding:"3px 8px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </td>
@@ -15791,7 +15885,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
       for(const a of artikel){
         const anz=anzahlForArtikel(a, items);
         if(anz>0 && a.groesse && !a.druck && !items[a.id]?.groesse){
-          window.alert(`Bitte eine Größe für "${a.name}" wählen.`);
+          window.alert(T`Bitte eine Größe für "${a.name}" wählen.`);
           return;
         }
       }
@@ -15811,7 +15905,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
       await setDoc(doc(db,"bestellungen",me.id),payload,{merge:true});
       notify(finalisieren?"Bestellung verbindlich aufgegeben ✅":"Gespeichert ✅","✅");
       setDirty(false);
-    }catch(e){ window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||"")); }
+    }catch(e){ window.alert(T("Fehler beim Speichern:\n")+(e.code||"")+"\n"+(e.message||"")); }
     setSaving(false);
   }
 
@@ -15916,7 +16010,7 @@ function BestellungenView({me, isAdmin=false, showToast}) {
         color:(saving||!dirty)?"var(--text3)":"var(--text)"}}>
         {saving?"⏳ Speichern…":dirty?"💾 Zwischenspeichern":"✓ Gespeichert"}</button>
       <button onClick={()=>{
-          if(window.confirm("Bestellung verbindlich aufgeben und als überwiesen markieren?\nDanach ist keine Änderung mehr möglich.")) speichern(true);
+          if(window.confirm(T("Bestellung verbindlich aufgeben und als überwiesen markieren?\nDanach ist keine Änderung mehr möglich."))) speichern(true);
         }} disabled={saving||summe<=0} style={{
         padding:"11px",borderRadius:9,fontSize:13,fontWeight:800,border:"none",
         cursor:(saving||summe<=0)?"default":"pointer",
@@ -16188,8 +16282,8 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
       XLSX.utils.book_append_sheet(wb,ws,"Bestellungen");
       const today=new Date(Date.now()+2*3600000).toISOString().slice(0,10);
       XLSX.writeFile(wb,`TTC_Bestellungen_${today}.xlsx`);
-      notify(`${rows.length} Zeilen exportiert 📊`,"📊");
-    }catch(e){ window.alert("Export fehlgeschlagen:\n"+(e.message||"")); }
+      notify(T`${rows.length} Zeilen exportiert 📊`,"📊");
+    }catch(e){ window.alert(T("Export fehlgeschlagen:\n")+(e.message||"")); }
     setExporting(false);
   }
 
@@ -16329,10 +16423,10 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     {key:"groesse",label:"Größe",align:"center",filter:"text"},
     {key:"uebergabe",label:"Übergabe",align:"center",filter:"uebergabe"},
     {key:"preisKatalog",label:"Preis Katalog",align:"right",filter:"text"},
-    {key:"preisSpin",label:`Preis ${VEREIN.haendler}`,align:"right",filter:"text"},
-    {key:"preisSpinGesamt",label:`Preis ${VEREIN.haendler} gesamt`,align:"right",filter:"text"},
-    {key:"preisTTC",label:`Preis ${VEREIN.kuerzel}`,align:"right",filter:"text"},
-    {key:"preisTTCGesamt",label:`Preis ${VEREIN.kuerzel} gesamt`,align:"right",filter:"text"},
+    {key:"preisSpin",label:T`Preis ${VEREIN.haendler}`,align:"right",filter:"text"},
+    {key:"preisSpinGesamt",label:T`Preis ${VEREIN.haendler} gesamt`,align:"right",filter:"text"},
+    {key:"preisTTC",label:T`Preis ${VEREIN.kuerzel}`,align:"right",filter:"text"},
+    {key:"preisTTCGesamt",label:T`Preis ${VEREIN.kuerzel} gesamt`,align:"right",filter:"text"},
     {key:"final",label:"bestellt",align:"center",filter:"janein"},
     {key:"bezahlt",label:"bezahlt",align:"center",filter:"janein"},
     {key:"geldeingang",label:"Geldeingang",align:"center",filter:"janein"},
@@ -16355,7 +16449,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
         {exporting?"⏳ Export…":"📊 Als Excel herunterladen"}</button>}
     </div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-      <span>{isAdmin?"Alle Spieler und Erwachsenen des Vereins.":`Spieler deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}</span>
+      <span>{isAdmin?"Alle Spieler und Erwachsenen des Vereins.":T`Spieler deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}</span>
       {filterAktiv && <>
         <span style={{color:"#10b981",fontWeight:700}}>{sortierteZeilen.length} von {personenZeilen.length} Personen</span>
         <button onClick={()=>setFilter({})} style={{padding:"3px 9px",background:"#ef444422",border:"1px solid #ef444444",borderRadius:6,color:"#ef4444",fontSize:10,fontWeight:700,cursor:"pointer"}}>Filter zurücksetzen</button>
@@ -16379,7 +16473,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
               ? "Dir ist noch keine Mannschaft als Mannschaftsführer zugeordnet. Bitte in der Verwaltung im Profil das Feld „Mannschaftsführer-Team“ setzen, dann erscheinen hier die Spieler deiner Mannschaft."
               : aufSpieler.length===0
                 ? "Aufstellung wird geladen…"
-                : `Für die Mannschaft „${meineMannschaft}“ sind in der aktuellen Aufstellung keine Spieler hinterlegt.`}
+                : T`Für die Mannschaft „${meineMannschaft}“ sind in der aktuellen Aufstellung keine Spieler hinterlegt.`}
           </div>}
     </div>}
 
@@ -16798,7 +16892,7 @@ function MeineVerwaltung({me, showToast, group}) {
       notify("Gespeichert ✅","✅");
       setDirty(false);
     }catch(e){
-      window.alert("Fehler beim Speichern:\n"+(e.code||"")+"\n"+(e.message||""));
+      window.alert(T("Fehler beim Speichern:\n")+(e.code||"")+"\n"+(e.message||""));
     }
     setSaving(false);
   }
@@ -16832,6 +16926,9 @@ function MeineVerwaltung({me, showToast, group}) {
       Deine beim Verein hinterlegten Daten. Ändern kannst du selbst nur Handynummer, T-Shirt- und Anzugs-Größe.
       Für alle anderen Änderungen wende dich bitte an den Admin.
     </div>
+
+    {/* V522: Sprache je Nutzer (Deutsch/Englisch) */}
+    <SprachEinstellung/>
 
     {/* Editierbarer Bereich */}
     <div style={{...box,borderColor:"#10b98155"}}>
@@ -17079,17 +17176,17 @@ function GeburtstageTab({players,showToast}) {
           (pl.lastName||"").toLowerCase().trim()===nachname.toLowerCase()
         );
         if (!p) { notFound.push(`${vorname} ${nachname}`); continue; }
-        if (!rawDate && rawDate!==0) { failed.push(`${vorname} (kein Datum)`); continue; }
+        if (!rawDate && rawDate!==0) { failed.push(T`${vorname} (kein Datum)`); continue; }
         const dateStr=parseDate(rawDate);
-        if (!dateStr) { failed.push(`${vorname} ${nachname} (Datum: ${rawDate})`); continue; }
+        if (!dateStr) { failed.push(T`${vorname} ${nachname} (Datum: ${rawDate})`); continue; }
         await setDoc(doc(db,"players",p.id),{birthdate:dateStr},{merge:true});
         count++;
       }
       // Punkt 2: Nicht-importierte anzeigen
       if(notFound.length||failed.length) setNotFoundList([...notFound,...failed]);
-      showToast(count>0?`${count} Geburtstage importiert`:"Keine importiert","🎂");
+      showToast(count>0?T`${count} Geburtstage importiert`:"Keine importiert","🎂");
     } catch(err){
-      showToast("Fehler: "+err.message,"❌");
+      showToast(T("Fehler: ")+err.message,"❌");
     }
     setUploading(false);
     e.target.value="";
@@ -17147,7 +17244,7 @@ function GeburtstageTab({players,showToast}) {
             <div style={{padding:"8px 6px",fontSize:12,color:highlight?"#f59e0b":"var(--text3)",fontWeight:highlight?700:400,textAlign:"right"}}>{calcAge(p.birthdate)}</div>
             <div style={{padding:"6px 4px",textAlign:"center"}}>
               <button onClick={async()=>{
-                if(!window.confirm(`Geburtstag von ${p.firstName} ${p.lastName} löschen?`)) return;
+                if(!window.confirm(T`Geburtstag von ${p.firstName} ${p.lastName} löschen?`)) return;
                 await updateDoc(doc(db,"players",p.id),{birthdate:""}).catch(()=>{});
                 showToast("Geburtstag gelöscht","🗑️");
               }} style={{padding:"2px 5px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
@@ -17498,7 +17595,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||VEREIN.kurzname}{sortedRanking.length>0?` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||VEREIN.kurzname}{sortedRanking.length>0?T` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -17538,7 +17635,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           <span style={{position:"absolute",bottom:0,right:0,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
         </div>
         <div style={{fontSize:22,fontWeight:900,color:myPlayer.color,marginTop:12}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{gName(myPlayer.group||"Anfänger")}{sortedRanking.length>0?` · Rang #${myRank} von ${sortedRanking.length}`:""}</div>
+        <div style={{fontSize:13,color:"var(--text3)",marginBottom:12}}>{gName(myPlayer.group||"Anfänger")}{sortedRanking.length>0?T` · Rang #${myRank} von ${sortedRanking.length}`:""}</div>
         {currentAward&&<div style={{marginBottom:12}}><AwardBadge award={currentAward}/></div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
           {[{label:"Gesamt",val:totalStars,color:myPlayer.color},{label:"Anfänger",val:beginnerStars,color:"#10b981"},{label:"Fortgeschr.",val:advancedStars,color:"#3b82f6"}].map(s=>(
@@ -17643,7 +17740,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           const val=s?.attendances?.[myPlayer.id];
           let statusLabel="Nicht erfasst";
           let statusColor="#4b5563";
-          if (didNotTakePlace) {statusLabel=`Kein Training${s.reason?` (${s.reason})`:""}`; statusColor="#6b7280";}
+          if (didNotTakePlace) {statusLabel=T`Kein Training${s.reason?` (${s.reason})`:""}`; statusColor="#6b7280";}
           else if (s) {
             if (val===undefined||val===null||val==="a"){statusLabel="✓ Anwesend";statusColor="#10b981";}
             else if (val==="e"){statusLabel="Entschuldigt";statusColor="#f59e0b";}
@@ -18006,13 +18103,13 @@ function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
       setShowForm(false);
       setForm({date:new Date().toLocaleDateString("sv"),context:"Training",strengths:"",weaknesses:"",focus:""});
     } catch(e) {
-      showToast("Fehler beim Speichern: "+e.message,"❌");
+      showToast(T("Fehler beim Speichern: ")+e.message,"❌");
       console.error("saveObs error:",e);
     }
   }
 
   async function deleteObs(id) {
-    if (!window.confirm("Beobachtung löschen?")) return;
+    if (!window.confirm(T("Beobachtung löschen?"))) return;
     await deleteDoc(doc(db,"observations",selPlayer.id,"entries",id)).catch(()=>{});
     showToast("Gelöscht","🗑️");
   }
@@ -18024,7 +18121,7 @@ function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
         {...editForm, updatedAt:Date.now()},{merge:true});
       showToast("Beobachtung aktualisiert","✏️");
       setEditingId(null);
-    } catch(e){ showToast("Fehler: "+e.message,"❌"); }
+    } catch(e){ showToast(T("Fehler: ")+e.message,"❌"); }
   }
 
   const CONTEXT_COLORS = {Training:"#3b82f6",Punktspiel:"#f59e0b",Turnier:"#10b981"};
@@ -18101,7 +18198,7 @@ function BeobachtungenAdminTab({players,selectedPlayer,user,showToast}) {
           <div onClick={()=>setExpandedId(isExp?null:obs.id)}
             style={{padding:"10px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
             <span style={{fontSize:11,fontWeight:700,color:ctxColor,background:ctxColor+"22",padding:"2px 8px",borderRadius:20,flexShrink:0}}>{obs.context}</span>
-            <span style={{fontSize:12,color:"var(--text2)",flex:1}}>{new Date(obs.date).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}</span>
+            <span style={{fontSize:12,color:"var(--text2)",flex:1}}>{new Date(obs.date).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"2-digit",year:"numeric"})}</span>
             <span style={{fontSize:10,color:"var(--text4)"}}>{obs.trainerName}</span>
             <span style={{color:"var(--text4)",fontSize:12}}>{isExp?"▲":"▼"}</span>
           </div>
@@ -18226,7 +18323,7 @@ function BeobachtungenPlayerTab({player}) {
           style={{padding:"11px 14px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
           <span style={{fontSize:11,fontWeight:700,color:ctxColor,background:ctxColor+"22",padding:"2px 8px",borderRadius:20,flexShrink:0}}>{obs.context}</span>
           <span style={{fontSize:12,color:"var(--text2)",flex:1}}>
-            {new Date(obs.date).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric"})}
+            {new Date(obs.date).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"2-digit",year:"numeric"})}
           </span>
           {isNewest&&<span style={{fontSize:10,background:"#10b98122",color:"#10b981",padding:"1px 6px",borderRadius:10,fontWeight:600}}>NEU</span>}
           <span style={{color:"var(--text4)",fontSize:12}}>{isExp?"▲":"▼"}</span>
@@ -18445,7 +18542,7 @@ function EinheitenTab({user, players}) {
   function dupForm(e){
     const todayStr=new Date().toLocaleDateString("sv");
     return {
-      titel:(e.titel?e.titel+" (Kopie)":"Kopie"),
+      titel:(e.titel?e.titel+T(" (Kopie)"):"Kopie"),
       gruppe:e.gruppe, datum:todayStr,
       aufwaermen:[...(e.aufwaermen||[])],
       ballgewoehnung:[...(e.ballgewoehnung||[])],
@@ -18470,11 +18567,11 @@ function EinheitenTab({user, players}) {
         showToast("Einheit erstellt","✅");
       }
       setShowForm(false); setEditId(null); setForm(null);
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   async function deleteEinheit(id){
-    if(!window.confirm("Einheit löschen?")) return;
+    if(!window.confirm(T("Einheit löschen?"))) return;
     await deleteDoc(doc(db,"einheiten",id)).catch(()=>{});
     showToast("Gelöscht","🗑️");
   }
@@ -18802,7 +18899,7 @@ function EinheitenTab({user, players}) {
       {sorted.map(e=>{
         const isExp=expandedId===e.id;
         const gc=GRUPPEN_COLORS[e.gruppe]||"#6b7280";
-        const datum=e.datum?new Date(e.datum).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}):"";
+        const datum=e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC,{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}):"";
         const awSelNames=e.aufwaermen?.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)).filter(Boolean)||[];
         const bgSelNames=e.ballgewoehnung?.map(id=>BALLGEWOEHNUNG.find(x=>x.id===id)).filter(Boolean)||[];
         const tkSelNames=e.technik?.map(id=>TECHNIK_EX.find(x=>x.id===id)).filter(Boolean)||[];
@@ -18813,7 +18910,7 @@ function EinheitenTab({user, players}) {
           {/* Header */}
           <div onClick={()=>setExpandedId(isExp?null:e.id)} style={{padding:"11px 13px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||`Training ${gName(e.gruppe)}`}</div>
+              <div style={{fontSize:13,fontWeight:800,color:gc}}>{e.titel||T`Training ${gName(e.gruppe)}`}</div>
               <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>📅 {datum} · 👥 {gName(e.gruppe)}</div>
               {(e.trainer1||e.trainer2)&&<div style={{fontSize:11,color:"var(--text3)",marginTop:1}}>
                 👤 {[e.trainer1,e.trainer2].filter(Boolean).map(id=>{
@@ -19093,7 +19190,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                 background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,color:"#10b981",
                 fontSize:12,fontWeight:700,padding:"5px 10px",cursor:"pointer",flexShrink:0}}>✓ alle</button>
               {/* Ganze Gruppe wirklich löschen (nur Admin) */}
-              {istAdmin && <button onClick={()=>{ if(window.confirm(`Alle ${items.length} Nachrichten der Gruppe „${label}" für ALLE Nutzer löschen?`)) nachrichtenLoeschen(ids); }}
+              {istAdmin && <button onClick={()=>{ if(window.confirm(T`Alle ${items.length} Nachrichten der Gruppe „${label}" für ALLE Nutzer löschen?`)) nachrichtenLoeschen(ids); }}
                 title="Ganze Gruppe für alle löschen (Admin)" style={{
                 background:"#ef444422",border:"1px solid #ef444444",borderRadius:8,color:"#ef4444",
                 fontSize:12,fontWeight:700,padding:"5px 10px",cursor:"pointer",flexShrink:0}}>🗑 alle</button>}
@@ -19133,7 +19230,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                     background:"#10b98122",border:"1px solid #10b98144",borderRadius:8,
                     color:"#10b981",fontSize:15,padding:"5px 10px",cursor:"pointer",flexShrink:0,fontWeight:700}}>✓</button>
                   {/* Wirklich löschen (nur Admin) */}
-                  {istAdmin && <button onClick={()=>{ if(window.confirm("Diese Nachricht für ALLE Nutzer löschen?")) nachrichtLoeschen(n.id); }}
+                  {istAdmin && <button onClick={()=>{ if(window.confirm(T("Diese Nachricht für ALLE Nutzer löschen?"))) nachrichtLoeschen(n.id); }}
                     title="Für alle löschen (Admin)" style={{
                     background:"#ef444422",border:"1px solid #ef444444",borderRadius:8,
                     color:"#ef4444",fontSize:15,padding:"5px 10px",cursor:"pointer",flexShrink:0,fontWeight:700}}>🗑</button>}
@@ -19165,7 +19262,7 @@ function AufstellungUpload({showToast}) {
   function mesz(ts){
     if(!ts) return "—";
     const d=new Date(ts+0);
-    return d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+    return d.toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+T(" Uhr");
   }
 
   function reload(){
@@ -19333,8 +19430,8 @@ function AufstellungUpload({showToast}) {
 
       // ── Sicherheitsabfrage: bestätigen, welche Aufstellung überschrieben/angelegt wird ──
       const ok=window.confirm(
-        `Erkannt: Saison ${saison}, ${runde}\n${spielerData.length} Spieler ausgelesen.\n\n`+
-        `Diese Aufstellung (${key}) jetzt speichern?`
+        T`Erkannt: Saison ${saison}, ${runde}\n${spielerData.length} Spieler ausgelesen.\n\n`+
+        T`Diese Aufstellung (${key}) jetzt speichern?`
       );
       if(!ok){ setUploading(false); return; }
 
@@ -19352,8 +19449,8 @@ function AufstellungUpload({showToast}) {
       };
       reader.onerror=()=>{ setUploading(false); reload(); };
       reader.readAsDataURL(file);
-      showToast(`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
-    } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
+      showToast(T`Aufstellung ${saison} ${runde}: ${spielerData.length} Spieler gespeichert`,"📋");
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");setUploading(false);}
   }
 
   async function openPdf(id) {
@@ -19375,13 +19472,13 @@ function AufstellungUpload({showToast}) {
   }
 
   async function deleteEntry(id,label) {
-    if(!window.confirm(`"${label}" wirklich löschen?`)) return;
+    if(!window.confirm(T`"${label}" wirklich löschen?`)) return;
     try {
       await deleteDoc(doc(db,"config",id));
       await deleteDoc(doc(db,"config","pdf_"+id)).catch(()=>{});
       showToast("Gelöscht","✅");
       reload();
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   return <div>
@@ -21480,7 +21577,7 @@ async function spiellokaleExcelLesen(file){
   rows[0].forEach((t,i)=>{ const f=SPIELLOKAL_KOPF_ALIAS[spiellokalKopfNorm(t)]; if(f && spalte[f]===undefined) spalte[f]=i; });
   for(const pflicht of ["verein","name","strasse","ort"])
     if(spalte[pflicht]===undefined)
-      fehler.push(`Spalte „${SPIELLOKAL_SPALTEN.find(s=>s.feld===pflicht).titel}“ fehlt in der Kopfzeile.`);
+      fehler.push(T`Spalte „${SPIELLOKAL_SPALTEN.find(s=>s.feld===pflicht).titel}“ fehlt in der Kopfzeile.`);
   if(fehler.length) return {vereine:[], fehler, hinweise};
   const wert=(r,f)=>spalte[f]===undefined?"":String(r[spalte[f]]??"").trim();
   const map=new Map();
@@ -21489,10 +21586,10 @@ async function spiellokaleExcelLesen(file){
     const verein=wert(r,"verein");
     const lok={nr:wert(r,"nr"), name:wert(r,"name"), strasse:wert(r,"strasse"), plz:wert(r,"plz"), ort:wert(r,"ort")};
     if(!verein && !lok.name && !lok.strasse) return;            // Leerzeile
-    if(!verein){ fehler.push(`Zeile ${zeile}: Verein fehlt.`); return; }
+    if(!verein){ fehler.push(T`Zeile ${zeile}: Verein fehlt.`); return; }
     const kRoh=wert(r,"koordinaten");
     const k=lokalKoordinaten(kRoh);
-    if(kRoh && !k){ fehler.push(`Zeile ${zeile} (${verein}): Koordinaten „${kRoh}“ nicht erkannt.`); return; }
+    if(kRoh && !k){ fehler.push(T`Zeile ${zeile} (${verein}): Koordinaten „${kRoh}“ nicht erkannt.`); return; }
     lok.koordinaten = k ? `${k.lat}, ${k.lng}` : "";
     const vnr=wert(r,"vereinNr");
     const schluessel = vnr || ("n:"+normVereinName(verein));
@@ -21502,7 +21599,7 @@ async function spiellokaleExcelLesen(file){
   const vereine=[...map.values()].map(v=>{
     let lokale=v.lokale.map((l,i)=>({...l, nr:String(l.nr||(i+1))}))
       .sort((a,b)=>(Number(a.nr)||99)-(Number(b.nr)||99));
-    if(lokale.length>3){ hinweise.push(`${v.verein}: nur die ersten 3 Spiellokale übernommen.`); lokale=lokale.slice(0,3); }
+    if(lokale.length>3){ hinweise.push(T`${v.verein}: nur die ersten 3 Spiellokale übernommen.`); lokale=lokale.slice(0,3); }
     return {...v, lokale};
   });
   return {vereine, fehler, hinweise};
@@ -21521,9 +21618,9 @@ function SpiellokaleVerwaltung({ showToast }){
     setExcelBusy(true); setExcelMeldung("");
     try{
       const r=await spiellokaleExcelExport(vereine);
-      setExcelMeldung(`${r.anzahl} Spiellokal(e) exportiert.`+(r.formatiert?"":
-        ` Ohne Rahmen/fixierte Kopfzeile – Formatierungs-Bibliothek nicht geladen (${r.fehler||"unbekannt"}).`));
-    }catch(e){ setExcelMeldung("Export fehlgeschlagen: "+(e?.message||"unbekannt")); }
+      setExcelMeldung(T`${r.anzahl} Spiellokal(e) exportiert.`+(r.formatiert?"":
+        T` Ohne Rahmen/fixierte Kopfzeile – Formatierungs-Bibliothek nicht geladen (${r.fehler||"unbekannt"}).`));
+    }catch(e){ setExcelMeldung(T("Export fehlgeschlagen: ")+(e?.message||"unbekannt")); }
     setExcelBusy(false);
   }
   async function excelImport(e){
@@ -21534,7 +21631,7 @@ function SpiellokaleVerwaltung({ showToast }){
     try{
       const {vereine:neu, fehler, hinweise}=await spiellokaleExcelLesen(file);
       if(fehler.length){
-        setExcelMeldung("Nichts übernommen – bitte korrigieren:\n• "+fehler.slice(0,8).join("\n• ")+(fehler.length>8?`\n… und ${fehler.length-8} weitere`:""));
+        setExcelMeldung(T("Nichts übernommen – bitte korrigieren:\n• ")+fehler.slice(0,8).join("\n• ")+(fehler.length>8?T`\n… und ${fehler.length-8} weitere`:""));
         setExcelBusy(false); return;
       }
       if(!neu.length){ setExcelMeldung("Keine Spiellokale in der Datei gefunden."); setExcelBusy(false); return; }
@@ -21554,10 +21651,10 @@ function SpiellokaleVerwaltung({ showToast }){
       await speichereAlle(liste);
       const mitKoord=neu.reduce((s,v)=>s+v.lokale.filter(l=>l.koordinaten).length,0);
       const lokAnz=neu.reduce((s,v)=>s+v.lokale.length,0);
-      setExcelMeldung(`Übernommen: ${lokAnz} Spiellokal(e) von ${neu.length} Verein(en) – ${geaendert} aktualisiert, ${neuAngelegt} neu, ${mitKoord} mit Koordinaten.`
+      setExcelMeldung(T`Übernommen: ${lokAnz} Spiellokal(e) von ${neu.length} Verein(en) – ${geaendert} aktualisiert, ${neuAngelegt} neu, ${mitKoord} mit Koordinaten.`
         +(hinweise.length?"\n• "+hinweise.join("\n• "):""));
       showToast&&showToast("Spiellokale importiert","✅");
-    }catch(err){ setExcelMeldung("Import fehlgeschlagen: "+(err?.message||"unbekannt")); }
+    }catch(err){ setExcelMeldung(T("Import fehlgeschlagen: ")+(err?.message||"unbekannt")); }
     setExcelBusy(false);
   }
 
@@ -21684,7 +21781,7 @@ function SpiellokaleVerwaltung({ showToast }){
               {(l.koordinaten||"").trim() && <div style={{fontSize:10,marginTop:4,
                 color:lokalKoordinaten(l.koordinaten)?"#10b981":"#ef4444"}}>
                 {lokalKoordinaten(l.koordinaten)
-                  ? `✓ erkannt: ${lokalKoordinaten(l.koordinaten).lat}, ${lokalKoordinaten(l.koordinaten).lng} – die Kartenlinks führen genau dorthin`
+                  ? T`✓ erkannt: ${lokalKoordinaten(l.koordinaten).lat}, ${lokalKoordinaten(l.koordinaten).lng} – die Kartenlinks führen genau dorthin`
                   : "Nicht erkannt. Erwartet: „Breite, Länge“ oder ein Link aus Google Maps."}
               </div>}
               {(l.strasse||l.ort||l.name) && <div style={{display:"flex",gap:10,marginTop:5,fontSize:10}}>
@@ -21977,7 +22074,7 @@ function HalleninfoVerwaltung({showToast}) {
   async function fotoHinzufuegen(file){
     if(!file) return;
     if(!file.type.startsWith("image/")){ showToast&&showToast("Bitte eine Bilddatei wählen","❌"); return; }
-    if(fotos.length>=HALLENINFO_MAX_FOTOS){ showToast&&showToast(`Maximal ${HALLENINFO_MAX_FOTOS} Fotos`,"❌"); return; }
+    if(fotos.length>=HALLENINFO_MAX_FOTOS){ showToast&&showToast(T`Maximal ${HALLENINFO_MAX_FOTOS} Fotos`,"❌"); return; }
     try{
       const dataUrl = await komprimiereBild(file, {maxBreite:FOTO_MAX_KANTE, maxHoehe:FOTO_MAX_KANTE, maxLen:FOTO_MAX_LEN});
       setFotos(p=>[...p,dataUrl]);
@@ -22069,7 +22166,7 @@ function HalleninfoVerwaltung({showToast}) {
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{info.titel||"(ohne Titel)"}</div>
-              <div style={{fontSize:10,color:"var(--text4)"}}>{fmtDatum(info.ts)}{fotos2.length>0?` · ${fotos2.length} Foto${fotos2.length>1?"s":""}`:""}</div>
+              <div style={{fontSize:10,color:"var(--text4)"}}>{fmtDatum(info.ts)}{fotos2.length>0?T` · ${fotos2.length} Foto${fotos2.length>1?"s":""}`:""}</div>
             </div>
             <button onClick={()=>toggleFixiert(info)} title={info.fixiert?"Fixierung aufheben":"Oben fixieren"} style={{padding:"5px 9px",background:info.fixiert?"#f59e0b22":"var(--bg3)",border:`1px solid ${info.fixiert?"#f59e0b55":"var(--border2)"}`,borderRadius:8,color:info.fixiert?"#b45309":"var(--text3)",fontSize:11,fontWeight:700,cursor:"pointer"}}>📌</button>
             <button onClick={()=>starteBearbeiten(info)} style={{padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>✏️</button>
@@ -22475,12 +22572,12 @@ function MannschaftenVerwaltung({showToast, pokal=false}) {
             for(const c of codes) eintrag[c.datum] = { code:c.code, gegner:c.gegner };
             proSaison[teamName] = eintrag;
             await setDoc(doc(db,"config",CODES_DOC), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
-            showToast(`${file.name}: ${codes.length} Spielcodes${pokal?" (Pokal)":""} übernommen`,"🎫");
+            showToast(T`${file.name}: ${codes.length} Spielcodes${pokal?" (Pokal)":""} übernommen`,"🎫");
           } else {
-            showToast(`${file.name} hochgeladen (keine Spielcodes erkannt)`,"📎");
+            showToast(T`${file.name} hochgeladen (keine Spielcodes erkannt)`,"📎");
           }
         }catch(err){
-          showToast(`${file.name} hochgeladen (Spielcodes nicht lesbar)`,"📎");
+          showToast(T`${file.name} hochgeladen (Spielcodes nicht lesbar)`,"📎");
         }
       } else if(fileKey.endsWith("_pin") && file.name.toLowerCase().endsWith(".pdf")){
         // Spiel-PIN-PDFs: PINs auslesen und je Mannschaft strukturiert speichern, damit
@@ -22500,15 +22597,15 @@ function MannschaftenVerwaltung({showToast, pokal=false}) {
             for(const p of pins) eintrag[p.datum] = { pin:p.pin, gegner:p.gegner };
             proSaison[teamName] = eintrag;
             await setDoc(doc(db,"config",PINS_DOC), {...bestehend, [seasonSlug]:proSaison}, {merge:true});
-            showToast(`${file.name}: ${pins.length} Spiel-PINs${pokal?" (Pokal)":""} übernommen`,"🔑");
+            showToast(T`${file.name}: ${pins.length} Spiel-PINs${pokal?" (Pokal)":""} übernommen`,"🔑");
           } else {
-            showToast(`${file.name} hochgeladen (keine PINs erkannt)`,"📎");
+            showToast(T`${file.name} hochgeladen (keine PINs erkannt)`,"📎");
           }
         }catch(err){
-          showToast(`${file.name} hochgeladen (PINs nicht lesbar)`,"📎");
+          showToast(T`${file.name} hochgeladen (PINs nicht lesbar)`,"📎");
         }
       } else {
-        showToast(`${file.name} hochgeladen`,"📎");
+        showToast(T`${file.name} hochgeladen`,"📎");
       }
       setUploading(p=>({...p,[fileKey]:false}));
     };
@@ -23293,9 +23390,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     } catch(e){
       console.error("Betreuer/Fahrer-Spiegel konnte nicht gespeichert werden:",e);
       if(typeof window!=="undefined") window.alert(
-        "Hinweis: Betreuer/Fahrer wurden gespeichert, konnten aber nicht für das Kalender-Abo veröffentlicht werden.\n\n"+
-        "Mögliche Ursache: die aktualisierten Firestore-Regeln sind noch nicht in der Firebase Console deployt.\n\n"+
-        "Details: "+(e?.message||e)
+        T("Hinweis: Betreuer/Fahrer wurden gespeichert, konnten aber nicht für das Kalender-Abo veröffentlicht werden.\n\n")+
+        T("Mögliche Ursache: die aktualisierten Firestore-Regeln sind noch nicht in der Firebase Console deployt.\n\n")+
+        T("Details: ")+(e?.message||e)
       );
     }
   }
@@ -23703,7 +23800,7 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     }catch(e){ setTabBericht({ok:false,meldung:e?.message||"Netzwerkfehler"}); }
     setTabLaeuft(false);
   }
-  const fmtStand=(ts)=>{ if(!ts) return ""; try{ return new Date(ts).toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr"; }catch(e){ return ""; } };
+  const fmtStand=(ts)=>{ if(!ts) return ""; try{ return new Date(ts).toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+T(" Uhr"); }catch(e){ return ""; } };
   const seasonTeams = season.teams;
   const seasonSlugSB = selSeasonKey.replace("/","_");
   const fotoVonSB = (teamId) => {
@@ -24177,7 +24274,7 @@ function GeburtstageTabErwachsene({players}) {
     {erwachsene.map(({p,info})=>{
       const {ageAtNext:age, days, isToday}=info;
       const isSoon=days<=7;
-      const bdLabel=new Date(2000,info.m-1,info.d).toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
+      const bdLabel=new Date(2000,info.m-1,info.d).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"long"});
       return <div key={p.id} style={{
         display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:6,
         background:isToday?"#f59e0b22":isSoon?"#10b98111":"var(--bg2)",
@@ -24187,7 +24284,7 @@ function GeburtstageTabErwachsene({players}) {
         <div style={{flex:1}}>
           <div style={{fontSize:13,fontWeight:700,color:isToday?"#f59e0b":"var(--text)"}}>{p.firstName} {p.lastName}</div>
           <div style={{fontSize:11,color:"var(--text3)"}}>
-            {bdLabel} · {isToday?"🎂 Heute!":days===1?"Morgen!":`in ${days} Tagen`}
+            {bdLabel} · {isToday?"🎂 Heute!":days===1?"Morgen!":T`in ${days} Tagen`}
           </div>
         </div>
         <div style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{age} J.</div>
@@ -24491,7 +24588,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
   };
   // Saison-Auswahl (Punkt 1): alle bekannten Spielplan-Saisons
   // V501: aus den gepflegten Saisons
-  const SAISON_OPTS=saisonOptionen().map(o=>({id:o.id, label:o.label+(o.aktuell?" (aktuell)":"")}));
+  const SAISON_OPTS=saisonOptionen().map(o=>({id:o.id, label:o.label+(o.aktuell?T(" (aktuell)"):"")}));
   const [selSaison,setSelSaison]=useState(()=>aktSpielplanKey());   // V501
   const [spiele,setSpiele]=useState([]);
   const [vereinstermine,setVereinstermine]=useState([]);
@@ -24705,7 +24802,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
         {SAISON_OPTS.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>
-        {spiele.length>0?`${spiele.length} Spiele · ${alleMannschaften.length} Mannschaften`:"Für diese Saison sind noch keine Spiele hinterlegt."}
+        {spiele.length>0?T`${spiele.length} Spiele · ${alleMannschaften.length} Mannschaften`:"Für diese Saison sind noch keine Spiele hinterlegt."}
       </div>
     </div>
 
@@ -24746,14 +24843,14 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
             </div>
             <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
               {betreutPersonen.length>0
-                ? `Aufgenommen werden die Spiele, für die ${betreutPersonen.map(p=>personAnzeigeName(p)).join(" oder ")} als Betreuer bestimmt ${betreutPersonen.length>1?"sind":"ist"}.`
+                ? T`Aufgenommen werden die Spiele, für die ${betreutPersonen.map(p=>personAnzeigeName(p)).join(" oder ")} als Betreuer bestimmt ${betreutPersonen.length>1?"sind":"ist"}.`
                 : "Bitte mindestens eine Person auswählen, deren betreute Spiele aufgenommen werden sollen."}
             </div>
           </div>}
         </div>
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
-        {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":`${selTeams.length} Mannschaft(en) gewählt.`}
+        {selTeams.length===0?"Nichts gewählt = alle Mannschaften werden aufgenommen.":T`${selTeams.length} Mannschaft(en) gewählt.`}
       </div>
     </div>
 
@@ -24776,7 +24873,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
         ))}
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
-        {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
+        {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":T`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
       </div>
     </div>
 
@@ -24985,7 +25082,7 @@ function TerminVerwaltung({showToast}) {
     next.sort((a,b)=>(a.datumStart+a.uhrzeitStart).localeCompare(b.datumStart+b.uhrzeitStart));
     try{ await setDoc(doc(db,"config","vereinstermine"),{termine:next,lastUpdated:Date.now()});
       showToast(editId?"Termin aktualisiert":"Termin angelegt","📌"); setForm(leer); setEditId(null);
-    }catch(e){showToast("Fehler: "+e.message,"❌");}
+    }catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
   function edit(t){ setForm({datumStart:t.datumStart||"",datumEnde:t.datumEnde||"",uhrzeitStart:t.uhrzeitStart||"",uhrzeitEnde:t.uhrzeitEnde||"",rubrik:t.rubrik||"Alle",veranstaltung:t.veranstaltung||"",ort:t.ort||""}); setEditId(t.id);
     // Cursor nach oben ins erste Feld "Datum (Start)"
@@ -24995,10 +25092,10 @@ function TerminVerwaltung({showToast}) {
     },50);
   }
   async function del(id){
-    if(!window.confirm("Diesen Termin löschen?")) return;
+    if(!window.confirm(T("Diesen Termin löschen?"))) return;
     const next=termine.filter(t=>t.id!==id);
     try{ await setDoc(doc(db,"config","vereinstermine"),{termine:next,lastUpdated:Date.now()}); showToast("Termin gelöscht","🗑️"); if(editId===id){setForm(leer);setEditId(null);} }
-    catch(e){showToast("Fehler: "+e.message,"❌");}
+    catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   const lab={fontSize:11,color:"var(--text2)",display:"block",marginBottom:3};
@@ -25769,7 +25866,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
                 <td style={{padding:"5px 6px"}}>
                   <span style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:4,padding:"2px 5px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>📌 Termin</span>
                 </td>
-                <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?("bis "+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?("bis "+s._uhrzeitEnde):"")}</td>
+                <td style={{padding:"5px 6px",color:"var(--text4)",fontSize:10}}>{endeAnders?(T("bis ")+s._datumEnde.split("-").reverse().join(".")):(s._uhrzeitEnde?(T("bis ")+s._uhrzeitEnde):"")}</td>
                 <td style={{padding:"5px 6px"}}></td>
                 <td style={{padding:"5px 6px",fontSize:11,fontWeight:600}} colSpan={8}>{s.gegner}{s.ort?<span style={{color:"var(--text3)",fontWeight:400}}> · {s.ort}</span>:null}</td>
               </tr>;
@@ -25861,7 +25958,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
                     ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}`
                     : `https://ttde-apps.liga.nu/nuliga/nuscore-tt/welcome`;
                   return <a href={url} target="_blank" rel="noopener noreferrer"
-                    title={code?`Digitalen Spielbericht öffnen (Spielcode ${code})`:"Digitalen Spielbericht öffnen (kein Spielcode hinterlegt)"}
+                    title={code?T`Digitalen Spielbericht öffnen (Spielcode ${code})`:"Digitalen Spielbericht öffnen (kein Spielcode hinterlegt)"}
                     style={{display:"inline-flex",alignItems:"center",gap:3,color:code?"#10b981":"var(--text4)",fontWeight:700,textDecoration:code?"underline":"none",fontVariantNumeric:"tabular-nums"}}>
                     📝 {code || "Bericht"}
                   </a>;
@@ -25912,12 +26009,12 @@ function UebungsvideoUpload({showToast}) {
       urls[exId]=url;
       await setDoc(doc(db,"config","uebungsvideos"),{urls,lastUpdated:Date.now()});
       showToast("Video hochgeladen","🎬");
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
     setUploadingId(null);
   }
 
   async function deleteVideo(exId,name) {
-    if(!window.confirm(`Video für "${name}" löschen?`)) return;
+    if(!window.confirm(T`Video für "${name}" löschen?`)) return;
     try {
       await deleteObject(storageRef(storage,`uebungsvideos/${exId}.mp4`)).catch(()=>{});
       const snap=await getDoc(doc(db,"config","uebungsvideos")).catch(()=>null);
@@ -25925,7 +26022,7 @@ function UebungsvideoUpload({showToast}) {
       delete urls[exId];
       await setDoc(doc(db,"config","uebungsvideos"),{urls,lastUpdated:Date.now()});
       showToast("Video gelöscht","🗑️");
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   const videoCount=Object.keys(videos).length;
@@ -25999,7 +26096,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
   function mesz(ts){
     if(!ts) return "—";
     const d=new Date(ts+0);
-    return d.toLocaleString("de-DE",{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+" Uhr";
+    return d.toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})+T(" Uhr");
   }
   function reloadSpielpläne(){
     Promise.all(SPIELPLAN_KEYS.map(k=>
@@ -26176,7 +26273,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
               if(Object.keys(patch).length){
                 await setDoc(doc(db,"config","verlegungen"),{data:patch},{merge:true});
               }
-              if(umgestellt>0) showToast(`${umgestellt} Verlegung(en) als „erfolgt" markiert`,"✅");
+              if(umgestellt>0) showToast(T`${umgestellt} Verlegung(en) als „erfolgt" markiert`,"✅");
             }catch(e){ /* Abgleich ist optional; Upload läuft weiter */ }
             // Spiel-PINs und Spielcodes verlegter Spiele auf den neuen Termin umziehen,
             // damit sie nach der Verlegung erhalten bleiben (es werden keine neuen PINs vergeben).
@@ -26194,7 +26291,7 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
                   verschoben+=res.anzahl;
                 }
               }
-              if(verschoben>0) showToast(`${verschoben} Spiel-PIN/Spielcode auf neuen Termin übernommen`,"🔑");
+              if(verschoben>0) showToast(T`${verschoben} Spiel-PIN/Spielcode auf neuen Termin übernommen`,"🔑");
             }catch(e){ /* optional; Upload läuft weiter */ }
             // Bestehende Ergebnisse erhalten: Der Upload ersetzt das Spielplan-Dokument
             // vollstaendig. Liefert ein Export fuer ein Spiel kein Ergebnis (z. B. weil er
@@ -26219,14 +26316,14 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
                   const alt=alteErgebnisse.get(spielKey(s));
                   if(alt){ s.ergebnis=alt; uebernommen++; }
                 }
-                if(uebernommen>0) showToast(`${uebernommen} bereits erfasste(s) Ergebnis(se) beibehalten`,"💾");
+                if(uebernommen>0) showToast(T`${uebernommen} bereits erfasste(s) Ergebnis(se) beibehalten`,"💾");
               }
             }catch(e){ /* optional; Upload laeuft weiter */ }
             await setDoc(doc(db,"config",key),{spiele,saison,lastUpdated:ts});
             const mitErgebnis=spiele.filter(s=>s.ergebnis&&String(s.ergebnis).trim()!=="").length;
-            showToast(`${saison}: ${spiele.length} Spiele importiert, davon ${mitErgebnis} mit Ergebnis`,"📅");
+            showToast(T`${saison}: ${spiele.length} Spiele importiert, davon ${mitErgebnis} mit Ergebnis`,"📅");
             reloadSpielpläne();
-          } catch(e){showToast("Fehler: "+e.message,"❌");}
+          } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
           setUploading(false);
         };
         reader.onerror=()=>{showToast("Lesefehler","❌");setUploading(false);};
@@ -26246,8 +26343,8 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
       };
       reader.onerror=()=>setUploading(false);
       reader.readAsDataURL(file);
-      showToast(`Spielplan ${saison} gespeichert`,"📅");
-    } catch(e){showToast("Fehler: "+e.message,"❌");setUploading(false);}
+      showToast(T`Spielplan ${saison} gespeichert`,"📅");
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");setUploading(false);}
   }
 
   async function openPdf(key) {
@@ -26268,13 +26365,13 @@ function SpielplanUpload({showToast, onJoinImport, joinImporting, abschnitt=null
   }
 
   async function deleteSpielpan(key) {
-    if(!window.confirm("Spielplan wirklich löschen?")) return;
+    if(!window.confirm(T("Spielplan wirklich löschen?"))) return;
     try {
       await deleteDoc(doc(db,"config",key));
       await deleteDoc(doc(db,"config","pdf_"+key)).catch(()=>{});
       showToast("Spielplan gelöscht","✅");
       reloadSpielpläne();
-    } catch(e){showToast("Fehler: "+e.message,"❌");}
+    } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
   }
 
   return <div>
@@ -26471,7 +26568,7 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
     setEhrungen(updated); setEditingEhr(null); showToast&&showToast("Ehrung aktualisiert","✅");
   }
   async function delEhrung(id) {
-    if(!window.confirm("Ehrung löschen?")) return;
+    if(!window.confirm(T("Ehrung löschen?"))) return;
     const updated=ehrungen.filter(e=>e.id!==id);
     await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
     setEhrungen(updated);
@@ -26536,7 +26633,7 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
         <span style={{fontSize:18}}>{art.icon}</span>
         <div style={{flex:1}}>
           <div style={{fontSize:11,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
-          <div style={{fontSize:10,color:"var(--text3)"}}>{e.datum?new Date(e.datum).toLocaleDateString("de-DE"):"—"}</div>
+          <div style={{fontSize:10,color:"var(--text3)"}}>{e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC):"—"}</div>
         </div>
         <button onClick={()=>{setEditingEhr(e.id);setEditE({typ:e.typ,art:e.art,datum:e.datum});}} style={{padding:"2px 6px",background:"#3b82f622",border:"none",borderRadius:4,color:"#3b82f6",fontSize:10,cursor:"pointer"}}>✏️</button>
         <button onClick={()=>delEhrung(e.id)} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
@@ -26573,7 +26670,7 @@ function EhrungenView({player}) {
         <div style={{flex:1}}>
           <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
-            {e.datum?new Date(e.datum).toLocaleDateString("de-DE",{day:"2-digit",month:"long",year:"numeric"}):"—"}
+            {e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"long",year:"numeric"}):"—"}
           </div>
         </div>
       </div>;
@@ -27265,7 +27362,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",
           borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0,
         }}>⏻</button>
-        <span title={`Version ${APP_VERSION}`} style={{
+        <span title={T`Version ${APP_VERSION}`} style={{
           flexShrink:0,padding:"5px 7px",borderRadius:20,border:"1px solid var(--border2)",
           background:"var(--bg3)",color:"var(--text3)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",lineHeight:1,
         }}>V{APP_VERSION}</span>
@@ -27436,7 +27533,7 @@ const datenschutzText = () => [
     "Ein Datenschutzbeauftragter ist gesetzlich nicht verpflichtend bestellt. Bei Fragen zum Datenschutz wenden Sie sich bitte an den oben genannten Verantwortlichen.",
   ]},
   {h:"2. Zweck und Gegenstand der Verarbeitung", t:[
-    `Der ${VEREIN.kurzname} betreibt eine digitale Trainings-App zur Organisation und Unterstützung des Tischtennis-Trainingsbetriebs. Die App dient der Verwaltung der Mitglieder und Trainingsgruppen, der Erfassung der Trainingsanwesenheit, der Dokumentation von Trainingsfortschritten (Übungssterne, Beobachtungen), der Anzeige von Mannschaftsaufstellungen, Spielplänen und Ranglisten, der Verwaltung der Vereinsausstattung sowie der Bereitstellung von Übungsvideos.`,
+    T`Der ${VEREIN.kurzname} betreibt eine digitale Trainings-App zur Organisation und Unterstützung des Tischtennis-Trainingsbetriebs. Die App dient der Verwaltung der Mitglieder und Trainingsgruppen, der Erfassung der Trainingsanwesenheit, der Dokumentation von Trainingsfortschritten (Übungssterne, Beobachtungen), der Anzeige von Mannschaftsaufstellungen, Spielplänen und Ranglisten, der Verwaltung der Vereinsausstattung sowie der Bereitstellung von Übungsvideos.`,
   ]},
   {h:"3. Welche Daten werden verarbeitet?", t:[
     "Je nach Rolle werden folgende Kategorien verarbeitet: Stammdaten (Name, Geschlecht, Geburtsdatum), Kontaktdaten (E-Mail, Telefon), Vereinsdaten (Mannschaft, Vereinsbeitritt, Status, Rolle), Trainingsdaten (Anwesenheit, Übungssterne, Beobachtungen), Ausstattungsdaten (Trikot-/Anzugsgröße, Schlägernummer), Nutzungsdaten (Login-Daten, verschlüsseltes Passwort, Avatar) sowie Bild-/Videodaten (Fotos und kurze Übungsvideos).",
@@ -27457,10 +27554,10 @@ const datenschutzText = () => [
   ]},
   {h:"8. Ihre Rechte", t:[
     "Sie haben das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20), Widerspruch (Art. 21) sowie auf Widerruf einer Einwilligung mit Wirkung für die Zukunft (Art. 7 Abs. 3).",
-    "Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). "+(VEREIN.aufsichtsbehoerde ? `Zuständig ist ${VEREIN.aufsichtsbehoerde}.` : "Zuständig ist die Datenschutz-Aufsichtsbehörde des Bundeslandes, in dem der Verein seinen Sitz hat."),
+    T("Zudem haben Sie das Recht, sich bei einer Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). ")+(VEREIN.aufsichtsbehoerde ? T`Zuständig ist ${VEREIN.aufsichtsbehoerde}.` : T("Zuständig ist die Datenschutz-Aufsichtsbehörde des Bundeslandes, in dem der Verein seinen Sitz hat.")),
   ]},
   {h:"9. Einwilligung", t:[
-    `Die Nutzung der Trainings-App des ${VEREIN.kurzname} setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.`,
+    T`Die Nutzung der Trainings-App des ${VEREIN.kurzname} setzt die vollständige Zustimmung zu dieser Datenschutzerklärung voraus. Mit dem Akzeptieren bestätige ich, dass ich die Erklärung vollständig gelesen und verstanden habe und in die beschriebene Verarbeitung meiner Daten bzw. der Daten des von mir vertretenen Kindes vollumfänglich einwillige. Ohne diese Einwilligung ist eine Nutzung der App nicht möglich. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft widerrufen werden.`,
   ]},
 ];
 
@@ -27534,7 +27631,7 @@ function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut
   const [saving,setSaving]=useState(false);
   function druckenPDF(){
     const w=window.open("","_blank");
-    if(!w){alert("Bitte Popups erlauben, um die Erklärung zu drucken.");return;}
+    if(!w){alert(T("Bitte Popups erlauben, um die Erklärung zu drucken."));return;}
     const html=`<html><head><meta charset="utf-8"><title>Datenschutzerklärung ${VEREIN.kurzname}</title>
       <style>body{font-family:Arial,sans-serif;max-width:800px;margin:30px auto;padding:0 20px;color:#222;line-height:1.5}
       h1{color:#1F4E79;font-size:22px;text-align:center}h2{color:#1F4E79;font-size:15px;margin-top:20px}
@@ -27555,8 +27652,8 @@ function DatenschutzGate({playerId, verwandtePlayerIds=[], onAccepted, onSignOut
     } catch(e){
       const rechteFehlen = String(e?.code||e?.message||"").toLowerCase().includes("permission");
       alert(rechteFehlen
-        ? "Die Zustimmung konnte nicht gespeichert werden, weil dein Benutzerkonto nicht mit deinem Profil verknüpft ist.\n\nBitte wende dich an den Administrator – er kann das in der Verwaltung korrigieren (Profil neu mit dem Login verknüpfen)."
-        : "Fehler beim Speichern: "+(e?.message||""));
+        ? T("Die Zustimmung konnte nicht gespeichert werden, weil dein Benutzerkonto nicht mit deinem Profil verknüpft ist.\n\nBitte wende dich an den Administrator – er kann das in der Verwaltung korrigieren (Profil neu mit dem Login verknüpfen).")
+        : T("Fehler beim Speichern: ")+(e?.message||""));
       setSaving(false);
       return;
     }
@@ -27709,7 +27806,7 @@ export default function App() {
     <div style={{fontSize:48}}>🏓</div>
     <div style={{fontSize:14,color:"var(--text3)",maxWidth:380,lineHeight:1.6}}>{text}</div>
   </div>;
-  if(!bereich) return lade(`${VEREIN.kurzname} wird geladen…`);
+  if(!bereich) return lade(T`${VEREIN.kurzname} wird geladen…`);
   if(bereich.modus==="umstellung"){
     if(authU===undefined) return lade("Wird geladen…");
     if(!(authU && PLATTFORM_ADMIN_EMAILS.includes(mailNorm(authU.email)))) return <div>
@@ -27971,7 +28068,7 @@ function AppInhalt() {
       else if (e.code==="auth/invalid-email")
         setLoginErr("Ungültige E-Mail-Adresse.");
       else
-        setLoginErr("Fehler: " + e.message);
+        setLoginErr(T("Fehler: ") + e.message);
     }
     setLoginLoad(false);
   }
@@ -28278,7 +28375,7 @@ function AppInhalt() {
     if (only==="admin" || only==="trainer") return mitPopup(
       <AdminPanel user={authUser} players={players} attendance={attendance} rackets={rackets}
         isSuperAdmin={hasAdminRole} globalTheme={globalTheme} onSetGlobalTheme={handleSetGlobalTheme}
-        onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)} {...sharedProps}/>
+        onPlayerAdded={name=>setLoginSuccess(T`${name} wurde angelegt!`)} {...sharedProps}/>
     );
     // Erwachsene-only → ErwachseneView (nicht PlayerView)
     if (isErwachseneOnly) return mitPopup(
@@ -28306,7 +28403,7 @@ function AppInhalt() {
       clubConfig={clubConfig}
       globalTheme={globalTheme}
       onSetGlobalTheme={handleSetGlobalTheme}
-      onPlayerAdded={name=>setLoginSuccess(`${name} wurde angelegt!`)}
+      onPlayerAdded={name=>setLoginSuccess(T`${name} wurde angelegt!`)}
       {...sharedProps}
     />
   );
