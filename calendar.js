@@ -1,1 +1,0 @@
-netlify/calendar.js
