@@ -1,4 +1,4 @@
-# === TTC-App · Version 502 · netlify.toml · erstellt 03.10.2026 (V502: täglicher Tabellenabruf) ===
+# === TTC-App · Version 519 · netlify.toml · erstellt 07.10.2026 (V519: Manifest/Symbol je Verein) ===
 [build]
   functions = "netlify/functions"
 
@@ -32,3 +32,22 @@
   from = "/kalender.ics"
   to = "/.netlify/functions/calendar"
   status = 200
+
+# V519: Startbildschirm-Name und -Symbol je Verein (abhängig von der aufgerufenen Adresse).
+[[redirects]]
+  from = "/manifest.webmanifest"
+  to = "/.netlify/functions/manifest"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/vereins-icon-192.png"
+  to = "/.netlify/functions/manifest"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/vereins-icon-512.png"
+  to = "/.netlify/functions/manifest"
+  status = 200
+  force = true
