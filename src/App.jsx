@@ -1,4 +1,4 @@
-// === TTC-App · Version 517 · erstellt 06.10.2026 ===
+// === TTC-App · Version 519 · erstellt 07.10.2026 ===
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { initializeApp } from "firebase/app";
@@ -22,7 +22,7 @@ import { firebaseConfig } from "./firebaseConfig";
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "517";
+const APP_VERSION = "519";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -74,6 +74,39 @@ function datenbereichAnwenden(m){
 // V509: Ist der aktive Verein der Ursprungsverein (TTC)? Nur dann gelten die fest
 // eingebauten Vorbelegungen (Vereinsdaten, Spiellokale, frühere Aufstellungen).
 function istUrsprungsverein(){ return AKTIVER_VEREIN_ID==="ttc-niederzeuzheim"; }
+// V518 (Etappe 4a): Vereinsauswahl. Gewählter Verein je Gerät; Liste der Vereine der
+// angemeldeten Person (aus dem Verzeichnis nutzer/<E-Mail>/vereine).
+const VEREIN_WAHL_LS = "ttc_vereinWahl";
+let MEINE_VEREINE = [];   // [{id, name}]
+// V519 (Etappe 4c): eigene Adressen je Verein – aus system/datenbereich:
+//   basisDomain: z. B. "vereinsapp.de" → <kennung>.vereinsapp.de
+//   domains:     { "app.ttc-niederzeuzheim.de": "ttc-niederzeuzheim", … } (eigene Domains)
+let DOMAIN_KONFIG = { basis:"", domains:{} };
+function domainKonfigSetzen(d){
+  DOMAIN_KONFIG = { basis:String((d&&d.basisDomain)||"").toLowerCase().trim(),
+    domains:(d&&d.domains&&typeof d.domains==="object")?d.domains:{} };
+}
+function vereinAusHost(){
+  try{
+    const h=window.location.hostname.toLowerCase();
+    if(DOMAIN_KONFIG.domains[h]) return String(DOMAIN_KONFIG.domains[h]);
+    const b=DOMAIN_KONFIG.basis;
+    if(b && h.endsWith("."+b)){ const l=h.slice(0,-(b.length+1)); if(l && !l.includes(".") && !["www","app"].includes(l)) return l; }
+  }catch(e){}
+  return "";
+}
+function vereinsAdresse(vid){
+  const eigen=Object.keys(DOMAIN_KONFIG.domains||{}).find(h=>DOMAIN_KONFIG.domains[h]===vid);
+  if(eigen) return eigen;
+  return DOMAIN_KONFIG.basis ? `${vid}.${DOMAIN_KONFIG.basis}` : "";
+}
+function vereinAusUrl(){ try{ const v=new URLSearchParams(window.location.search).get("verein"); return v && /^[a-z0-9-]{2,60}$/.test(v) ? v : ""; }catch(e){ return ""; } }
+function gespeicherteVereinswahl(){ try{ return localStorage.getItem(VEREIN_WAHL_LS)||""; }catch(e){ return ""; } }
+function vereinWaehlen(vid){ try{ localStorage.setItem(VEREIN_WAHL_LS, vid); }catch(e){}
+  // V519: Auf einer Vereinsadresse zur Adresse des anderen Vereins wechseln
+  if(vereinAusHost()){ const a=vereinsAdresse(vid); if(a){ window.location.href=`https://${a}/`; return; } }
+  try{ const u=new URL(window.location.href); if(u.searchParams.has("verein")){ u.searchParams.delete("verein"); window.history.replaceState(null,"",u.toString()); } }catch(e){}
+  window.location.reload(); }
 function doc(d, ...seg){ return d===db ? fsDoc(d, ...DATEN_WURZEL, ...seg) : fsDoc(d, ...seg); }
 function collection(d, ...seg){ return d===db ? fsCollection(d, ...DATEN_WURZEL, ...seg) : fsCollection(d, ...seg); }
 function globalDoc(...seg){ return fsDoc(db, ...seg); }
@@ -6046,7 +6079,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
-          spielerA:A, spielerB:B,
+          spielerA:A, spielerB:B, ...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),
         })
       });
     }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
@@ -6065,7 +6098,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
         body: JSON.stringify({
           turnier:t.name||"", konkurrenz:konkName||konk?.name||"", tisch,
           schiri:{ id:schiriId, name: schiriName, empfaenger:[schiriId] },
-          begegnung:{ a:nm(idA), b:nm(idB) },
+          begegnung:{ a:nm(idA), b:nm(idB) }, ...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),
         })
       });
     }catch(e){ /* Push ist Zusatz; Fehler nicht stören lassen */ }
@@ -8845,6 +8878,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               meId={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())?.id}
               istAdmin={isSuperAdmin}/>
             {saving&&<span style={{fontSize:11,color:"#f59e0b"}}>💾</span>}
+            <VereinsWechsler/>
             <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
             <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
         <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
@@ -10564,18 +10598,144 @@ async function zugangAbgleichen(vid, playersListe, rollen){
   const ist=await getDocsFromServer(col);
   const istMap=new Map(ist.docs.map(d=>[d.id,d.data()]));
   const schreiben=[]; const loeschen=[];
+  // V518: Verzeichnis nutzer/<E-Mail>/vereine/<Verein> – darüber findet die App nach dem
+  // Anmelden den richtigen Verein. Einträge ohne Verzeichnis-Vermerk werden nachgetragen.
+  const vName=VEREIN.kurzname||vid;
   for(const [m,q] of soll){
     const quellen=[...q].sort();
     const alt=istMap.get(m);
-    if(!alt || JSON.stringify((alt.quellen||[]).slice().sort())!==JSON.stringify(quellen))
-      schreiben.push({ ref:fsDoc(col,m), data:{ quellen, stand:Date.now() } });
+    if(!alt || alt.verzeichnis!==true || JSON.stringify((alt.quellen||[]).slice().sort())!==JSON.stringify(quellen)){
+      schreiben.push({ ref:fsDoc(col,m), data:{ quellen, stand:Date.now(), verzeichnis:true } });
+      schreiben.push({ ref:fsDoc(db,"nutzer",m,"vereine",vid), data:{ name:vName, stand:Date.now() } });
+    }
   }
-  for(const d of ist.docs) if(!soll.has(d.id)) loeschen.push(d.ref);
+  for(const d of ist.docs) if(!soll.has(d.id)){ loeschen.push(d.ref); loeschen.push(fsDoc(db,"nutzer",d.id,"vereine",vid)); }
   // Sicherheitsbremse: fehlt plötzlich mehr als die Hälfte (z. B. Personen unvollständig
   // geladen), wird nichts entfernt – nur ergänzt.
   if(ist.size>10 && soll.size < ist.size*0.5) loeschen.length=0;
   await inPaketenSchreiben(schreiben, loeschen);
-  return { anzahl:soll.size, neu:schreiben.length, entfernt:loeschen.length };
+  return { anzahl:soll.size, neu:Math.round(schreiben.length/2), entfernt:Math.round(loeschen.length/2) };
+}
+
+// ─── V518 (Etappe 4b): Neuen Verein anlegen (nur Betreiber) ─────────────────
+async function vereinAnlegen({ vid, kurzname, vollname, ort, farbschema, adminMail, user }){
+  const m=mailNorm(adminMail);
+  const stand=Date.now();
+  const batch=writeBatch(db);
+  batch.set(fsDoc(db,"vereine",vid),{ name:kurzname, vollname:vollname||kurzname, angelegt:stand, von:mailNorm(user&&user.email) });
+  batch.set(fsDoc(db,"vereine",vid,"config","rollen"),{ admins:[m], superAdmins:[m], stand, von:mailNorm(user&&user.email) });
+  batch.set(fsDoc(db,"vereine",vid,"config","clubConfig"),{ name:kurzname, subtitle:"Vereins-App", farbschema:farbschema||"blau",
+    verein:{ kurzname, vollname:vollname||kurzname, ort:ort||"", kontoInhaber:vollname||kurzname, suchname:ort||"" } });
+  batch.set(fsDoc(db,"vereine",vid,"zugang",m),{ quellen:["admin"], stand, verzeichnis:true });
+  batch.set(fsDoc(db,"nutzer",m,"vereine",vid),{ name:kurzname, stand });
+  await batch.commit();
+  // Login-Konto: neu anlegen und Mail zum Passwort-Setzen schicken; vorhandenes Konto bleibt.
+  let konto="neu";
+  try{
+    const {user:nu}=await createUserWithEmailAndPassword(authHelper, m, "Vk"+Math.random().toString(36).slice(2,12)+"9!");
+    await signOut(authHelper);
+    await sendPasswordResetEmail(auth, m);
+  }catch(e){ konto = (e && e.code==="auth/email-already-in-use") ? "vorhanden" : ("Fehler: "+(e&&e.message||e)); }
+  return { konto };
+}
+function VereineVerwaltungPanel({user}){
+  const [liste,setListe]=useState(null);
+  const [form,setForm]=useState({vid:"",kurzname:"",vollname:"",ort:"",farbschema:"blau",adminMail:""});
+  const [busy,setBusy]=useState(false);
+  const [meldung,setMeldung]=useState("");
+  const laden=async()=>{ try{ const sn=await getDocsFromServer(globalCollection("vereine")); setListe(sn.docs.map(d=>({id:d.id,...d.data()}))); }catch(e){ setListe([]); } };
+  useEffect(()=>{ laden(); },[]);
+  const slug=t=>String(t||"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60);
+  async function anlegen(){
+    const vid=slug(form.vid||form.kurzname);
+    if(!vid || vid.length<2){ setMeldung("Bitte eine Vereinskennung angeben."); return; }
+    if(!form.kurzname.trim()){ setMeldung("Bitte den Vereinsnamen angeben."); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mailNorm(form.adminMail))){ setMeldung("Bitte eine gültige E-Mail-Adresse für den ersten Admin angeben."); return; }
+    if((liste||[]).some(v=>v.id===vid)){ setMeldung(`Die Kennung „${vid}“ ist bereits vergeben.`); return; }
+    if(!window.confirm(`Verein „${form.kurzname}“ mit der Kennung „${vid}“ anlegen?\nErster Admin: ${mailNorm(form.adminMail)}`)) return;
+    setBusy(true); setMeldung("Lege Verein an …");
+    try{
+      const r=await vereinAnlegen({ vid, kurzname:form.kurzname.trim(), vollname:form.vollname.trim(), ort:form.ort.trim(), farbschema:form.farbschema, adminMail:form.adminMail, user });
+      setMeldung(`✅ Verein angelegt. Login-Konto des Admins: ${r.konto==="neu"?"neu angelegt – eine E-Mail zum Setzen des Passworts wurde verschickt":r.konto==="vorhanden"?"bestand bereits – Anmeldung mit dem bisherigen Passwort":r.konto}. Aufruf: ${vereinsAdresse(vid)?`https://${vereinsAdresse(vid)}/`:`${window.location.origin}/?verein=${vid}`}`);
+      setForm({vid:"",kurzname:"",vollname:"",ort:"",farbschema:"blau",adminMail:""}); laden();
+    }catch(e){ setMeldung("Fehler: "+(e&&e.message||e)); }
+    setBusy(false);
+  }
+  const inp={width:"100%",padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,outline:"none",boxSizing:"border-box"};
+  const lab={fontSize:11,color:"var(--text2)",fontWeight:700,display:"block",marginBottom:3};
+  return <div>
+    <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:6}}>Vorhandene Vereine</div>
+    {liste===null ? <div style={{fontSize:11,color:"var(--text3)"}}>⏳ Lade …</div> :
+      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+        {liste.map(v=><div key={v.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",padding:"7px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8}}>
+          <div style={{flex:1,minWidth:160}}><div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{v.name||v.id}</div>
+            <div style={{fontSize:10,color:"var(--text3)"}}>{v.id}{v.angelegt?` · angelegt ${new Date(v.angelegt).toLocaleDateString("de-DE")}`:""}</div></div>
+          {v.id!==AKTIVER_VEREIN_ID
+            ? <button onClick={()=>vereinWaehlen(v.id)} style={{padding:"5px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,fontWeight:700,cursor:"pointer"}}>Öffnen</button>
+            : <span style={{fontSize:10,fontWeight:800,color:"#10b981"}}>aktiv</span>}
+        </div>)}
+      </div>}
+    <DomainEinstellungen liste={liste||[]}/>
+    <div style={{fontSize:12,fontWeight:800,color:"var(--text)",margin:"6px 0"}}>➕ Neuen Verein anlegen</div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:8}}>
+      Legt den Vereinsbereich mit Admin-Liste, Zugangsliste und Grunddaten an. Für den ersten Admin wird – falls nötig –
+      ein Login-Konto erstellt und eine E-Mail zum Setzen des Passworts verschickt. Alles Weitere pflegt der Verein selbst.
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+      <div><span style={lab}>Vereinsname (kurz) *</span><input value={form.kurzname} onChange={e=>setForm(f=>({...f,kurzname:e.target.value}))} placeholder="z. B. TV Musterstadt" style={inp}/></div>
+      <div><span style={lab}>Kennung (für Adresse)</span><input value={form.vid} onChange={e=>setForm(f=>({...f,vid:e.target.value}))} placeholder={slug(form.kurzname)||"tv-musterstadt"} style={inp}/></div>
+      <div><span style={lab}>Vollständiger Name</span><input value={form.vollname} onChange={e=>setForm(f=>({...f,vollname:e.target.value}))} placeholder="z. B. TV 1900 Musterstadt e. V." style={inp}/></div>
+      <div><span style={lab}>Ort</span><input value={form.ort} onChange={e=>setForm(f=>({...f,ort:e.target.value}))} style={inp}/></div>
+      <div><span style={lab}>Farbschema</span><select value={form.farbschema} onChange={e=>setForm(f=>({...f,farbschema:e.target.value}))} style={inp}>
+        {FARBSCHEMATA.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}</select></div>
+      <div><span style={lab}>E-Mail des ersten Admins *</span><input value={form.adminMail} onChange={e=>setForm(f=>({...f,adminMail:e.target.value}))} type="email" style={inp}/></div>
+    </div>
+    <button onClick={anlegen} disabled={busy} style={{width:"100%",marginTop:10,padding:"10px 12px",background:busy?"#9ca3af":"#10b981",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:800,cursor:busy?"wait":"pointer"}}>
+      {busy?"⏳ Lege an …":"Verein anlegen"}</button>
+    {meldung && <div style={{fontSize:11,color:meldung.startsWith("Fehler")||meldung.startsWith("Bitte")||meldung.startsWith("Die Kennung")?"#ef4444":"var(--text2)",marginTop:8,lineHeight:1.5,wordBreak:"break-word"}}>{meldung}</div>}
+  </div>;
+}
+// V519 (Etappe 4c): Basis-Domain und eigene Domains je Verein (system/datenbereich)
+function DomainEinstellungen({liste}){
+  const [basis,setBasis]=useState(DOMAIN_KONFIG.basis||"");
+  const [eigen,setEigen]=useState(()=>{ const r={}; for(const [h,v] of Object.entries(DOMAIN_KONFIG.domains||{})) r[v]=h; return r; });
+  const [busy,setBusy]=useState(false); const [msg,setMsg]=useState("");
+  const host=h=>String(h||"").toLowerCase().trim().replace(/^https?:\/\//,"").replace(/\/.*$/,"");
+  async function speichern(){
+    setBusy(true); setMsg("");
+    try{
+      const domains={}; for(const [vid,h] of Object.entries(eigen)){ const x=host(h); if(x) domains[x]=vid; }
+      await setDoc(globalDoc("system","datenbereich"),{ basisDomain:host(basis), domains },{merge:true});
+      domainKonfigSetzen({basisDomain:host(basis),domains});
+      setMsg("✅ Gespeichert. Die Adressen zusätzlich bei Netlify (Domains) eintragen.");
+    }catch(e){ setMsg("Fehler: "+(e&&e.message||e)); }
+    setBusy(false);
+  }
+  const inp={width:"100%",padding:"7px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,outline:"none",boxSizing:"border-box"};
+  return <div style={{background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,padding:10,marginBottom:12}}>
+    <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Adressen der Vereine</div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:8}}>
+      Mit einer Basis-Domain erhält jeder Verein automatisch die Adresse <b>&lt;kennung&gt;.&lt;basis-domain&gt;</b>.
+      Zusätzlich kann je Verein eine eigene Domain eingetragen werden. Die Adresse bestimmt Anmeldeseite, Logo und
+      Startbildschirm-Symbol. Jede Adresse muss außerdem bei Netlify als Domain eingetragen sein.
+    </div>
+    <span style={{fontSize:10,color:"var(--text3)"}}>Basis-Domain</span>
+    <input value={basis} onChange={e=>setBasis(e.target.value)} placeholder="z. B. vereinsapp.de" style={{...inp,marginBottom:8}}/>
+    {liste.map(v=><div key={v.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+      <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",minWidth:140}}>{v.name||v.id}</span>
+      <input value={eigen[v.id]||""} onChange={e=>setEigen(x=>({...x,[v.id]:e.target.value}))} placeholder={basis?`${v.id}.${host(basis)}`:"eigene Domain (optional)"} style={{...inp,flex:"1 1 200px",width:"auto"}}/>
+    </div>)}
+    <button onClick={speichern} disabled={busy} style={{marginTop:4,padding:"8px 12px",background:busy?"#9ca3af":"#3b82f6",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:800,cursor:busy?"wait":"pointer"}}>Adressen speichern</button>
+    {msg && <div style={{fontSize:11,color:msg.startsWith("Fehler")?"#ef4444":"var(--text2)",marginTop:6}}>{msg}</div>}
+  </div>;
+}
+// V518: kleiner Vereinswechsler für die Kopfleiste (nur bei mehreren Vereinen)
+function VereinsWechsler(){
+  if(!MEINE_VEREINE || MEINE_VEREINE.length<2) return null;
+  return <select value={AKTIVER_VEREIN_ID} title="Verein wechseln" onChange={e=>{ if(e.target.value!==AKTIVER_VEREIN_ID) vereinWaehlen(e.target.value); }}
+    style={{maxWidth:130,padding:"5px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,flexShrink:0}}>
+    {MEINE_VEREINE.map(v=><option key={v.id} value={v.id}>🏢 {v.name||v.id}</option>)}
+  </select>;
 }
 async function inVereinsbereichKopieren(vid, user, meldung){
   const bericht={};
@@ -10693,6 +10853,8 @@ function VereinsbereichPanel({user, players=[]}){
     return ()=>{u1();u2();};
   },[]);
   const flagRef=globalDoc("system","datenbereich");
+  // V519: nur die Umschaltfelder ändern – Domain-Einstellungen im selben Dokument bleiben erhalten
+  const flagSetzen=(daten)=>setDoc(flagRef,{ hinweis:"", richtung:"", ...daten },{merge:true});
   async function umschalten(){
     if(laeuft) return;
     const alter = sicherung&&sicherung.letzte ? (Date.now()-new Date(sicherung.letzte).getTime()) : Infinity;
@@ -10702,20 +10864,20 @@ function VereinsbereichPanel({user, players=[]}){
     const von=(user&&user.email)||"";
     try{
       setMeldung("Wartungsmodus ein …");
-      await setDoc(flagRef,{ modus:"umstellung", vereinId:vid, seit:Date.now(), von });
+      await flagSetzen({ modus:"umstellung", vereinId:vid, seit:Date.now(), von });
       await warte(4000);   // laufende Schreibvorgänge anderer Geräte abwarten
       const erg=await inVereinsbereichKopieren(vid, user, setMeldung);
       setErgebnis(erg);
       if(!erg.alleOk){
-        await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: Abweichungen bei der Kopie" });
+        await flagSetzen({ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: Abweichungen bei der Kopie" });
         setMeldung("Fehler: Abweichungen bei der Abschlusskopie – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage.");
         window.__ttcUmschaltungHier=false; setLaeuft(false); return;
       }
-      await setDoc(flagRef,{ modus:"verein", vereinId:vid, seit:Date.now(), von, appVersion:APP_VERSION });
+      await flagSetzen({ modus:"verein", vereinId:vid, seit:Date.now(), von, appVersion:APP_VERSION });
       setMeldung("✅ Umgeschaltet. Die App wird neu geladen …");
       setTimeout(()=>window.location.reload(),1500);
     }catch(e){
-      try{ await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: "+(e&&e.message||e) }); }catch(e2){}
+      try{ await flagSetzen({ modus:"oben", vereinId:vid, seit:Date.now(), von, hinweis:"Umschaltung abgebrochen: "+(e&&e.message||e) }); }catch(e2){}
       setMeldung("Fehler: "+(e&&e.message||e)+" – Umschaltung abgebrochen, es bleibt bei der bisherigen Ablage.");
       window.__ttcUmschaltungHier=false; setLaeuft(false);
     }
@@ -10726,15 +10888,15 @@ function VereinsbereichPanel({user, players=[]}){
     window.__ttcUmschaltungHier=true; setLaeuft(true);
     const von=(user&&user.email)||"";
     try{
-      await setDoc(flagRef,{ modus:"umstellung", vereinId:vid, seit:Date.now(), von, richtung:"zurueck" });
+      await flagSetzen({ modus:"umstellung", vereinId:vid, seit:Date.now(), von, richtung:"zurueck" });
       await warte(4000);
       const erg=await ausVereinsbereichZurueckkopieren(vid, setMeldung);
       if(!erg.alleOk){
-        await setDoc(flagRef,{ modus:"verein", vereinId:vid, seit:Date.now(), von, hinweis:"Rückschaltung abgebrochen: Abweichungen" });
+        await flagSetzen({ modus:"verein", vereinId:vid, seit:Date.now(), von, hinweis:"Rückschaltung abgebrochen: Abweichungen" });
         setMeldung("Fehler: Abweichungen bei der Rückkopie – es bleibt beim Vereinsbereich.");
         window.__ttcUmschaltungHier=false; setLaeuft(false); return;
       }
-      await setDoc(flagRef,{ modus:"oben", vereinId:vid, seit:Date.now(), von });
+      await flagSetzen({ modus:"oben", vereinId:vid, seit:Date.now(), von });
       setMeldung("✅ Zurückgeschaltet. Die App wird neu geladen …");
       setTimeout(()=>window.location.reload(),1500);
     }catch(e){
@@ -12822,6 +12984,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showRollen,setShowRollen]=useState(false);               // V504
   const [showSicherung,setShowSicherung]=useState(false);         // V506
   const [showVereinsbereich,setShowVereinsbereich]=useState(false); // V507
+  const [showVereine,setShowVereine]=useState(false);               // V518
   const [showFarbschema,setShowFarbschema]=useState(false);
   const [showTrainingZR,setShowTrainingZR]=useState(false);
   const [showKalender,setShowKalender]=useState(false);   // V510
@@ -14656,6 +14819,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <SicherungPanel showToast={showToast} user={user}/>
       </div></ErrorBoundary>}
     </div>
+    {/* V518: Vereine verwalten / neuen Verein anlegen – nur Betreiber */}
+    {PLATTFORM_ADMIN_EMAILS.includes(mailNorm(user&&user.email)) && DATEN_MODUS==="verein" &&
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowVereine(p=>!p)} style={{padding:"13px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🏢 Vereine (Betreiber)</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showVereine?"▲":"▼"}</span>
+      </div>
+      {showVereine&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <VereineVerwaltungPanel user={user}/>
+      </div></ErrorBoundary>}
+    </div>}
     {/* V507: Vereinsbereich (Kopie, Prüfung, Zugangsliste, Wiederherstellen) – nur Betreiber */}
     {PLATTFORM_ADMIN_EMAILS.includes(mailNorm(user&&user.email)) &&
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
@@ -22272,7 +22446,12 @@ function saisonsBereinigt(liste){
   let gesehen=false; out.forEach(x=>{ if(x.current){ if(gesehen) x.current=false; gesehen=true; } });
   return out;
 }
-function setzeSaisons(liste){ SEASONS = saisonsBereinigt(liste) || SEASONS_STANDARD; }
+function setzeSaisons(liste){ SEASONS = saisonsBereinigt(liste) || (istUrsprungsverein() ? SEASONS_STANDARD : saisonNeutral()); }
+// V518: Ohne gespeicherte Saisons bekommt ein neuer Verein die laufende Saison ohne Mannschaften.
+function saisonNeutral(){
+  const d=new Date(); const y=d.getMonth()>=6 ? d.getFullYear() : d.getFullYear()-1;
+  return [{ key:`${y}/${String(y+1).slice(2)}`, code:`${String(y).slice(2)}--${String(y+1).slice(2)}`, teams:[], showStandings:false, showLinks:false, current:true, halbserie:"V" }];
+}
 function aktuelleSaison(){ return SEASONS.find(s=>s.current) || SEASONS[0]; }
 // ── V501: Datenbereiche aus der aktuellen Saison ableiten ──
 // "2026/27" → {y1:2026, y2:2027}. Liefert null bei unbekannter Schreibweise.
@@ -22856,6 +23035,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({
+            ...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),
             spielerName,
             mannschaft: spielplanName,          // für die Anzeige in der Meldung
             mannschaftAufstellung: aufstellungName, // für die MF-Zuordnung (mannschaftsfuehrerTeam)
@@ -22895,7 +23075,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     if(/^_(betreuer|fahrer)/.test(feld)){
       try{
         fetch("/.netlify/functions/nachrichtaktualisieren",{method:"POST",
-          headers:{"Content-Type":"application/json"}, body:JSON.stringify({spielKey:sk})}).catch(()=>{});
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({spielKey:sk, ...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),})}).catch(()=>{});
       }catch(e){}
     }
     try {
@@ -23307,7 +23487,8 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
   async function tabellenAktualisieren(){
     setTabLaeuft(true); setTabBericht(null);
     try{
-      const r=await fetch("/.netlify/functions/tabellenjetzt",{method:"POST"});
+      const r=await fetch("/.netlify/functions/tabellenjetzt",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),})});   // V519: Verein
       const j=await r.json().catch(()=>({ok:false,meldung:`HTTP ${r.status}`}));
       setTabBericht(j);
     }catch(e){ setTabBericht({ok:false,meldung:e?.message||"Netzwerkfehler"}); }
@@ -24275,6 +24456,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
     }
     if(mitTermine) params.set("termine","1");
     if(puffer) params.set("puffer","1");
+    if(DATEN_MODUS==="verein") params.set("verein",AKTIVER_VEREIN_ID);   // V519: Kalender-Abo je Verein
     const origin=typeof window!=="undefined"?window.location.origin:"";
     // Direkt die Netlify-Function ohne ".ics"-Endung aufrufen. Der Redirect von
     // "…/calendar.ics" greift unter /.netlify/functions/ nicht zuverlaessig
@@ -26867,6 +27049,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
           flex:"0 0 auto",marginLeft:"auto"}}>
         {/* V505: In der TTC-Ansicht keine Geburtstage und keine Personensuche (keine Namen) */}
         {activeView!=="ttc"&&<BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={hasAdminRole}/>}
+        <VereinsWechsler/>
         <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
         {activeView!=="ttc"&&<GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>}
         <button onClick={onSignOut} title="Abmelden" style={{
@@ -27265,7 +27448,13 @@ export default function App() {
     const uebernehmen=(d)=>{
       const m={ modus:(d&&d.modus)||"oben", vereinId:(d&&d.vereinId)||"ttc-niederzeuzheim" };
       try{ localStorage.setItem(DATENBEREICH_LS, JSON.stringify(m)); }catch(e){}
-      if(!angewandt.current){ angewandt.current=m; datenbereichAnwenden(m); setBereich(m); return; }
+      if(!angewandt.current){
+        angewandt.current=m;
+        // V518: Im Vereinsbereich gilt die Wahl dieses Geräts bzw. ?verein= in der Adresse.
+        domainKonfigSetzen(d);   // V519
+        const wahl = m.modus==="verein" ? (vereinAusUrl() || vereinAusHost() || gespeicherteVereinswahl() || m.vereinId) : m.vereinId;
+        datenbereichAnwenden({...m, vereinId:wahl}); setBereich({...m, gewaehlt:wahl}); return;
+      }
       if(angewandt.current.modus!==m.modus || angewandt.current.vereinId!==m.vereinId){
         if(window.__ttcUmschaltungHier) return;   // eigene Umschaltung lädt am Ende selbst neu
         window.location.reload();
@@ -27283,6 +27472,30 @@ export default function App() {
     }, ()=>{ if(!angewandt.current) uebernehmen(ausSpeicher()); });
     return ()=>{ u(); clearTimeout(timer); };
   },[]);
+  // V518: Nach der Anmeldung die Vereine der Person ermitteln (Verzeichnis bzw. für den
+  // Betreiber alle Vereine) und ggf. in den richtigen Verein wechseln oder wählen lassen.
+  const [vereinsListe,setVereinsListe]=useState(null);
+  useEffect(()=>{
+    if(!bereich || bereich.modus!=="verein" || !authU){ setVereinsListe(null); return; }
+    let ab=false;
+    (async()=>{
+      const m=mailNorm(authU.email); let liste=[];
+      try{
+        const sn = PLATTFORM_ADMIN_EMAILS.includes(m)
+          ? await getDocs(globalCollection("vereine"))
+          : await getDocs(globalCollection("nutzer", m, "vereine"));
+        liste=sn.docs.map(d=>({ id:d.id, name:(d.data()&&d.data().name)||d.id }))
+          .sort((a,b)=>String(a.name).localeCompare(String(b.name),"de"));
+      }catch(e){ liste=[]; }
+      if(ab) return;
+      MEINE_VEREINE=liste; setVereinsListe(liste);
+      const ids=liste.map(v=>v.id);
+      // Genau ein Verein, aber ein anderer aktiv → direkt dorthin wechseln
+      // (nicht auf einer festen Vereinsadresse – dort entscheidet die Adresse).
+      if(liste.length===1 && bereich.gewaehlt!==ids[0] && !vereinAusHost()) vereinWaehlen(ids[0]);
+    })();
+    return ()=>{ ab=true; };
+  },[bereich, authU&&authU.uid]);
   const lade = (text)=> <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24,textAlign:"center"}}>
     <div style={{fontSize:48}}>🏓</div>
     <div style={{fontSize:14,color:"var(--text3)",maxWidth:380,lineHeight:1.6}}>{text}</div>
@@ -27294,7 +27507,35 @@ export default function App() {
       {lade("⚙️ Die App wird gerade umgestellt. Bitte in wenigen Minuten erneut öffnen – es geht automatisch weiter.")}
     </div>;
   }
-  return <AppInhalt/>;
+  // V519: Feste Vereinsadresse, aber die Person gehört nicht zu diesem Verein → Hinweis mit Links.
+  if(bereich.modus==="verein" && authU && vereinsListe && vereinsListe.length>0 && vereinAusHost() &&
+     !vereinsListe.some(v=>v.id===bereich.gewaehlt) && !PLATTFORM_ADMIN_EMAILS.includes(mailNorm(authU.email))){
+    return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{maxWidth:420,width:"100%",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:22,textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:8}}>🏢</div>
+        <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:6}}>Anderer Verein</div>
+        <div style={{fontSize:12,color:"var(--text3)",marginBottom:16,lineHeight:1.55}}>Dein Konto ({authU.email}) gehört nicht zu diesem Verein. Bitte die Adresse deines Vereins öffnen:</div>
+        {vereinsListe.map(v=>{ const a=vereinsAdresse(v.id);
+          return <a key={v.id} href={a?`https://${a}/`:`/?verein=${v.id}`} style={{display:"block",padding:12,marginBottom:8,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,color:"var(--text)",fontSize:14,fontWeight:700,textDecoration:"none"}}>{v.name}</a>; })}
+        <button onClick={()=>signOut(auth)} style={{marginTop:6,padding:"8px 14px",background:"transparent",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Abmelden</button>
+      </div>
+    </div>;
+  }
+  // V518: Mehrere Vereine und auf diesem Gerät noch keine Wahl → Auswahl anzeigen.
+  if(bereich.modus==="verein" && authU && vereinsListe && vereinsListe.length>1 &&
+     !vereinsListe.some(v=>v.id===gespeicherteVereinswahl()) && !vereinAusUrl() && !vereinAusHost()){
+    return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{maxWidth:420,width:"100%",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:22}}>
+        <div style={{fontSize:32,textAlign:"center",marginBottom:8}}>🏢</div>
+        <div style={{fontSize:16,fontWeight:800,color:"var(--text)",textAlign:"center",marginBottom:4}}>Verein wählen</div>
+        <div style={{fontSize:12,color:"var(--text3)",textAlign:"center",marginBottom:16}}>Du bist in mehreren Vereinen. Die Wahl wird auf diesem Gerät gemerkt und kann oben jederzeit gewechselt werden.</div>
+        {vereinsListe.map(v=><button key={v.id} onClick={()=>{ if(v.id===bereich.gewaehlt){ try{ localStorage.setItem(VEREIN_WAHL_LS,v.id); }catch(e){} setVereinsListe([...vereinsListe]); } else vereinWaehlen(v.id); }}
+          style={{width:"100%",padding:12,marginBottom:8,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:10,color:"var(--text)",fontSize:14,fontWeight:700,cursor:"pointer",textAlign:"left"}}>
+          {v.name}</button>)}
+      </div>
+    </div>;
+  }
+  return <AppInhalt key={bereich.gewaehlt||"standard"}/>;
 }
 
 function AppInhalt() {
@@ -27415,6 +27656,15 @@ function AppInhalt() {
   },[]);
   // Vereinsfarben anwenden (Whitelabel): setzt die CSS-Variablen der gesamten App.
   useEffect(()=>{ setzeFarbschema(clubConfig.farbschema||"rot"); },[clubConfig.farbschema]);
+  // V519: Seitentitel und Name für „Zum Home-Bildschirm" aus den Vereinsdaten
+  useEffect(()=>{
+    try{
+      const lang=VEREIN.vollname||VEREIN.kurzname||clubConfig.name||"Vereins-App";
+      document.title = istUrsprungsverein() ? "TT-App des TTC 1979 Niederzeuzheim e. V." : lang;
+      const m=document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if(m) m.setAttribute("content", istUrsprungsverein() ? "TTC NZ" : (VEREIN.kuerzel && VEREIN.kuerzel!=="Verein" ? VEREIN.kuerzel : (VEREIN.kurzname||"Verein")).slice(0,14));
+    }catch(e){}
+  },[clubConfig]);
 
   useEffect(()=>{
     const unsub=onSnapshot(doc(db,"config","theme"),snap=>{
