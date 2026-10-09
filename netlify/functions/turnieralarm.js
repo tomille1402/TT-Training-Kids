@@ -1,4 +1,4 @@
-// === TTC-App · Version 326 · netlify/functions/turnieralarm.js · erstellt 06.08.2026 ===
+// === TTC-App · Version 519 · netlify/functions/turnieralarm.js · erstellt 07.10.2026 (V519: Verein aus der App) ===
 // Benachrichtigt die beiden Seiten einer anstehenden Turnier-Begegnung per Web-Push:
 // „Bitte an Tisch X zum Spiel gegen Y einfinden.“ Zusätzlich wird eine In-App-Nachricht
 // (appNachrichten) abgelegt, damit die Meldung auch hinter der Glocke erscheint.
@@ -15,7 +15,7 @@
 // Benötigte Umgebungsvariablen wie bei pushversand.js (Service-Account + VAPID).
 
 const { sendePush } = require("./webpush.js");
-const { getCollection, patchDoc, normName } = require("./pushversand.js");
+const { getCollection, patchDoc, normName, setzeVerein } = require("./pushversand.js");
 
 exports.handler = async (event) => {
   if(event.httpMethod === "OPTIONS") return { statusCode:204, headers:cors(), body:"" };
@@ -24,6 +24,7 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body||"{}"); }
   catch(e){ return { statusCode:400, headers:cors(), body:"Ungültiger Body." }; }
+  setzeVerein(body.verein||null);   // V519: Verein der App
 
   const turnier    = String(body.turnier||"").trim();
   const konkurrenz = String(body.konkurrenz||"").trim();

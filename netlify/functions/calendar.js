@@ -1,4 +1,4 @@
-// === TTC-App · Version 508 · netlify/functions/calendar.js · erstellt 04.10.2026 (V508: Datenbereich aus system/datenbereich) ===
+// === TTC-App · Version 519 · netlify/functions/calendar.js · erstellt 07.10.2026 (V519: Kalender-Abo je Verein) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -20,7 +20,7 @@ function icsEscape(s){return String(s||"").replace(/\\/g,"\\\\").replace(/;/g,"\
 function normName(s){return (s||"").toLowerCase().replace(/\s+/g,"").replace(/[.,]/g,"");}
 function icsDateTime(isoDate,uhrzeit){const p=(isoDate||"").split("-");const t=((uhrzeit||"00:00").split(":"));if(p.length<3)return null;return `${p[0]}${p[1]}${p[2]}T${(t[0]||"00").padStart(2,"0")}${(t[1]||"00").padStart(2,"0")}00`;}
 function icsAddMinutes(isoDate,uhrzeit,minutes){const[y,m,d]=(isoDate||"").split("-").map(Number);const[hh,mi]=((uhrzeit||"00:00").split(":")).map(Number);const dt=new Date(y,(m||1)-1,d||1,hh||0,mi||0);dt.setMinutes(dt.getMinutes()+minutes);const p=n=>String(n).padStart(2,"0");return `${dt.getFullYear()}${p(dt.getMonth()+1)}${p(dt.getDate())}T${p(dt.getHours())}${p(dt.getMinutes())}00`;}
-function icsUid(parts){return parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g,"")).join("-")+"@ttc-niederzeuzheim";}
+function icsUid(parts){return parts.map(x=>String(x||"").replace(/[^A-Za-z0-9]/g,"")).join("-")+"@"+(VEREIN_ID||"ttc-niederzeuzheim");}
 
 // V497: Vereinsname aus config/clubConfig (öffentlich lesbar); nur die benötigten
 // Felder abfragen – das Dokument enthält auch Logo und Urkunden-Muster.
@@ -30,14 +30,17 @@ let DATEN_PREFIX = "";
 function datenPfad(path){ return DATEN_PREFIX + String(path||"").replace(/^\/+/,""); }
 // V508: aktiven Datenbereich aus system/datenbereich (öffentlich lesbar) bestimmen.
 let _bereichStand = 0;
+let FEST_VEREIN = null;   // V519: ?verein=<Kennung> im Abo-Link
+let VEREIN_ID = "ttc-niederzeuzheim";
 async function ladeDatenbereich(){
-  if(Date.now()-_bereichStand < 60000) return;
+  if(Date.now()-_bereichStand < 60000){ if(FEST_VEREIN && DATEN_PREFIX) DATEN_PREFIX=`vereine/${FEST_VEREIN}/`; return; }
   try{
     const url=`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/system/datenbereich${API_KEY?`?key=${API_KEY}`:""}`;
     const r=await fetch(url);
     if(r.ok){
       const j=await r.json(); const f=j.fields?convertFields(j.fields):{};
-      const vid=String(f.vereinId||"ttc-niederzeuzheim").replace(/[^a-z0-9-]/gi,"");
+      const vid=FEST_VEREIN || String(f.vereinId||"ttc-niederzeuzheim").replace(/[^a-z0-9-]/gi,"");
+      VEREIN_ID = vid;
       DATEN_PREFIX = f.modus==="verein" ? `vereine/${vid}/` : "";
     } else if(r.status===404){ DATEN_PREFIX=""; }
     _bereichStand=Date.now();
@@ -194,8 +197,12 @@ exports.handler = async (event) => {
       ].join("\r\n");
       return {statusCode:200,headers:{"Content-Type":"text/calendar; charset=utf-8","Access-Control-Allow-Origin":"*"},body:hinweis};
     }
-    await ladeVereinsname();   // V497
     const q=event.queryStringParameters||{};
+    // V519: Verein aus dem Abo-Link (ohne Angabe: Standardverein – bisherige Links bleiben gültig)
+    FEST_VEREIN = q.verein ? String(q.verein).replace(/[^a-z0-9-]/gi,"").slice(0,60) : null;
+    _bereichStand = 0; AKT_SPIELPLAN="spielplan_2026_2027";
+    VEREIN_NAME = (!FEST_VEREIN || FEST_VEREIN==="ttc-niederzeuzheim") ? "TTC Niederzeuzheim" : "Verein";
+    await ladeVereinsname();   // V497
     const teams=q.teams?q.teams.split(",").map(s=>s.trim()).filter(Boolean):[];
     const vorlaufMin=q.vorlauf!=null?parseInt(q.vorlauf):60;
     const dauerMin=q.dauer!=null?parseInt(q.dauer):180;

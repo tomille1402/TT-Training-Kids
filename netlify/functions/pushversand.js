@@ -1,4 +1,4 @@
-// === TTC-App · Version 508 · netlify/functions/pushversand.js · erstellt 04.10.2026 (V508: Datenbereich aus system/datenbereich) ===
+// === TTC-App · Version 519 · netlify/functions/pushversand.js · erstellt 07.10.2026 (V519: Versand für alle Vereine) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -67,19 +67,25 @@ async function getAccessToken(){
 // "vereine/ttc-niederzeuzheim/". Bis dahin ändert sich nichts.
 let DATEN_PREFIX = "";
 let DATEN_MODUS = "oben";
+// V519 (Etappe 4d): Verein für den laufenden Vorgang (null = Standardverein aus system/datenbereich)
+let FEST_VEREIN = null;
+const vidSauber = v => String(v||"").replace(/[^a-z0-9-]/gi,"").slice(0,60);
 function datenPfad(path){ return DATEN_PREFIX + String(path||"").replace(/^\/+/,""); }
 // V508: aktiven Datenbereich aus system/datenbereich lesen (höchstens alle 60 s neu).
 let _bereichStand = 0;
 async function ladeDatenbereich(){
-  if(Date.now()-_bereichStand < 60000) return { modus:DATEN_MODUS, prefix:DATEN_PREFIX };
+  if(Date.now()-_bereichStand < 60000){
+    if(DATEN_MODUS==="verein" && FEST_VEREIN) DATEN_PREFIX=`vereine/${FEST_VEREIN}/`;
+    return { modus:DATEN_MODUS, prefix:DATEN_PREFIX };
+  }
   try{
     const token = await getAccessToken();
     const r = await fetch(`${fsBase()}/system/datenbereich`, { headers:{ Authorization:`Bearer ${token}` } });
     if(r.ok){
       const j = await r.json(); const f = j.fields ? convertFields(j.fields) : {};
       DATEN_MODUS = f.modus || "oben";
-      const vid = String(f.vereinId || "ttc-niederzeuzheim").replace(/[^a-z0-9-]/gi,"");
-      DATEN_PREFIX = DATEN_MODUS==="verein" ? `vereine/${vid}/` : "";
+      const vid = vidSauber(f.vereinId || "ttc-niederzeuzheim");
+      DATEN_PREFIX = DATEN_MODUS==="verein" ? `vereine/${FEST_VEREIN||vid}/` : "";
     } else if(r.status===404){ DATEN_MODUS="oben"; DATEN_PREFIX=""; }
     _bereichStand = Date.now();
   }catch(e){}
@@ -118,6 +124,31 @@ async function ladeSaison(){
 // benötigten Felder abfragen (das Dokument enthält auch Bilder). Fallback: TTC.
 const VEREIN = { ort:"Niederzeuzheim", vollname:"TTC 1979 Niederzeuzheim e. V." };
 let _vereinGeladen=false;
+// V519: Verein für die folgenden Zugriffe festlegen (null = Standardverein).
+// Setzt die vereinsbezogenen Zwischenstände zurück (Vereinsdaten, Saison).
+function setzeVerein(vid){
+  FEST_VEREIN = vid ? vidSauber(vid) : null;
+  _bereichStand = 0;
+  _vereinGeladen = false;
+  const ttc = !FEST_VEREIN || FEST_VEREIN==="ttc-niederzeuzheim";
+  VEREIN.ort = ttc ? "Niederzeuzheim" : ""; VEREIN.vollname = ttc ? "TTC 1979 Niederzeuzheim e. V." : "";
+  SAISON = "spielplan_2026_2027"; AUF_KEY = "aufstellung_2026_2027_V";
+}
+// V519: Kennungen aller Vereine (im Modus „verein"); sonst [null] = bisherige Ablage.
+async function alleVereinsIds(){
+  _bereichStand = 0; await ladeDatenbereich();
+  if(DATEN_MODUS!=="verein") return [null];
+  const token = await getAccessToken();
+  const ids=[]; let pageToken="";
+  do{
+    const r = await fetch(`${fsBase()}/vereine?pageSize=300&mask.fieldPaths=name${pageToken?`&pageToken=${encodeURIComponent(pageToken)}`:""}`, { headers:{ Authorization:`Bearer ${token}` } });
+    if(!r.ok) break;
+    const j = await r.json();
+    for(const d of (j.documents||[])) ids.push(d.name.split("/").pop());
+    pageToken = j.nextPageToken || "";
+  } while(pageToken);
+  return ids.length ? ids : [null];
+}
 async function ladeVereinsdaten(){
   if(_vereinGeladen) return VEREIN;
   try{
@@ -267,7 +298,7 @@ function uhrzeitMinusStunden(uhr, stunden){
   return `${hh}:${mm}`;
 }
 
-module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue, datenPfad, ladeDatenbereich };
+module.exports = { getDocData, getCollection, patchDoc, heuteISO, normName, spielKeyOf, convertFields, convertValue, datenPfad, ladeDatenbereich, setzeVerein, alleVereinsIds, vidSauber };
 // V485: für nachrichtaktualisieren.js (Funktionen werden weiter unten deklariert und gehoben).
 module.exports.nachwuchsNachrichtenNachziehen = (...a)=>nachwuchsNachrichtenNachziehen(...a);
 // V501: als Getter, damit Aufrufer immer die zur Laufzeit ermittelte Saison erhalten.
@@ -501,7 +532,27 @@ async function nachwuchsNachrichtenNachziehen({ spiele, regeln, einsaetzeData, a
 }
 
 // ── Handler ──
+// V519: Der tägliche Versand läuft nacheinander für jeden Verein.
 module.exports.handler = async (event) => {
+  const q0 = (event && event.queryStringParameters) || {};
+  let ids=[null];
+  try{ ids = q0.verein ? [vidSauber(q0.verein)] : await alleVereinsIds(); }catch(e){ ids=[null]; }
+  // Nur ein Verein: Antwort unverändert wie bisher durchreichen (z. B. für pushtest).
+  if(ids.length===1){ setzeVerein(ids[0]); try{ return await versandFuerVerein(event); } finally{ setzeVerein(null); } }
+  const teile = [];
+  let status = 200;
+  for(const vid of ids){
+    setzeVerein(vid);
+    try{
+      const r = await versandFuerVerein(event);
+      if(r && r.statusCode && r.statusCode>=400) status = r.statusCode;
+      teile.push((vid?`[${vid}] `:"")+String(r && r.body || ""));
+    }catch(e){ status=500; teile.push((vid?`[${vid}] `:"")+"Fehler: "+(e && e.message || e)); }
+  }
+  setzeVerein(null);
+  return { statusCode: status, body: teile.join("\n\n") };
+};
+async function versandFuerVerein(event){
   try{
     if(!PROJECT_ID) return { statusCode:500, body:"FIREBASE_PROJECT_ID fehlt" };
     const vapid = {
@@ -874,4 +925,4 @@ module.exports.handler = async (event) => {
   }catch(e){
     return { statusCode:500, body:"Fehler: "+(e&&e.message||e) };
   }
-};
+}

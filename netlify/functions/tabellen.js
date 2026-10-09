@@ -1,4 +1,4 @@
-// === TTC-App · Version 503 · netlify/functions/tabellen.js · erstellt 03.10.2026 (V503: Ligatabelle statt Spielplan auslesen) ===
+// === TTC-App · Version 519 · netlify/functions/tabellen.js · erstellt 07.10.2026 (V519: Tabellenabruf für alle Vereine) ===
 // Ruft für jede Mannschaft der aktuellen Saison die Tabelle bei myTischtennis ab und
 // speichert Platz, Punkte und die komplette Tabelle in config/tabellen. Läuft täglich
 // früh morgens (netlify.toml) und kann aus der App über „Tabellen jetzt aktualisieren“
@@ -114,7 +114,7 @@ async function aktualisieren(){
   const club = await pv.getDocData("config/clubConfig") || {};
   const verein = club.verein || {};
   const verband = String(verein.verbandKuerzel||"HeTTV").trim() || "HeTTV";
-  const suchname = String(verein.suchname||"Niederzeuzheim").toLowerCase();
+  const suchname = String(verein.suchname||verein.kurzname||"").toLowerCase();   // V519: kein TTC-Rückfall mehr
   if(!akt || !Array.isArray(akt.teams) || !akt.code){
     return { ok:false, meldung:"Keine aktuelle Saison mit Mannschaften und Saison-Code in „Saisons & Mannschaften“ gespeichert." };
   }
@@ -163,7 +163,15 @@ async function aktualisieren(){
 // nicht direkt per URL aufrufen – der Knopf in der App nutzt deshalb tabellenjetzt.js.
 module.exports.handler = async () => {
   try{
-    const erg = await aktualisieren();
+    // V519: nacheinander für alle Vereine
+    const ergebnisse = {};
+    for(const vid of await pv.alleVereinsIds()){
+      pv.setzeVerein(vid);
+      try{ ergebnisse[vid||"standard"] = await aktualisieren(); }
+      catch(e){ ergebnisse[vid||"standard"] = { ok:false, meldung:String(e && e.message || e) }; }
+    }
+    pv.setzeVerein(null);
+    const erg = { ok:true, vereine:ergebnisse };
     return { statusCode:200, headers:cors(), body:JSON.stringify(erg) };
   }catch(e){
     return { statusCode:500, headers:cors(), body:JSON.stringify({ ok:false, meldung:String(e && e.message || e) }) };

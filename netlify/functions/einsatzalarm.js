@@ -1,4 +1,4 @@
-// === TTC-App · Version 270 · netlify/functions/einsatzalarm.js · erstellt 29.07.2026 ===
+// === TTC-App · Version 519 · netlify/functions/einsatzalarm.js · erstellt 07.10.2026 (V519: Verein aus der App) ===
 // Sofort-Benachrichtigung, wenn ein Spieler seinen Einsatz-Status von "verfügbar"
 // (grüner Haken / "ja") auf einen anderen Status ändert. Empfänger: der zuständige
 // Mannschaftsführer der betroffenen Mannschaft sowie alle Admins. Es wird sowohl
@@ -12,7 +12,7 @@
 
 const { sendePush } = require("./webpush.js");
 const {
-  getDocData, getCollection, patchDoc, normName
+  getDocData, getCollection, patchDoc, normName, setzeVerein
 } = require("./pushversand.js");
 
 // Lesbarer Text je Status-Schlüssel.
@@ -46,6 +46,7 @@ exports.handler = async (event) => {
   let body;
   try { body = JSON.parse(event.body||"{}"); }
   catch(e){ return { statusCode:400, headers:cors(), body:"Ungültiger Body." }; }
+  setzeVerein(body.verein||null);   // V519: Verein der App
 
   const spielerName = String(body.spielerName||"").trim();
   const mannschaft  = String(body.mannschaft||"").trim();

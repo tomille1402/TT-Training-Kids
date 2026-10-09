@@ -1,4 +1,4 @@
-// === TTC-App · Version 502 · netlify/functions/tabellenjetzt.js · erstellt 03.10.2026 (V502: Tabellen manuell abrufen) ===
+// === TTC-App · Version 519 · netlify/functions/tabellenjetzt.js · erstellt 07.10.2026 (V519: Verein aus der App) ===
 // Manueller Tabellenabruf aus der App („Tabellen jetzt aktualisieren“, Spielbetrieb).
 // Nutzt dieselbe Logik wie der geplante Lauf (tabellen.js). Schutz vor Dauerauslösung:
 // Liegt der letzte Abruf weniger als 5 Minuten zurück, wird der vorhandene Stand gemeldet.
@@ -9,6 +9,8 @@ exports.handler = async (event) => {
   const cors = tab.cors();
   if(event && event.httpMethod==="OPTIONS") return { statusCode:204, headers:cors, body:"" };
   try{
+    let body={}; try{ body=JSON.parse((event&&event.body)||"{}"); }catch(e){}
+    pv.setzeVerein(body.verein||null);   // V519: Verein der App
     const b = await pv.getDocData("config/tabellen");
     if(b && b.stand && Date.now()-b.stand < tab.MIN_ABSTAND_MS){
       return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, saison:b.saison, bericht:b.bericht||[],
