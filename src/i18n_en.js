@@ -1,4 +1,4 @@
-// === TTC-App · Version 521 · i18n_en.js · erstellt 09.10.2026 ===
+// === TTC-App · Version 523 · i18n_en.js · erstellt 10.10.2026 ===
 // Englisches Wörterbuch: deutscher Anzeigetext → englischer Text. Platzhalter {0},{1} … für
 // zusammengesetzte Texte (T`…`). Fehlende Einträge werden deutsch angezeigt.
 export const EN_TEXTE = {
@@ -2500,5 +2500,10 @@ export const EN_TEXTE = {
 "bis ": "to ",
 "Sprache": "Language",
 "Leistungsgruppe": "Performance group",
-"Leistungs­gruppe": "Perfor­mance group"
+"Leistungs­gruppe": "Perfor­mance group",
+"Verlegung konnte nicht gespeichert werden.": "Rescheduling could not be saved.",
+"Verlegung: –": "Rescheduling: –",
+"⚠️ Verlegung geplant": "⚠️ Rescheduling planned",
+"✅ Verlegung erfolgt": "✅ Rescheduled",
+"✅ verlegt": "✅ rescheduled"
 };

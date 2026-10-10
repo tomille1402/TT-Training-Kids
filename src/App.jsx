@@ -1,4 +1,4 @@
-// === TTC-App · Version 522 · erstellt 09.10.2026 ===
+// === TTC-App · Version 523 · erstellt 10.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "522";
+const APP_VERSION = "523";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -21840,6 +21840,28 @@ function speichereHalleninfoGelesen(ids){
 function verlegKeyVon(s){
   return `${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
 }
+// V523: gemeinsame Regeln für Spielplan UND Einsätze – beide lesen/schreiben config/verlegungen,
+// Änderungen sind dadurch sofort wechselseitig sichtbar.
+// Admin: alle Mannschaften. Mannschaftsführer: nur die eigene(n) Mannschaft(en).
+function darfVerlegungAendern(myPlayer, istAdmin, s){
+  if(istAdmin) return true;
+  if(!s || !myPlayer?.roles?.mannschaftsfuehrer) return false;
+  const raw = myPlayer.mannschaftsfuehrerTeam || myPlayer.mannschaftsfuehrerTeams || [];
+  const mfTeams = (Array.isArray(raw)?raw:[raw]).filter(Boolean);
+  if(mfTeams.length===0) return false;
+  const ziel=normAufName(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft);
+  return mfTeams.some(t=>normAufName(t)===ziel || normAufName(SPIELPLAN_TO_AUFSTELLUNG[t]||t)===ziel);
+}
+async function verlegungSetzen(s, status){
+  const key=verlegKeyVon(s);
+  if(status==="-"){
+    await setDoc(doc(db,"config","verlegungen"),{data:{[key]:deleteField()}},{merge:true});
+    return null;
+  }
+  const eintrag={status, mannschaft:s.mannschaft, gegner:s.gegner||"", datum:s.datum||"", uhrzeit:s.uhrzeit||"", ort:s.ort||""};
+  await setDoc(doc(db,"config","verlegungen"),{data:{[key]:eintrag}},{merge:true});
+  return eintrag;
+}
 function useVerlegungen(){
   const [map,setMap]=useState({});
   useEffect(()=>{
@@ -23666,7 +23688,24 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
                 <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>
                   {tag&&<span style={{color:"var(--text3)"}}>{tag} </span>}
                   {spiel.datum.split("-").reverse().join(".")} · {spiel.uhrzeit} Uhr
-                  {verlegStatusVon(spiel)==="geplant" && <span style={{marginLeft:6,background:"#f59e0b22",color:"#b45309",fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:6,whiteSpace:"nowrap"}}>⚠️ wird verlegt</span>}
+                  {/* V523: Verlegung – Admin/MF der Mannschaft ändern hier wie im Spielplan; alle anderen sehen den Status */}
+                  {(()=>{
+                    const vst=verlegStatusVon(spiel);
+                    if(!nurLesen && darfVerlegungAendern(myPlayer, isAdmin, spiel)){
+                      const farbe = vst==="geplant" ? "#d97706" : (vst==="erfolgt" ? "#059669" : "var(--text3)");
+                      return <select value={vst} title="Verlegung" onClick={e=>e.stopPropagation()}
+                        onChange={e=>{ e.stopPropagation(); verlegungSetzen(spiel,e.target.value).catch(()=>alert(T("Verlegung konnte nicht gespeichert werden."))); }}
+                        style={{marginLeft:6,fontSize:10,padding:"2px 4px",borderRadius:6,border:`1px solid ${vst==="-"?"var(--border2)":farbe}`,
+                          background:vst==="geplant"?"#f59e0b22":vst==="erfolgt"?"#10b98122":"var(--bg)",color:farbe,fontWeight:800,cursor:"pointer"}}>
+                        <option value="-">Verlegung: –</option>
+                        <option value="geplant">⚠️ Verlegung geplant</option>
+                        <option value="erfolgt">✅ Verlegung erfolgt</option>
+                      </select>;
+                    }
+                    if(vst==="geplant") return <span style={{marginLeft:6,background:"#f59e0b22",color:"#b45309",fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:6,whiteSpace:"nowrap"}}>⚠️ wird verlegt</span>;
+                    if(vst==="erfolgt") return <span style={{marginLeft:6,background:"#10b98122",color:"#059669",fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:6,whiteSpace:"nowrap"}}>✅ verlegt</span>;
+                    return null;
+                  })()}
                 </div>
                 <div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
                   {spiel.art==="Pokal" && <span title="Pokalspiel" style={{flexShrink:0}}>🏆</span>}
@@ -25353,31 +25392,14 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   const verlegStatus=(s)=>{ const e=verlegungen[verlegKey(s)]; return (e&&e.status)||"-"; };
   // Darf die aktuelle Person die Verlegung dieses Spiels bearbeiten?
   // Admin: alle Mannschaften. Mannschaftsführer: nur die eigene(n) Mannschaft(en).
-  const mfTeams = (()=>{
-    if(!myPlayer?.roles?.mannschaftsfuehrer) return [];
-    const raw = myPlayer.mannschaftsfuehrerTeam || myPlayer.mannschaftsfuehrerTeams || [];
-    const arr = Array.isArray(raw)?raw:[raw];
-    return arr.filter(Boolean);
-  })();
-  const darfVerlegen=(s)=>{
-    if(istAdmin) return true;
-    if(mfTeams.length===0) return false;
-    // Mannschaftsname kann Suffixe haben; Vergleich über Aufstellungsname beidseitig.
-    const ziel=normAufName(SPIELPLAN_TO_AUFSTELLUNG[s.mannschaft]||s.mannschaft);
-    return mfTeams.some(t=>normAufName(t)===ziel || normAufName(SPIELPLAN_TO_AUFSTELLUNG[t]||t)===ziel);
-  };
+  const darfVerlegen=(s)=>darfVerlegungAendern(myPlayer, istAdmin, s);   // V523: gemeinsame Regel mit „Einsätze“
   // Verlegungsstatus setzen (schreibt das Spiegeldokument config/verlegungen).
   const setzeVerlegung=async(s,status)=>{
     const key=verlegKey(s);
     try{
-      if(status==="-"){
-        await setDoc(doc(db,"config","verlegungen"),{data:{[key]:deleteField()}},{merge:true});
-        setVerlegungen(p=>{const n={...p};delete n[key];return n;});
-      }else{
-        const eintrag={status, mannschaft:s.mannschaft, gegner:s.gegner||"", datum:s.datum||"", uhrzeit:s.uhrzeit||"", ort:s.ort||""};
-        await setDoc(doc(db,"config","verlegungen"),{data:{[key]:eintrag}},{merge:true});
-        setVerlegungen(p=>({...p,[key]:eintrag}));
-      }
+      const eintrag=await verlegungSetzen(s,status);   // V523: gemeinsame Schreibfunktion
+      if(!eintrag) setVerlegungen(p=>{const n={...p};delete n[key];return n;});
+      else setVerlegungen(p=>({...p,[key]:eintrag}));
     }catch(e){ /* still */ }
   };
   // Liefert den Spielcode für ein Spiel (Heimspiel) über Saison-Slug + Mannschaft + Datum.
