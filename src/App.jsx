@@ -1,4 +1,4 @@
-// === TTC-App · Version 523 · erstellt 10.10.2026 ===
+// === TTC-App · Version 524 · erstellt 10.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "523";
+const APP_VERSION = "524";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -25691,7 +25691,9 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
       if(!imZeitraum(t.datumStart)) return false;
       // Rubrik-Filter: wenn gesetzt, nur passende Rubriken (Termin ohne Rubrik = "Alle")
       if(Array.isArray(rubrikenSel) && rubrikenSel.length>0 && !rubrikenSel.includes(t.rubrik||"Alle")) return false;
-      if(Array.isArray(rubrikenSel) && rubrikenSel.length===0) return false; // nichts gewählt → keine Termine
+      // V524: leere Auswahl = keine Einschränkung (wie die Beschriftung „Termine“ ohne Zahl).
+      // Bis V523 blendete eine leere Liste ALLE Termine aus – das trat z. B. nach dem
+      // Zurücksetzen der Filter (✕) dauerhaft ein, weil die Filter gespeichert werden.
       if(selSeasonStartjahr==null) return true;
       return terminSaisonStartjahr(t.datumStart)===selSeasonStartjahr;
     })
@@ -25841,7 +25843,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
           color:"#3b82f6",border:"1px solid #3b82f644",cursor:"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>}
         {/* Reset */}
         {(selManns.length>0||filters.ort||filters.gegner||filters.tag||filters.art||filters.betreuer||filters.fahrer||filters.verlegung||(filters.zeitraum&&filters.zeitraum!=="neu")||(filters.rubriken&&filters.rubriken.length>0))&&
-          <button onClick={()=>setFilters({rubriken:[],zeitraum:"neu",_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
+          <button onClick={()=>setFilters({zeitraum:"neu",_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
     {/* Ausgewählte Mannschaften als Chips */}
