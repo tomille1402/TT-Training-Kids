@@ -1,4 +1,4 @@
-// === TTC-App · Version 527 · erstellt 11.10.2026 ===
+// === TTC-App · Version 528 · erstellt 11.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "527";
+const APP_VERSION = "528";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -974,7 +974,8 @@ function Avatar({avatar,color,size=40}) {
     fontSize:size*.5,userSelect:"none"}}>{avatar||"🏓"}</div>;
 }
 function Modal({children,onClose}) {
-  return <div style={{position:"fixed",inset:0,background:"#000b",zIndex:500,display:"flex",
+  // V528: 550 – über der Personen-Bearbeitung (520), z. B. für Avatar-Auswahl
+  return <div style={{position:"fixed",inset:0,background:"#000b",zIndex:550,display:"flex",
     alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:18,padding:22,
       maxWidth:400,width:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
@@ -9163,7 +9164,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   // V483: Auf der Kachel-Startseite keine Mindesthöhe und kein Polster unten – die Seite
   // endet direkt unter den Kacheln und lässt sich nicht ins Leere scrollen.
   return <div style={{minHeight:activeTab==="home"?"auto":"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:activeTab==="home"?0:80}}>
-    {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:400,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
+    {toast&&<div style={{position:"fixed",top:24,left:"50%",transform:"translateX(-50%)",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:12,padding:"10px 20px",display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:600,zIndex:900,boxShadow:"0 8px 32px #0008",animation:"fadeIn .2s ease"}}><span style={{fontSize:20}}>{toast.emoji}</span>{toast.msg}</div>}
 
     {/* Punkt 7: Teilnahme-Drilldown Modal */}
     {teilnahmePlayer&&<Modal onClose={()=>setTeilnahmePlayer(null)}>
@@ -13328,6 +13329,12 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     }, 400);
     return ()=>clearTimeout(t);
   },[editPlayer?.id]);
+  // V528: Bearbeitungsansicht einer Person immer ganz oben beginnen (Name sichtbar)
+  useLayoutEffect(()=>{
+    if(!editPlayer?.id) return;
+    const el=document.getElementById("verwaltung-edit-"+editPlayer.id);
+    if(el) el.scrollTop=0;
+  },[editPlayer?.id]);
   const urkAusgabeSchliessen=()=>{
     const a=urkAusgabe; setUrkAusgabe(null);
     try{ sessionStorage.removeItem(URKUNDE_RUECKKEHR_KEY); }catch(e){}
@@ -14573,7 +14580,8 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       const funktionenInfo=Object.keys(ROLLEN_KURZ).filter(r=>(editPlayer.roles||{})[r]===true).map(r=>ROLLEN_KURZ[r]).join(", ");
       const ehrOffen=(editPlayer.ehrungen||[]).filter(ehrungAusstehend).length;
       const ehrungenInfo=((editPlayer.ehrungen||[]).length?String((editPlayer.ehrungen||[]).length):"")+(ehrOffen?` · ${ehrOffen} ausstehend`:"");
-      return <div style={{position:"fixed",inset:0,zIndex:300,background:"#0009",display:"flex",justifyContent:"center"}}>
+      // V528: Ebene 520 – über der fixierten Rollen-/Reiter-Kopfzeile (500), sonst verdeckt sie Name und obere Abschnitte
+      return <div style={{position:"fixed",inset:0,zIndex:520,background:"#0009",display:"flex",justifyContent:"center"}}>
         <div id={"verwaltung-edit-"+p.id} style={{width:"100%",maxWidth:APP_MAX_BREITE,height:"100%",overflowY:"auto",overscrollBehavior:"contain",
           WebkitOverflowScrolling:"touch",background:"var(--bg)",paddingBottom:"calc(24px + env(safe-area-inset-bottom, 0px))"}}>
           <div style={{position:"sticky",top:0,zIndex:5,background:"var(--bg2)",borderBottom:"1px solid var(--border2)",
