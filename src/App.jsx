@@ -1,4 +1,4 @@
-// === TTC-App · Version 524 · erstellt 10.10.2026 ===
+// === TTC-App · Version 525 · erstellt 11.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "524";
+const APP_VERSION = "525";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -3272,7 +3272,7 @@ function historieZeilen(players, bilanzen){
 // breit, alle Zahlenspalten teilen sich den Rest zu gleichen Teilen. So entsteht auf
 // dem iPad keine grosse Luecke zwischen Name und erster Zahlenspalte. Lange
 // Ueberschriften brechen um, die Zahlen stehen mittig unter ihnen.
-function HistorieTabelle({zeilen}){
+function HistorieTabelle({zeilen, onNameKlick=null}){
   const [sortKey,setSortKey]=useState("gesamtA");
   const [absteigend,setAbsteigend]=useState(true);
   const sortiert=[...zeilen].sort((a,b)=>{
@@ -3326,7 +3326,11 @@ function HistorieTabelle({zeilen}){
       </tr></thead>
       <tbody>
         {sortiert.map(r=><tr key={r.id}>
-          <td style={nameTd}>{r.name}</td>
+          <td style={nameTd}>{(onNameKlick && r.ehrZiel)
+            ? <span onClick={()=>onNameKlick(r)} title={r.ehrZiel.offen?"Ehrung „Anzahl Spiele\" ausstehend – zur Verwaltung › Ehrungen":"Zur Verwaltung › Ehrungen"}
+                style={{color:"var(--club, #c8102e)",textDecoration:"underline",cursor:"pointer"}}>
+                {r.name}{r.ehrZiel.offen?" 🏅":""}</span>
+            : r.name}</td>
           {HISTORIE_SPALTEN.slice(1).map(sp=>zelle(sp,r))}
         </tr>)}
       </tbody>
@@ -3436,7 +3440,7 @@ function HistorieEigeneView({ myPlayer }){
 //   Spieler-Ansicht     → alle Nachwuchs-Mannschaften
 //   Admin-Ansicht       → alle Mannschaften
 // Personen ohne einen einzigen Einsatz in der gewählten Auswahl erscheinen nicht.
-function HistorieVereinView({ players, modus="admin" }){
+function HistorieVereinView({ players, modus="admin", onEhrungKlick=null }){
   const {store,laedt}=useHistorieStore();
   const startFilter = modus==="erwachsene" ? HISTORIE_FILTER_ERW
                     : modus==="spieler"    ? HISTORIE_FILTER_NW : "";
@@ -3460,7 +3464,9 @@ function HistorieVereinView({ players, modus="admin" }){
     if(gruppe!=="alle" && historieGruppeVon(p)!==gruppe) return false;
     return true;
   });
-  const zeilen=historieZeilen(kreis, bilanzen).filter(r=>r.hatDaten);
+  const zeilen=historieZeilen(kreis, bilanzen).filter(r=>r.hatDaten)
+    // V525: Sprungziel zur aktuellsten ausstehenden Ehrung „Anzahl Spiele"
+    .map(r=>({...r, ehrZiel:(onEhrungKlick && !r.person?._ehemalig) ? anzSpieleEhrungZiel(r.person?.ehrungen) : null}));
   const sel={padding:"6px 9px",borderRadius:8,fontSize:12,fontWeight:700,
     background:"var(--bg2)",border:"1px solid var(--border2)",color:"var(--text)"};
   return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
@@ -3491,8 +3497,12 @@ function HistorieVereinView({ players, modus="admin" }){
       </button>
     </div>
     <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:10}}>
-      <HistorieTabelle zeilen={zeilen}/>
+      <HistorieTabelle zeilen={zeilen} onNameKlick={onEhrungKlick ? (r=>onEhrungKlick(r.id, r.ehrZiel?.id||null)) : null}/>
     </div>
+    {onEhrungKlick && <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
+      Ehrung „Anzahl Spiele": je volle 100 Spiele (alle Saisons und Mannschaften) wird in der Verwaltung
+      automatisch eine Ehrung angelegt. Unterstrichene Namen führen dorthin, 🏅 = Ehrung noch ausstehend.
+    </div>}
     <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.6}}>
       Nachwuchs-Mannschaften sind alle, deren Name mit Jungen, Mädchen, Schüler, männliche
       oder weibliche Jugend beginnt; alle übrigen zählen zu den Erwachsenen.
@@ -3503,7 +3513,7 @@ function HistorieVereinView({ players, modus="admin" }){
   </div>;
 }
 // Admin-Einstieg: dieselbe Übersicht mit Voreinstellung „alle Mannschaften".
-function HistorieAdminView({ players }){ return <HistorieVereinView players={players} modus="admin"/>; }
+function HistorieAdminView({ players, onEhrungKlick=null }){ return <HistorieVereinView players={players} modus="admin" onEhrungKlick={onEhrungKlick}/>; }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HISTORIE VEREINSMEISTERSCHAFTEN (V480, V481)
@@ -9027,6 +9037,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return "home";
   });
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
+  useAnzahlSpieleEhrungenSync(players, isSuperAdmin && !ttcModus);   // V525
   useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
   // V505: gemerkter Reiter aus einer anderen Ansicht (z. B. Verwaltung) ist hier evtl. nicht verfügbar
   useEffect(()=>{ if(!TABS.some(t=>t.key===activeTab)) setActiveTab("home"); },[activeTab, TABS.length]);
@@ -9471,7 +9482,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       viewerCanEditAll={true} nurLesen={ttcModus}/>}
     {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin && !ttcModus}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
-    {activeTab==="historieadmin"&&<HistorieAdminView players={players}/>}
+    {activeTab==="historieadmin"&&<HistorieAdminView players={players}
+      onEhrungKlick={(isSuperAdmin&&!ttcModus) ? (id,ehrId)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("ehrungen"); setVerwaltungJumpKey(ehrId||null); setActiveTab("verwaltung"); } : null}/>}
     {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
     {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} jumpToKey={verwaltungJumpKey} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null); setVerwaltungJumpKey(null);}}/>}
 
@@ -13352,11 +13364,23 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       // Ziel gezeichnet ist – beim Reiterwechsel dauert der Aufbau der Liste unterschiedlich
       // lange. Bei Urkunden wird direkt das Datumsfeld der Urkunde angesteuert und fokussiert.
       if(typeof window!=="undefined"){
-        const key=jumpToKey, urk=jumpToSection==="urkunden";
+        const key=jumpToKey, urk=jumpToSection==="urkunden", ehr=jumpToSection==="ehrungen";
+        if(ehr) setShowEhr(true);   // V525: Ehrungen aufklappen
         let versuche=0;
         const tick=()=>{
           versuche++;
           if(urk && key && zumUrkundenDatum(p.id, key)) return;
+          if(ehr){   // V525: zur aktuellsten ausstehenden Ehrung „Anzahl Spiele"
+            const zEl=(key && document.getElementById(`ehrung-${p.id}-${key}`)) || null;
+            const bEl=document.getElementById("ehrungen-"+p.id);
+            if(zEl || (bEl && versuche>=8)){
+              const el=zEl||bEl;
+              try{ el.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){}
+              if(zEl){ zEl.style.boxShadow="0 0 0 3px var(--club-55, #c8102e55)"; setTimeout(()=>{ zEl.style.boxShadow=""; }, 2500); }
+              return;
+            }
+            if(versuche<15){ setTimeout(tick, 200); return; }
+          }
           const block = urk ? document.getElementById("urkundendaten-"+p.id) : null;
           const el = block || document.getElementById("verwaltung-player-"+p.id);
           // Ist nur die Personenzeile da (Formular noch nicht fertig), weiter warten.
@@ -15032,15 +15056,16 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                   </>}
                 </div>;
               })()}
-              {/* P5+P6: Ehrungen für Erwachsene (auch Trainer+Erwachsene) */}
-              {(editPlayer.roles?.erwachsene===true)&&(()=>{
-                return <div style={{background:"var(--bg2)",border:"1px solid #f59e0b33",borderRadius:11,padding:"10px 12px",marginBottom:10}}>
+              {/* P5+P6: Ehrungen für Erwachsene (auch Trainer+Erwachsene); V525: auch Spieler */}
+              {(editPlayer.roles?.erwachsene===true||editPlayer.roles?.player===true)&&(()=>{
+                return <div id={"ehrungen-"+editPlayer.id} style={{background:"var(--bg2)",border:"1px solid #f59e0b33",borderRadius:11,padding:"10px 12px",marginBottom:10}}>
                   <div onClick={()=>setShowEhr(p=>!p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#f59e0b"}}>🏅 Ehrungen</div>
                     <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showEhr?"▲":"▼ einblenden"}</span>
                   </div>
                   {showEhr&&<div style={{marginTop:8}}>
-                    <EhrungenAdminSection playerId={editPlayer.id} initialEhrungen={editPlayer.ehrungen||[]} showToast={showToast}/>
+                    <EhrungenAdminSection playerId={editPlayer.id} initialEhrungen={editPlayer.ehrungen||[]} showToast={showToast}
+                      vorname={(editPlayer.firstName||"").trim()} nachname={(editPlayer.lastName||"").trim()}/>
                   </div>}
                 </div>;
               })()}
@@ -26501,7 +26526,46 @@ const VEREINSMITARBEITER_EHRUNGEN = [
   {id:"em_goldkranz",    icon:"🌿", label:"Ehrennadel Gold mit Kranz"},
   {id:"em_goldgrosskranz",icon:"🌟", label:"Ehrennadel Gold mit großem Kranz"},
 ];
+// V525: Ehrung „Anzahl Spiele" – je volle 100 Spiele laut Historie Verein eine Stufe
+// (Ausprägung „100 Spiele", „200 Spiele" …). Ohne Datum gilt sie als ausstehend.
+const ANZ_SPIELE_SCHRITT = 100;
+const ANZAHL_SPIELE_EHRUNGEN = Array.from({length:30},(_,i)=>{
+  const n=(i+1)*ANZ_SPIELE_SCHRITT;
+  return {id:`as_${n}`, icon:"🏓", label:`${n} Spiele`, stufe:n};
+});
+const EHRUNG_TYPEN = [
+  {id:"spieler",       label:"Spielerverdienstnadel"},
+  {id:"mitarbeiter",   label:"Vereinsmitarbeiter"},
+  {id:"anzahl_spiele", label:"Anzahl Spiele"},
+];
+function ehrungArtenFuerTyp(typ){
+  if(typ==="mitarbeiter") return VEREINSMITARBEITER_EHRUNGEN;
+  if(typ==="anzahl_spiele") return ANZAHL_SPIELE_EHRUNGEN;
+  return SPIELER_VERDIENST;
+}
+function ehrungStandardArt(typ){ return ehrungArtenFuerTyp(typ)[0].id; }
+// Stufe (100, 200 …) einer Ehrung „Anzahl Spiele"; 0 bei allen anderen Ehrungen.
+function anzSpieleStufe(e){
+  if(!e || e.typ!=="anzahl_spiele") return 0;
+  const n=Number(String(e.art||"").replace(/^as_/,""))||Number(e.stufe)||0;
+  return Number.isFinite(n)?n:0;
+}
+function ehrungAusstehend(e){ return !!e && e.typ==="anzahl_spiele" && !e.datum; }
+// Sprungziel aus der Historie: aktuellste (höchste) ausstehende Ehrung „Anzahl Spiele",
+// sonst die höchste bereits vergebene. null, wenn es keine solche Ehrung gibt.
+function anzSpieleEhrungZiel(ehrungen){
+  const liste=(ehrungen||[]).filter(e=>e&&e.typ==="anzahl_spiele");
+  if(!liste.length) return null;
+  const nachStufe=(a,b)=>anzSpieleStufe(b)-anzSpieleStufe(a);
+  const offen=liste.filter(ehrungAusstehend).sort(nachStufe);
+  if(offen.length) return {id:offen[0].id, offen:true};
+  return {id:[...liste].sort(nachStufe)[0].id, offen:false};
+}
 function getAllEhrungLabel(e) {
+  if(e?.typ==="anzahl_spiele"){
+    const n=anzSpieleStufe(e);
+    return {icon:"🏓", label:`Anzahl Spiele · ${n?n+" Spiele":"—"}`};
+  }
   return [...SPIELER_VERDIENST,...VEREINSMITARBEITER_EHRUNGEN].find(a=>a.id===e.art)||{icon:"🏅",label:e.art||"Ehrung"};
 }
 // Ehrungen absteigend nach Datum sortieren (aktuellste zuerst); Einträge ohne
@@ -26509,7 +26573,7 @@ function getAllEhrungLabel(e) {
 function ehrungenNeuesteZuerst(list) {
   return [...(list||[])].sort((a,b)=>{
     const da=a?.datum||"", db=b?.datum||"";
-    if(!da&&!db) return 0;
+    if(!da&&!db) return anzSpieleStufe(b)-anzSpieleStufe(a);   // V525
     if(!da) return 1;
     if(!db) return -1;
     return db.localeCompare(da);
@@ -26574,20 +26638,170 @@ function parseEhrungenCSV(text){
   return res;
 }
 
-function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
+// V525: Legt für jede Person mit mind. 100 Spielen (Historie Verein, alle Saisons und
+// Mannschaften) je volle 100 Spiele eine ausstehende Ehrung „Anzahl Spiele" an.
+// players/{id}.anzahlSpieleEhrungBis merkt sich die höchste bereits angelegte Stufe –
+// eine gelöschte Ehrung wird dadurch nicht erneut angelegt. Läuft nur beim Super-Admin.
+function anzSpieleSollStufen(gesamt){
+  const out=[]; for(let n=ANZ_SPIELE_SCHRITT;n<=gesamt;n+=ANZ_SPIELE_SCHRITT) out.push(n); return out;
+}
+function useAnzahlSpieleEhrungenSync(players, aktiv){
+  const [store,setStore]=useState(null);
+  const laeuft=useRef(false);
+  useEffect(()=>{
+    if(!aktiv) return;
+    const u=onSnapshot(doc(db,"config","historie_spiele"), snap=>{
+      setStore(snap.exists()?{dateien:(snap.data().dateien||{})}:{dateien:{}});
+    }, ()=>{});
+    return ()=>u();
+  },[aktiv]);
+  useEffect(()=>{
+    if(!aktiv || !store || !(players||[]).length || laeuft.current) return;
+    const bilanzen=historieAggregieren(store, "", "");
+    const offen=[];
+    for(const p of players){
+      if(!p?.id) continue;
+      const gesamt=bilanzen[historieKeyAusPlayer(p)]?.einsaetze||0;
+      if(gesamt<ANZ_SPIELE_SCHRITT) continue;
+      const bis=Number(p.anzahlSpieleEhrungBis)||0;
+      const neu=anzSpieleSollStufen(gesamt).filter(n=>n>bis);
+      if(neu.length) offen.push({id:p.id, neu});
+    }
+    if(!offen.length) return;
+    laeuft.current=true;
+    (async()=>{
+      const heute=new Date().toLocaleDateString("sv");
+      for(const {id,neu} of offen){
+        try{
+          const snap=await getDoc(doc(db,"players",id));
+          if(!snap.exists()) continue;
+          const d=snap.data();
+          const bis=Number(d.anzahlSpieleEhrungBis)||0;
+          const liste=Array.isArray(d.ehrungen)?[...d.ehrungen]:[];
+          const vorhanden=new Set(liste.map(anzSpieleStufe).filter(Boolean));
+          const stufen=neu.filter(n=>n>bis);
+          if(!stufen.length) continue;
+          stufen.filter(n=>!vorhanden.has(n)).forEach((n,i)=>liste.push({
+            id:`as${n}_${Date.now()}${i}`, typ:"anzahl_spiele", art:`as_${n}`, stufe:n,
+            datum:"", auto:true, angelegt:heute }));
+          await updateDoc(doc(db,"players",id),{ehrungen:liste, anzahlSpieleEhrungBis:Math.max(bis,...stufen)});
+        }catch(e){}
+      }
+      laeuft.current=false;
+    })();
+  },[aktiv, store, players]);
+}
+
+// V525: Urkunde „Anzahl Spiele" – Turnier-Urkunden-Vorlage (Verwaltung › Wettkampf),
+// Aufbau wie die Turnier-Urkunde, zwei Faksimile-Unterschriften des Vorstands
+// (aus „Unterschrift Verein": die aktive zuerst, dann die nächste hinterlegte).
+async function anzahlSpieleUrkundePdfErzeugen({ vor, nach, stufe, datumIso }){
+  let urkundeBg="", faks=[];
+  try{
+    const snap=await getDoc(doc(db,"config","clubConfig"));
+    if(snap.exists()){
+      const d=snap.data();
+      urkundeBg=d.urkunde||"";
+      const fv=Array.isArray(d.faksimileVerein)?d.faksimileVerein:[];
+      const av=Number(d.faksimileVereinAktiv??0)||0;
+      faks=[fv[av], ...fv.filter((_,i)=>i!==av)].filter(Boolean).slice(0,2);
+    }
+  }catch(e){}
+  if(urkundeBg) urkundeBg=await bildAlsJpeg(urkundeBg);
+  const jsPDF=await ladeJsPDF_V();
+  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const PW=210, PH=297, mid=PW/2;
+  const ROT=[200,16,46], SCHWARZ=[26,26,26], GRAU=[91,91,91];
+  const setF=(size,style="normal",f=SCHWARZ)=>{ pdf.setFont("times",style); pdf.setFontSize(size); pdf.setTextColor(f[0],f[1],f[2]); };
+  if(urkundeBg){ try{ pdf.addImage(urkundeBg, "JPEG", 0, 0, PW, PH); }catch(e){} }
+
+  const datumLang=(()=>{
+    const [y,mo,d]=String(datumIso||"").split("-").map(Number);
+    const monate=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+    if(!y||!mo||!d) return "";
+    return `${d}. ${monate[mo-1]} ${y}`;
+  })();
+  const name=`${vor||""} ${nach||""}`.trim();
+
+  let y=156;
+  // Name zwischen roten Zierlinien (schwarz, fett) – bei Überlänge kleiner
+  let gr=30; setF(gr,"bold",SCHWARZ);
+  while(gr>18 && pdf.getTextWidth(name)>PW-76){ gr-=1; pdf.setFontSize(gr); }
+  pdf.text(name, mid, y, {align:"center"});
+  pdf.setDrawColor(200,16,46); pdf.setLineWidth(0.5);
+  pdf.line(28, y-3, 28+26, y-3); pdf.line(PW-28-26, y-3, PW-28, y-3);
+  y+=13;
+  setF(14,"normal",GRAU); pdf.text("wird hiermit geehrt,", mid, y, {align:"center"}); y+=15;
+  setF(27,"bold",ROT);    pdf.text(`${stufe} Spiele`, mid, y, {align:"center"}); y+=11;
+  setF(14,"normal",GRAU); pdf.text(`für den ${VEREIN.vollname}`, mid, y, {align:"center"}); y+=8;
+  pdf.text("absolviert zu haben.", mid, y, {align:"center"}); y+=16;
+  setF(14,"italic",SCHWARZ);
+  pdf.text("Vielen Dank für diese außerordentliche Leistung", mid, y, {align:"center"}); y+=7;
+  pdf.text(`und deine Treue zum ${VEREIN.kuerzel||"Verein"}.`, mid, y, {align:"center"});
+
+  // Fuß wie Turnier-Urkunde: zwei Unterschriften (Vorstand) + Ort/Datum, links
+  const fx=8, fTop=262, sigW=52, gap=16;
+  faks.forEach((f,i)=>{ try{
+    pdf.addImage(f, /^data:image\/png/i.test(f)?"PNG":"JPEG", fx+i*(sigW+gap)+6, fTop-15, sigW-12, 14);
+  }catch(e){} });
+  pdf.setDrawColor(51,51,51); pdf.setLineWidth(0.3);
+  pdf.line(fx, fTop, fx+sigW, fTop);
+  pdf.line(fx+sigW+gap, fTop, fx+sigW+gap+sigW, fTop);
+  setF(10.5,"normal",GRAU);
+  pdf.text("Vorstand", fx+sigW/2, fTop+5, {align:"center"});
+  pdf.text("Vorstand", fx+sigW+gap+sigW/2, fTop+5, {align:"center"});
+  setF(12,"normal",GRAU);
+  pdf.text(`${VEREIN.ort}, den ${datumLang}`, fx, fTop+16);
+  return pdf.output("blob");
+}
+
+function EhrungenAdminSection({playerId, initialEhrungen, showToast, vorname="", nachname=""}) {
   const [ehrungen,setEhrungen]=useState(initialEhrungen||[]);
+  // V525: live halten – automatisch angelegte Ehrungen „Anzahl Spiele" erscheinen sofort
+  useEffect(()=>{
+    if(!playerId) return;
+    const u=onSnapshot(doc(db,"players",playerId), snap=>{
+      if(snap.exists()) setEhrungen(snap.data().ehrungen||[]);
+    }, ()=>{});
+    return ()=>u();
+  },[playerId]);
+  const [urkAusgabe,setUrkAusgabe]=useState(null);
+  const urkLaeuft=useRef(false);
+  async function anzSpieleUrkunde(e){
+    if(urkLaeuft.current) return;                 // Doppelklick ignorieren
+    urkLaeuft.current=true;
+    const stufe=anzSpieleStufe(e);
+    const titel=`Urkunde ${stufe} Spiele – ${vorname} ${nachname}`.trim();
+    setUrkAusgabe({laeuft:true, titel});
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blob=await anzahlSpieleUrkundePdfErzeugen({ vor:vorname, nach:nachname, stufe,
+        datumIso: e.datum || new Date().toLocaleDateString("sv") });
+      const safe=(s)=>String(s||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
+      setUrkAusgabe({ blob, url:URL.createObjectURL(blob),
+        dateiname:`Urkunde_${stufe}_Spiele_${safe(vorname+"_"+nachname)}.pdf`, titel });
+    }catch(err){ setUrkAusgabe(null); window.alert(T("Die Urkunde konnte nicht erzeugt werden.\n")+(err&&err.message||"")); }
+    finally{ urkLaeuft.current=false; }
+  }
   const [showAdd,setShowAdd]=useState(false);
   const [editingEhr,setEditingEhr]=useState(null); // id of entry being edited
   const [newE,setNewE]=useState({typ:"spieler",art:"sv_bronze",datum:new Date().toLocaleDateString("sv")});
   const [editE,setEditE]=useState({});
 
   async function addEhrung() {
-    const updated=[...ehrungen,{...newE,id:Date.now().toString()}];
+    const neu={...newE,id:Date.now().toString()};
+    if(neu.typ==="anzahl_spiele") neu.stufe=anzSpieleStufe(neu); else delete neu.stufe;
+    const updated=[...ehrungen,neu];
     await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
     setEhrungen(updated); setShowAdd(false); showToast&&showToast("Ehrung gespeichert","🏅");
   }
   async function saveEditEhrung() {
-    const updated=ehrungen.map(e=>e.id===editingEhr?{...e,...editE}:e);
+    const updated=ehrungen.map(e=>{
+      if(e.id!==editingEhr) return e;
+      const neu={...e,...editE};
+      if(neu.typ==="anzahl_spiele") neu.stufe=anzSpieleStufe(neu); else delete neu.stufe;
+      return neu;
+    });
     await updateDoc(doc(db,"players",playerId),{ehrungen:updated}).catch(()=>{});
     setEhrungen(updated); setEditingEhr(null); showToast&&showToast("Ehrung aktualisiert","✅");
   }
@@ -26606,9 +26820,8 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
         <div>
           <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Typ</label>
-          <select value={newE.typ} onChange={e=>setNewE(p=>({...p,typ:e.target.value,art:e.target.value==="spieler"?"sv_bronze":"em_urkunde"}))} style={{fontSize:11}}>
-            <option value="spieler">Spielerverdienstnadel</option>
-            <option value="mitarbeiter">Vereinsmitarbeiter</option>
+          <select value={newE.typ} onChange={e=>setNewE(p=>({...p,typ:e.target.value,art:ehrungStandardArt(e.target.value)}))} style={{fontSize:11}}>
+            {EHRUNG_TYPEN.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
         <div>
@@ -26617,24 +26830,24 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
             style={{padding:"4px 6px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,outline:"none"}}/>
         </div>
       </div>
+      <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Ausprägung</label>
       <select value={newE.art} onChange={e=>setNewE(p=>({...p,art:e.target.value}))} style={{fontSize:11,width:"100%",marginBottom:6}}>
-        {(newE.typ==="spieler"?SPIELER_VERDIENST:VEREINSMITARBEITER_EHRUNGEN).map(a=>(
+        {ehrungArtenFuerTyp(newE.typ).map(a=>(
           <option key={a.id} value={a.id}>{a.icon} {a.label}</option>
         ))}
       </select>
       <button onClick={addEhrung} style={{width:"100%",padding:"6px",background:"#f59e0b",border:"none",borderRadius:7,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Speichern</button>
     </div>}
     {ehrungen.length===0&&<div style={{fontSize:11,color:"var(--text4)"}}>Noch keine Ehrungen.</div>}
-    {ehrungenNeuesteZuerst(ehrungen).map(e=>{
+    {[...ehrungenNeuesteZuerst(ehrungen).filter(ehrungAusstehend), ...ehrungenNeuesteZuerst(ehrungen).filter(e=>!ehrungAusstehend(e))].map(e=>{
       const art=getAllEhrungLabel(e);
       const isEditing=editingEhr===e.id;
-      if(isEditing) return <div key={e.id} style={{background:"var(--bg3)",borderRadius:8,padding:8,marginBottom:4}}>
+      if(isEditing) return <div key={e.id} id={`ehrung-${playerId}-${e.id}`} style={{background:"var(--bg3)",borderRadius:8,padding:8,marginBottom:4}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
           <div>
             <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:2}}>Typ</label>
-            <select value={editE.typ||e.typ} onChange={ev=>setEditE(p=>({...p,typ:ev.target.value,art:ev.target.value==="spieler"?"sv_bronze":"em_urkunde"}))} style={{fontSize:11}}>
-              <option value="spieler">Spielerverdienstnadel</option>
-              <option value="mitarbeiter">Vereinsmitarbeiter</option>
+            <select value={editE.typ||e.typ} onChange={ev=>setEditE(p=>({...p,typ:ev.target.value,art:ehrungStandardArt(ev.target.value)}))} style={{fontSize:11}}>
+              {EHRUNG_TYPEN.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           </div>
           <div>
@@ -26644,7 +26857,7 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
           </div>
         </div>
         <select value={editE.art||e.art} onChange={ev=>setEditE(p=>({...p,art:ev.target.value}))} style={{fontSize:11,width:"100%",marginBottom:6}}>
-          {((editE.typ||e.typ)==="spieler"?SPIELER_VERDIENST:VEREINSMITARBEITER_EHRUNGEN).map(a=>(
+          {ehrungArtenFuerTyp(editE.typ||e.typ).map(a=>(
             <option key={a.id} value={a.id}>{a.icon} {a.label}</option>
           ))}
         </select>
@@ -26653,16 +26866,22 @@ function EhrungenAdminSection({playerId, initialEhrungen, showToast}) {
           <button onClick={()=>setEditingEhr(null)} style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>
         </div>
       </div>;
-      return <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:"1px solid var(--border)"}}>
+      const offen=ehrungAusstehend(e);
+      return <div key={e.id} id={`ehrung-${playerId}-${e.id}`} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 4px",borderBottom:"1px solid var(--border)",borderRadius:6,transition:"box-shadow .3s"}}>
         <span style={{fontSize:18}}>{art.icon}</span>
-        <div style={{flex:1}}>
+        <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
-          <div style={{fontSize:10,color:"var(--text3)"}}>{e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC):"—"}</div>
+          <div style={{fontSize:10,color:offen?"#f59e0b":"var(--text3)",fontWeight:offen?700:400}}>
+            {e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC):(offen?"ausstehend – Datum der Ehrung über ✏️ eintragen":"—")}
+          </div>
         </div>
+        {e.typ==="anzahl_spiele" && <button onClick={()=>anzSpieleUrkunde(e)} title="Urkunde erzeugen"
+          style={{padding:"3px 7px",background:"var(--club-12, #c8102e22)",border:"1px solid var(--club-55, #c8102e55)",borderRadius:5,color:"var(--club, #c8102e)",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>📜 Urkunde</button>}
         <button onClick={()=>{setEditingEhr(e.id);setEditE({typ:e.typ,art:e.art,datum:e.datum});}} style={{padding:"2px 6px",background:"#3b82f622",border:"none",borderRadius:4,color:"#3b82f6",fontSize:10,cursor:"pointer"}}>✏️</button>
         <button onClick={()=>delEhrung(e.id)} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:4,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>
       </div>;
     })}
+    {urkAusgabe && <UrkundenAusgabeDialog ausgabe={urkAusgabe} onClose={()=>setUrkAusgabe(null)}/>}
   </div>;
 }
 
@@ -26679,8 +26898,10 @@ function EhrungenView({player}) {
 
   const spieler=ehrungenNeuesteZuerst(ehrungen.filter(e=>e.typ==="spieler"));
   const mit=ehrungenNeuesteZuerst(ehrungen.filter(e=>e.typ==="mitarbeiter"));
+  // V525: nur bereits vergebene (mit Datum) – ausstehende bleiben eine Überraschung
+  const anzSp=ehrungenNeuesteZuerst(ehrungen.filter(e=>e.typ==="anzahl_spiele"&&e.datum));
 
-  if(!ehrungen.length) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
+  if(!(spieler.length+mit.length+anzSp.length)) return <div style={{padding:20,textAlign:"center",color:"var(--text3)"}}>
     <div style={{fontSize:32,marginBottom:8}}>🏅</div>
     <div>Keine Ehrungen vorhanden.</div>
   </div>;
@@ -26704,6 +26925,7 @@ function EhrungenView({player}) {
   return <div style={{padding:14}}>
     <Section title="🏅 Spielerverdienstnadel" items={spieler}/>
     <Section title="🌟 Ehrung für Vereinsmitarbeiter" items={mit}/>
+    <Section title="🏓 Anzahl Spiele" items={anzSp}/>
   </div>;
 }
 
