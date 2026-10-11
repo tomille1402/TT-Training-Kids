@@ -1,4 +1,4 @@
-// === TTC-App · Version 525 · erstellt 11.10.2026 ===
+// === TTC-App · Version 526 · erstellt 11.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "525";
+const APP_VERSION = "526";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -13221,6 +13221,8 @@ function UrkundenAusgabeDialog({ ausgabe, onClose }){
   </div>;
 }
 
+// V526: Gruppenfarben der Personenliste
+const PERS_GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
 function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,jumpToKey=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -13303,6 +13305,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showKalender,setShowKalender]=useState(false);   // V510
   const [showGruppenNamen,setShowGruppenNamen]=useState(false);   // V514
   const [showGrp,setShowGrp]=useState({});
+  // V526: flache Personenliste
+  const [personenSuche,setPersonenSuche]=useState("");
+  const [personenGruppe,setPersonenGruppe]=usePersistentState("ttc_vwPersonenGruppe","alle");
+  const [personenPassiv,setPersonenPassiv]=usePersistentState("ttc_vwPersonenPassiv",true);
   const [showP,setShowP]=useState({});                   // je Personen-Abschnitt auf/zu
   // Kapitel-Einstieg: null = Kachelübersicht, sonst der Schlüssel des offenen Kapitels
   const [vwKapitel,setVwKapitel]=useState(null);
@@ -14463,25 +14469,102 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showP.liste?"▲":"▼"}</span>
       </div>
       {showP.liste&&<div style={{padding:"0 14px 14px"}}>
-    {/* Players by group */}
-    {groupOrder.map(group=>{
-      const allGroupPlayers=[...players.filter(p=>(p.group||"Anfänger")===group)]
-        .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||""));
-      if (!allGroupPlayers.length) return null;
-      const activeGroupPlayers = allGroupPlayers.filter(p=>p.status!=="passiv");
-      const passiveGroupPlayers = allGroupPlayers.filter(p=>p.status==="passiv");
-      const groupPlayers = [...activeGroupPlayers, ...passiveGroupPlayers];
-      const grpOpen = showGrp[group]===true;
-      const GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
-      const gc = GRP_COL[group]||"#6b7280";
-      return <div key={group} style={{marginBottom:8,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden",borderLeft:`4px solid ${gc}`}}>
-        <div onClick={()=>setShowGrp(p=>({...p,[group]:!grpOpen}))} style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
-          <div style={{fontSize:13,fontWeight:700,color:gc}}>{gName(group)} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({activeGroupPlayers.length} aktiv{passiveGroupPlayers.length>0?T`, ${passiveGroupPlayers.length} passiv`:""})</span></div>
-          <span style={{fontSize:11,color:"var(--text4)"}}>{grpOpen?"▲":"▼"}</span>
+    {/* V526: flache Liste – Suche + Gruppenfilter statt verschachtelter Gruppen-Boxen */}
+    {(()=>{
+      const q=personenSuche.trim().toLowerCase();
+      const basis=players.filter(p=>groupOrder.includes(p.group||"Anfänger"));
+      const passt=p=>{
+        if(!personenPassiv && p.status==="passiv") return false;
+        if(!q) return true;
+        return (`${p.firstName||""} ${p.lastName||""} ${p.lastName||""} ${p.firstName||""} ${p.email||""}`).toLowerCase().includes(q);
+      };
+      const gruppeAktiv = (personenGruppe==="alle"||groupOrder.includes(personenGruppe)) ? personenGruppe : "alle";
+      const gruppen=groupOrder.filter(g=>basis.some(p=>(p.group||"Anfänger")===g));
+      const chip=(aktiv,farbe)=>({padding:"5px 10px",borderRadius:16,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",
+        border:`1px solid ${aktiv?farbe:"var(--border2)"}`,background:aktiv?farbe:"transparent",color:aktiv?"#fff":"var(--text2)"});
+      let treffer=0;
+      const bloecke=gruppen.filter(g=>gruppeAktiv==="alle"||g===gruppeAktiv).map(group=>{
+        const liste=basis.filter(p=>(p.group||"Anfänger")===group && passt(p))
+          .sort((a,b)=>((a.status==="passiv")-(b.status==="passiv")) || (a.firstName||"").localeCompare(b.firstName||""));
+        if(!liste.length) return null;
+        treffer+=liste.length;
+        const gc=PERS_GRP_COL[group]||"#6b7280";
+        return <div key={group} style={{marginTop:12}}>
+          <div style={{fontSize:11,fontWeight:800,color:gc,textTransform:"uppercase",letterSpacing:0.4,padding:"0 2px 4px",borderBottom:`2px solid ${gc}`}}>
+            {gName(group)} <span style={{color:"var(--text3)",fontWeight:600,textTransform:"none"}}>({liste.length})</span>
+          </div>
+          {liste.map(p=>(
+            <div key={p.id} id={"verwaltung-player-"+p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,
+              background:editPlayer?.id===p.id?"var(--club-12, #c8102e1f)":"transparent",
+              borderBottom:"1px solid var(--border)",borderLeft:`3px solid ${PERS_GRP_COL[p.group||"Anfänger"]||"#6b7280"}`,
+              padding:"8px 8px 8px 10px",opacity:p.status==="passiv"?0.75:1}}>
+              <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
+              <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"var(--text)"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>(passiv)</span>}</div>
+                <div style={{fontSize:10,color:"var(--text4)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  {hatKeinEchtesLogin(p)
+                    ? <><span style={{color:"#f59e0b"}}>{p.noLogin?"👤 Kein Login":"⚠️ Kein echtes Login"}</span>
+                        <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
+                      </>
+                    : <span style={{color:"#10b981"}}>📧 {p.email}</span>
+                  }
+                  {/* Rollen-Badges */}
+                  {p.roles&&Object.entries({player:"🏓",trainer:"🛡️",admin:"⚙️"}).map(([k,icon])=>
+                    p.roles[k]&&<span key={k} style={{fontSize:10,background:"var(--border)",borderRadius:4,padding:"1px 4px"}}>{icon}</span>
+                  )}
+                  {p.joinDate&&<span style={{fontSize:10,color:"var(--text4)"}}>🏅 {new Date(p.joinDate).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"2-digit",year:"numeric"})}</span>}
+                  {p.racketType==="TTC"&&p.racketNr&&(
+                    <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
+                      🏓 Nr.{String(p.racketNr).padStart(3,"0")}
+                      {!p.racketStart&&" ⚠️ Vergabedatum fehlt!"}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>{getAward(p).totalStars} ★</span>
+              <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>✏️</button>
+              <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>🗑️</button>
+            </div>
+          ))}
+        </div>;
+      });
+      return <>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <input type="search" value={personenSuche} onChange={e=>setPersonenSuche(e.target.value)} placeholder="🔍 Name oder E-Mail suchen"
+            style={{flex:1,minWidth:0,padding:"9px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+          {personenSuche&&<button onClick={()=>setPersonenSuche("")} style={{padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>✕</button>}
         </div>
-        {grpOpen&&groupPlayers.map(p=>(
-          editPlayer?.id===p.id ? (
-            <div key={p.id} id={"verwaltung-player-"+p.id} style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:12,padding:14,marginBottom:8}}>
+        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
+          <button onClick={()=>setPersonenGruppe("alle")} style={chip(gruppeAktiv==="alle",TTC_ROT)}>Alle ({basis.filter(p=>personenPassiv||p.status!=="passiv").length})</button>
+          {gruppen.map(g=>{ const n=basis.filter(p=>(p.group||"Anfänger")===g && (personenPassiv||p.status!=="passiv")).length;
+            return <button key={g} onClick={()=>setPersonenGruppe(g)} style={chip(gruppeAktiv===g,PERS_GRP_COL[g]||"#6b7280")}>{gName(g)} ({n})</button>; })}
+          <button onClick={()=>setPersonenPassiv(v=>!v)} style={{...chip(false,"#6b7280"),marginLeft:"auto",color:personenPassiv?"var(--text2)":"var(--text4)"}}>
+            {personenPassiv?"✓ inkl. passive":"ohne passive"}</button>
+        </div>
+        {bloecke}
+        {treffer===0&&<div style={{fontSize:12,color:"var(--text3)",padding:"14px 2px"}}>Keine Personen gefunden.</div>}
+      </>;
+    })()}
+
+      </div>}
+    </div>
+
+    {/* V526: Person bearbeiten als eigene Vollbild-Ansicht statt eingeschachtelt in der Liste */}
+    {editPlayer && (()=>{
+      const p=players.find(x=>x.id===editPlayer.id)||editPlayer;
+      return <div style={{position:"fixed",inset:0,zIndex:300,background:"#0009",display:"flex",justifyContent:"center"}}>
+        <div id={"verwaltung-edit-"+p.id} style={{width:"100%",maxWidth:APP_MAX_BREITE,height:"100%",overflowY:"auto",overscrollBehavior:"contain",
+          WebkitOverflowScrolling:"touch",background:"var(--bg)",paddingBottom:"calc(24px + env(safe-area-inset-bottom, 0px))"}}>
+          <div style={{position:"sticky",top:0,zIndex:5,background:"var(--bg2)",borderBottom:"1px solid var(--border2)",
+            padding:"calc(var(--sat, 0px) + 10px) 12px 10px",display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={()=>setEditPlayer(null)} style={{padding:"7px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>← Zurück</button>
+            <div style={{flex:1,minWidth:0,fontSize:14,fontWeight:800,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {editPlayer.firstName} {editPlayer.lastName}</div>
+            <button onClick={saveEdit} disabled={saving} style={{padding:"7px 12px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:saving?"wait":"pointer",flexShrink:0}}>{saving?"Speichert…":"💾 Speichern"}</button>
+          </div>
+          <div style={{padding:12}}>
+            <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:12,padding:14,marginBottom:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
                 <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setAvatarPickerFor("edit")}>
                   <Avatar avatar={editPlayer.avatar} color={p.color} size={44}/>
@@ -15074,43 +15157,10 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 <button onClick={()=>setEditPlayer(null)} style={{flex:1,padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Abbrechen</button>
               </div>
             </div>
-          ) : (
-            <div key={p.id} id={"verwaltung-player-"+p.id} data-playerid={p.id} style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:"9px 13px",marginBottom:6}}>
-              <span style={{fontSize:18}}>{p.avatar||"🏓"}</span>
-              <span style={{width:8,height:8,borderRadius:"50%",background:p.color,display:"inline-block",flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,color:p.status==="passiv"?"#6b7280":"var(--text)"}}>{p.firstName} {p.lastName}{p.status==="passiv"&&<span style={{fontSize:10,color:"var(--text3)",marginLeft:6}}>(passiv)</span>}</div>
-                <div style={{fontSize:10,color:"var(--text4)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  {hatKeinEchtesLogin(p)
-                    ? <><span style={{color:"#f59e0b"}}>{p.noLogin?"👤 Kein Login":"⚠️ Kein echtes Login"}</span>
-                        <button onClick={()=>{setLoginUpgradeFor(p);setUpgradeEmail(istKuenstlicheEmail(p.email)?"":p.email||"");setUpgradePass("");setUpgradeErr("");}} style={{background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:5,color:"#f59e0b",fontSize:10,fontWeight:600,cursor:"pointer",padding:"1px 6px"}}>→ Login einrichten</button>
-                      </>
-                    : <span style={{color:"#10b981"}}>📧 {p.email}</span>
-                  }
-                  {/* Rollen-Badges */}
-                  {p.roles&&Object.entries({player:"🏓",trainer:"🛡️",admin:"⚙️"}).map(([k,icon])=>
-                    p.roles[k]&&<span key={k} style={{fontSize:10,background:"var(--border)",borderRadius:4,padding:"1px 4px"}}>{icon}</span>
-                  )}
-                  {p.joinDate&&<span style={{fontSize:10,color:"var(--text4)"}}>🏅 {new Date(p.joinDate).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"2-digit",year:"numeric"})}</span>}
-                  {p.racketType==="TTC"&&p.racketNr&&(
-                    <span style={{color:p.racketStart?"#3b82f6":"#f59e0b",fontWeight:600}}>
-                      🏓 Nr.{String(p.racketNr).padStart(3,"0")}
-                      {!p.racketStart&&" ⚠️ Vergabedatum fehlt!"}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>{getAward(p).totalStars} ★</span>
-              <button onClick={()=>setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""})} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>✏️</button>
-              <button onClick={()=>setDeleteConfirmFor(p)} style={{background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:14}}>🗑️</button>
-            </div>
-          )
-        ))}
+          </div>
+        </div>
       </div>;
-    })}
-
-      </div>}
-    </div>
+    })()}
 
     {/* Personenübersicht */}
     <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
