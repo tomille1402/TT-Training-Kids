@@ -1,4 +1,4 @@
-// === TTC-App · Version 528 · erstellt 11.10.2026 ===
+// === TTC-App · Version 530 · erstellt 12.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "528";
+const APP_VERSION = "530";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9486,7 +9486,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="historieadmin"&&<HistorieAdminView players={players}
       onEhrungKlick={(isSuperAdmin&&!ttcModus) ? (id,ehrId)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("ehrungen"); setVerwaltungJumpKey(ehrId||null); setActiveTab("verwaltung"); } : null}/>}
     {activeTab==="vmhistorie"&&<VereinsmeisterHistorie players={players}/>}
-    {activeTab==="verwaltung"&&<VerwaltungTab players={players} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} jumpToKey={verwaltungJumpKey} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null); setVerwaltungJumpKey(null);}}/>}
+    {activeTab==="verwaltung"&&<VerwaltungTab players={players} attendance={attendance} rackets={rackets} onPlayerAdded={onPlayerAdded} showToast={showToast} isDark={isDark} onSetUserTheme={onSetUserTheme} userTheme={userTheme} globalTheme={globalTheme} user={user} clubConfig={clubConfig} isSuperAdmin={isSuperAdmin} jumpToId={verwaltungJumpId} jumpToSection={verwaltungJumpSection} jumpToKey={verwaltungJumpKey} onJumpHandled={()=>{setVerwaltungJumpId(null); setVerwaltungJumpSection(null); setVerwaltungJumpKey(null);}}/>}
 
     <style>{`
       @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -9707,6 +9707,66 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 }
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
+// V529: Trainingsbeteiligung einer Person (gleiche Regeln wie im Reiter „Teilnahme"):
+// Trainingstage der Gruppe im individuellen bzw. globalen Trainingszeitraum bis heute,
+// ausgefallene/nicht erfasste Termine zählen nicht, „e"/„u" = nicht anwesend.
+function trainingsBeteiligungStats(player, attendance, trainingRange){
+  const days=getTrainingDaysForGroup(player?.group||"Anfänger", player?.trainingDays);
+  const todayStr=new Date().toLocaleDateString("sv");
+  const pStart=player?.trainingStart || trainingRange?.start || null;
+  const pEnd  =player?.trainingEnd   || trainingRange?.end   || null;
+  const pastDays=days.filter(d=>{
+    if(d>todayStr) return false;
+    if(pStart && d<pStart) return false;
+    if(pEnd && d>pEnd) return false;
+    return true;
+  });
+  let present=0, excused=0, unexcused=0, total=0, erster="", letzter="";
+  for(const d of pastDays){
+    const session=(attendance||{})[d];
+    if(session && session.took_place===false) continue;
+    if(!session) continue;
+    total++;
+    if(!erster||d<erster) erster=d;
+    if(!letzter||d>letzter) letzter=d;
+    const val=session.attendances?.[player.id];
+    if(val==="e") excused++;
+    else if(val==="u") unexcused++;
+    else present++;
+  }
+  const pct= total>0 ? Math.round((present/total)*100) : 0;
+  const exakt= total>0 ? (present*100/total) : 0;
+  // Zeitraum für die Urkunde: Start laut Verwaltung, Ende laut Verwaltung (höchstens heute)
+  const start=pStart||erster||"";
+  const ende =(pEnd && pEnd<todayStr) ? pEnd : (pEnd ? todayStr : (letzter||todayStr));
+  return {pct, exakt, present, total, excused, unexcused, start, ende};
+}
+// V529: Stufen der Trainingsteilnahme-Urkunden (Datumsfelder je Person: attend…Date)
+const TRAININGS_URKUNDEN_STUFEN = [
+  {key:"bronze",  stufe:"Bronze",  ab:70,  emoji:"🥉", datumKey:"attendBronzeDate",  farbe:"#cd7f32"},
+  {key:"silber",  stufe:"Silber",  ab:80,  emoji:"🥈", datumKey:"attendSilverDate",  farbe:"#b8b8b8"},
+  {key:"gold",    stufe:"Gold",    ab:90,  emoji:"🥇", datumKey:"attendGoldDate",    farbe:"#ffd700"},
+  {key:"platin",  stufe:"Platin",  ab:95,  emoji:"💎", datumKey:"attendPlatinDate",  farbe:"#5f9ea0"},
+  {key:"diamant", stufe:"Diamant", ab:100, emoji:"💠", datumKey:"attendDiamantDate", farbe:"#6f7bd6"},
+];
+function tbStufeLabel(st){ return st.ab>=100 ? `${st.stufe} 100 %` : `${st.stufe} ≥ ${st.ab} %`; }
+// Ganzzahlig vergleichen (kein Rundungsfehler): Diamant nur bei wirklich 100 %.
+function trainingsUrkundeErreicht(stats, st){
+  if(!stats || !stats.total) return false;
+  return stats.present*100 >= st.ab*stats.total;
+}
+// V530: Jeder Spieler bekommt genau EINE Urkunde – die höchste erreichte Stufe (oder keine unter 70 %).
+function trainingsUrkundeStufe(present, total){
+  if(!total) return null;
+  let erg=null;
+  for(const st of TRAININGS_URKUNDEN_STUFEN) if(present*100 >= st.ab*total) erg=st;
+  return erg;
+}
+function tbFarbe(present, total){ return trainingsUrkundeStufe(present,total)?.farbe || "#10b981"; }
+function tbMedaille(present, total){ return trainingsUrkundeStufe(present,total)?.emoji || null; }
+const TB_LEGENDE = "🥉 ≥ 70 % · 🥈 ≥ 80 % · 🥇 ≥ 90 % · 💎 ≥ 95 % · 💠 100 %";
+function prozentDE(n){ return Number(n||0).toLocaleString("de-DE",{minimumFractionDigits:0, maximumFractionDigits:1}); }
+
 function TeilnahmeTab({players,attendance,onPlayerClick}) {
   // Punkt 5: Nur Personen mit gesetztem individuellem "Start Training" nehmen am
   // Vereinstraining teil und erscheinen in der Teilnahme-Übersicht.
@@ -9767,12 +9827,14 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
   return <div style={{padding:13}}>
     <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung {(trainingRange.start||new Date().toLocaleDateString("sv")).slice(0,4)}</div>
     {trainingRange.start&&trainingRange.end&&(
-      <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>
+      <div style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>
         Zeitraum: {formatDateDE(trainingRange.start)} – {formatDateDE(trainingRange.end)}
       </div>
     )}
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Urkunden: {TB_LEGENDE}</div>
     {ranked.map((player,idx)=>{
-      const medal = player.pct>90?"🥇":player.pct>80?"🥈":player.pct>70?"🥉":null;
+      const medal = tbMedaille(player.present, player.total);   // V530: fünf Stufen
+      const tbF = tbFarbe(player.present, player.total);
       return <div key={player.id} style={{background:"var(--bg2)",border:`1px solid ${idx===0?"#f59e0b44":"var(--border)"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
         <Avatar avatar={player.avatar} color={player.color} size={36}/>
         <div style={{flex:1,minWidth:0}}>
@@ -9785,7 +9847,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
           </div>
           <div style={{fontSize:10,color:"var(--text3)",marginBottom:5}}>{gName(player.group||"Anfänger")}</div>
           <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
-            <div style={{width:`${player.pct}%`,height:"100%",background:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",borderRadius:6,transition:"width .5s"}}/>
+            <div style={{width:`${player.pct}%`,height:"100%",background:tbF,borderRadius:6,transition:"width .5s"}}/>
           </div>
           <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)",flexWrap:"wrap"}}>
             <span>✓ {player.present} anwesend</span>
@@ -9795,7 +9857,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
           </div>
         </div>
         <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:52}}>
-          <div style={{fontSize:20,fontWeight:900,color:player.pct>90?"#ffd700":player.pct>80?"#b8b8b8":player.pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{player.pct}%</div>
+          <div style={{fontSize:20,fontWeight:900,color:tbF,lineHeight:1}}>{player.pct}%</div>
           <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>Beteiligung</div>
         </div>
       </div>;
@@ -10319,6 +10381,93 @@ function UebungsUrkundenEditor({showToast}) {
     {layout && <UrkundenLayoutBereich layout={layout} setL={setL} logo={logo} farbe={farbe}
       muster={muster} vorschauKey={vorschauKey} setVorschauKey={setVorschauKey}
       geaendert={layoutGeaendert} busy={busy==="layout"} onSpeichern={layoutSpeichern} onProbe={probeUrkunde}/>}
+    {probe && <UrkundenAusgabeDialog ausgabe={probe} onClose={()=>setProbe(null)}/>}
+  </div>;
+}
+
+// V529: Muster der Trainingsteilnahme-Urkunden (5 Stufen, ohne Gruppen-Unterscheidung)
+function TrainingsUrkundenEditor({showToast}) {
+  const [muster,setMuster]=useState({});
+  const [busy,setBusy]=useState("");
+  const [probeStufe,setProbeStufe]=useState("gold");
+  const [probe,setProbe]=useState(null);
+  useEffect(()=>{
+    (async()=>{
+      const neu={};
+      for(const st of TRAININGS_URKUNDEN_STUFEN){
+        try{ const snap=await getDoc(doc(db,"config","trainingsUrkunde_"+st.key));
+          if(snap.exists()&&snap.data().bild) neu[st.key]=snap.data().bild; }catch(e){}
+      }
+      setMuster(neu);
+    })();
+  },[]);
+  async function upload(key, file){
+    if(!file) return;
+    setBusy(key);
+    try{
+      const dataUrl=await komprimiereBild(file, { maxBreite:1240, maxHoehe:1754, maxLen:900000 });
+      await setDoc(doc(db,"config","trainingsUrkunde_"+key),{bild:dataUrl, geaendert:Date.now()});
+      delete TB_URK_CACHE[key];
+      setMuster(m=>({...m,[key]:dataUrl}));
+      showToast("Muster gespeichert 🎖️","🎖️");
+    }catch(err){ window.alert(err&&err.message?err.message:T("Bild konnte nicht verarbeitet werden.")); }
+    setBusy("");
+  }
+  async function entferne(key){
+    if(!window.confirm(T("Muster entfernen?"))) return;
+    try{
+      await setDoc(doc(db,"config","trainingsUrkunde_"+key),{bild:"", geaendert:Date.now()});
+      delete TB_URK_CACHE[key];
+      setMuster(m=>{ const n={...m}; delete n[key]; return n; });
+      showToast("Muster entfernt","✅");
+    }catch(e){ window.alert(T("Fehler:\n")+(e.message||e)); }
+  }
+  async function probeUrkunde(){
+    if(!muster[probeStufe]){ window.alert(T("Für diese Stufe ist noch kein Muster hochgeladen.")); return; }
+    setProbe({laeuft:true, titel:"Probe-Urkunde"});
+    try{
+      const st=TRAININGS_URKUNDEN_STUFEN.find(x=>x.key===probeStufe);
+      const total=40, present=Math.ceil(total*st.ab/100);
+      const blob=await trainingsUrkundePdfErzeugen({ stufeKey:probeStufe, vor:"Maximilian", nach:"Mustermann",
+        datumIso:new Date().toLocaleDateString("sv"),
+        stats:{present, total, exakt:present*100/total, start:"2025-09-01", ende:"2026-06-30"} });
+      if(!blob) throw new Error("Muster fehlt.");
+      setProbe({ blob, url:URL.createObjectURL(blob), dateiname:"Probe-Trainingsurkunde.pdf", titel:"Probe-Urkunde" });
+    }catch(e){ setProbe(null); window.alert(T("Probe-Urkunde fehlgeschlagen:\n")+(e&&e.message||e)); }
+  }
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Lade je Stufe das Urkundenmuster hoch (A4 hochkant). Beim Erzeugen setzt die App Vorname, Name, Ort und Datum,
+      das Logo der App, den Rahmen in der Vereinsfarbe sowie unten den Text mit Zeitraum, Anzahl der Trainings,
+      Anwesenheitsquote und Stufe. Position von Ort/Datum, Logo und Rahmen wie bei den Übungs-Urkunden
+      (Einstellungen dort).
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+      {TRAININGS_URKUNDEN_STUFEN.map(st=>{
+        const bild=muster[st.key]; const key=st.key; const fb=STUFE_FARBE[st.stufe]||st.farbe;
+        return <div key={key} style={{flex:"1 1 90px",minWidth:90,border:`2px solid ${bild?fb:"var(--border2)"}`,borderRadius:10,padding:8,background:"var(--bg3)"}}>
+          <div style={{fontSize:11,fontWeight:800,color:fb,marginBottom:1,textAlign:"center"}}>{st.stufe}</div>
+          <div style={{fontSize:10,color:"var(--text3)",marginBottom:5,textAlign:"center"}}>{st.ab>=100?"100 %":`≥ ${st.ab} %`}</div>
+          <div style={{height:60,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,marginBottom:6,overflow:"hidden"}}>
+            {bild? <img src={bild} alt="" style={{maxWidth:"100%",maxHeight:58,objectFit:"contain"}}/> : <span style={{fontSize:22}}>{st.emoji}</span>}
+          </div>
+          <label style={{display:"block",padding:"5px",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:6,textAlign:"center",cursor:busy===key?"not-allowed":"pointer",fontSize:10,color:"var(--text3)",marginBottom:bild?5:0}}>
+            {busy===key?"⏳":(bild?"Ersetzen":"Hochladen")}
+            <input type="file" accept="image/*" style={{display:"none"}} disabled={busy===key} onChange={e=>upload(key,e.target.files?.[0])}/>
+          </label>
+          {bild&&<button type="button" onClick={()=>entferne(key)} style={{width:"100%",padding:"4px",borderRadius:6,fontSize:10,border:"1px solid #ef444466",background:"#ef444422",color:"#ef4444",cursor:"pointer"}}>✕ entfernen</button>}
+        </div>;
+      })}
+    </div>
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <select value={probeStufe} onChange={e=>setProbeStufe(e.target.value)} style={{fontSize:13}}>
+        {TRAININGS_URKUNDEN_STUFEN.map(st=><option key={st.key} value={st.key}>{st.stufe}</option>)}
+      </select>
+      <button onClick={probeUrkunde} style={{flex:"1 1 160px",padding:"10px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>📄 Probe-Urkunde</button>
+    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginTop:8,lineHeight:1.5}}>
+      Erzeugt werden die Urkunden in der Verwaltung › Personen › Personenverwaltung › Person › „Urkunden (Trainingsbeteiligung)“.
+    </div>
     {probe && <UrkundenAusgabeDialog ausgabe={probe} onClose={()=>setProbe(null)}/>}
   </div>;
 }
@@ -13150,6 +13299,46 @@ async function uebungsUrkundePdfErzeugen({ musterKey, vor, nach, datumIso, layou
   return pdf.output("blob");
 }
 
+// ─── V529: Trainingsteilnahme-Urkunden ───────────────────────────────────────
+// Muster je Stufe in einem eigenen Dokument config/trainingsUrkunde_<stufe> (Feld „bild"),
+// damit clubConfig nicht über die Firestore-Grenze von 1 MiB wächst.
+const TB_URK_CACHE = {};
+async function trainingsUrkundeMusterJpeg(key){
+  if(TB_URK_CACHE[key]) return TB_URK_CACHE[key];
+  const snap=await getDoc(doc(db,"config","trainingsUrkunde_"+key));
+  const roh=snap.exists()?(snap.data().bild||""):"";
+  if(!roh) return "";
+  const jpg=await bildAlsJpeg(roh);
+  TB_URK_CACHE[key]=jpg;
+  return jpg;
+}
+// Text unten wie bei den Übungs-Urkunden; Name, Ort/Datum, Logo und Rahmen über
+// dieselbe Zeichenfunktion und dasselbe Layout wie die Übungs-Urkunden.
+async function trainingsUrkundePdfErzeugen({ stufeKey, vor, nach, datumIso, stats, layoutUeberschreiben=null }){
+  const st=TRAININGS_URKUNDEN_STUFEN.find(x=>x.key===stufeKey);
+  if(!st) return null;
+  const muster=await trainingsUrkundeMusterJpeg(stufeKey);
+  if(!muster) return null;
+  await urkundenMusterLaden();     // lädt Layout, Logo und Vereinsfarbe (URK_CACHE.cfg)
+  const cfg = URK_CACHE.cfg || { layout:urkLayoutMitStandard(null), logo:"", farbe:[200,16,46] };
+  const jsPDF=await ladeJsPDF_V();
+  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const { nameOk } = await registriereFonts(pdf);
+  const teile=String(datumIso||"").split("-");
+  const datumTxt = !datumIso ? "" : (teile.length===3 ? `${teile[2]}.${teile[1]}.${teile[0]}` : String(datumIso));
+  zeichneUebungsUrkunde(pdf, { muster, musterKey:"tb_"+stufeKey, vor, nach, datumTxt,
+    layout: layoutUeberschreiben || cfg.layout, logo: cfg.logo, farbe: cfg.farbe, nameOk });
+  const dDE=(iso)=>{ const t=String(iso||"").split("-"); return t.length===3?`${t[2]}.${t[1]}.${t[0]}`:String(iso||""); };
+  const zeitraum = stats.start ? `${dDE(stats.start)} bis ${dDE(stats.ende)}` : `bis ${dDE(stats.ende)}`;
+  const text = `hat im Zeitraum ${zeitraum} an insgesamt ${stats.present} Trainings teilgenommen `+
+    `(Anwesenheitsquote: ${prozentDE(stats.exakt)} %) und erhält dafür die Urkunde in ${st.stufe}.`;
+  pdf.setFont("times","normal"); pdf.setFontSize(15); pdf.setTextColor(40,40,40);
+  const zeilen=pdf.splitTextToSize(text, 150);
+  let y=233;
+  zeilen.forEach(z=>{ pdf.text(z, 105, y, {align:"center"}); y+=6.8; });
+  return pdf.output("blob");
+}
+
 function urkundeDatumFeldId(playerId, key){ return `urkdatum-${playerId}-${key}`; }
 function zumUrkundenDatum(playerId, key){
   if(typeof document==="undefined") return;
@@ -13224,12 +13413,32 @@ function UrkundenAusgabeDialog({ ausgabe, onClose }){
 
 // V526: Gruppenfarben der Personenliste
 const PERS_GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
-function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,jumpToKey=null,onJumpHandled=null}) {
+function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,jumpToKey=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
   // ── Übungs-Urkunde als PDF (Muster-Hintergrund + Name + Datum) ───────────────
   // Name: rote Handschrift (Parisienne, verschnörkelt), Datum: handschriftlich
   // (Kalam ≈ Chalkboard). Fonts + jsPDF werden per CDN geladen und eingebettet.
+  // V529: Trainingsteilnahme-Urkunde (gleiche Ausgabe wie Übungs-Urkunden)
+  async function trainingsUrkundePdf(player, st, datumIso, stats){
+    if(urkErstelltRef.current) return;
+    urkErstelltRef.current=true;
+    const vor=(player.firstName||"").trim(), nach=(player.lastName||"").trim();
+    const titel=`Trainingsurkunde ${st.stufe} – ${vor} ${nach}`.trim();
+    setUrkAusgabe({ laeuft:true, titel });
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const blob=await trainingsUrkundePdfErzeugen({ stufeKey:st.key, vor, nach,
+        datumIso: datumIso || new Date().toLocaleDateString("sv"), stats });
+      if(!blob){ urkErstelltRef.current=false; setUrkAusgabe(null);
+        window.alert(T("Für „")+st.stufe+T("“ ist noch kein Muster hinterlegt.\nBitte in der Verwaltung › Training › „Trainingsteilnahme-Urkunden“ hochladen.")); return; }
+      const safe=(x)=>String(x||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
+      try{ sessionStorage.setItem(URKUNDE_RUECKKEHR_KEY, JSON.stringify({playerId:player.id, key:st.datumKey, t:Date.now()})); }catch(e){}
+      setUrkAusgabe({ blob, url:URL.createObjectURL(blob), dateiname:`Trainingsurkunde_${st.stufe}_${safe(vor+"_"+nach)}.pdf`,
+        titel, playerId:player.id, key:st.datumKey });
+    }catch(err){ setUrkAusgabe(null); window.alert(T("Die Urkunde konnte nicht erzeugt werden.\n")+(err&&err.message||"")); }
+    finally{ urkErstelltRef.current=false; }
+  }
   async function uebungsUrkundePdf(player, label, musterKey, datumIso, datumKey){
     if(!musterKey){ window.alert(T("Für diese Urkunde ist kein Muster-Typ zugeordnet.")); return; }
     if(urkErstelltRef.current) return;             // V496: Doppelklick ignorieren
@@ -13293,6 +13502,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
   const [showAppDesign,setShowAppDesign]=useState(false);
   const [showFaksimile,setShowFaksimile]=useState(false);
   const [showUebungsUrkunden,setShowUebungsUrkunden]=useState(false);
+  const [showTrainingsUrkunden,setShowTrainingsUrkunden]=useState(false);   // V529
   const [showTurnierUrkunde,setShowTurnierUrkunde]=useState(false);
   const [showSaisons,setShowSaisons]=useState(false);   // V500
   const [showBranding,setShowBranding]=useState(false);
@@ -13353,7 +13563,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
     setShowP(prev=>({...prev, liste:true}));
     setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""});
     setShowGrp(prev=>({...prev, [p.group||"Anfänger"]:true}));
-    setPersonAbschn({id:p.id, offen:{urkUebungen:true}});   // V527
+    setPersonAbschn({id:p.id, offen:{urkUebungen:true, urkTraining:true}});   // V527/V529
     setTimeout(()=>{ if(!zumUrkundenDatum(p.id, ziel.key)){
       const el=document.getElementById("urkundendaten-"+p.id); if(el) el.scrollIntoView({block:"center"}); } }, 500);
   },[players.length>0]);
@@ -13732,7 +13942,7 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
         tournaments:   editPlayer.tournaments||[],
       });
       // Award dates — alle awardDate_* Felder speichern
-      const awardKeys = Object.keys(editPlayer).filter(k=>k.startsWith("awardDate_")||k.startsWith("attendBronzeDate")||k.startsWith("attendSilverDate")||k.startsWith("attendGoldDate"));
+      const awardKeys = Object.keys(editPlayer).filter(k=>k.startsWith("awardDate_")||k.startsWith("attendBronzeDate")||k.startsWith("attendSilverDate")||k.startsWith("attendGoldDate")||k.startsWith("attendPlatinDate")||k.startsWith("attendDiamantDate"));
       if (awardKeys.length) {
         const awardUpdates={};
         awardKeys.forEach(k=>{ awardUpdates[k]=editPlayer[k]||""; });
@@ -15003,22 +15213,51 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
                 </>;
               }, {id:"urkundendaten-"+editPlayer.id})}
 
-              {!isEOnly && abschnitt("urkTraining","🎖️ Urkunden (Trainingsbeteiligung)", "", ()=><>
-                    <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.4}}>
-                      Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung.
-                      Hier nur das Datum der Urkundenvergabe eintragen.
-                    </div>
-                    {[{key:"attendBronzeDate",label:"Bronze >70%",emoji:"🥉",threshold:70},{key:"attendSilverDate",label:"Silber >80%",emoji:"🥈",threshold:80},{key:"attendGoldDate",label:"Gold >90%",emoji:"🥇",threshold:90}].map(a=>(
-                      <div key={a.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
-                        <span style={{fontSize:16}}>{a.emoji}</span>
-                        <div style={{flex:1,fontSize:11,color:"var(--text2)"}}>{a.label}</div>
-                        <input type="date" value={editPlayer[a.key]||""}
-                          onChange={e=>setEditPlayer(prev=>({...prev,[a.key]:e.target.value}))}
-                          style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
-                        {editPlayer[a.key]&&<button onClick={()=>setEditPlayer(p=>({...p,[a.key]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
-                      </div>
-                    ))}
-              </>)}
+              {!isEOnly && abschnitt("urkTraining","🎖️ Urkunden (Trainingsbeteiligung)", (()=>{ const x=trainingsBeteiligungStats(editPlayer, attendance, trainingRange); const st=trainingsUrkundeStufe(x.present,x.total); return x.total?`${prozentDE(x.exakt)} %${st?" · "+st.stufe:""}`:""; })(), ()=>{
+                // V529: fünf Stufen; Quote wie im Reiter „Teilnahme"
+                const stats=trainingsBeteiligungStats(editPlayer, attendance, trainingRange);
+                return <>
+                  <div style={{fontSize:11,color:"var(--text2)",marginBottom:8,lineHeight:1.5,background:"var(--bg2)",borderRadius:8,padding:"7px 9px"}}>
+                    {stats.total
+                      ? <>Aktuell <b>{stats.present}</b> von {stats.total} Trainings · <b>{prozentDE(stats.exakt)} %</b>
+                          {stats.start?<> · Zeitraum {formatDateDE(stats.start)} bis {formatDateDE(stats.ende)}</>:null}</>
+                      : "Im Trainingszeitraum sind noch keine Trainings erfasst."}
+                  </div>
+                  <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.4}}>
+                    Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung.
+                    Jeder Spieler erhält genau eine Urkunde: die höchste erreichte Stufe ({TB_LEGENDE}).
+                    Hier das Datum der Vergabe eintragen; „📄 PDF“ erzeugt die Urkunde.
+                  </div>
+                  {(()=>{
+                    // V530: genau eine Urkunde – die höchste erreichte Stufe
+                    const st=trainingsUrkundeStufe(stats.present, stats.total);
+                    const andere=TRAININGS_URKUNDEN_STUFEN.filter(x=>x!==st && editPlayer[x.datumKey]);
+                    return <>
+                      {st ? <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                          <span style={{fontSize:18}}>{st.emoji}</span>
+                          <div style={{flex:1,fontSize:12,color:"var(--text)",fontWeight:700}}>Urkunde {tbStufeLabel(st)}</div>
+                          <input type="date" id={urkundeDatumFeldId(editPlayer.id, st.datumKey)} value={editPlayer[st.datumKey]||""}
+                            onChange={e=>setEditPlayer(prev=>({...prev,[st.datumKey]:e.target.value}))}
+                            style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
+                          {editPlayer[st.datumKey]&&<button onClick={()=>setEditPlayer(p=>({...p,[st.datumKey]:""}))} style={{padding:"3px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕</button>}
+                          <button type="button" title="Urkunde als PDF erzeugen" disabled={!!urkAusgabe?.laeuft}
+                            onClick={()=>trainingsUrkundePdf(editPlayer, st, editPlayer[st.datumKey], stats)}
+                            style={{padding:"4px 9px",background:"var(--club, #c8102e)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:urkAusgabe?.laeuft?"wait":"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
+                        </div>
+                        : <div style={{fontSize:11,color:"var(--text3)",marginBottom:7}}>
+                            Keine Urkunde – Anwesenheitsquote unter 70 %{stats.total?` (aktuell ${prozentDE(stats.exakt)} %)`:""}.
+                          </div>}
+                      {andere.length>0 && <div style={{fontSize:10,color:"#b45309",background:"#f59e0b11",border:"1px solid #f59e0b44",borderRadius:7,padding:"6px 8px",marginTop:4}}>
+                        Früher eingetragen (andere Stufe):
+                        {andere.map(x=><div key={x.datumKey} style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                          <span>{x.emoji} {x.stufe} am {formatDateDE(editPlayer[x.datumKey])}</span>
+                          <button onClick={()=>setEditPlayer(p=>({...p,[x.datumKey]:""}))} style={{padding:"1px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕ entfernen</button>
+                        </div>)}
+                      </div>}
+                    </>;
+                  })()}
+                </>;
+              })}
 
               {abschnitt("turniere","🏆 Turniererfolge", (editPlayer.tournaments||[]).length?String((editPlayer.tournaments||[]).length):"", ()=><>
               {(()=>{
@@ -15296,6 +15535,17 @@ function VerwaltungTab({players,rackets,onPlayerAdded,showToast,isDark,onSetUser
       </div>
       {showUebungsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
         <UebungsUrkundenEditor showToast={showToast}/>
+      </div></ErrorBoundary>}
+    </div>
+
+    {/* V529: Trainingsteilnahme-Urkunden */}
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <div onClick={()=>setShowTrainingsUrkunden(p=>!p)} style={{padding:14,display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+        <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>🎖️ Trainingsteilnahme-Urkunden</div>
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800}}>{showTrainingsUrkunden?"▲":"▼"}</span>
+      </div>
+      {showTrainingsUrkunden&&<ErrorBoundary><div style={{padding:"0 14px 14px"}}>
+        <TrainingsUrkundenEditor showToast={showToast}/>
       </div></ErrorBoundary>}
     </div>
 
@@ -17770,7 +18020,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       {/* Summary - fixiert beim Scrollen */}
       <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:14,position:"sticky",top:0,zIndex:5}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>
-          {[{l:"Beteiligung",v:`${pct}%`,c:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981"},{l:"Anwesend",v:present,c:"#10b981"},{l:"Gesamt",v:total,c:"#6b7280"}].map(s=>(
+          {[{l:"Beteiligung",v:`${pct}%`,c:tbFarbe(present,total)},{l:"Anwesend",v:present,c:"#10b981"},{l:"Gesamt",v:total,c:"#6b7280"}].map(s=>(
             <div key={s.l} style={{background:"var(--bg)",borderRadius:10,padding:"8px 6px"}}>
               <div style={{fontSize:18,fontWeight:900,color:s.c}}>{s.v}</div>
               <div style={{fontSize:10,color:"var(--text3)"}}>{s.l}</div>
@@ -17840,11 +18090,13 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
       return <div style={{padding:14}}>
         <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
-        <div style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>Gruppe: {myGroup}</div>
+        <div style={{fontSize:12,color:"var(--text3)",marginBottom:4}}>Gruppe: {myGroup}</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Urkunden: {TB_LEGENDE}</div>
         {rankedPeers.map((player,idx)=>{
           const {pct,pres,tot,exc,unex}=player;
           const isMe=player.id===myPlayer.id;
-          const medal=pct>90?"🥇":pct>80?"🥈":pct>70?"🥉":null;
+          const medal=tbMedaille(pres,tot);   // V530
+          const tbF=tbFarbe(pres,tot);
           return <div key={player.id} style={{background:isMe?"#10b98111":"var(--bg2)",border:`2px solid ${isMe?myPlayer.color+"88":idx===0?"#f59e0b44":"var(--border)"}`,borderRadius:12,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,position:"relative"}}>
             {isMe&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:myPlayer.color,borderRadius:"12px 12px 0 0"}}/>}
             <Avatar avatar={player.avatar} color={player.color} size={36}/>
@@ -17854,7 +18106,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
                 {medal&&<span style={{fontSize:18}}>{medal}</span>}
               </div>
               <div style={{background:"var(--bg3)",borderRadius:6,height:8,overflow:"hidden",marginBottom:4}}>
-                <div style={{width:`${pct}%`,height:"100%",background:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",borderRadius:6}}/>
+                <div style={{width:`${pct}%`,height:"100%",background:tbF,borderRadius:6}}/>
               </div>
               <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)"}}>
                 <span>✓ {pres} anwesend</span>
@@ -17863,7 +18115,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
               </div>
             </div>
             <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
-              <div style={{fontSize:20,fontWeight:900,color:pct>90?"#ffd700":pct>80?"#b8b8b8":pct>70?"#cd7f32":"#10b981",lineHeight:1}}>{pct}%</div>
+              <div style={{fontSize:20,fontWeight:900,color:tbF,lineHeight:1}}>{pct}%</div>
               <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>Beteiligung</div>
             </div>
           </div>;
@@ -18072,9 +18324,9 @@ function ErfolgeTab({player, hideTraining=false}) {
       })}
 
       {/* Trainingsbeteiligung */}
-      {player.attendGoldDate&&<RibbonBadge emoji="🥇" label="Trainingsbeteiligung Gold >90%" color="#ffd700" date={player.attendGoldDate} earned/>}
-      {player.attendSilverDate&&<RibbonBadge emoji="🥈" label="Trainingsbeteiligung Silber >80%" color="#b8b8b8" date={player.attendSilverDate} earned/>}
-      {player.attendBronzeDate&&<RibbonBadge emoji="🥉" label="Trainingsbeteiligung Bronze >70%" color="#cd7f32" date={player.attendBronzeDate} earned/>}
+      {/* V529: fünf Stufen, höchste zuerst */}
+      {[...TRAININGS_URKUNDEN_STUFEN].reverse().filter(st=>player[st.datumKey]).slice(0,1).map(st=>
+        <RibbonBadge key={st.datumKey} emoji={st.emoji} label={`Trainingsbeteiligung ${tbStufeLabel(st)}`} color={st.farbe} date={player[st.datumKey]} earned/>)}
     </div>}
 
     {/* Vereinsturniere */}
@@ -18100,7 +18352,7 @@ function ErfolgeTab({player, hideTraining=false}) {
       </>}
     </div>}
 
-    {vereinsTurniere.length===0&&externKreis.length===0&&externBezirk.length===0&&externVerband.length===0&&earnedBeg.length===0&&earnedAdv.length===0&&!player.attendGoldDate&&!player.attendSilverDate&&!player.attendBronzeDate&&(
+    {vereinsTurniere.length===0&&externKreis.length===0&&externBezirk.length===0&&externVerband.length===0&&earnedBeg.length===0&&earnedAdv.length===0&&!TRAININGS_URKUNDEN_STUFEN.some(st=>player[st.datumKey])&&(
       <div style={{textAlign:"center",padding:30,color:"var(--text4)",fontSize:13}}>
         <div style={{fontSize:40,marginBottom:12}}>🏅</div>
         Noch keine Erfolge erfasst.<br/>Weiter trainieren und an Turnieren teilnehmen!
