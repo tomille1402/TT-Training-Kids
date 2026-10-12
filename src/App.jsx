@@ -1,4 +1,4 @@
-// === TTC-App · Version 530 · erstellt 12.10.2026 ===
+// === TTC-App · Version 534 · erstellt 12.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "530";
+const APP_VERSION = "534";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9389,7 +9389,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {activeTab==="training"&&<AdminTrainingTab players={activePlayers} groupFilters={effectiveGroupFilters} attendance={attendance} showToast={showToast}/>}
 
     {/* ── TEILNAHME TAB (Punkt 7: klickbar) ── */}
-    {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}/>}
+    {activeTab==="teilnahme"&&<TeilnahmeTab players={visiblePlayers} attendance={attendance} onPlayerClick={p=>setTeilnahmePlayer(p)}
+      onUrkundeKlick={(isSuperAdmin&&!ttcModus) ? (id,key)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("trainingsurkunde"); setVerwaltungJumpKey(key||null); setActiveTab("verwaltung"); } : null}/>}
 
     {/* ── RANGLISTE TAB ── */}
     {activeTab==="rangliste"&&(()=>{
@@ -9707,14 +9708,38 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
 }
 
 // ─── TEILNAHME TAB ────────────────────────────────────────────────────────────
+// V533: Maßgeblicher Trainingszeitraum einer Person (für Zählung, Quote und Urkunde):
+//  • Beginn = späteres Datum aus allgemeinem Trainingszeitraum (Verwaltung › Training) und
+//    individuellem „Start Training" – nie früher als der allgemeine Beginn.
+//  • Ende   = Ende des allgemeinen Trainingszeitraums (Anzeige/Urkunde).
+//  • zaehlEnde = für die Zählung zusätzlich ein früheres individuelles Ende (z. B. Austritt);
+//    sonst würden Trainings nach dem Ausscheiden als „anwesend" gezählt, weil ein nicht
+//    erfasster Spieler in der Anwesenheit standardmäßig als anwesend gilt.
+//  • Ohne allgemeinen Zeitraum gelten die individuellen Daten.
+function trainingsZeitraumEffektiv(player, range){
+  const g0=range?.start||"", g1=range?.end||"", i0=player?.trainingStart||"", i1=player?.trainingEnd||"";
+  const start = g0 ? ((i0 && i0>g0) ? i0 : g0) : i0;
+  const ende  = g1 || i1;
+  const zaehlEnde = (g1 && i1) ? (i1<g1 ? i1 : g1) : (g1 || i1);
+  return { start:start||null, ende:ende||null, zaehlEnde:zaehlEnde||null };
+}
+// V533: allgemeiner Trainingszeitraum (config/trainingRange), live
+function useTrainingRange(){
+  const [r,setR]=useState({start:"",end:""});
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","trainingRange"), snap=>{ if(snap.exists()) setR(snap.data()||{}); }, ()=>{});
+    return ()=>u();
+  },[]);
+  return r;
+}
 // V529: Trainingsbeteiligung einer Person (gleiche Regeln wie im Reiter „Teilnahme"):
 // Trainingstage der Gruppe im individuellen bzw. globalen Trainingszeitraum bis heute,
 // ausgefallene/nicht erfasste Termine zählen nicht, „e"/„u" = nicht anwesend.
 function trainingsBeteiligungStats(player, attendance, trainingRange){
   const days=getTrainingDaysForGroup(player?.group||"Anfänger", player?.trainingDays);
   const todayStr=new Date().toLocaleDateString("sv");
-  const pStart=player?.trainingStart || trainingRange?.start || null;
-  const pEnd  =player?.trainingEnd   || trainingRange?.end   || null;
+  const zr=trainingsZeitraumEffektiv(player, trainingRange);   // V533
+  const pStart=zr.start, pEnd=zr.zaehlEnde;
   const pastDays=days.filter(d=>{
     if(d>todayStr) return false;
     if(pStart && d<pStart) return false;
@@ -9736,9 +9761,10 @@ function trainingsBeteiligungStats(player, attendance, trainingRange){
   }
   const pct= total>0 ? Math.round((present/total)*100) : 0;
   const exakt= total>0 ? (present*100/total) : 0;
-  // Zeitraum für die Urkunde: Start laut Verwaltung, Ende laut Verwaltung (höchstens heute)
-  const start=pStart||erster||"";
-  const ende =(pEnd && pEnd<todayStr) ? pEnd : (pEnd ? todayStr : (letzter||todayStr));
+  // V533: Zeitraum für die Urkunde = maßgeblicher Zeitraum (späterer Beginn, allgemeines Ende);
+  // ohne Angaben ersatzweise erstes/letztes erfasstes Training.
+  const start = zr.start || erster || "";
+  const ende  = zr.ende  || letzter || todayStr;
   return {pct, exakt, present, total, excused, unexcused, start, ende};
 }
 // V529: Stufen der Trainingsteilnahme-Urkunden (Datumsfelder je Person: attend…Date)
@@ -9767,7 +9793,7 @@ function tbMedaille(present, total){ return trainingsUrkundeStufe(present,total)
 const TB_LEGENDE = "🥉 ≥ 70 % · 🥈 ≥ 80 % · 🥇 ≥ 90 % · 💎 ≥ 95 % · 💠 100 %";
 function prozentDE(n){ return Number(n||0).toLocaleString("de-DE",{minimumFractionDigits:0, maximumFractionDigits:1}); }
 
-function TeilnahmeTab({players,attendance,onPlayerClick}) {
+function TeilnahmeTab({players,attendance,onPlayerClick,onUrkundeKlick=null}) {
   // Punkt 5: Nur Personen mit gesetztem individuellem "Start Training" nehmen am
   // Vereinstraining teil und erscheinen in der Teilnahme-Übersicht.
   const allActive = players.filter(p=>{
@@ -9791,8 +9817,9 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
     const todayStr = new Date().toLocaleDateString("sv"); // sv-locale gibt YYYY-MM-DD
 
     // Individuellen Zeitraum berücksichtigen, fallback auf globalen
-    const pStart = player.trainingStart || trainingRange.start || null;
-    const pEnd   = player.trainingEnd   || trainingRange.end   || null;
+    // V533: späterer Beginn aus allgemein/individuell, Ende aus dem allgemeinen Zeitraum
+    const zr = trainingsZeitraumEffektiv(player, trainingRange);
+    const pStart = zr.start, pEnd = zr.zaehlEnde;
 
     // String-Vergleich statt Date-Objekte → kein Timezone-Problem
     const pastDays = days.filter(d=>{
@@ -9856,9 +9883,11 @@ function TeilnahmeTab({players,attendance,onPlayerClick}) {
             <span>Gesamt: {player.total}</span>
           </div>
         </div>
-        <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:52}}>
-          <div style={{fontSize:20,fontWeight:900,color:tbF,lineHeight:1}}>{player.pct}%</div>
-          <div style={{fontSize:9,color:"var(--text3)",marginTop:1}}>Beteiligung</div>
+        <div onClick={onUrkundeKlick?()=>onUrkundeKlick(player.id, trainingsUrkundeStufe(player.present, player.total)?.datumKey||null):undefined}
+          title={onUrkundeKlick?"Zur Urkundenerstellung in der Verwaltung":undefined}
+          style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${onUrkundeKlick?"var(--club-55, #c8102e55)":player.color+"44"}`,minWidth:52,cursor:onUrkundeKlick?"pointer":"default"}}>
+          <div style={{fontSize:20,fontWeight:900,color:tbF,lineHeight:1,textDecoration:onUrkundeKlick?"underline":"none",textDecorationThickness:1,textUnderlineOffset:3}}>{player.pct}%</div>
+          <div style={{fontSize:9,color:onUrkundeKlick?"var(--club, #c8102e)":"var(--text3)",marginTop:1}}>{onUrkundeKlick?"Urkunde ›":"Beteiligung"}</div>
         </div>
       </div>;
     })}
@@ -13590,12 +13619,24 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
       // lange. Bei Urkunden wird direkt das Datumsfeld der Urkunde angesteuert und fokussiert.
       if(typeof window!=="undefined"){
         const key=jumpToKey, urk=jumpToSection==="urkunden", ehr=jumpToSection==="ehrungen";
+        const tbu=jumpToSection==="trainingsurkunde";   // V534: aus dem Reiter „Teilnahme"
         if(ehr) setPersonAbschn({id:p.id, offen:{ehrungen:true}});                 // V527
+        if(tbu) setPersonAbschn({id:p.id, offen:{urkTraining:true}});
         if(urk) setPersonAbschn({id:p.id, offen:{urkUebungen:true, urkTraining:true}});
         let versuche=0;
         const tick=()=>{
           versuche++;
           if(urk && key && zumUrkundenDatum(p.id, key)) return;
+          if(tbu){   // V534: zum Datumsfeld der Trainingsteilnahme-Urkunde, sonst zum Abschnitt
+            if(key && zumUrkundenDatum(p.id, key)) return;
+            const sEl=document.getElementById("tburkunde-"+p.id);
+            if(sEl && (!key || versuche>=8)){
+              try{ sEl.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){}
+              sEl.style.boxShadow="0 0 0 3px var(--club-55, #c8102e55)"; setTimeout(()=>{ sEl.style.boxShadow=""; }, 2500);
+              return;
+            }
+            if(versuche<15){ setTimeout(tick, 200); return; }
+          }
           if(ehr){   // V525: zur aktuellsten ausstehenden Ehrung „Anzahl Spiele"
             const zEl=(key && document.getElementById(`ehrung-${p.id}-${key}`)) || null;
             const bEl=document.getElementById("ehrungen-"+p.id);
@@ -15070,7 +15111,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                     </div>
                   </div>
                 </div>
-                <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Hat Vorrang vor dem globalen Trainingszeitraum</div>
+                <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.4}}>Start zählt, wenn er nach dem Beginn des allgemeinen Trainingszeitraums liegt (späterer Einstieg). Ein früheres Ende begrenzt die Zählung (z. B. Austritt); auf der Urkunde steht immer das allgemeine Ende.</div>
               </div>
 
               {/* Vereinsbeitritt / Vereinsaustritt */}
@@ -15257,7 +15298,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                     </>;
                   })()}
                 </>;
-              })}
+              }, {id:"tburkunde-"+editPlayer.id})}
 
               {abschnitt("turniere","🏆 Turniererfolge", (editPlayer.tournaments||[]).length?String((editPlayer.tournaments||[]).length):"", ()=><>
               {(()=>{
@@ -17767,6 +17808,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // oder Elternteil die Ansicht geöffnet hat.
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("home");
+  const tbRange=useTrainingRange();   // V533: allgemeiner Trainingszeitraum
   const [aufstellungTeam,setAufstellungTeam]=useState(""); // Zielmannschaft für Aufstellung-Sprung
   const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   const [expandedEx,setExpandedEx]=useState(null);
@@ -17869,8 +17911,10 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const myRank=sortedRanking.findIndex(p=>p.id===myPlayer.id)+1;
   // Punkt 5: Ohne "Start Training" nimmt die Person nicht am Vereinstraining teil → keine Trainingstage.
   const myTrainingStart = myPlayer.trainingStart || null;
+  const myZr = trainingsZeitraumEffektiv(myPlayer, tbRange);   // V533
   const myDays = myTrainingStart
-    ? getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays).filter(d=>d>=myTrainingStart)
+    ? getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays)
+        .filter(d=>(!myZr.start||d>=myZr.start) && (!myZr.zaehlEnde||d<=myZr.zaehlEnde))
     : [];
   const todayStr=new Date().toLocaleDateString("sv");
   const pastDays=myDays.filter(d=>d<=todayStr);
@@ -18064,8 +18108,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       const today2=new Date();today2.setHours(0,0,0,0);
       const rankedPeers=[...groupPeers].map(player=>{
         const days=getTrainingDaysForGroup(player.group||"Anfänger", player.trainingDays);
-        const pStart=player.trainingStart||null;
-        const pEnd=player.trainingEnd||null;
+        const zr=trainingsZeitraumEffektiv(player, tbRange);   // V533
+        const pStart=zr.start;
+        const pEnd=zr.zaehlEnde;
         const todayS=new Date().toLocaleDateString("sv");
         const pastD=days.filter(d=>{
           if(d>todayS)return false;
