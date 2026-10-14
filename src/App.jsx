@@ -1,4 +1,4 @@
-// === TTC-App · Version 535 · erstellt 14.10.2026 ===
+// === TTC-App · Version 536 · erstellt 14.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "535";
+const APP_VERSION = "536";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9559,8 +9559,9 @@ function euroDE(n){
 function stundenDE(n){ return (Math.round((Number(n)||0)*100)/100).toString().replace(".",","); }
 function ibanFormat(x){ return String(x||"").replace(/\s+/g,"").toUpperCase().replace(/(.{4})/g,"$1 ").trim(); }
 
-// V535: PDF der Trainer-Abrechnung (Logo des Vereins, Tabelle, Summe, Bankverbindung)
-async function trainerAbrechnungPdfErzeugen({ name, rows, satz, iban, kontoinhaber, von, bis }){
+// V536: PDF der Trainer-Abrechnung – Trainings, betreute Punktspiele und Turniere
+// rows: [{d, art:"training"|"spiel"|"turnier", text, h, satz}]
+async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, von, bis }){
   const jsPDF=await ladeJsPDF_V();
   const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   let logo="", farbe=[200,16,46];
@@ -9568,7 +9569,6 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, satz, iban, kontoinhab
     if(snap.exists()){ const d=snap.data(); logo=d.logo||""; farbe=vereinsFarbeRgb(d.farbschema); } }catch(e){}
   const L=18, R=192, dDE=(iso)=>{ const t=String(iso||"").split("-"); return t.length===3?`${t[2]}.${t[1]}.${t[0]}`:""; };
   const heute=new Date().toLocaleDateString("sv");
-  const WT=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
   if(logo){ try{
     const pr=pdf.getImageProperties(logo); const box=30; const r=Math.min(box/pr.width, box/pr.height);
     const w=pr.width*r, h=pr.height*r;
@@ -9579,40 +9579,50 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, satz, iban, kontoinhab
   pdf.setFont("helvetica","normal"); pdf.setFontSize(10); pdf.setTextColor(100,100,100);
   if(VEREIN.ort) pdf.text(VEREIN.ort, L, 25.5);
   pdf.setFont("helvetica","bold"); pdf.setFontSize(17); pdf.setTextColor(farbe[0],farbe[1],farbe[2]);
-  pdf.text("Abrechnung Trainertätigkeit", L, 52);
+  pdf.text("Abrechnung Trainer- und Betreuertätigkeit", L, 52);
   pdf.setDrawColor(farbe[0],farbe[1],farbe[2]); pdf.setLineWidth(0.6); pdf.line(L,55,R,55);
   const kv=(k,v,y)=>{ pdf.setFont("helvetica","normal"); pdf.setFontSize(10.5); pdf.setTextColor(100,100,100); pdf.text(k,L,y);
     pdf.setFont("helvetica","bold"); pdf.setTextColor(25,25,25); pdf.text(String(v||""),L+36,y); };
-  kv("Trainer/in:", name, 64);
+  kv("Name:", name, 64);
   kv("Zeitraum:", `${dDE(von)} – ${dDE(bis)}`, 70);
-  kv("Stundensatz:", `${euroDE(satz)} je Stunde`, 76);
-  kv("Erstellt am:", dDE(heute), 82);
-  let y=95;
-  const X={nr:L+1.5, datum:L+12, tag:L+38, std:L+112, satz:L+142, betrag:R-1.5};
+  kv("Erstellt am:", dDE(heute), 76);
+  let y=89;
+  const X={nr:L+1.5, datum:L+10, leist:L+32, std:L+128, satz:L+152, betrag:R-1.5};
+  const LEIST_BREITE=X.std-X.leist-14;
   const kopf=()=>{
     pdf.setFillColor(farbe[0],farbe[1],farbe[2]); pdf.rect(L,y-5,R-L,7.5,"F");
     pdf.setTextColor(255,255,255); pdf.setFont("helvetica","bold"); pdf.setFontSize(10);
-    pdf.text("Nr.",X.nr,y); pdf.text("Datum",X.datum,y); pdf.text("Wochentag",X.tag,y);
-    pdf.text("Stunden",X.std,y,{align:"right"}); pdf.text("Satz",X.satz,y,{align:"right"}); pdf.text("Betrag",X.betrag,y,{align:"right"});
+    pdf.text("Nr.",X.nr,y); pdf.text("Datum",X.datum,y); pdf.text("Leistung",X.leist,y);
+    pdf.text("Std.",X.std,y,{align:"right"}); pdf.text("Satz",X.satz,y,{align:"right"}); pdf.text("Betrag",X.betrag,y,{align:"right"});
     y+=7.5; pdf.setFont("helvetica","normal"); pdf.setTextColor(25,25,25);
   };
   kopf();
-  let sStd=0, sEur=0;
+  const summe={training:{n:0,h:0,e:0}, spiel:{n:0,h:0,e:0}, turnier:{n:0,h:0,e:0}};
+  let gH=0, gE=0;
   rows.forEach((r,i)=>{
-    if(y>268){ pdf.addPage(); y=22; kopf(); }
-    if(i%2===1){ pdf.setFillColor(244,244,246); pdf.rect(L,y-4.6,R-L,6.6,"F"); }
-    const betrag=(Number(r.h)||0)*(Number(satz)||0); sStd+=Number(r.h)||0; sEur+=betrag;
-    pdf.setFontSize(10);
-    pdf.text(String(i+1),X.nr,y); pdf.text(dDE(r.d),X.datum,y); pdf.text(WT[new Date(r.d).getDay()]||"",X.tag,y);
-    pdf.text(stundenDE(r.h),X.std,y,{align:"right"}); pdf.text(euroDE(satz),X.satz,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
-    y+=6.6;
+    pdf.setFontSize(9.5);
+    const zeilen=pdf.splitTextToSize(String(r.text||""), LEIST_BREITE);
+    const hoehe=Math.max(6.6, 4.4*zeilen.length+2.2);
+    if(y+hoehe>272){ pdf.addPage(); y=22; kopf(); pdf.setFontSize(9.5); }
+    if(i%2===1){ pdf.setFillColor(244,244,246); pdf.rect(L,y-4.6,R-L,hoehe,"F"); }
+    const h=Number(r.h)||0, st=Number(r.satz)||0, betrag=h*st;
+    const sm=summe[r.art]||summe.training; sm.n++; sm.h+=h; sm.e+=betrag; gH+=h; gE+=betrag;
+    pdf.text(String(i+1),X.nr,y); pdf.text(dDE(r.d),X.datum,y);
+    zeilen.forEach((z,k)=>pdf.text(z, X.leist, y+k*4.4));
+    pdf.text(stundenDE(h),X.std,y,{align:"right"}); pdf.text(euroDE(st),X.satz,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
+    y+=hoehe;
   });
-  if(y>250){ pdf.addPage(); y=22; }
+  if(y>236){ pdf.addPage(); y=22; }
   pdf.setDrawColor(60,60,60); pdf.setLineWidth(0.4); pdf.line(L,y-3,R,y-3);
+  y+=2;
+  pdf.setFont("helvetica","normal"); pdf.setFontSize(10);
+  [["training","Trainings"],["spiel","Betreute Punktspiele"],["turnier","Betreute Turniere"]].forEach(([k,lab])=>{
+    const sm=summe[k]; if(!sm.n) return;
+    pdf.text(`${lab} (${sm.n})`, X.leist, y); pdf.text(stundenDE(sm.h),X.std,y,{align:"right"}); pdf.text(euroDE(sm.e),X.betrag,y,{align:"right"}); y+=5.5;
+  });
   pdf.setFont("helvetica","bold"); pdf.setFontSize(10.5);
-  pdf.text(`Summe (${rows.length} ${rows.length===1?"Training":"Trainings"})`,X.nr,y+2);
-  pdf.text(stundenDE(sStd),X.std,y+2,{align:"right"}); pdf.text(euroDE(sEur),X.betrag,y+2,{align:"right"});
-  y+=16;
+  pdf.text("Gesamt", X.leist, y+1); pdf.text(stundenDE(gH),X.std,y+1,{align:"right"}); pdf.text(euroDE(gE),X.betrag,y+1,{align:"right"});
+  y+=15;
   if(y>238){ pdf.addPage(); y=24; }
   pdf.setFont("helvetica","bold"); pdf.setFontSize(11); pdf.setTextColor(farbe[0],farbe[1],farbe[2]);
   pdf.text("Bankverbindung für die Auszahlung", L, y); y+=6.5;
@@ -9620,13 +9630,52 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, satz, iban, kontoinhab
   pdf.text(`Kontoinhaber/in: ${kontoinhaber||"—"}`, L, y); y+=6;
   pdf.text(`IBAN: ${ibanFormat(iban)||"—"}`, L, y); y+=12;
   pdf.setFontSize(9.5); pdf.setTextColor(90,90,90);
-  pdf.text(pdf.splitTextToSize("Ich bestätige, die aufgeführten Trainings als Trainer/in geleitet zu haben.", R-L), L, y);
+  pdf.text(pdf.splitTextToSize("Ich bestätige, die aufgeführten Trainings und Betreuungen durchgeführt zu haben.", R-L), L, y);
   y+=22;
   pdf.setDrawColor(90,90,90); pdf.setLineWidth(0.3);
   pdf.line(L,y,L+75,y); pdf.line(R-75,y,R,y);
-  pdf.setFontSize(9); pdf.text("Ort, Datum, Unterschrift Trainer/in", L, y+4.5);
+  pdf.setFontSize(9); pdf.text("Ort, Datum, Unterschrift", L, y+4.5);
   pdf.text(`Geprüft und freigegeben (${VEREIN.kuerzel||"Verein"})`, R-75, y+4.5);
   return pdf.output("blob");
+}
+
+// V536: Stundensätze (vom Admin vorgegeben) – config/abrechnungSaetze
+function useAbrechnungSaetze(){
+  const [s,setS]=useState(null);
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"config","abrechnungSaetze"), snap=>setS(snap.exists()?(snap.data()||{}):{}), ()=>setS({}));
+    return ()=>u();
+  },[]);
+  return s;
+}
+// V536: abrechenbare Nachwuchsspiele (Mädchen 11 / Jungen 11) aus den Spielplänen der
+// aktuellen und der vorigen Saison, dazu die Betreuer-Einträge (Einsätze).
+function istAbrechnungsSpiel(sp){ return /^(jungen|mädchen|maedchen)\s*11\b/i.test(String(sp?.mannschaft||"").trim()); }
+function useAbrechnungsSpiele(){
+  const [erg,setErg]=useState({spiele:[], einsaetze:{}});
+  useEffect(()=>{
+    let ab=false;
+    (async()=>{
+      const keys=bekannteSpielplanKeys().filter(k=>k!=="spielplan").slice(0,2);
+      const spiele=[], einsaetze={}, gesehen=new Set();
+      for(const k of keys){
+        try{ const sn=await getDoc(doc(db,"config",k));
+          for(const sp of ((sn.exists()&&sn.data().spiele)||[])){
+            if(!istAbrechnungsSpiel(sp)) continue;
+            const key=spielKeyFromSpiel(sp); if(gesehen.has(key)) continue;
+            gesehen.add(key); spiele.push({...sp, _key:key});
+          } }catch(e){}
+        try{ const en=await getDoc(doc(db,"einsaetze",k)); Object.assign(einsaetze, (en.exists()&&en.data().data)||{}); }catch(e){}
+      }
+      if(!ab) setErg({spiele, einsaetze});
+    })();
+    return ()=>{ ab=true; };
+  },[]);
+  return erg;
+}
+function spielLeistungText(sp){
+  const heim=/^heim/i.test(String(sp?.ort||""));
+  return `Betreuung Punktspiel ${sp?.mannschaft||""}: ${heim?"gegen":"bei"} ${sp?.gegner||""}`.trim();
 }
 
 // V535: Ausgabe der Abrechnung (Teilen/Drucken, Speichern, E-Mail) ohne Seitenwechsel
@@ -9683,10 +9732,10 @@ function AbrechnungAusgabeDialog({ ausgabe, empfaenger, onClose }){
   </div>;
 }
 
-// V535: Reiter „Abrechnung" – gehaltene Trainings eines Trainers abrechnen.
-// Freigabe je Person in der Verwaltung (Feld „Abrechnung" = Ja). Die Person sieht nur sich,
-// der Admin alle freigeschalteten. Bankdaten, Stundensatz und Historie liegen geschützt in
-// abrechnung/<personId> (lesen/schreiben nur Admin und die Person selbst).
+// V535/V536: Reiter „Abrechnung" – Trainings, betreute Punktspiele (Mädchen 11 / Jungen 11)
+// und betreute Turniere abrechnen. Freigabe je Person in der Verwaltung („Abrechnung" = Ja).
+// Die Person sieht nur sich, der Admin alle freigeschalteten. Stundensätze gibt der Admin vor
+// (config/abrechnungSaetze). Bankdaten und Historie liegen geschützt in abrechnung/<personId>.
 function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showToast }){
   const ich=(players||[]).find(p=>(p.email||"").toLowerCase()===(user?.email||"").toLowerCase());
   const freigegeben=(players||[]).filter(p=>p.abrechnung==="ja")
@@ -9696,10 +9745,14 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
   useEffect(()=>{ if(!auswahl.some(p=>p.id===pid) && auswahl[0]) setPid(auswahl[0].id); },[auswahl.map(p=>p.id).join(",")]);
   const person=auswahl.find(p=>p.id===pid)||null;
   const tbRange=useTrainingRange();
+  const saetzeCfg=useAbrechnungSaetze();
+  const {spiele:alleSpiele, einsaetze}=useAbrechnungsSpiele();
+  const zahl=(x)=>{ const n=parseFloat(String(x??"").replace(",",".")); return Number.isFinite(n)?n:0; };
+  const kommaStr=(n)=>String(n??"").replace(".",",");
 
   const [daten,setDaten]=useState(null);
   const [fehler,setFehler]=useState("");
-  const [form,setForm]=useState({kontoinhaber:"",iban:"",satz:"",stunden:"1,5",empfaenger:""});
+  const [form,setForm]=useState({kontoinhaber:"",iban:"",stunden:"1,5",empfaenger:""});
   const geladenFuer=useRef("");
   useEffect(()=>{
     if(!pid) return;
@@ -9710,77 +9763,114 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
       if(geladenFuer.current!==pid){
         geladenFuer.current=pid;
         setForm({ kontoinhaber:d.kontoinhaber||"", iban:d.iban||"",
-          satz: d.stundensatz!=null ? String(d.stundensatz).replace(".",",") : "",
-          stunden: d.stundenStandard!=null ? String(d.stundenStandard).replace(".",",") : "1,5",
+          stunden: d.stundenStandard!=null ? kommaStr(d.stundenStandard) : "1,5",
           empfaenger:d.empfaenger||"" });
       }
     }, e=>{ setDaten({}); setFehler("Die Abrechnungsdaten konnten nicht geladen werden (fehlende Berechtigung?)."); });
     return ()=>u();
   },[pid]);
-  const zahl=(x)=>{ const n=parseFloat(String(x||"").replace(",",".")); return Number.isFinite(n)?n:0; };
   async function stammSpeichern(){
     try{
       await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
-        stundensatz:zahl(form.satz), stundenStandard:zahl(form.stunden), empfaenger:form.empfaenger.trim(),
-        geaendert:Date.now() },{merge:true});
+        stundenStandard:zahl(form.stunden), empfaenger:form.empfaenger.trim(), geaendert:Date.now() },{merge:true});
       showToast&&showToast("Abrechnungsdaten gespeichert","💾");
     }catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); }
   }
 
-  // Zeitraum
+  // Stundensätze: vom Admin vorgegeben (Training ersatzweise früherer persönlicher Satz)
+  const satz={
+    training: saetzeCfg?.training!=null ? zahl(saetzeCfg.training) : zahl(daten?.stundensatz),
+    spiel:    zahl(saetzeCfg?.punktspiel),
+    turnier:  zahl(saetzeCfg?.turnier),
+  };
+  const [satzForm,setSatzForm]=useState(null);
+  useEffect(()=>{ if(saetzeCfg && satzForm===null) setSatzForm({
+    training:kommaStr(saetzeCfg.training??""), punktspiel:kommaStr(saetzeCfg.punktspiel??""), turnier:kommaStr(saetzeCfg.turnier??"") }); },[saetzeCfg]);
+  async function saetzeSpeichern(){
+    try{
+      await setDoc(doc(db,"config","abrechnungSaetze"),{ training:zahl(satzForm.training), punktspiel:zahl(satzForm.punktspiel),
+        turnier:zahl(satzForm.turnier), geaendert:Date.now() },{merge:true});
+      showToast&&showToast("Stundensätze gespeichert","💶");
+    }catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); }
+  }
+
+  // Zeitraum – voreingestellt: letzter abgelaufener Monat
   const heute=new Date();
   const iso=(dt)=>dt.toLocaleDateString("sv");
   const monat=(off)=>{ const a=new Date(heute.getFullYear(), heute.getMonth()+off, 1), b=new Date(heute.getFullYear(), heute.getMonth()+off+1, 0); return [iso(a),iso(b)]; };
-  const [von,setVon]=useState(()=>monat(0)[0]);
-  const [bis,setBis]=useState(()=>monat(0)[1]);
-  const setZr=([a,b])=>{ setVon(a); setBis(b); };
+  const letztesQuartal=()=>{ const q=Math.floor(heute.getMonth()/3);
+    const a=new Date(heute.getFullYear(), (q-1)*3, 1), b=new Date(heute.getFullYear(), q*3, 0); return [iso(a),iso(b)]; };
+  const [von,setVon]=useState(()=>monat(-1)[0]);
+  const [bis,setBis]=useState(()=>monat(-1)[1]);
+  const setZr=([x,y])=>{ setVon(x); setBis(y); };
+  const zrAktiv=(z)=>z[0]===von&&z[1]===bis;
 
-  // Trainings und Auswahl
-  const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
+  // bereits abgerechnet (Training je Datum, Spiel je Spielschlüssel)
   const abgerechnet={};
-  (daten?.historie||[]).forEach(h=>(h.tage||[]).forEach(t=>{ abgerechnet[t.d||t]=h.erstellt; }));
-  const [tagSt,setTagSt]=useState({});   // datum → {an, h}
-  useEffect(()=>{ setTagSt({}); },[pid]);
-  const stdStandard=zahl(form.stunden), satz=zahl(form.satz);
-  const zeile=(d)=>({ an: tagSt[d]?.an ?? !abgerechnet[d], h: tagSt[d]?.h ?? String(stdStandard).replace(".",",") });
-  const rows=tage.filter(d=>zeile(d).an).map(d=>({d, h:zahl(zeile(d).h)}));
-  const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=sStd*satz;
+  (daten?.historie||[]).forEach(h=>(h.tage||[]).forEach(t=>{ const k=t.key || ("t:"+(t.d||t)); abgerechnet[k]=h.erstellt; }));
+
+  const [st,setSt]=useState({});            // key → {an, h}
+  const [turniere,setTurniere]=useState([]); // [{id,d,text,h}]
+  useEffect(()=>{ setSt({}); setTurniere([]); },[pid]);
+  const stdTraining=zahl(form.stunden);
+
+  // Trainings
+  const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
+  const zeileT=(d)=>{ const k="t:"+d; return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? kommaStr(stdTraining) }; };
+  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum
+  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis)
+    .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
+  const zeileS=(sp)=>{ const k="s:"+sp._key; const betreut=person?personIstBetreuer(person, sp, einsaetze):false;
+    return { an: st[k]?.an ?? (betreut && !abgerechnet[k]), h: st[k]?.h ?? "2", betreut }; };
+  const setZeile=(k,basis,patch)=>setSt(x=>({...x,[k]:{an:basis.an,h:basis.h,...patch}}));
+
+  const rows=[
+    ...tage.filter(d=>zeileT(d).an).map(d=>({ key:"t:"+d, d, art:"training", text:`Training (${["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][new Date(d).getDay()]})`, h:zahl(zeileT(d).h), satz:satz.training })),
+    ...spiele.filter(sp=>zeileS(sp).an).map(sp=>({ key:"s:"+sp._key, d:sp.datum, art:"spiel", text:spielLeistungText(sp), h:zahl(zeileS(sp).h), satz:satz.spiel })),
+    ...turniere.filter(t=>t.d && zahl(t.h)>0).map(t=>({ key:"u:"+t.id, d:t.d, art:"turnier", text:`Betreuung Turnier: ${t.text||"—"}`, h:zahl(t.h), satz:satz.turnier })),
+  ].sort((a,b)=>a.d.localeCompare(b.d));
+  const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=rows.reduce((a,r)=>a+r.h*r.satz,0);
 
   const [ausgabe,setAusgabe]=useState(null);
   const laeuft=useRef(false);
   async function pdfErstellen(){
     if(!person || laeuft.current) return;
-    if(!rows.length){ window.alert(T("Im gewählten Zeitraum ist kein Training zur Abrechnung ausgewählt.")); return; }
-    if(!satz && !window.confirm(T("Es ist kein Stundensatz eingetragen. Trotzdem erstellen?"))) return;
+    if(!rows.length){ window.alert(T("Im gewählten Zeitraum ist nichts zur Abrechnung ausgewählt.")); return; }
+    const ohneSatz=[...new Set(rows.filter(r=>!r.satz).map(r=>({training:"Training",spiel:"Betreuung Punktspiel",turnier:"Betreuung Turnier"})[r.art]))];
+    if(ohneSatz.length && !window.confirm(T("Für folgende Arten ist noch kein Stundensatz vorgegeben: ")+ohneSatz.join(", ")+T(".\nTrotzdem erstellen?"))) return;
     if(!form.iban.trim() && !window.confirm(T("Es ist keine IBAN eingetragen. Trotzdem erstellen?"))) return;
     laeuft.current=true;
     setAusgabe({laeuft:true});
     await new Promise(r=>setTimeout(r,30));
     try{
       const name=`${person.firstName||""} ${person.lastName||""}`.trim();
-      const blob=await trainerAbrechnungPdfErzeugen({ name, rows, satz, iban:form.iban, kontoinhaber:form.kontoinhaber, von, bis });
-      // Stammdaten + Historie speichern (abgerechnete Tage werden künftig markiert)
+      const blob=await trainerAbrechnungPdfErzeugen({ name, rows, iban:form.iban, kontoinhaber:form.kontoinhaber, von, bis });
       const eintrag={ id:String(Date.now()), von, bis, erstellt:new Date().toLocaleDateString("sv"),
-        tage:rows.map(r=>({d:r.d, h:r.h})), stunden:sStd, satz, betrag:Math.round(sEur*100)/100 };
+        tage:rows.map(r=>({d:r.d, art:r.art, key:r.key, text:r.text, h:r.h, satz:r.satz})),
+        stunden:sStd, betrag:Math.round(sEur*100)/100 };
       await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
-        stundensatz:satz, stundenStandard:stdStandard, empfaenger:form.empfaenger.trim(),
+        stundenStandard:stdTraining, empfaenger:form.empfaenger.trim(),
         historie:[...(daten?.historie||[]), eintrag], geaendert:Date.now() },{merge:true}).catch(()=>{});
       const safe=(x)=>String(x||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
       setAusgabe({ blob, url:URL.createObjectURL(blob), dateiname:`Abrechnung_${safe(name)}_${von}_bis_${bis}.pdf`,
-        titel:`Abrechnung Trainertätigkeit ${name} (${formatDateDE(von)} – ${formatDateDE(bis)})` });
+        titel:`Abrechnung ${name} (${formatDateDE(von)} – ${formatDateDE(bis)})` });
     }catch(e){ setAusgabe(null); window.alert(T("Die Abrechnung konnte nicht erstellt werden.\n")+(e&&e.message||"")); }
     finally{ laeuft.current=false; }
   }
   async function historieLoeschen(id){
-    if(!window.confirm(T("Diese Abrechnung aus der Historie entfernen? Die Tage gelten dann wieder als nicht abgerechnet."))) return;
+    if(!window.confirm(T("Diese Abrechnung aus der Historie entfernen? Die Einträge gelten dann wieder als nicht abgerechnet."))) return;
     try{ await setDoc(doc(db,"abrechnung",pid),{ historie:(daten?.historie||[]).filter(h=>h.id!==id) },{merge:true}); }
     catch(e){ window.alert(T("Fehler:\n")+(e.message||e)); }
   }
 
   const karte={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:12};
   const inp={width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const inpKlein={...inp,padding:"6px 8px",fontSize:13,textAlign:"right"};
   const lab={fontSize:11,color:"var(--text3)",display:"block",marginBottom:3};
-  const chip={padding:"6px 10px",borderRadius:16,fontSize:12,fontWeight:700,cursor:"pointer",border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",whiteSpace:"nowrap"};
+  const chip=(an)=>({padding:"6px 10px",borderRadius:16,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",
+    border:`1px solid ${an?"var(--club, #c8102e)":"var(--border2)"}`,background:an?"var(--club, #c8102e)":"var(--bg3)",color:an?"#fff":"var(--text2)"});
+  const titel=(t,n)=><div style={{fontSize:13,fontWeight:800,margin:"14px 0 6px"}}>{t}{n!=null?` (${n})`:""}</div>;
+  const zeilenGrid={display:"grid",gridTemplateColumns:"28px 1fr 64px 80px",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid var(--border)"};
 
   if(!auswahl.length) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>
     Für dich ist keine Abrechnung freigeschaltet. Die Freigabe erfolgt in der Verwaltung (Person › Training und Vereinsbeitritt › „Abrechnung“).
@@ -9793,9 +9883,28 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
     </select>}
     {fehler && <div style={{...karte,borderColor:"#ef444466",color:"#ef4444",fontSize:12}}>{fehler}</div>}
 
-    {/* Bankdaten und Sätze */}
+    {/* Stundensätze */}
     <div style={karte}>
-      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>🏦 Bankverbindung & Stundensatz</div>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>💶 Stundensätze {isSuperAdmin?"(Vorgabe Admin)":""}</div>
+      {isSuperAdmin && satzForm ? <>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          {[["training","Training"],["punktspiel","Betreuung Punktspiel"],["turnier","Betreuung Turnier"]].map(([k,l])=>
+            <div key={k}><label style={lab}>{l} (€/Std.)</label>
+              <input type="text" inputMode="decimal" value={satzForm[k]} onChange={e=>setSatzForm(f=>({...f,[k]:e.target.value}))} placeholder="0,00" style={inp}/></div>)}
+        </div>
+        <button onClick={saetzeSpeichern} style={{marginTop:10,width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Stundensätze speichern</button>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Gilt für alle Trainer und Betreuer.</div>
+      </> : <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"var(--text2)"}}>
+        <span>Training: <b>{euroDE(satz.training)}</b></span>
+        <span>Punktspiel: <b>{euroDE(satz.spiel)}</b></span>
+        <span>Turnier: <b>{euroDE(satz.turnier)}</b></span>
+        <span style={{color:"var(--text4)"}}>je Stunde · Vorgabe durch den Admin</span>
+      </div>}
+    </div>
+
+    {/* Bankdaten */}
+    <div style={karte}>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>🏦 Bankverbindung</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
         <div><label style={lab}>Kontoinhaber/in (Kontobezeichnung)</label>
           <input type="text" value={form.kontoinhaber} onChange={e=>setForm(f=>({...f,kontoinhaber:e.target.value}))} style={inp}/></div>
@@ -9803,56 +9912,80 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
           <input type="text" value={form.iban} onChange={e=>setForm(f=>({...f,iban:e.target.value}))} onBlur={()=>setForm(f=>({...f,iban:ibanFormat(f.iban)}))}
             placeholder="DE00 0000 0000 0000 0000 00" autoCapitalize="characters" style={{...inp,fontFamily:"monospace"}}/></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <div><label style={lab}>Euro je Stunde</label>
-            <input type="text" inputMode="decimal" value={form.satz} onChange={e=>setForm(f=>({...f,satz:e.target.value}))} placeholder="z. B. 15,00" style={inp}/></div>
           <div><label style={lab}>Stunden je Training (Standard)</label>
             <input type="text" inputMode="decimal" value={form.stunden} onChange={e=>setForm(f=>({...f,stunden:e.target.value}))} style={inp}/></div>
+          <div><label style={lab}>E-Mail-Empfänger (optional)</label>
+            <input type="email" value={form.empfaenger} onChange={e=>setForm(f=>({...f,empfaenger:e.target.value}))} placeholder="kasse@verein.de" style={inp}/></div>
         </div>
-        <div><label style={lab}>E-Mail-Empfänger der Abrechnung (optional)</label>
-          <input type="email" value={form.empfaenger} onChange={e=>setForm(f=>({...f,empfaenger:e.target.value}))} placeholder="kasse@verein.de" style={inp}/></div>
       </div>
       <button onClick={stammSpeichern} style={{marginTop:10,width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Daten speichern</button>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Nur für dich und die Admins sichtbar.</div>
     </div>
 
-    {/* Zeitraum + Trainings */}
+    {/* Zeitraum + Positionen */}
     <div style={karte}>
       <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>📅 Zeitraum</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-        <button onClick={()=>setZr(monat(0))} style={chip}>Dieser Monat</button>
-        <button onClick={()=>setZr(monat(-1))} style={chip}>Vormonat</button>
-        {tbRange.start&&tbRange.end&&<button onClick={()=>setZr([tbRange.start,tbRange.end])} style={chip}>Trainingszeitraum</button>}
+        <button onClick={()=>setZr(monat(-1))} style={chip(zrAktiv(monat(-1)))}>Letzter Monat</button>
+        <button onClick={()=>setZr(letztesQuartal())} style={chip(zrAktiv(letztesQuartal()))}>Letztes Quartal</button>
+        <button onClick={()=>setZr(monat(0))} style={chip(zrAktiv(monat(0)))}>Dieser Monat</button>
+        {tbRange.start&&tbRange.end&&<button onClick={()=>setZr([tbRange.start,tbRange.end])} style={chip(zrAktiv([tbRange.start,tbRange.end]))}>Trainingszeitraum</button>}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <div><label style={lab}>von</label><input type="date" value={von} onChange={e=>setVon(e.target.value)} style={inp}/></div>
         <div><label style={lab}>bis</label><input type="date" value={bis} onChange={e=>setBis(e.target.value)} style={inp}/></div>
       </div>
-      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🏓 Gehaltene Trainings ({tage.length})</div>
-      {tage.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum sind keine Trainings als Trainer erfasst (Reiter „Training“, Bereich Trainer).</div>}
-      {tage.map(d=>{
-        const z=zeile(d); const h=zahl(z.h);
-        return <div key={d} style={{display:"grid",gridTemplateColumns:"28px 1fr 70px 82px",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid var(--border)",opacity:z.an?1:0.55}}>
-          <input type="checkbox" checked={z.an} onChange={()=>setTagSt(s=>({...s,[d]:{...zeile(d),an:!z.an}}))} style={{width:18,height:18}}/>
-          <div style={{fontSize:12,color:"var(--text)"}}>{formatDayDE(d)}, {formatDateDE(d)}
-            {abgerechnet[d]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[d])}</div>}</div>
-          <input type="text" inputMode="decimal" value={z.h} onChange={e=>setTagSt(s=>({...s,[d]:{...zeile(d),h:e.target.value}}))}
-            style={{...inp,padding:"6px 8px",fontSize:13,textAlign:"right"}} title="Stunden"/>
-          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(h*satz)}</div>
-        </div>;
-      })}
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:10,fontSize:13,fontWeight:800}}>
-        <span>{rows.length} {rows.length===1?"Training":"Trainings"} · {stundenDE(sStd)} Std.</span>
-        <span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span>
+
+      {titel("🏓 Gehaltene Trainings", tage.length)}
+      {tage.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Keine Trainings als Trainer erfasst (Reiter „Training“, Bereich Trainer).</div>}
+      {tage.map(d=>{ const z=zeileT(d), k="t:"+d;
+        return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
+          <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
+          <div style={{fontSize:12}}>{formatDayDE(d)}, {formatDateDE(d)}
+            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[k])}</div>}</div>
+          <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
+          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.training)}</div>
+        </div>; })}
+
+      {titel("👥 Betreute Punktspiele (Mädchen 11 / Jungen 11)", spiele.length)}
+      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum stehen keine Spiele von Mädchen 11 oder Jungen 11 im Spielplan.</div>}
+      {spiele.map(sp=>{ const z=zeileS(sp), k="s:"+sp._key;
+        return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
+          <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
+          <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
+            <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
+            {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
+            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[k])}</div>}</div>
+          <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
+          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel)}</div>
+        </div>; })}
+
+      {titel("🏆 Betreute Turniere", turniere.length)}
+      {turniere.map(t=><div key={t.id} style={{display:"grid",gridTemplateColumns:"118px 1fr 56px 26px",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid var(--border)"}}>
+        <input type="date" value={t.d} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,d:e.target.value}:x))} style={{...inp,padding:"6px 6px",fontSize:12}}/>
+        <input type="text" value={t.text} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,text:e.target.value}:x))} placeholder="Turnier" style={{...inp,padding:"6px 8px",fontSize:12}}/>
+        <input type="text" inputMode="decimal" value={t.h} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,h:e.target.value}:x))} style={inpKlein} title="Stunden"/>
+        <button onClick={()=>setTurniere(l=>l.filter(x=>x.id!==t.id))} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
+      </div>)}
+      <button onClick={()=>setTurniere(l=>[...l,{id:String(Date.now()),d:von,text:"",h:"4"}])}
+        style={{marginTop:6,width:"100%",padding:8,background:"var(--bg3)",border:"1px dashed var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>+ Betreutes Turnier hinzufügen</button>
+
+      <div style={{marginTop:14,padding:"10px 12px",background:"var(--bg)",borderRadius:10,fontSize:12}}>
+        {[["training","Trainings"],["spiel","Punktspiele"],["turnier","Turniere"]].map(([a,l])=>{ const r=rows.filter(x=>x.art===a); if(!r.length) return null;
+          return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l}: {r.length} · {stundenDE(r.reduce((s,x)=>s+x.h,0))} Std.</span>
+            <span>{euroDE(r.reduce((s,x)=>s+x.h*x.satz,0))}</span></div>; })}
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
+          <span>Gesamt · {stundenDE(sStd)} Std.</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
       </div>
       <button onClick={pdfErstellen} disabled={!!ausgabe?.laeuft} style={{marginTop:12,width:"100%",padding:12,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>📄 Abrechnung als PDF erstellen</button>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Danach: per E-Mail versenden, teilen/drucken oder speichern. Die Tage werden als abgerechnet vermerkt.</div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Danach: per E-Mail versenden, teilen/drucken oder speichern. Trainings und Spiele werden als abgerechnet vermerkt.</div>
     </div>
 
     {/* Historie */}
     {(daten?.historie||[]).length>0 && <div style={karte}>
       <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🗂️ Bisherige Abrechnungen</div>
       {[...(daten.historie||[])].reverse().map(h=><div key={h.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-        <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Trainings · {stundenDE(h.stunden)} Std.
+        <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Positionen · {stundenDE(h.stunden)} Std.
           <div style={{fontSize:10,color:"var(--text3)"}}>erstellt am {formatDateDE(h.erstellt)}</div></div>
         <div style={{fontSize:12,fontWeight:800}}>{euroDE(h.betrag)}</div>
         <button onClick={()=>historieLoeschen(h.id)} style={{padding:"2px 7px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
