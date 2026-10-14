@@ -1,4 +1,4 @@
-// === TTC-App · Version 534 · erstellt 12.10.2026 ===
+// === TTC-App · Version 535 · erstellt 14.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "534";
+const APP_VERSION = "535";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8813,6 +8813,7 @@ const TR_HOME_GRUPPEN = [
     { key:"uebungen",     label:"Übungen",       icon:"🏋️", sub:"Übungskatalog" },
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Spielernotizen" },
     { key:"urkunden",     label:"Urkunden",      icon:"📜", sub:"Auszeichnungen" },
+    { key:"abrechnung",   label:"Abrechnung",    icon:"💶", sub:"Trainerstunden" },
   ]},
   // Vormals „Spieler & Gruppe" – alphabetisch.
   { titel:"Spieler & Statistiken", items:[
@@ -8993,6 +8994,8 @@ const TTC_REITER = ["home","halleninfo","spielbetrieb","turniere","spielplan","s
   "kalender","zeiten","aufstellung","einsaetze","ttr","historieadmin","vmhistorie"];
 
 function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUserTheme,userTheme,globalTheme,onSignOut,onPlayerAdded,hideHeader,externalPlayer,showOnlyPresentExt,onSetShowOnlyPresent,clubConfig={},groupFiltersExt,ttcModus=false}) {
+  // V535: Abrechnung für die angemeldete Person freigeschaltet?
+  const ichAbrechnung = (players||[]).some(p=>(p.email||"").toLowerCase()===(user?.email||"").toLowerCase() && p.abrechnung==="ja");
   const ALL_TABS=[
     {key:"home",         label:"Start",         icon:"🏠"},
     {key:"halleninfo",   label:"Halleninfo",    icon:"📣"},
@@ -9004,6 +9007,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"uebungen",     label:"Übungen",       icon:"🏋️"},
     {key:"rangliste",    label:"Rangliste",     icon:"🏆"},
     {key:"urkunden",     label:"Urkunden",      icon:"📜"},
+    {key:"abrechnung",   label:"Abrechnung",    icon:"💶", nurAbrechnung:true},   // V535
     {key:"beobachtungen",label:"Analyse", icon:"🔍"},
     {key:"spielbetrieb", label:"Spielbetrieb",  icon:"📋"},
     {key:"turniere",     label:"Turniere",      icon:"🏆"},
@@ -9028,6 +9032,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     if(ttcModus) return TTC_REITER.includes(t.key);   // V505: Funktion „TTC"
     if(t.superAdminOnly && !isSuperAdmin) return false;
     if(t.nonSuperAdminOnly && isSuperAdmin) return false;
+    if(t.nurAbrechnung && !(isSuperAdmin || ichAbrechnung)) return false;   // V535
     return true;
   });
   const [activeTab,setActiveTab]=useState(()=>{
@@ -9461,6 +9466,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
     {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
+    {activeTab==="abrechnung"&&<ErrorBoundary><TrainerAbrechnungView players={players} attendance={attendance} user={user} isSuperAdmin={isSuperAdmin} showToast={showToast}/></ErrorBoundary>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}
@@ -9505,6 +9511,358 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
   </div>;
 }
 
+// ─── V535: TRAINER-FUNKTION, TRAINERTAGE, ABRECHNUNG ─────────────────────────
+// „Trainingstage als Trainer" (players.trainerTage): „Di", „Fr", „Di+Fr" … oder „nein".
+// Reine Trainer (Gruppe Trainer) ohne eigenes Feld: wie bisher trainingDays.
+function istTrainerPerson(p){ return p?.group==="Trainer" || p?.roles?.trainer===true; }
+function trainerTageVon(p){
+  if(p?.trainerTage) return p.trainerTage;
+  if(p?.group==="Trainer") return p.trainingDays || VEREINS_WOCHENTAGE[0] || "Di";
+  return "nein";
+}
+// Ist die Person an diesem Datum als Trainer eingeplant? (Sondertage außerhalb der
+// Vereinswochentage zählen wie bisher bei reinen Trainern mit.)
+function trainerAnTag(p, datum){
+  const tt=trainerTageVon(p);
+  if(!istTrainerPerson(p) || tt==="nein") return false;
+  const wt=WT_KURZ[new Date(datum).getDay()];
+  const td=String(tt).split("+").map(x=>x.trim());
+  if(wt && VEREINS_WOCHENTAGE.includes(wt) && !td.includes(wt)) return false;
+  return true;
+}
+// Spieler, die zusätzlich Trainer sind und am Tag als Trainer geführt werden.
+function trainerSpielerAmTag(players, datum){
+  return (players||[]).filter(p=>p.group!=="Trainer" && p.status!=="passiv" && istTrainerPerson(p) && trainerAnTag(p, datum));
+}
+// War die Person an diesem Tag (Sitzung s) Trainer? Reine Trainer: Anwesenheit wie bisher
+// (ohne Eintrag = anwesend); Spieler-Trainer: eigene Spalte trainerAttendances, nur „a".
+function trainerHatGehalten(p, datum, s){
+  if(!s || s.took_place===false) return false;
+  if(p.group==="Trainer"){
+    if(!trainerAnTag(p, datum)) return false;
+    const v=s.attendances?.[p.id]; return !(v==="e"||v==="u");
+  }
+  return s.trainerAttendances?.[p.id]==="a";
+}
+// Für die Teilnahmequote: Trainings, in denen die Person selbst Trainer war, zählen nicht.
+function warSelbstTrainer(p, s){ return s?.trainerAttendances?.[p?.id]==="a"; }
+function gehalteneTrainings(p, attendance, von, bis){
+  return Object.keys(attendance||{})
+    .filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d) && (!von||d>=von) && (!bis||d<=bis) && trainerHatGehalten(p, d, attendance[d]))
+    .sort();
+}
+function euroDE(n){
+  const v=Math.round((Number(n)||0)*100)/100;
+  const [g,k]=Math.abs(v).toFixed(2).split(".");
+  return (v<0?"-":"")+g.replace(/\B(?=(\d{3})+(?!\d))/g,".")+","+k+" €";
+}
+function stundenDE(n){ return (Math.round((Number(n)||0)*100)/100).toString().replace(".",","); }
+function ibanFormat(x){ return String(x||"").replace(/\s+/g,"").toUpperCase().replace(/(.{4})/g,"$1 ").trim(); }
+
+// V535: PDF der Trainer-Abrechnung (Logo des Vereins, Tabelle, Summe, Bankverbindung)
+async function trainerAbrechnungPdfErzeugen({ name, rows, satz, iban, kontoinhaber, von, bis }){
+  const jsPDF=await ladeJsPDF_V();
+  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  let logo="", farbe=[200,16,46];
+  try{ const snap=await getDoc(doc(db,"config","clubConfig"));
+    if(snap.exists()){ const d=snap.data(); logo=d.logo||""; farbe=vereinsFarbeRgb(d.farbschema); } }catch(e){}
+  const L=18, R=192, dDE=(iso)=>{ const t=String(iso||"").split("-"); return t.length===3?`${t[2]}.${t[1]}.${t[0]}`:""; };
+  const heute=new Date().toLocaleDateString("sv");
+  const WT=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+  if(logo){ try{
+    const pr=pdf.getImageProperties(logo); const box=30; const r=Math.min(box/pr.width, box/pr.height);
+    const w=pr.width*r, h=pr.height*r;
+    pdf.addImage(logo, /^data:image\/png/i.test(logo)?"PNG":"JPEG", R-w, 12, w, h);
+  }catch(e){} }
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(12); pdf.setTextColor(40,40,40);
+  pdf.text(VEREIN.vollname||VEREIN.kurzname||"", L, 20);
+  pdf.setFont("helvetica","normal"); pdf.setFontSize(10); pdf.setTextColor(100,100,100);
+  if(VEREIN.ort) pdf.text(VEREIN.ort, L, 25.5);
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(17); pdf.setTextColor(farbe[0],farbe[1],farbe[2]);
+  pdf.text("Abrechnung Trainertätigkeit", L, 52);
+  pdf.setDrawColor(farbe[0],farbe[1],farbe[2]); pdf.setLineWidth(0.6); pdf.line(L,55,R,55);
+  const kv=(k,v,y)=>{ pdf.setFont("helvetica","normal"); pdf.setFontSize(10.5); pdf.setTextColor(100,100,100); pdf.text(k,L,y);
+    pdf.setFont("helvetica","bold"); pdf.setTextColor(25,25,25); pdf.text(String(v||""),L+36,y); };
+  kv("Trainer/in:", name, 64);
+  kv("Zeitraum:", `${dDE(von)} – ${dDE(bis)}`, 70);
+  kv("Stundensatz:", `${euroDE(satz)} je Stunde`, 76);
+  kv("Erstellt am:", dDE(heute), 82);
+  let y=95;
+  const X={nr:L+1.5, datum:L+12, tag:L+38, std:L+112, satz:L+142, betrag:R-1.5};
+  const kopf=()=>{
+    pdf.setFillColor(farbe[0],farbe[1],farbe[2]); pdf.rect(L,y-5,R-L,7.5,"F");
+    pdf.setTextColor(255,255,255); pdf.setFont("helvetica","bold"); pdf.setFontSize(10);
+    pdf.text("Nr.",X.nr,y); pdf.text("Datum",X.datum,y); pdf.text("Wochentag",X.tag,y);
+    pdf.text("Stunden",X.std,y,{align:"right"}); pdf.text("Satz",X.satz,y,{align:"right"}); pdf.text("Betrag",X.betrag,y,{align:"right"});
+    y+=7.5; pdf.setFont("helvetica","normal"); pdf.setTextColor(25,25,25);
+  };
+  kopf();
+  let sStd=0, sEur=0;
+  rows.forEach((r,i)=>{
+    if(y>268){ pdf.addPage(); y=22; kopf(); }
+    if(i%2===1){ pdf.setFillColor(244,244,246); pdf.rect(L,y-4.6,R-L,6.6,"F"); }
+    const betrag=(Number(r.h)||0)*(Number(satz)||0); sStd+=Number(r.h)||0; sEur+=betrag;
+    pdf.setFontSize(10);
+    pdf.text(String(i+1),X.nr,y); pdf.text(dDE(r.d),X.datum,y); pdf.text(WT[new Date(r.d).getDay()]||"",X.tag,y);
+    pdf.text(stundenDE(r.h),X.std,y,{align:"right"}); pdf.text(euroDE(satz),X.satz,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
+    y+=6.6;
+  });
+  if(y>250){ pdf.addPage(); y=22; }
+  pdf.setDrawColor(60,60,60); pdf.setLineWidth(0.4); pdf.line(L,y-3,R,y-3);
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(10.5);
+  pdf.text(`Summe (${rows.length} ${rows.length===1?"Training":"Trainings"})`,X.nr,y+2);
+  pdf.text(stundenDE(sStd),X.std,y+2,{align:"right"}); pdf.text(euroDE(sEur),X.betrag,y+2,{align:"right"});
+  y+=16;
+  if(y>238){ pdf.addPage(); y=24; }
+  pdf.setFont("helvetica","bold"); pdf.setFontSize(11); pdf.setTextColor(farbe[0],farbe[1],farbe[2]);
+  pdf.text("Bankverbindung für die Auszahlung", L, y); y+=6.5;
+  pdf.setFont("helvetica","normal"); pdf.setFontSize(10.5); pdf.setTextColor(25,25,25);
+  pdf.text(`Kontoinhaber/in: ${kontoinhaber||"—"}`, L, y); y+=6;
+  pdf.text(`IBAN: ${ibanFormat(iban)||"—"}`, L, y); y+=12;
+  pdf.setFontSize(9.5); pdf.setTextColor(90,90,90);
+  pdf.text(pdf.splitTextToSize("Ich bestätige, die aufgeführten Trainings als Trainer/in geleitet zu haben.", R-L), L, y);
+  y+=22;
+  pdf.setDrawColor(90,90,90); pdf.setLineWidth(0.3);
+  pdf.line(L,y,L+75,y); pdf.line(R-75,y,R,y);
+  pdf.setFontSize(9); pdf.text("Ort, Datum, Unterschrift Trainer/in", L, y+4.5);
+  pdf.text(`Geprüft und freigegeben (${VEREIN.kuerzel||"Verein"})`, R-75, y+4.5);
+  return pdf.output("blob");
+}
+
+// V535: Ausgabe der Abrechnung (Teilen/Drucken, Speichern, E-Mail) ohne Seitenwechsel
+function AbrechnungAusgabeDialog({ ausgabe, empfaenger, onClose }){
+  const [hinweis,setHinweis]=useState("");
+  if(!ausgabe) return null;
+  if(ausgabe.laeuft) return <div style={{position:"fixed",inset:0,background:"#0008",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:18,width:"100%",maxWidth:420,textAlign:"center"}}>
+      <style>{"@keyframes abrDreh{to{transform:rotate(360deg)}}"}</style>
+      <div style={{width:34,height:34,margin:"4px auto 12px",border:"4px solid var(--border2)",borderTopColor:"var(--club, #c8102e)",borderRadius:"50%",animation:"abrDreh .8s linear infinite"}}/>
+      <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>Abrechnung wird erstellt …</div>
+    </div>
+  </div>;
+  const { blob, url, dateiname, titel } = ausgabe;
+  const datei=(()=>{ try{ return new File([blob], dateiname, {type:"application/pdf"}); }catch(e){ return null; } })();
+  const teilen=!!(datei && navigator.canShare && navigator.canShare({files:[datei]}));
+  function speichern(){
+    const a=document.createElement("a"); a.href=url; a.download=dateiname;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ document.body.removeChild(a); }catch(e){} },1000);
+  }
+  async function drucken(){
+    setHinweis("");
+    if(teilen){ try{ await navigator.share({files:[datei], title:titel}); return; }catch(e){ if(e&&e.name==="AbortError") return; } }
+    try{
+      const f=document.createElement("iframe"); f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+      f.src=url; f.onload=()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ setHinweis("Direktes Drucken geht hier nicht – bitte „Speichern“ und die PDF drucken."); } };
+      document.body.appendChild(f); setTimeout(()=>{ try{ document.body.removeChild(f); }catch(e){} },60000);
+    }catch(e){ setHinweis("Direktes Drucken geht hier nicht – bitte „Speichern“ und die PDF drucken."); }
+  }
+  async function email(){
+    setHinweis("");
+    // Mit Datei-Teilen (iPhone/iPad): das Menü bietet „Mail" mit angehängter PDF.
+    if(teilen){ try{ await navigator.share({files:[datei], title:titel, text:titel}); return; }catch(e){ if(e&&e.name==="AbortError") return; } }
+    // Sonst: PDF speichern und E-Mail-Programm öffnen – die PDF bitte anhängen.
+    speichern();
+    const a=document.createElement("a");
+    a.href=`mailto:${encodeURIComponent(empfaenger||"")}?subject=${encodeURIComponent(titel)}&body=${encodeURIComponent("Hallo,\n\nanbei meine Abrechnung ("+titel+").\n\nViele Grüße")}`;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ document.body.removeChild(a); }catch(e){} },1000);
+    setHinweis("Die PDF wurde gespeichert – bitte in der E-Mail als Anhang hinzufügen.");
+  }
+  const btn={flex:"1 1 120px",padding:"11px 12px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",border:"none"};
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"#0008",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:16,width:"100%",maxWidth:440}}>
+      <div style={{fontSize:15,fontWeight:800,color:"var(--text)",marginBottom:4}}>📄 Abrechnung erstellt</div>
+      <div style={{fontSize:12,color:"var(--text3)",marginBottom:12,wordBreak:"break-word"}}>{dateiname}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        <button onClick={email} style={{...btn,background:"var(--club, #c8102e)",color:"#fff"}}>✉️ Per E-Mail</button>
+        <button onClick={drucken} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>🖨️ {teilen?"Teilen / Drucken":"Drucken"}</button>
+        <button onClick={speichern} style={{...btn,background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border2)"}}>⬇️ Speichern</button>
+      </div>
+      {hinweis&&<div style={{fontSize:11,color:"#b45309",marginTop:8}}>{hinweis}</div>}
+      <button onClick={onClose} style={{marginTop:10,width:"100%",padding:"10px 12px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)"}}>Schließen</button>
+    </div>
+  </div>;
+}
+
+// V535: Reiter „Abrechnung" – gehaltene Trainings eines Trainers abrechnen.
+// Freigabe je Person in der Verwaltung (Feld „Abrechnung" = Ja). Die Person sieht nur sich,
+// der Admin alle freigeschalteten. Bankdaten, Stundensatz und Historie liegen geschützt in
+// abrechnung/<personId> (lesen/schreiben nur Admin und die Person selbst).
+function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showToast }){
+  const ich=(players||[]).find(p=>(p.email||"").toLowerCase()===(user?.email||"").toLowerCase());
+  const freigegeben=(players||[]).filter(p=>p.abrechnung==="ja")
+    .sort((a,b)=>`${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`,"de"));
+  const auswahl=isSuperAdmin ? freigegeben : freigegeben.filter(p=>p.id===ich?.id);
+  const [pid,setPid]=useState(()=>(auswahl.find(p=>p.id===ich?.id)||auswahl[0])?.id||"");
+  useEffect(()=>{ if(!auswahl.some(p=>p.id===pid) && auswahl[0]) setPid(auswahl[0].id); },[auswahl.map(p=>p.id).join(",")]);
+  const person=auswahl.find(p=>p.id===pid)||null;
+  const tbRange=useTrainingRange();
+
+  const [daten,setDaten]=useState(null);
+  const [fehler,setFehler]=useState("");
+  const [form,setForm]=useState({kontoinhaber:"",iban:"",satz:"",stunden:"1,5",empfaenger:""});
+  const geladenFuer=useRef("");
+  useEffect(()=>{
+    if(!pid) return;
+    setDaten(null); setFehler(""); geladenFuer.current="";
+    const u=onSnapshot(doc(db,"abrechnung",pid), snap=>{
+      const d=snap.exists()?snap.data():{};
+      setDaten(d);
+      if(geladenFuer.current!==pid){
+        geladenFuer.current=pid;
+        setForm({ kontoinhaber:d.kontoinhaber||"", iban:d.iban||"",
+          satz: d.stundensatz!=null ? String(d.stundensatz).replace(".",",") : "",
+          stunden: d.stundenStandard!=null ? String(d.stundenStandard).replace(".",",") : "1,5",
+          empfaenger:d.empfaenger||"" });
+      }
+    }, e=>{ setDaten({}); setFehler("Die Abrechnungsdaten konnten nicht geladen werden (fehlende Berechtigung?)."); });
+    return ()=>u();
+  },[pid]);
+  const zahl=(x)=>{ const n=parseFloat(String(x||"").replace(",",".")); return Number.isFinite(n)?n:0; };
+  async function stammSpeichern(){
+    try{
+      await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
+        stundensatz:zahl(form.satz), stundenStandard:zahl(form.stunden), empfaenger:form.empfaenger.trim(),
+        geaendert:Date.now() },{merge:true});
+      showToast&&showToast("Abrechnungsdaten gespeichert","💾");
+    }catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); }
+  }
+
+  // Zeitraum
+  const heute=new Date();
+  const iso=(dt)=>dt.toLocaleDateString("sv");
+  const monat=(off)=>{ const a=new Date(heute.getFullYear(), heute.getMonth()+off, 1), b=new Date(heute.getFullYear(), heute.getMonth()+off+1, 0); return [iso(a),iso(b)]; };
+  const [von,setVon]=useState(()=>monat(0)[0]);
+  const [bis,setBis]=useState(()=>monat(0)[1]);
+  const setZr=([a,b])=>{ setVon(a); setBis(b); };
+
+  // Trainings und Auswahl
+  const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
+  const abgerechnet={};
+  (daten?.historie||[]).forEach(h=>(h.tage||[]).forEach(t=>{ abgerechnet[t.d||t]=h.erstellt; }));
+  const [tagSt,setTagSt]=useState({});   // datum → {an, h}
+  useEffect(()=>{ setTagSt({}); },[pid]);
+  const stdStandard=zahl(form.stunden), satz=zahl(form.satz);
+  const zeile=(d)=>({ an: tagSt[d]?.an ?? !abgerechnet[d], h: tagSt[d]?.h ?? String(stdStandard).replace(".",",") });
+  const rows=tage.filter(d=>zeile(d).an).map(d=>({d, h:zahl(zeile(d).h)}));
+  const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=sStd*satz;
+
+  const [ausgabe,setAusgabe]=useState(null);
+  const laeuft=useRef(false);
+  async function pdfErstellen(){
+    if(!person || laeuft.current) return;
+    if(!rows.length){ window.alert(T("Im gewählten Zeitraum ist kein Training zur Abrechnung ausgewählt.")); return; }
+    if(!satz && !window.confirm(T("Es ist kein Stundensatz eingetragen. Trotzdem erstellen?"))) return;
+    if(!form.iban.trim() && !window.confirm(T("Es ist keine IBAN eingetragen. Trotzdem erstellen?"))) return;
+    laeuft.current=true;
+    setAusgabe({laeuft:true});
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const name=`${person.firstName||""} ${person.lastName||""}`.trim();
+      const blob=await trainerAbrechnungPdfErzeugen({ name, rows, satz, iban:form.iban, kontoinhaber:form.kontoinhaber, von, bis });
+      // Stammdaten + Historie speichern (abgerechnete Tage werden künftig markiert)
+      const eintrag={ id:String(Date.now()), von, bis, erstellt:new Date().toLocaleDateString("sv"),
+        tage:rows.map(r=>({d:r.d, h:r.h})), stunden:sStd, satz, betrag:Math.round(sEur*100)/100 };
+      await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
+        stundensatz:satz, stundenStandard:stdStandard, empfaenger:form.empfaenger.trim(),
+        historie:[...(daten?.historie||[]), eintrag], geaendert:Date.now() },{merge:true}).catch(()=>{});
+      const safe=(x)=>String(x||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
+      setAusgabe({ blob, url:URL.createObjectURL(blob), dateiname:`Abrechnung_${safe(name)}_${von}_bis_${bis}.pdf`,
+        titel:`Abrechnung Trainertätigkeit ${name} (${formatDateDE(von)} – ${formatDateDE(bis)})` });
+    }catch(e){ setAusgabe(null); window.alert(T("Die Abrechnung konnte nicht erstellt werden.\n")+(e&&e.message||"")); }
+    finally{ laeuft.current=false; }
+  }
+  async function historieLoeschen(id){
+    if(!window.confirm(T("Diese Abrechnung aus der Historie entfernen? Die Tage gelten dann wieder als nicht abgerechnet."))) return;
+    try{ await setDoc(doc(db,"abrechnung",pid),{ historie:(daten?.historie||[]).filter(h=>h.id!==id) },{merge:true}); }
+    catch(e){ window.alert(T("Fehler:\n")+(e.message||e)); }
+  }
+
+  const karte={background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:14,marginBottom:12};
+  const inp={width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"};
+  const lab={fontSize:11,color:"var(--text3)",display:"block",marginBottom:3};
+  const chip={padding:"6px 10px",borderRadius:16,fontSize:12,fontWeight:700,cursor:"pointer",border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",whiteSpace:"nowrap"};
+
+  if(!auswahl.length) return <div style={{padding:20,color:"var(--text3)",fontSize:13}}>
+    Für dich ist keine Abrechnung freigeschaltet. Die Freigabe erfolgt in der Verwaltung (Person › Training und Vereinsbeitritt › „Abrechnung“).
+  </div>;
+
+  return <div style={{padding:13,paddingBottom:40,maxWidth:APP_MAX_BREITE,margin:"0 auto"}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:10}}>💶 Abrechnung</div>
+    {auswahl.length>1 && <select value={pid} onChange={e=>setPid(e.target.value)} style={{marginBottom:12}}>
+      {auswahl.map(p=><option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
+    </select>}
+    {fehler && <div style={{...karte,borderColor:"#ef444466",color:"#ef4444",fontSize:12}}>{fehler}</div>}
+
+    {/* Bankdaten und Sätze */}
+    <div style={karte}>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>🏦 Bankverbindung & Stundensatz</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+        <div><label style={lab}>Kontoinhaber/in (Kontobezeichnung)</label>
+          <input type="text" value={form.kontoinhaber} onChange={e=>setForm(f=>({...f,kontoinhaber:e.target.value}))} style={inp}/></div>
+        <div><label style={lab}>IBAN</label>
+          <input type="text" value={form.iban} onChange={e=>setForm(f=>({...f,iban:e.target.value}))} onBlur={()=>setForm(f=>({...f,iban:ibanFormat(f.iban)}))}
+            placeholder="DE00 0000 0000 0000 0000 00" autoCapitalize="characters" style={{...inp,fontFamily:"monospace"}}/></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div><label style={lab}>Euro je Stunde</label>
+            <input type="text" inputMode="decimal" value={form.satz} onChange={e=>setForm(f=>({...f,satz:e.target.value}))} placeholder="z. B. 15,00" style={inp}/></div>
+          <div><label style={lab}>Stunden je Training (Standard)</label>
+            <input type="text" inputMode="decimal" value={form.stunden} onChange={e=>setForm(f=>({...f,stunden:e.target.value}))} style={inp}/></div>
+        </div>
+        <div><label style={lab}>E-Mail-Empfänger der Abrechnung (optional)</label>
+          <input type="email" value={form.empfaenger} onChange={e=>setForm(f=>({...f,empfaenger:e.target.value}))} placeholder="kasse@verein.de" style={inp}/></div>
+      </div>
+      <button onClick={stammSpeichern} style={{marginTop:10,width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Daten speichern</button>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Nur für dich und die Admins sichtbar.</div>
+    </div>
+
+    {/* Zeitraum + Trainings */}
+    <div style={karte}>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:10}}>📅 Zeitraum</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        <button onClick={()=>setZr(monat(0))} style={chip}>Dieser Monat</button>
+        <button onClick={()=>setZr(monat(-1))} style={chip}>Vormonat</button>
+        {tbRange.start&&tbRange.end&&<button onClick={()=>setZr([tbRange.start,tbRange.end])} style={chip}>Trainingszeitraum</button>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        <div><label style={lab}>von</label><input type="date" value={von} onChange={e=>setVon(e.target.value)} style={inp}/></div>
+        <div><label style={lab}>bis</label><input type="date" value={bis} onChange={e=>setBis(e.target.value)} style={inp}/></div>
+      </div>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🏓 Gehaltene Trainings ({tage.length})</div>
+      {tage.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum sind keine Trainings als Trainer erfasst (Reiter „Training“, Bereich Trainer).</div>}
+      {tage.map(d=>{
+        const z=zeile(d); const h=zahl(z.h);
+        return <div key={d} style={{display:"grid",gridTemplateColumns:"28px 1fr 70px 82px",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid var(--border)",opacity:z.an?1:0.55}}>
+          <input type="checkbox" checked={z.an} onChange={()=>setTagSt(s=>({...s,[d]:{...zeile(d),an:!z.an}}))} style={{width:18,height:18}}/>
+          <div style={{fontSize:12,color:"var(--text)"}}>{formatDayDE(d)}, {formatDateDE(d)}
+            {abgerechnet[d]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[d])}</div>}</div>
+          <input type="text" inputMode="decimal" value={z.h} onChange={e=>setTagSt(s=>({...s,[d]:{...zeile(d),h:e.target.value}}))}
+            style={{...inp,padding:"6px 8px",fontSize:13,textAlign:"right"}} title="Stunden"/>
+          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(h*satz)}</div>
+        </div>;
+      })}
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:10,fontSize:13,fontWeight:800}}>
+        <span>{rows.length} {rows.length===1?"Training":"Trainings"} · {stundenDE(sStd)} Std.</span>
+        <span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span>
+      </div>
+      <button onClick={pdfErstellen} disabled={!!ausgabe?.laeuft} style={{marginTop:12,width:"100%",padding:12,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>📄 Abrechnung als PDF erstellen</button>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Danach: per E-Mail versenden, teilen/drucken oder speichern. Die Tage werden als abgerechnet vermerkt.</div>
+    </div>
+
+    {/* Historie */}
+    {(daten?.historie||[]).length>0 && <div style={karte}>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🗂️ Bisherige Abrechnungen</div>
+      {[...(daten.historie||[])].reverse().map(h=><div key={h.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
+        <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Trainings · {stundenDE(h.stunden)} Std.
+          <div style={{fontSize:10,color:"var(--text3)"}}>erstellt am {formatDateDE(h.erstellt)}</div></div>
+        <div style={{fontSize:12,fontWeight:800}}>{euroDE(h.betrag)}</div>
+        <button onClick={()=>historieLoeschen(h.id)} style={{padding:"2px 7px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
+      </div>)}
+    </div>}
+
+    {ausgabe && <AbrechnungAusgabeDialog ausgabe={ausgabe} empfaenger={form.empfaenger} onClose={()=>setAusgabe(null)}/>}
+  </div>;
+}
+
 // ─── ADMIN TRAINING TAB ───────────────────────────────────────────────────────
 function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   const allDays = [...new Set([...alleVereinsTrainingstage(),...ALLE_SONDER_TAGE])].sort();
@@ -9528,14 +9886,18 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   async function save() {
     setLoading(true);
     try {
-      await setDoc(doc(db,"attendance",selDate),{...sessionData,date:selDate,updatedAt:Date.now()});
+      // V535: Trainer-Spieler ohne Eintrag gelten als „anwesend als Trainer" (wie angezeigt)
+      const trA={...(sessionData.trainerAttendances||{})};
+      trainerSpieler.forEach(p=>{ if(!trA[p.id]) trA[p.id]="a"; });
+      await setDoc(doc(db,"attendance",selDate),{...sessionData,trainerAttendances:trA,date:selDate,updatedAt:Date.now()});
       showToast("Gespeichert","💾");
     } catch(e){showToast(T("Fehler: ")+e.message,"❌");}
     setLoading(false);
   }
 
   function setAll(val) {
-    setSessionData(prev=>({...prev,attendances:{...Object.fromEntries(players.map(p=>[p.id,val]))}}));
+    setSessionData(prev=>({...prev,attendances:{...Object.fromEntries(players.map(p=>[p.id,val]))},
+      trainerAttendances:{...(prev.trainerAttendances||{}),...Object.fromEntries(trainerSpieler.map(p=>[p.id,val]))}}));
   }
 
   const wtSel = selDate ? WT_KURZ[new Date(selDate).getDay()] : "";   // V513
@@ -9547,7 +9909,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   const relevantPlayers = players.filter(p=>{
     if (p.group==="Trainer") {
       // Trainer nur an ihren Trainingstagen zeigen (V513: beliebige Wochentage)
-      const td = String(p.trainingDays || VEREINS_WOCHENTAGE[0] || "Di").split("+").map(x=>x.trim());
+      if (trainerTageVon(p)==="nein") return false;   // V535
+      const td = String(trainerTageVon(p)).split("+").map(x=>x.trim());
       if (wtSel && VEREINS_WOCHENTAGE.includes(wtSel) && !td.includes(wtSel)) return false;
       return true;
     }
@@ -9561,6 +9924,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     return true;
   });
   const groupOrder = ["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"];
+  // V535: Spieler mit Funktion Trainer erscheinen an ihren Trainertagen zusätzlich im Trainerbereich
+  const trainerSpieler = selDate ? trainerSpielerAmTag(players, selDate) : [];
 
   // Punkt 9: Spaltenköpfe mit Kreisen
   const COL_HEADERS = [
@@ -9633,10 +9998,15 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             const gp = grp==="Trainer"
               ? relevantPlayers.filter(p=>(p.group||"Anfänger")==="Trainer")
               : relevantPlayers.filter(p=>(p.group||"Anfänger")===grp);
-            const a=gp.filter(p=>(sessionData.attendances?.[p.id]||"a")==="a").length;
-            const e=gp.filter(p=>sessionData.attendances?.[p.id]==="e").length;
-            const u=gp.filter(p=>sessionData.attendances?.[p.id]==="u").length;
-            return {a,e,u,total:gp.length};
+            let a=gp.filter(p=>(sessionData.attendances?.[p.id]||"a")==="a").length;
+            let e=gp.filter(p=>sessionData.attendances?.[p.id]==="e").length;
+            let u=gp.filter(p=>sessionData.attendances?.[p.id]==="u").length;
+            if(grp==="Trainer"){   // V535: Trainer-Spieler (eigene Spalte)
+              a+=trainerSpieler.filter(p=>(sessionData.trainerAttendances?.[p.id]||"a")==="a").length;
+              e+=trainerSpieler.filter(p=>sessionData.trainerAttendances?.[p.id]==="e").length;
+              u+=trainerSpieler.filter(p=>sessionData.trainerAttendances?.[p.id]==="u").length;
+            }
+            return {a,e,u,total:gp.length+(grp==="Trainer"?trainerSpieler.length:0)};
           };
           const gesamtA = playerGroups.reduce((s,g)=>s+countFor(g).a,0);
           const gesamtE = playerGroups.reduce((s,g)=>s+countFor(g).e,0);
@@ -9664,28 +10034,33 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
             <SumRow label="GESAMT" counts={{a:gesamtA,e:gesamtE,u:gesamtU}} bold/>
             {["Profis","Fortgeschrittene","Anfänger","Trainer","Erwachsene"].map(g=>{
               const cnt=countFor(g);
-              if(!relevantPlayers.some(p=>(p.group||"Anfänger")===g)) return null;
+              if(!relevantPlayers.some(p=>(p.group||"Anfänger")===g) && !(g==="Trainer"&&trainerSpieler.length)) return null;
               return <SumRow key={g} label={gName(g)} counts={cnt}/>;
             })}
           </>;
         })()}
 
         {groupOrder.map(group=>{
-          const groupPlayers = relevantPlayers.filter(p=>(p.group||"Anfänger")===group)
+          const groupPlayers = [...relevantPlayers.filter(p=>(p.group||"Anfänger")===group),
+              ...(group==="Trainer"?trainerSpieler:[])]   // V535
             .sort((a,b)=>(a.firstName||"").localeCompare(b.firstName||"","de"));
           if (!groupPlayers.length) return null;
           return <div key={group} style={{marginBottom:12,marginTop:10}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,paddingLeft:4}}>{gName(group)}</div>
             {groupPlayers.map(p=>{
-              const val=sessionData.attendances?.[p.id]||"a";
+              // V535: Trainer-Spieler im Trainerbereich → eigene Spalte trainerAttendances
+              const alsTrainer = group==="Trainer" && p.group!=="Trainer";
+              const feld = alsTrainer ? "trainerAttendances" : "attendances";
+              const val=sessionData[feld]?.[p.id]||"a";
               return <div key={p.id} style={{display:"grid",gridTemplateColumns:"1fr 44px 44px 44px",gap:4,marginBottom:5,alignItems:"center",background:"var(--bg)",borderRadius:8,padding:"7px 8px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,overflow:"hidden"}}>
                   <span style={{fontSize:15,flexShrink:0}}>{p.avatar||"🏓"}</span>
                   <span style={{fontSize:12,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.firstName} {p.lastName}</span>
+                  {alsTrainer&&<span style={{fontSize:9,color:"var(--text4)",flexShrink:0}}>als Trainer</span>}
                 </div>
                 {COL_HEADERS.map(opt=>(
                   <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
-                    <button onClick={()=>setSessionData(prev=>({...prev,attendances:{...prev.attendances,[p.id]:opt.key}}))} style={{
+                    <button onClick={()=>setSessionData(prev=>({...prev,[feld]:{...(prev[feld]||{}),[p.id]:opt.key}}))} style={{
                       width:34,height:34,borderRadius:"50%",border:`2px solid ${val===opt.key?opt.color:opt.color+"33"}`,cursor:"pointer",
                       fontSize:13,fontWeight:800,
                       background:val===opt.key?opt.color+"33":"transparent",
@@ -9751,6 +10126,7 @@ function trainingsBeteiligungStats(player, attendance, trainingRange){
     const session=(attendance||{})[d];
     if(session && session.took_place===false) continue;
     if(!session) continue;
+    if(warSelbstTrainer(player, session)) continue;   // V535: selbst Trainer → zählt nicht
     total++;
     if(!erster||d<erster) erster=d;
     if(!letzter||d>letzter) letzter=d;
@@ -9837,6 +10213,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick,onUrkundeKlick=null}) {
       const session = attendance[d];
       if (session && session.took_place === false) continue;
       if (!session) continue;
+      if (warSelbstTrainer(player, session)) continue;   // V535
 
       total++;
       const val = session.attendances?.[player.id];
@@ -13971,6 +14348,8 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         leaveDate:     editPlayer.leaveDate||"",
         roles:         editPlayer.roles||{},
         trainingDays:  editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di",
+        trainerTage:   trainerTageVon(editPlayer),                 // V535
+        abrechnung:    editPlayer.abrechnung==="ja"?"ja":"nein",    // V535
         phone:         editPlayer.phone||"",
         tshirtSize:    editPlayer.tshirtSize||"",
         anzugSize:     editPlayer.anzugSize||"",
@@ -15133,16 +15512,25 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   </div>
                 </div>
               </div>
-              {/* Trainingstage (nur für Trainer-Gruppe) */}
-              {editPlayer.group==="Trainer"&&<div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage</label>
-                <select value={editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di"} onChange={e=>setEditPlayer(prev=>({...prev,trainingDays:e.target.value}))}>
-                  {/* V513: Optionen aus den Trainingswochentagen des Vereins */}
-                  {VEREINS_WOCHENTAGE.map(w=><option key={w} value={w}>Nur {WT_LANG[w]}</option>)}
-                  {VEREINS_WOCHENTAGE.length>1 && <option value={VEREINS_WOCHENTAGE.join("+")}>{VEREINS_WOCHENTAGE.map(w=>WT_LANG[w]).join(" + ")}</option>}
-                  {editPlayer.trainingDays && ![...VEREINS_WOCHENTAGE, VEREINS_WOCHENTAGE.join("+")].includes(editPlayer.trainingDays) &&
-                    <option value={editPlayer.trainingDays}>{editPlayer.trainingDays}</option>}
-                </select>
+              {/* V535: Trainingstage als Trainer + Abrechnung (alle mit Funktion Trainer) */}
+              {istTrainerPerson(editPlayer)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🗓️ Trainingstage als Trainer</label>
+                  {(()=>{ const tt=trainerTageVon(editPlayer); return <select value={tt}
+                    onChange={e=>{ const v=e.target.value; setEditPlayer(prev=>({...prev,trainerTage:v,...(prev.group==="Trainer"?{trainingDays:v}:{})})); }}>
+                    <option value="nein">nein</option>
+                    {VEREINS_WOCHENTAGE.map(w=><option key={w} value={w}>Nur {WT_LANG[w]}</option>)}
+                    {VEREINS_WOCHENTAGE.length>1 && <option value={VEREINS_WOCHENTAGE.join("+")}>{VEREINS_WOCHENTAGE.map(w=>WT_LANG[w]).join(" + ")}</option>}
+                    {tt!=="nein" && ![...VEREINS_WOCHENTAGE, VEREINS_WOCHENTAGE.join("+")].includes(tt) && <option value={tt}>{tt}</option>}
+                  </select>; })()}
+                </div>
+                <div>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>💶 Abrechnung</label>
+                  <select value={editPlayer.abrechnung==="ja"?"ja":"nein"} onChange={e=>setEditPlayer(prev=>({...prev,abrechnung:e.target.value}))}>
+                    <option value="ja">Ja</option>
+                    <option value="nein">Nein</option>
+                  </select>
+                </div>
               </div>}
 
 
@@ -17923,6 +18311,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     const s=attendance[d];
     if (s&&s.took_place===false) continue;
     if (!s) continue;
+    if (warSelbstTrainer(myPlayer, s)) continue;   // V535
     total++;
     const val=s.attendances?.[myPlayer.id];
     if(val==="e"||val==="u"){/* nicht anwesend */}else present++;
@@ -18123,6 +18512,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           const s=attendance[d];
           if(s&&s.took_place===false)continue;
           if(!s)continue;
+          if(warSelbstTrainer(player,s))continue;   // V535
           tot++;
           const val=s.attendances?.[player.id];
           if(val==="e")exc++;
