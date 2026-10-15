@@ -1,4 +1,4 @@
-// === TTC-App · Version 523 · i18n_en.js · erstellt 10.10.2026 ===
+// === TTC-App · Version 538 · i18n_en.js · erstellt 15.10.2026 ===
 // Englisches Wörterbuch: deutscher Anzeigetext → englischer Text. Platzhalter {0},{1} … für
 // zusammengesetzte Texte (T`…`). Fehlende Einträge werden deutsch angezeigt.
 export const EN_TEXTE = {
@@ -2505,5 +2505,37 @@ export const EN_TEXTE = {
 "Verlegung: –": "Rescheduling: –",
 "⚠️ Verlegung geplant": "⚠️ Rescheduling planned",
 "✅ Verlegung erfolgt": "✅ Rescheduled",
-"✅ verlegt": "✅ rescheduled"
+"✅ verlegt": "✅ rescheduled",
+// V538: Kacheln, Abrechnung, Suche
+"Abrechnung": "Billing",
+"Abrech-nung": "Billing",
+"Trainerstunden": "Coaching hours",
+"Zu-/Absagen": "Accept/decline",
+"Training": "Training",
+"💶 Abrechnung": "💶 Billing",
+"Stundensätze und Pauschalen speichern": "Save rates and flat fees",
+"Pauschale je Punktspiel (€)": "Flat fee per league match (€)",
+"Pauschale je Turnier (€)": "Flat fee per tournament (€)",
+"Bankverbindung": "Bank details",
+"Gehaltene Trainings": "Sessions coached",
+"Betreute Turniere": "Tournaments supervised",
+"+ Betreutes Turnier hinzufügen": "+ Add supervised tournament",
+"📄 Abrechnung als PDF erstellen": "📄 Create billing PDF",
+"Bisherige Abrechnungen": "Previous billings",
+"Letzter Monat": "Last month",
+"Letztes Quartal": "Last quarter",
+"Dieser Monat": "This month",
+"Trainingszeitraum": "Training period",
+"Daten speichern": "Save data",
+"Trainingsteilnahme-Urkunden": "Attendance certificates",
+"🎖️ Trainingsteilnahme-Urkunden": "🎖️ Attendance certificates",
+"Mindestens zwei Zeichen eingeben. Gesucht wird in Bereichen der App, Personen, Spielen, Terminen, Halleninfos, Spiellokalen und Trainingszeiten.": "Enter at least two characters. Searches app sections, people, matches, events, hall info, venues and training times.",
+"bestellt": "ordered",
+"bezahlt": "paid",
+"1. Begrüßung & Aufbau": "1. Welcome & set-up",
+"2. Aufwärmen": "2. Warm-up",
+"3. Ball- & Schlägergewöhnung": "3. Ball & racket familiarisation",
+"4. Technik & Hauptteil": "4. Technique & main part",
+"5. Wettkampf & Spiele": "5. Competition & games",
+"6. Abbau & Abschluss": "6. Packing up & wrap-up",
 };

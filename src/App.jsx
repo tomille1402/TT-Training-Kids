@@ -1,4 +1,4 @@
-// === TTC-App · Version 537 · erstellt 15.10.2026 ===
+// === TTC-App · Version 538 · erstellt 15.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "537";
+const APP_VERSION = "538";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -8790,7 +8790,16 @@ function reiterHintergrund(t, aktiv){
 // dort, wenn er nicht in die Kachel passt – mit Trennstrich am Zeilenende. Passt er,
 // erscheint er ungetrennt („Verwaltung").
 function kachelLabel(label){
-  return String(label||"").replace(/([a-zäöüß])-([a-zäöüß])/g,"$1\u00AD$2");
+  // V538: zuerst übersetzen (mit und ohne Trennstelle nachschlagen), dann weiche
+  // Trennstellen setzen. Bisher wurde das Trennzeichen vorher eingefügt – das
+  // Wörterbuch fand „Verwal­tung" dann nicht, die Kachel blieb deutsch.
+  let s=String(label||"");
+  if(IST_EN){
+    const t=trText(s);
+    if(t!==s) s=t;
+    else { const ohne=s.replace(/([a-zäöüß])-([a-zäöüß])/g,"$1$2"); const t2=trText(ohne); if(t2!==ohne) s=t2; }
+  }
+  return s.replace(/([a-zäöüß])-([a-zäöüß])/g,"$1\u00AD$2");
 }
 
 // Thematische Gruppierung der Trainer-Bereiche für die Kachel-Startseite.
@@ -8813,7 +8822,7 @@ const TR_HOME_GRUPPEN = [
     { key:"uebungen",     label:"Übungen",       icon:"🏋️", sub:"Übungskatalog" },
     { key:"beobachtungen",label:"Analyse", icon:"🔍", sub:"Spielernotizen" },
     { key:"urkunden",     label:"Urkunden",      icon:"📜", sub:"Auszeichnungen" },
-    { key:"abrechnung",   label:"Abrechnung",    icon:"💶", sub:"Trainerstunden" },
+    { key:"abrechnung",   label:"Abrech-nung",   icon:"💶", sub:"Trainerstunden" },
   ]},
   // Vormals „Spieler & Gruppe" – alphabetisch.
   { titel:"Spieler & Statistiken", items:[
@@ -9043,6 +9052,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     return "home";
   });
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
+  useSuchKachelnMelden(TABS, TR_HOME_GRUPPEN);   // V538
   useAnzahlSpieleEhrungenSync(players, isSuperAdmin && !ttcModus);   // V525
   useEffect(()=>{ try{ sessionStorage.setItem("ttc_activeTab", activeTab); }catch(e){} },[activeTab]);
   // V505: gemerkter Reiter aus einer anderen Ansicht (z. B. Verwaltung) ist hier evtl. nicht verfügbar
@@ -9587,13 +9597,13 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, vo
   kv("Zeitraum:", `${dDE(von)} – ${dDE(bis)}`, 70);
   kv("Erstellt am:", dDE(heute), 76);
   let y=89;
-  const X={nr:L+1.5, datum:L+10, leist:L+32, std:L+128, satz:L+152, betrag:R-1.5};
-  const LEIST_BREITE=X.std-X.leist-14;
+  const X={nr:L+1.5, datum:L+10, leist:L+32, std:L+110, satz:L+132, pausch:L+154, betrag:R-1.5};
+  const LEIST_BREITE=X.std-X.leist-12;
   const kopf=()=>{
     pdf.setFillColor(farbe[0],farbe[1],farbe[2]); pdf.rect(L,y-5,R-L,7.5,"F");
     pdf.setTextColor(255,255,255); pdf.setFont("helvetica","bold"); pdf.setFontSize(10);
     pdf.text("Nr.",X.nr,y); pdf.text("Datum",X.datum,y); pdf.text("Leistung",X.leist,y);
-    pdf.text("Std.",X.std,y,{align:"right"}); pdf.text("Satz",X.satz,y,{align:"right"}); pdf.text("Betrag",X.betrag,y,{align:"right"});
+    pdf.text("Std.",X.std,y,{align:"right"}); pdf.text("Satz",X.satz,y,{align:"right"}); pdf.text("Pausch.",X.pausch,y,{align:"right"}); pdf.text("Betrag",X.betrag,y,{align:"right"});
     y+=7.5; pdf.setFont("helvetica","normal"); pdf.setTextColor(25,25,25);
   };
   kopf();
@@ -9605,11 +9615,12 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, vo
     const hoehe=Math.max(6.6, 4.4*zeilen.length+2.2);
     if(y+hoehe>272){ pdf.addPage(); y=22; kopf(); pdf.setFontSize(9.5); }
     if(i%2===1){ pdf.setFillColor(244,244,246); pdf.rect(L,y-4.6,R-L,hoehe,"F"); }
-    const h=Number(r.h)||0, st=Number(r.satz)||0, betrag=h*st;
+    const h=Number(r.h)||0, st=Number(r.satz)||0, pa=Number(r.pauschale)||0, betrag=h*st+pa;
     const sm=summe[r.art]||summe.training; sm.n++; sm.h+=h; sm.e+=betrag; gH+=h; gE+=betrag;
     pdf.text(String(i+1),X.nr,y); pdf.text(dDE(r.d),X.datum,y);
     zeilen.forEach((z,k)=>pdf.text(z, X.leist, y+k*4.4));
-    pdf.text(stundenDE(h),X.std,y,{align:"right"}); pdf.text(euroDE(st),X.satz,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
+    pdf.text(stundenDE(h),X.std,y,{align:"right"}); pdf.text(euroDE(st),X.satz,y,{align:"right"});
+    pdf.text(pa?euroDE(pa):"–",X.pausch,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
     y+=hoehe;
   });
   if(y>236){ pdf.addPage(); y=22; }
@@ -9783,13 +9794,18 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
     spiel:    zahl(saetzeCfg?.punktspiel),
     turnier:  zahl(saetzeCfg?.turnier),
   };
+  // V538: Pauschale je betreutem Spiel bzw. Turnier (zusätzlich zum Stundensatz; Satz 0 = reine Pauschale)
+  const pauschale={ spiel:zahl(saetzeCfg?.punktspielPauschale), turnier:zahl(saetzeCfg?.turnierPauschale) };
+  const betragVon=(r)=>(Number(r.h)||0)*(Number(r.satz)||0)+(Number(r.pauschale)||0);
   const [satzForm,setSatzForm]=useState(null);
   useEffect(()=>{ if(saetzeCfg && satzForm===null) setSatzForm({
-    training:kommaStr(saetzeCfg.training??""), punktspiel:kommaStr(saetzeCfg.punktspiel??""), turnier:kommaStr(saetzeCfg.turnier??"") }); },[saetzeCfg]);
+    training:kommaStr(saetzeCfg.training??""), punktspiel:kommaStr(saetzeCfg.punktspiel??""), turnier:kommaStr(saetzeCfg.turnier??""),
+    punktspielPauschale:kommaStr(saetzeCfg.punktspielPauschale??""), turnierPauschale:kommaStr(saetzeCfg.turnierPauschale??"") }); },[saetzeCfg]);
   async function saetzeSpeichern(){
     try{
       await setDoc(doc(db,"config","abrechnungSaetze"),{ training:zahl(satzForm.training), punktspiel:zahl(satzForm.punktspiel),
-        turnier:zahl(satzForm.turnier), geaendert:Date.now() },{merge:true});
+        turnier:zahl(satzForm.turnier), punktspielPauschale:zahl(satzForm.punktspielPauschale), turnierPauschale:zahl(satzForm.turnierPauschale),
+        geaendert:Date.now() },{merge:true});
       showToast&&showToast("Stundensätze gespeichert","💶");
     }catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); }
   }
@@ -9826,17 +9842,17 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
 
   const rows=[
     ...tage.filter(d=>zeileT(d).an).map(d=>({ key:"t:"+d, d, art:"training", text:`Training (${["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][new Date(d).getDay()]})`, h:zahl(zeileT(d).h), satz:satz.training })),
-    ...spiele.filter(sp=>zeileS(sp).an).map(sp=>({ key:"s:"+sp._key, d:sp.datum, art:"spiel", text:spielLeistungText(sp), h:zahl(zeileS(sp).h), satz:satz.spiel })),
-    ...turniere.filter(t=>t.d && zahl(t.h)>0).map(t=>({ key:"u:"+t.id, d:t.d, art:"turnier", text:`Betreuung Turnier: ${t.text||"—"}`, h:zahl(t.h), satz:satz.turnier })),
+    ...spiele.filter(sp=>zeileS(sp).an).map(sp=>({ key:"s:"+sp._key, d:sp.datum, art:"spiel", text:spielLeistungText(sp), h:zahl(zeileS(sp).h), satz:satz.spiel, pauschale:pauschale.spiel })),
+    ...turniere.filter(t=>t.d && (zahl(t.h)>0 || pauschale.turnier>0)).map(t=>({ key:"u:"+t.id, d:t.d, art:"turnier", text:`Betreuung Turnier: ${t.text||"—"}`, h:zahl(t.h), satz:satz.turnier, pauschale:pauschale.turnier })),
   ].sort((a,b)=>a.d.localeCompare(b.d));
-  const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=rows.reduce((a,r)=>a+r.h*r.satz,0);
+  const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=rows.reduce((a,r)=>a+betragVon(r),0);
 
   const [ausgabe,setAusgabe]=useState(null);
   const laeuft=useRef(false);
   async function pdfErstellen(){
     if(!person || laeuft.current) return;
     if(!rows.length){ window.alert(T("Im gewählten Zeitraum ist nichts zur Abrechnung ausgewählt.")); return; }
-    const ohneSatz=[...new Set(rows.filter(r=>!r.satz).map(r=>({training:"Training",spiel:"Betreuung Punktspiel",turnier:"Betreuung Turnier"})[r.art]))];
+    const ohneSatz=[...new Set(rows.filter(r=>!r.satz && !r.pauschale).map(r=>({training:"Training",spiel:"Betreuung Punktspiel",turnier:"Betreuung Turnier"})[r.art]))];
     if(ohneSatz.length && !window.confirm(T("Für folgende Arten ist noch kein Stundensatz vorgegeben: ")+ohneSatz.join(", ")+T(".\nTrotzdem erstellen?"))) return;
     if(!form.iban.trim() && !window.confirm(T("Es ist keine IBAN eingetragen. Trotzdem erstellen?"))) return;
     laeuft.current=true;
@@ -9846,7 +9862,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
       const name=`${person.firstName||""} ${person.lastName||""}`.trim();
       const blob=await trainerAbrechnungPdfErzeugen({ name, rows, iban:form.iban, kontoinhaber:form.kontoinhaber, von, bis });
       const eintrag={ id:String(Date.now()), von, bis, erstellt:new Date().toLocaleDateString("sv"),
-        tage:rows.map(r=>({d:r.d, art:r.art, key:r.key, text:r.text, h:r.h, satz:r.satz})),
+        tage:rows.map(r=>({d:r.d, art:r.art, key:r.key, text:r.text, h:r.h, satz:r.satz, pauschale:r.pauschale||0})),
         stunden:sStd, betrag:Math.round(sEur*100)/100 };
       await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
         stundenStandard:stdTraining, empfaenger:form.empfaenger.trim(),
@@ -9892,13 +9908,21 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
             <div key={k}><label style={lab}>{l} (€/Std.)</label>
               <input type="text" inputMode="decimal" value={satzForm[k]} onChange={e=>setSatzForm(f=>({...f,[k]:e.target.value}))} placeholder="0,00" style={inp}/></div>)}
         </div>
-        <button onClick={saetzeSpeichern} style={{marginTop:10,width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Stundensätze speichern</button>
-        <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Gilt für alle Trainer und Betreuer.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:8}}>
+          <div/>
+          {[["punktspielPauschale","Pauschale je Punktspiel (€)"],["turnierPauschale","Pauschale je Turnier (€)"]].map(([k,l])=>
+            <div key={k}><label style={lab}>{l}</label>
+              <input type="text" inputMode="decimal" value={satzForm[k]} onChange={e=>setSatzForm(f=>({...f,[k]:e.target.value}))} placeholder="0,00" style={inp}/></div>)}
+        </div>
+        <button onClick={saetzeSpeichern} style={{marginTop:10,width:"100%",padding:10,background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Stundensätze und Pauschalen speichern</button>
+        <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Gilt für alle Trainer und Betreuer. Betrag je Spiel/Turnier = Stunden × Stundensatz + Pauschale (Stundensatz 0 = nur Pauschale).</div>
       </> : <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:"var(--text2)"}}>
         <span>Training: <b>{euroDE(satz.training)}</b></span>
         <span>Punktspiel: <b>{euroDE(satz.spiel)}</b></span>
         <span>Turnier: <b>{euroDE(satz.turnier)}</b></span>
-        <span style={{color:"var(--text4)"}}>je Stunde · Vorgabe durch den Admin</span>
+        <span style={{color:"var(--text4)"}}>je Stunde</span>
+        {(pauschale.spiel>0||pauschale.turnier>0)&&<span>Pauschalen: Punktspiel <b>{euroDE(pauschale.spiel)}</b> · Turnier <b>{euroDE(pauschale.turnier)}</b></span>}
+        <span style={{color:"var(--text4)"}}>Vorgabe durch den Admin</span>
       </div>}
     </div>
 
@@ -9957,7 +9981,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
             {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
             {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[k])}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
-          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel)}</div>
+          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
         </div>; })}
 
       {titel("🏆 Betreute Turniere", turniere.length)}
@@ -9973,7 +9997,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
       <div style={{marginTop:14,padding:"10px 12px",background:"var(--bg)",borderRadius:10,fontSize:12}}>
         {[["training","Trainings"],["spiel","Punktspiele"],["turnier","Turniere"]].map(([a,l])=>{ const r=rows.filter(x=>x.art===a); if(!r.length) return null;
           return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l}: {r.length} · {stundenDE(r.reduce((s,x)=>s+x.h,0))} Std.</span>
-            <span>{euroDE(r.reduce((s,x)=>s+x.h*x.satz,0))}</span></div>; })}
+            <span>{euroDE(r.reduce((s,x)=>s+betragVon(x),0))}</span></div>; })}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
           <span>Gesamt · {stundenDE(sStd)} Std.</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
       </div>
@@ -14170,6 +14194,48 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
     }
     onJumpHandled && onJumpHandled();
   },[jumpToId]);
+  // V538: Treffer der globalen Suche („Faksimile" …) – Kapitel und Abschnitt öffnen
+  useEffect(()=>{
+    const anwenden=()=>{
+      const z=window.__vwSuchZiel;
+      if(!z || Date.now()-(z.ts||0)>10000) return;
+      window.__vwSuchZiel=null;
+      setVwKapitel(z.k);
+      const auf={ rollen:()=>setShowRollen(true), dupletten:()=>setShowDupletten(true), alarmlog:()=>setShowAlarmLog(true),
+        login:()=>setShowP(p=>({...p,login:true})), liste:()=>setShowP(p=>({...p,liste:true})), uebersicht:()=>setShowP(p=>({...p,uebersicht:true})),
+        uebungsurkunden:()=>setShowUebungsUrkunden(true), trainingsurkunden:()=>setShowTrainingsUrkunden(true),
+        gruppennamen:()=>setShowGruppenNamen(true), kalender:()=>setShowKalender(true), trainingzr:()=>setShowTrainingZR(true),
+        trainingszeiten:()=>setShowTrainingszeiten(true), saisons:()=>setShowSaisons(true), turnierurkunde:()=>setShowTurnierUrkunde(true),
+        spiellokale:()=>setShowSpiellokale(true), halleninfo:()=>setShowHalleninfo(true), termine:()=>setShowTermine(true),
+        pushregeln:()=>setShowPushRegeln(true), sicherung:()=>setShowSicherung(true), appdesign:()=>setShowAppDesign(true),
+        farbschema:()=>setShowFarbschema(true), vereinsdaten:()=>setShowVereinsdaten(true), branding:()=>setShowBranding(true),
+        faksimile:()=>setShowFaksimile(true) };
+      if(String(z.a).startsWith("up:")) setShowUp(p=>({...p,[z.a.slice(3)]:true}));
+      else if(auf[z.a]) auf[z.a]();
+      // zur Überschrift scrollen (deutsch oder übersetzt), sobald sie gezeichnet ist
+      const ziele=[z.t, T(z.t)].map(x=>String(x).trim());
+      let n=0;
+      const tick=()=>{
+        n++;
+        const kand=[...document.querySelectorAll("div")].filter(d=>{ const tx=(d.textContent||"").trim();
+          return ziele.some(zt=>tx.startsWith(zt)) && tx.length<=ziele[0].length+40; });
+        kand.sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
+        const el=kand[0];
+        if(el){
+          const box=el.parentElement?.parentElement||el;
+          try{ window.scrollTo({top:box.getBoundingClientRect().top+window.scrollY-fixedHeaderOffset()-10, behavior:"smooth"}); }catch(e){}
+          const alt=box.style.boxShadow; box.style.boxShadow="0 0 0 3px var(--club-55, #c8102e55)";
+          setTimeout(()=>{ box.style.boxShadow=alt; }, 2500);
+          return;
+        }
+        if(n<15) setTimeout(tick,200);
+      };
+      setTimeout(tick,300);
+    };
+    anwenden();
+    window.addEventListener("ttc-vw-ziel", anwenden);
+    return ()=>window.removeEventListener("ttc-vw-ziel", anwenden);
+  },[]);
   const [showUploads,setShowUploads]=useState(false);    // Uploads section
   const [showUp,setShowUp]=useState({});                 // je Upload-Abschnitt auf/zu
   const [showHalleninfo,setShowHalleninfo]=useState(false); // Halleninfos section
@@ -18400,6 +18466,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     if(myGroup==="Gast" && gastAusblenden.includes(t.key)) return false;
     return true;
   });
+  useSuchKachelnMelden(TABS, SP_HOME_GRUPPEN);   // V538
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
 
   // Wenn der aktive Reiter für diese Gruppe ausgeblendet ist, auf "stats" zurück.
@@ -20830,6 +20897,70 @@ function FarbschemaVerwaltung({ showToast }){
   </div>;
 }
 
+// ─── V538: SUCHE NACH BEREICHEN ─────────────────────────────────────────────
+// Jede Ansicht meldet ihre Kacheln (nur die für die Person verfügbaren); die globale
+// Suche findet damit auch Bereiche und – für Super-Admins – Abschnitte der Verwaltung.
+let SUCH_BEREICHE_AKTIV = { kacheln:[], verwaltung:false };
+function useSuchKachelnMelden(tabs, gruppen){
+  const sig=(tabs||[]).map(t=>t.key).join(",");
+  useEffect(()=>{
+    const keys=new Set((tabs||[]).map(t=>t.key));
+    const items=[], gesehen=new Set();
+    for(const g of (gruppen||[])) for(const it of (g.items||[]))
+      if(keys.has(it.key) && !gesehen.has(it.key)){ gesehen.add(it.key); items.push({...it, gruppe:g.titel}); }
+    for(const t of (tabs||[]))
+      if(t.key!=="home" && !gesehen.has(t.key)){ gesehen.add(t.key); items.push({key:t.key, label:t.label, icon:t.icon, sub:""}); }
+    SUCH_BEREICHE_AKTIV={ kacheln:items, verwaltung:keys.has("verwaltung") };
+  },[sig]);
+}
+// Abschnitte der Verwaltung: a = Abschnitt-Schlüssel, k = Kapitel, t = Überschrift, w = Stichworte
+const VW_SUCH_ABSCHNITTE = [
+  {a:"rollen", k:"personen", t:"🔐 Admins & Rechte", w:"Rollen Rechte Admin Superadmin Berechtigung roles rights"},
+  {a:"dupletten", k:"personen", t:"⚠️ Doppelte Profile", w:"Doppelprofile Duplikate doppelt duplicate"},
+  {a:"alarmlog", k:"personen", t:"⚠️ Einsatz-Benachrichtigungen", w:"Alarm Protokoll Benachrichtigung Einsatz notification log"},
+  {a:"login", k:"personen", t:"🔑 Login & Passwort", w:"Anmeldung Passwort Login Reparatur Passwort-Mail password"},
+  {a:"liste", k:"personen", t:"👥 Personenverwaltung", w:"Personenliste Personen Spieler bearbeiten anlegen neu Ehrungen Urkunden Turniererfolge people"},
+  {a:"uebersicht", k:"personen", t:"📋 Personenübersicht", w:"Übersicht Tabelle Personen overview"},
+  {a:"uebungsurkunden", k:"training", t:"🏅 Übungs-Urkunden", w:"Urkunde Muster Übungen Anfänger Fortgeschrittene certificate"},
+  {a:"trainingsurkunden", k:"training", t:"🎖️ Trainingsteilnahme-Urkunden", w:"Urkunde Teilnahme Anwesenheit Muster Diamant Platin Gold certificate attendance"},
+  {a:"gruppennamen", k:"training", t:"🏷️ Gruppenbezeichnungen", w:"Gruppen Namen Bezeichnung groups"},
+  {a:"kalender", k:"training", t:"🗓️ Ferien, Feiertage & Sondertrainings", w:"Ferien Feiertage Sondertraining Trainingskalender holidays"},
+  {a:"trainingzr", k:"training", t:"📅 Trainingszeitraum", w:"Zeitraum Training Start Ende period"},
+  {a:"trainingszeiten", k:"training", t:"🕒 Trainingszeiten", w:"Zeiten Uhrzeit Training times"},
+  {a:"saisons", k:"wettkampf", t:"📆 Saisons & Mannschaften", w:"Saison Mannschaften Teams season"},
+  {a:"turnierurkunde", k:"wettkampf", t:"📜 Turnier-Urkunde", w:"Urkunde Vorlage Turnier Hintergrund certificate"},
+  {a:"spiellokale", k:"wettkampf", t:"🏟️ Spiellokale", w:"Halle Hallen Spiellokal Adresse venue"},
+  {a:"halleninfo", k:"kommunikation", t:"📣 Halleninfos", w:"Halleninfo Info Nachricht"},
+  {a:"termine", k:"kommunikation", t:"📌 Termin-Verwaltung", w:"Termine Vereinstermine Veranstaltung events"},
+  {a:"pushregeln", k:"kommunikation", t:"🔔 Push-Regeln", w:"Push Erinnerung Benachrichtigung reminder"},
+  {a:"sicherung", k:"system", t:"💾 Datensicherung", w:"Backup Sicherung Export"},
+  {a:"appdesign", k:"system", t:"🎨 App-Design", w:"Design Theme hell dunkel"},
+  {a:"farbschema", k:"system", t:"🎨 Farbschema", w:"Farben Vereinsfarbe colour color"},
+  {a:"vereinsdaten", k:"system", t:"🏢 Vereinsdaten", w:"Verein Name Ort Bank IBAN Kontakt club data"},
+  {a:"branding", k:"system", t:"🏛️ Vereins-Branding", w:"Logo Wappen Branding"},
+  {a:"faksimile", k:"system", t:"✍️ Unterschriften (Faksimile)", w:"Faksimile Unterschrift Signatur signature"},
+  {a:"up:artikelfotos", k:"uploads", t:"🖼️ Artikel-Fotos für Bestellungen", w:"Fotos Artikel Bestellung"},
+  {a:"up:bestellartikel", k:"uploads", t:"🛒 Bestellartikel & Preise", w:"Artikel Preise Bestellung"},
+  {a:"up:aufstellungen", k:"uploads", t:"📋 Aufstellungen", w:"Aufstellung Upload PDF"},
+  {a:"up:ehrungen", k:"uploads", t:"🏅 Ehrungen", w:"Ehrungen Import CSV"},
+  {a:"up:historie", k:"uploads", t:"📈 Historie Spiele (Bilanzen)", w:"Historie Bilanzen Upload"},
+  {a:"up:turniererfolge", k:"uploads", t:"🏆 Turniererfolge (Export/Import)", w:"Turniererfolge Export Import"},
+  {a:"up:mannschaftsfotos", k:"uploads", t:"📸 Mannschaftsfotos", w:"Fotos Mannschaft"},
+  {a:"up:personen", k:"uploads", t:"👥 Personen Export/Import", w:"Personen Export Import Excel"},
+  {a:"up:qttr", k:"uploads", t:"📊 QTTR-Liste", w:"QTTR TTR Liste"},
+  {a:"up:pins", k:"uploads", t:"🔑 Spiel-PINs und Spielcodes für Runden-Spiele", w:"PIN Spielcode"},
+  {a:"up:pinsPokal", k:"uploads", t:"🏆 Spiel-PINs und Spielcodes für Pokalspiele", w:"PIN Spielcode Pokal"},
+  {a:"up:spielerfotos", k:"uploads", t:"🧍 Spielerfotos", w:"Fotos Spieler"},
+  {a:"up:videos", k:"uploads", t:"🎬 Übungsvideos", w:"Videos Übungen"},
+  {a:"up:beitritte", k:"uploads", t:"📥 Vereinsbeitritte", w:"Beitritt Eintritt"},
+  {a:"up:spielplan", k:"uploads", t:"📅 Vereinsspielplan", w:"Spielplan Upload"},
+];
+// Vergleich unabhängig von Groß-/Kleinschreibung, Umlaut-Schreibweise und Trennstellen
+function suchNorm(x){
+  return String(x||"").toLowerCase().replace(/[\u00AD]/g,"").replace(/-/g,"")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
+}
+
 // ─── GLOBALE SUCHE ────────────────────────────────────────────────────────────
 // Lupe in der obersten Menuezeile. Durchsucht Personen, Spiele, Vereinstermine,
 // Halleninfos, Spiellokale und Trainingszeiten. Die Daten werden erst beim
@@ -20878,6 +21009,19 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
     if(such.length<2) return [];
     const hat=(...felder)=>felder.filter(Boolean).join(" ").toLowerCase().includes(such);
     const out=[];
+    // V538: Bereiche (Kacheln) und Verwaltungs-Abschnitte – deutsch und englisch
+    const sn=suchNorm(such);
+    const passt=(...f)=>suchNorm(f.filter(Boolean).map(x=>`${x} ${T(String(x))}`).join(" ")).includes(sn);
+    for(const it of (SUCH_BEREICHE_AKTIV.kacheln||[])){
+      if(passt(it.label, it.sub, it.gruppe))
+        out.push({art:"Bereich",icon:it.icon||"📂",ziel:it.key,titel:kachelLabel(it.label).replace(/\u00AD/g,""),zusatz:it.sub||""});
+    }
+    if(SUCH_BEREICHE_AKTIV.verwaltung){
+      for(const a of VW_SUCH_ABSCHNITTE){
+        if(passt(a.t, a.w))
+          out.push({art:"Verwaltung",icon:"⚙️",ziel:"verwaltung",vwZiel:a,titel:T(a.t),zusatz:T((VW_KAPITEL.find(k=>k.key===a.k)||{}).label||"")});
+      }
+    }
     for(const pl of (players||[])){
       if(hat(pl.firstName,pl.lastName,pl.group,pl.email))
         out.push({art:"Person",icon:"👤",ziel:"verwaltung",titel:`${pl.firstName||""} ${pl.lastName||""}`.trim(),zusatz:pl.group||""});
@@ -20931,8 +21075,8 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
         <div style={{overflowY:"auto",padding:"10px 13px 14px"}}>
           {such.length<2
             ? <div style={{fontSize:12,color:"var(--text3)",padding:"12px 0"}}>
-                Mindestens zwei Zeichen eingeben. Gesucht wird in Personen, Spielen, Terminen,
-                Halleninfos, Spiellokalen und Trainingszeiten.
+                Mindestens zwei Zeichen eingeben. Gesucht wird in Bereichen der App, Personen, Spielen,
+                Terminen, Halleninfos, Spiellokalen und Trainingszeiten.
               </div>
             : (!daten
                 ? <div style={{fontSize:12,color:"var(--text3)",padding:"12px 0"}}>⏳ Lade Daten …</div>
@@ -20943,7 +21087,10 @@ function GlobalSucheButton({ players=[], onNavigate=null, verfuegbar=null }){
                         {treffer.map((t,i)=>{
                           // Anklickbar, wenn der Zielbereich in dieser Ansicht vorhanden ist
                           const erreichbar = !!(onNavigate && t.ziel && (!verfuegbar || verfuegbar.has(t.ziel)));
-                          const springe = ()=>{ if(!erreichbar) return; schliessen(); onNavigate(t.ziel, t.id); };
+                          const springe = ()=>{ if(!erreichbar) return; schliessen();
+                            // V538: Abschnitt der Verwaltung merken – die Verwaltung öffnet ihn nach dem Wechsel
+                            if(t.vwZiel){ try{ window.__vwSuchZiel={...t.vwZiel, ts:Date.now()}; window.dispatchEvent(new CustomEvent("ttc-vw-ziel")); }catch(e){} }
+                            onNavigate(t.ziel, t.id); };
                           return <div key={i} onClick={springe} title={erreichbar?"Zum Bereich springen":undefined}
                             style={{display:"flex",alignItems:"center",gap:9,background:"var(--bg)",
                             border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:10,
@@ -28175,6 +28322,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     ...(isMF?[{key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
+  useSuchKachelnMelden(TABS, EW_HOME_GRUPPEN);   // V538
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
   const topOffset = 88;
