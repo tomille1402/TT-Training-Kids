@@ -1,4 +1,4 @@
-// === TTC-App · Version 536 · erstellt 14.10.2026 ===
+// === TTC-App · Version 537 · erstellt 15.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -96,7 +96,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "536";
+const APP_VERSION = "537";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -25420,7 +25420,7 @@ function buildICS(options){
       else end=icsAddMinutes(t.datumStart, t.uhrzeitStart||"00:00", dauerMin);
       const titel=`📌 ${t.veranstaltung||"Vereinstermin"}`;
       L.push("BEGIN:VEVENT");
-      L.push(`UID:${icsUid([t.datumStart,t.uhrzeitStart,t.veranstaltung])}`);
+      L.push(`UID:${icsUid([t.id||"",t.datumStart,t.uhrzeitStart,t.veranstaltung])}`);   // V537: inkl. Termin-ID
       L.push(`DTSTAMP:${stamp}`);
       L.push(`DTSTART:${start}`);
       if(end) L.push(`DTEND:${end}`);
@@ -25535,8 +25535,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
   const NACHWUCHS = alleMannschaften.filter(istNachwuchsMannschaft);
 
   // Verfügbare Rubriken: Standard-Liste + alle, die tatsächlich in Terminen vorkommen
-  const vorhandeneRubriken=[...new Set(vereinstermine.map(t=>t.rubrik||"Alle"))];
-  const alleRubriken=[...new Set([...TERMIN_RUBRIKEN, ...vorhandeneRubriken])];
+  const alleRubriken=alleTerminRubriken(vereinstermine);   // V537: vereinheitlichte Rubriken
 
   // Persistenz-Keys pro betrachteter Person (siehe Spielplan): Admin sieht beim
   // Springen zu einer Person deren Einstellungen, nicht die eigenen.
@@ -25565,7 +25564,8 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
   useEffect(()=>{
     if(kalUserSet||kalDefaultRef.current||!vorauswahlPlayer) return;
     kalDefaultRef.current=true;
-    setSelRubriken(istErwachseneView?["Alle","Erwachsene"]:["Alle","Nachwuchs"]);
+    setSelRubriken([...(istErwachseneView?["Alle","Erwachsene"]:["Alle","Nachwuchs"]),
+      ...(vorauswahlPlayer?.roles?.vorstand===true?["Vorstand"]:[])]);   // V537
     setPuffer(!istErwachseneView);
     if(!dauerManuell) setDauer(istErwachseneView?150:90);
   },[vorauswahlPlayer,istErwachseneView,kalUserSet,dauerManuell]);
@@ -25636,7 +25636,8 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
   function toggleRubrik(r){ setKalUserSet(true); setSelRubriken(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]); }
 
   // Vereinstermine nach ausgewählten Rubriken filtern (Termin ohne Rubrik zählt als "Alle")
-  const gefilterteTermine = vereinstermine.filter(t=>selRubriken.includes(t.rubrik||"Alle"));
+  const gefilterteTermine = vereinstermine.filter(t=>rubrikGewaehlt(selRubriken, terminRubrikVon(t)));   // V537
+  const nichtGewaehlteRubriken = [...new Set(vereinstermine.map(terminRubrikVon).filter(r=>!rubrikGewaehlt(selRubriken,r)))];
   const mitTermine = selRubriken.length>0;
 
   const icsOptions=()=>({
@@ -25666,8 +25667,8 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
     }
     params.set("vorlauf",String(vorlauf));
     params.set("dauer",String(dauer));
-    // Rubriken: nur setzen wenn nicht alle Standard-Rubriken gewählt sind
-    if(selRubriken.length>0 && !TERMIN_RUBRIKEN.every(r=>selRubriken.includes(r))){
+    // Rubriken: nur setzen wenn nicht alle Rubriken gewählt sind (V537: inkl. eigener Rubriken)
+    if(selRubriken.length>0 && !alleRubriken.every(r=>rubrikGewaehlt(selRubriken,r))){
       params.set("rubriken",selRubriken.join(","));
     } else if(selRubriken.length===0){
       params.set("rubriken","");  // keine Termine
@@ -25786,6 +25787,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":T`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
+        {selRubriken.length>0 && nichtGewaehlteRubriken.length>0 && <span> {vereinstermine.length-gefilterteTermine.length} weitere nicht gewählt ({nichtGewaehlteRubriken.join(", ")}).</span>}
       </div>
     </div>
 
@@ -25939,6 +25941,19 @@ const SPIELPLAN_COLS = [
 // V509: Terminorte aus den Vereinsdaten (kommagetrennt)
 const terminOrte = () => String(VEREIN.terminOrte||"").split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
 const TERMIN_RUBRIKEN = ["Alle","Erwachsene","Nachwuchs","Halle zu","Vorstand","Grenzau-Spiele"];
+// V537: Rubrik eines Termins vereinheitlicht – ohne Rubrik = „Alle"; Schreibvarianten
+// („alle", „Vorstand ") werden der Standard-Rubrik zugeordnet. Bisher fielen solche
+// Termine durch jeden Rubrik-Filter.
+function terminRubrikVon(t){
+  const r=String(t?.rubrik??"").trim();
+  if(!r) return "Alle";
+  return TERMIN_RUBRIKEN.find(x=>x.toLowerCase()===r.toLowerCase()) || r;
+}
+function rubrikGewaehlt(sel, r){ const k=String(r||"").trim().toLowerCase(); return (sel||[]).some(x=>String(x||"").trim().toLowerCase()===k); }
+// Alle Rubriken: Standard + tatsächlich vorkommende eigene Rubriken
+function alleTerminRubriken(termine){ return [...new Set([...TERMIN_RUBRIKEN, ...(termine||[]).map(terminRubrikVon)])]; }
+// V537: mehrtägige Termine gelten bis zu ihrem Ende als „aktuell" (Filter „ab heute")
+function terminBezugsDatum(t){ return (t?.datumEnde && t.datumEnde>(t.datumStart||"")) ? t.datumEnde : (t?.datumStart||""); }
 const TERMIN_TAGE = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 function terminTag(isoDatum){
   if(!isoDatum) return "";
@@ -26155,7 +26170,7 @@ function TermineView() {
     return d >= heuteISO_T;
   };
   const filtered=enriched.filter(t=>{
-    if(!imZeitraumT(t.datumStart)) return false;
+    if(!imZeitraumT(terminBezugsDatum(t))) return false;   // V537
     if(fVeranst&&!String(t.veranstaltung||"").toLowerCase().includes(fVeranst.toLowerCase())) return false;
     if(fOrt&&t.ort!==fOrt) return false;
     return true;
@@ -26365,6 +26380,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     } else {
       rubrikDefault = ["Alle","Nachwuchs"];
     }
+    if(vorauswahlPlayer?.roles?.vorstand===true) rubrikDefault=[...rubrikDefault,"Vorstand"];   // V537
     spVorauswahlRef.current=key;
     setFilters(f=>({...f,
       mannschaften:[match||spielplanTeam],
@@ -26561,9 +26577,9 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   const selSeasonStartjahr = spielplanKeyStartjahr(selSeason);
   const terminRows = (nurNachwuchs||detailFilterAktiv) ? [] : vereinstermine
     .filter(t=>{
-      if(!imZeitraum(t.datumStart)) return false;
+      if(!imZeitraum(terminBezugsDatum(t))) return false;   // V537: mehrtägig bis zum Ende
       // Rubrik-Filter: wenn gesetzt, nur passende Rubriken (Termin ohne Rubrik = "Alle")
-      if(Array.isArray(rubrikenSel) && rubrikenSel.length>0 && !rubrikenSel.includes(t.rubrik||"Alle")) return false;
+      if(Array.isArray(rubrikenSel) && rubrikenSel.length>0 && !rubrikGewaehlt(rubrikenSel, terminRubrikVon(t))) return false;
       // V524: leere Auswahl = keine Einschränkung (wie die Beschriftung „Termine“ ohne Zahl).
       // Bis V523 blendete eine leere Liste ALLE Termine aus – das trat z. B. nach dem
       // Zurücksetzen der Filter (✕) dauerhaft ein, weil die Filter gespeichert werden.
@@ -26581,10 +26597,15 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
       gegner:t.veranstaltung||"",
       ergebnis:"",
       aenderung:"",
-      _rubrik:t.rubrik||"Alle",
+      _rubrik:terminRubrikVon(t),
       _datumEnde:t.datumEnde,
       _uhrzeitEnde:t.uhrzeitEnde,
     }));
+  // V537: Termine, die NUR wegen des Rubrik-Filters fehlen (für den Hinweis)
+  const termineRubrikAusgeblendet = (nurNachwuchs||detailFilterAktiv||!Array.isArray(rubrikenSel)||rubrikenSel.length===0) ? [] :
+    vereinstermine.filter(t=>imZeitraum(terminBezugsDatum(t))
+      && (selSeasonStartjahr==null || terminSaisonStartjahr(t.datumStart)===selSeasonStartjahr)
+      && !rubrikGewaehlt(rubrikenSel, terminRubrikVon(t)));
   // zusammenführen und nach Datum sortieren wenn nach Datum sortiert wird
   const sorted = (()=>{
     if(terminRows.length===0) return sorted0;
@@ -26645,7 +26666,8 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
         </select>
         {/* Vereinstermin-Rubriken Multi-Select (Alle/Nachwuchs/Erwachsene/Grenzau-Spiele) */}
         {(()=>{
-          const RUBRIKEN=["Alle","Nachwuchs","Erwachsene","Halle zu","Grenzau-Spiele"];
+          // V537: alle Rubriken (inkl. „Vorstand" und eigener Rubriken aus der Termin-Verwaltung)
+          const RUBRIKEN=alleTerminRubriken(vereinstermine);
           const selR=filters.rubriken||[];
           return <select value="" onChange={e=>{
               const r=e.target.value; if(!r) return;
@@ -26719,6 +26741,11 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
           <button onClick={()=>setFilters({zeitraum:"neu",_userSet:true})} style={{flex:"0 0 auto",padding:"5px 8px",background:"#ef444422",border:"none",borderRadius:7,color:"#ef4444",fontSize:10,cursor:"pointer"}}>✕</button>}
       </div>;
     })()}
+    {/* V537: Hinweis, wenn Vereinstermine durch den Termin-Filter ausgeblendet sind */}
+    {termineRubrikAusgeblendet.length>0 && <div style={{fontSize:11,color:"var(--text3)",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:8,padding:"5px 9px",marginBottom:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <span>📌 {termineRubrikAusgeblendet.length} Vereinstermin{termineRubrikAusgeblendet.length===1?"":"e"} ausgeblendet (Termine-Filter: {[...new Set(termineRubrikAusgeblendet.map(terminRubrikVon))].join(", ")})</span>
+      <button onClick={()=>setFilters(p=>({...p,_userSet:true,rubriken:[]}))} style={{padding:"2px 8px",background:"var(--club-12, #c8102e1f)",border:"1px solid var(--club-55, #c8102e55)",borderRadius:6,color:"var(--club, #c8102e)",fontSize:11,fontWeight:700,cursor:"pointer"}}>alle Termine zeigen</button>
+    </div>}
     {/* Ausgewählte Mannschaften als Chips */}
     {(filters.mannschaften||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
       {(filters.mannschaften||[]).map(m=>{
