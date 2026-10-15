@@ -1,4 +1,4 @@
-// === TTC-App · Version 519 · netlify/functions/calendar.js · erstellt 07.10.2026 (V519: Kalender-Abo je Verein) ===
+// === TTC-App · Version 537 · netlify/functions/calendar.js · erstellt 15.10.2026 (V537: Rubriken vereinheitlicht, eindeutige Termin-UID) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -154,7 +154,7 @@ function buildICS(opts){
       else if(t.uhrzeitEnde) end=icsDateTime(t.datumStart,t.uhrzeitEnde);
       else end=icsAddMinutes(t.datumStart,t.uhrzeitStart||"00:00",dauerMin);
       const titel=`📌 ${t.veranstaltung||"Vereinstermin"}`;
-      L.push("BEGIN:VEVENT",`UID:${icsUid([t.datumStart,t.uhrzeitStart,t.veranstaltung])}`,`DTSTAMP:${stamp}`,`DTSTART:${start}`);
+      L.push("BEGIN:VEVENT",`UID:${icsUid([t.id||"",t.datumStart,t.uhrzeitStart,t.veranstaltung])}`,`DTSTAMP:${stamp}`,`DTSTART:${start}`);
       if(end) L.push(`DTEND:${end}`);
       L.push(`SUMMARY:${icsEscape(titel)}`);
       if(t.ort) L.push(`LOCATION:${icsEscape(t.ort)}`);
@@ -224,8 +224,9 @@ exports.handler = async (event) => {
       vereinstermine=(vt&&vt.termine)||[];
       // nach Rubriken filtern, falls der Parameter gesetzt ist (leer = keine Termine)
       if(q.rubriken!=null){
-        const rub=q.rubriken?q.rubriken.split(",").map(s=>s.trim()).filter(Boolean):[];
-        vereinstermine=vereinstermine.filter(t=>rub.includes(t.rubrik||"Alle"));
+        // V537: Vergleich ohne Groß-/Kleinschreibung und Leerzeichen; Termin ohne Rubrik = „Alle"
+        const rub=q.rubriken?q.rubriken.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean):[];
+        vereinstermine=vereinstermine.filter(t=>rub.includes(String(t.rubrik||"").trim().toLowerCase()||"alle"));
       }
     }
     // Betreuer/Fahrer aus dem datensparsamen, öffentlich lesbaren Spiegeldokument
