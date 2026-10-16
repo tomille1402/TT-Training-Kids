@@ -3,6 +3,7 @@
 // zusammengesetzte Texte (T`…`). Fehlende Einträge werden deutsch angezeigt.
 // V539: „~“ markiert weiche Trennstellen für Kacheln (wird in normalem Text entfernt).
 export const EN_TEXTE = {
+"Bank": "Bank",  // V543
 "Weihnachtsferien 2025/26": "Christmas holidays 2025/26",
 "Osterferien 2026": "Easter holidays 2026",
 "Sommerferien 2026": "Summer holidays 2026",

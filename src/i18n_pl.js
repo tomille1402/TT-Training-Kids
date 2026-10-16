@@ -2,6 +2,7 @@
 // Wörterbuch Polnisch: deutscher Anzeigetext → Übersetzung. Platzhalter {0},{1} … wie im englischen
 // Wörterbuch. „~“ markiert weiche Trennstellen (nur in Kacheln). Fehlende Einträge werden deutsch angezeigt.
 export const PL_TEXTE = {
+"Bank": "Bank",  // V543
 "Weihnachtsferien 2025/26": "Ferie bożonarodzeniowe 2025/26",
 "Osterferien 2026": "Ferie wielkanocne 2026",
 "Sommerferien 2026": "Wakacje letnie 2026",
@@ -1349,7 +1350,7 @@ export const PL_TEXTE = {
 "Detail-Text …": "Tekst szczegółowy …",
 "Datum:": "Data:",
 "📌 oben fixieren": "📌 przypnij u góry",
-" · {0} Foto{1}": " · zdjęcia: {0}{1}",
+" · {0} Foto{1}": " · zdjęcia: {0}",
 "Fixierung aufheben": "Odepnij",
 "Oben fixieren": "Przypnij u góry",
 "Aktuell sind keine Trainingszeiten hinterlegt.": "Obecnie brak zapisanych godzin treningów.",

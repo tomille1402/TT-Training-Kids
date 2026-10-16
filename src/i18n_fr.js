@@ -2,6 +2,7 @@
 // Wörterbuch Französisch: deutscher Anzeigetext → Übersetzung. Platzhalter {0},{1} … wie im englischen
 // Wörterbuch. „~“ markiert weiche Trennstellen (nur in Kacheln). Fehlende Einträge werden deutsch angezeigt.
 export const FR_TEXTE = {
+"Bank": "Banque",  // V543
 "Weihnachtsferien 2025/26": "Vacances de Noël 2025/26",
 "Osterferien 2026": "Vacances de Pâques 2026",
 "Sommerferien 2026": "Vacances d'été 2026",

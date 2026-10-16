@@ -2,6 +2,7 @@
 // Wörterbuch Rumänisch: deutscher Anzeigetext → Übersetzung. Platzhalter {0},{1} … wie im englischen
 // Wörterbuch. „~“ markiert weiche Trennstellen (nur in Kacheln). Fehlende Einträge werden deutsch angezeigt.
 export const RO_TEXTE = {
+"Bank": "Bancă",  // V543
 "Weihnachtsferien 2025/26": "Vacanța de Crăciun 2025/26",
 "Osterferien 2026": "Vacanța de Paște 2026",
 "Sommerferien 2026": "Vacanța de vară 2026",
@@ -1349,7 +1350,7 @@ export const RO_TEXTE = {
 "Detail-Text …": "Text detaliat …",
 "Datum:": "Dată:",
 "📌 oben fixieren": "📌 fixează sus",
-" · {0} Foto{1}": " · fotografii: {0}{1}",
+" · {0} Foto{1}": " · fotografii: {0}",
 "Fixierung aufheben": "Anulează fixarea",
 "Oben fixieren": "Fixează sus",
 "Aktuell sind keine Trainingszeiten hinterlegt.": "Momentan nu sunt înregistrate ore de antrenament.",
