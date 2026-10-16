@@ -1,4 +1,4 @@
-// === TTC-App · Version 540 · erstellt 16.10.2026 ===
+// === TTC-App · Version 541 · erstellt 16.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -25,6 +25,7 @@ import { firebaseConfig } from "./firebaseConfig";
 import { EN_TEXTE } from "./i18n_en";
 import { FR_TEXTE } from "./i18n_fr";   // V539
 import { PL_TEXTE } from "./i18n_pl";   // V539
+import { RO_TEXTE } from "./i18n_ro";   // V541
 
 // ─── V521: Zweisprachigkeit (Deutsch / Englisch) ─────────────────────────────
 // Die Sprache gilt je Nutzer und Gerät (localStorage „ttc_sprache“, Standard Deutsch).
@@ -36,11 +37,12 @@ import { PL_TEXTE } from "./i18n_pl";   // V539
 // Ausdrucke, Exporte, Urkunden, Kalender und Push-Nachrichten bleiben deutsch.
 // V539: Deutsch, Englisch, Französisch, Polnisch. IST_EN bedeutet seit V539 „Übersetzung aktiv"
 // (jede Sprache außer Deutsch) – der Name bleibt, damit bestehende Stellen unverändert gelten.
-const SPRACHEN = ["de","en","fr","pl"];
+// V541: zusätzlich Rumänisch.
+const SPRACHEN = ["de","en","fr","pl","ro"];
 const SPRACHE = (()=>{ try{ const x=localStorage.getItem("ttc_sprache"); return SPRACHEN.includes(x) ? x : "de"; }catch(e){ return "de"; } })();
 const IST_EN = SPRACHE!=="de";
-const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL"})[SPRACHE] || "de-DE";
-const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE})[SPRACHE] || {};
+const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL", ro:"ro-RO"})[SPRACHE] || "de-DE";
+const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE, ro:RO_TEXTE})[SPRACHE] || {};
 // „~" in einer Übersetzung = weiche Trennstelle (nur in Kacheln sichtbar, sonst entfernt)
 function ohneTrennMarker(v){ return typeof v==="string" ? v.replace(/(\S)~(?=\S)/g,"$1") : v; }
 let _trExakt=null, _trNorm=null;
@@ -130,7 +132,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "540";
+const APP_VERSION = "541";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1131,11 +1133,12 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
 // V521: Spracheinstellung in der Verwaltung (V522: auch in „Meine Verwaltung“ aller Nutzer)
 function SprachEinstellung(){
   const opt=[{sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"},
-    {sp:"fr",flag:"🇫🇷",label:"Français"},{sp:"pl",flag:"🇵🇱",label:"Polski"}];   // V539
+    {sp:"fr",flag:"🇫🇷",label:"Français"},{sp:"pl",flag:"🇵🇱",label:"Polski"},
+    {sp:"ro",flag:"🇷🇴",label:"Română"}];   // V539, V541: Rumänisch
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
-    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język</div>
+    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia
+      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:8}}>
       {opt.map(o=>{ const aktiv=SPRACHE===o.sp;
