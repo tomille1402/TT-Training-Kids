@@ -1,4 +1,4 @@
-// === TTC-App · Version 538 · erstellt 15.10.2026 ===
+// === TTC-App · Version 539 · erstellt 15.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -23,6 +23,8 @@ import {
 } from "firebase/storage";
 import { firebaseConfig } from "./firebaseConfig";
 import { EN_TEXTE } from "./i18n_en";
+import { FR_TEXTE } from "./i18n_fr";   // V539
+import { PL_TEXTE } from "./i18n_pl";   // V539
 
 // ─── V521: Zweisprachigkeit (Deutsch / Englisch) ─────────────────────────────
 // Die Sprache gilt je Nutzer und Gerät (localStorage „ttc_sprache“, Standard Deutsch).
@@ -32,16 +34,23 @@ import { EN_TEXTE } from "./i18n_en";
 // Status …) bleiben intern deutsch – nur die Anzeige wird übersetzt. Zusammengesetzte Texte
 // (Vorlagen mit ${…}) sind mit T`…` markiert; alert/confirm/prompt-Texte mit T("…").
 // Ausdrucke, Exporte, Urkunden, Kalender und Push-Nachrichten bleiben deutsch.
-const SPRACHE = (()=>{ try{ return localStorage.getItem("ttc_sprache")==="en" ? "en" : "de"; }catch(e){ return "de"; } })();
-const IST_EN = SPRACHE==="en";
-const SPR_LOC = IST_EN ? "en-GB" : "de-DE";
+// V539: Deutsch, Englisch, Französisch, Polnisch. IST_EN bedeutet seit V539 „Übersetzung aktiv"
+// (jede Sprache außer Deutsch) – der Name bleibt, damit bestehende Stellen unverändert gelten.
+const SPRACHEN = ["de","en","fr","pl"];
+const SPRACHE = (()=>{ try{ const x=localStorage.getItem("ttc_sprache"); return SPRACHEN.includes(x) ? x : "de"; }catch(e){ return "de"; } })();
+const IST_EN = SPRACHE!=="de";
+const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL"})[SPRACHE] || "de-DE";
+const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE})[SPRACHE] || {};
+// „~" in einer Übersetzung = weiche Trennstelle (nur in Kacheln sichtbar, sonst entfernt)
+function ohneTrennMarker(v){ return typeof v==="string" ? v.replace(/(\S)~(?=\S)/g,"$1") : v; }
 let _trExakt=null, _trNorm=null;
 function _trLaden(){
   if(_trExakt) return;
   _trExakt=new Map(); _trNorm=new Map();
-  for(const k of Object.keys(EN_TEXTE)){ const v=EN_TEXTE[k]; _trExakt.set(k,v); _trNorm.set(k.replace(/\s+/g," ").trim(),v); }
+  for(const k of Object.keys(SPR_TEXTE)){ const v=SPR_TEXTE[k]; _trExakt.set(k,v); _trNorm.set(k.replace(/\s+/g," ").trim(),v); }
 }
-function trText(s){
+// Übersetzung mit Trennstellen-Markern „~" (für Kacheln)
+function trRoh(s){
   if(!IST_EN || typeof s!=="string" || s.length<2) return s;
   _trLaden();
   const d=_trExakt.get(s); if(d!==undefined) return d;
@@ -50,6 +59,7 @@ function trText(s){
   const e=_trNorm.get(kern.replace(/\s+/g," "));
   return e!==undefined ? m[1]+e+m[3] : s;
 }
+function trText(s){ const r=trRoh(s); return r===s ? s : ohneTrennMarker(r); }
 const _trVorlagen=new WeakMap();
 function _trJoin(st,v){ let r=st[0]; for(let i=1;i<st.length;i++) r+=String(v[i-1])+st[i]; return r; }
 // T("Text") oder T`Text ${x}` – liefert den Text in der eingestellten Sprache.
@@ -88,7 +98,7 @@ function ttcH(type, props, ...children){
 }
 // Sprache wechseln: speichern und App neu laden (alle Texte werden neu aufgebaut).
 function spracheSetzen(sp){
-  try{ if(sp==="en") localStorage.setItem("ttc_sprache","en"); else localStorage.removeItem("ttc_sprache"); }catch(e){}
+  try{ if(SPRACHEN.includes(sp) && sp!=="de") localStorage.setItem("ttc_sprache",sp); else localStorage.removeItem("ttc_sprache"); }catch(e){}
   try{ window.location.reload(); }catch(e){}
 }
 if(typeof window!=="undefined"){ window.__ttcSprache={ sprache:SPRACHE, h:ttcH, T }; }
@@ -96,7 +106,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "538";
+const APP_VERSION = "539";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1096,13 +1106,14 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
 
 // V521: Spracheinstellung in der Verwaltung (V522: auch in „Meine Verwaltung“ aller Nutzer)
 function SprachEinstellung(){
-  const opt=[{sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"}];
+  const opt=[{sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"},
+    {sp:"fr",flag:"🇫🇷",label:"Français"},{sp:"pl",flag:"🇵🇱",label:"Polski"}];   // V539
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderLeft:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
-    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language</div>
+    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-      Persönliche Einstellung für dieses Gerät · Personal setting for this device
+      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia
     </div>
-    <div style={{display:"flex",gap:8}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:8}}>
       {opt.map(o=>{ const aktiv=SPRACHE===o.sp;
         return <button key={o.sp} onClick={()=>{ if(!aktiv) spracheSetzen(o.sp); }} style={{
           flex:1,padding:"10px 8px",borderRadius:9,fontWeight:700,cursor:aktiv?"default":"pointer",fontSize:13,
@@ -8793,11 +8804,13 @@ function kachelLabel(label){
   // V538: zuerst übersetzen (mit und ohne Trennstelle nachschlagen), dann weiche
   // Trennstellen setzen. Bisher wurde das Trennzeichen vorher eingefügt – das
   // Wörterbuch fand „Verwal­tung" dann nicht, die Kachel blieb deutsch.
-  let s=String(label||"");
+  // V539: Übersetzungen tragen ihre Trennstellen als „~" (grammatikalisch korrekt je Sprache);
+  // echte Bindestriche („Line-up") bleiben sichtbar. Deutsch wie bisher: „Verwal-tung".
+  const s=String(label||"");
   if(IST_EN){
-    const t=trText(s);
-    if(t!==s) s=t;
-    else { const ohne=s.replace(/([a-zäöüß])-([a-zäöüß])/g,"$1$2"); const t2=trText(ohne); if(t2!==ohne) s=t2; }
+    let t=trRoh(s);
+    if(t===s){ const ohne=s.replace(/([a-zäöüß])-([a-zäöüß])/g,"$1$2"); const t2=trRoh(ohne); if(t2!==ohne) t=t2; }
+    if(t!==s) return String(t).replace(/(\S)~(?=\S)/g,"$1\u00AD");
   }
   return s.replace(/([a-zäöüß])-([a-zäöüß])/g,"$1\u00AD$2");
 }
