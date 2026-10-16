@@ -1,4 +1,4 @@
-// === TTC-App · Version 539 · erstellt 15.10.2026 ===
+// === TTC-App · Version 540 · erstellt 16.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -57,7 +57,25 @@ function trRoh(s){
   const m=/^(\s*)([\s\S]*?)(\s*)$/.exec(s); const kern=m[2];
   if(!kern || !/[A-Za-zÄÖÜäöüß]/.test(kern)) return s;
   const e=_trNorm.get(kern.replace(/\s+/g," "));
-  return e!==undefined ? m[1]+e+m[3] : s;
+  if(e!==undefined) return m[1]+e+m[3];
+  // V540: Texte mit Zahlen („100 Spiele“, „2,5 Stunden“) über eine Vorlage mit {0} … übersetzen
+  if(/\d/.test(kern)){
+    const zahlen=[]; const vorl=kern.replace(/\s+/g," ").replace(/\d+(?:[.,:]\d+)*/g,z=>{ zahlen.push(z); return "{"+(zahlen.length-1)+"}"; });
+    const v=_trNorm.get(vorl);
+    if(v!==undefined) return m[1]+v.replace(/\{(\d+)\}/g,(x,i)=> zahlen[+i]!==undefined?zahlen[+i]:x)+m[3];
+  }
+  // V540: führende Datums-/Zahlenangabe („01.01. Neujahr“, „3. Kreisklasse“) – Rest übersetzen
+  const pz=/^([\d.,:/]+\.?\s+)(\S[\s\S]*)$/.exec(kern);
+  if(pz){ const y=trRoh(pz[2]); if(y!==pz[2]) return m[1]+pz[1]+y+m[3]; }
+  // V540: Aufzählungen aus Einzelbegriffen („Profis, Anfänger“, „Anfänger · aktiv“)
+  // teilweise übersetzen – jeder bekannte Teil wird übersetzt, Namen bleiben.
+  for(const sep of [", "," · "," / "]){
+    if(!kern.includes(sep)) continue;
+    let geaendert=false;
+    const teile=kern.split(sep).map(x=>{ const y=trRoh(x); if(y!==x) geaendert=true; return y; });
+    if(geaendert) return m[1]+teile.join(sep)+m[3];
+  }
+  return s;
 }
 function trText(s){ const r=trRoh(s); return r===s ? s : ohneTrennMarker(r); }
 const _trVorlagen=new WeakMap();
@@ -72,7 +90,8 @@ function T(s,...v){
       const tr=trText(key); pat = tr===key ? null : tr; _trVorlagen.set(s,pat);
     }
     if(pat===null) return _trJoin(s,v);
-    return pat.replace(/\{(\d+)\}/g,(m,i)=> (+i)<v.length ? String(v[+i]) : m);
+    // V540: eingesetzte Texte (z. B. Gruppen- oder Mannschaftsnamen) ebenfalls übersetzen
+    return pat.replace(/\{(\d+)\}/g,(m,i)=> (+i)<v.length ? (typeof v[+i]==="string" ? trText(v[+i]) : String(v[+i])) : m);
   }
   return trText(s);
 }
@@ -81,7 +100,12 @@ function beginntMit(text, wort){ const s=String(text||""); return s.startsWith(w
 const _TR_ATTR=["title","placeholder","alt","aria-label"];
 // JSX-Fabrik: übersetzt Texte an HTML-Elementen, Komponenten bleiben unverändert.
 function ttcH(type, props, ...children){
-  if(IST_EN && typeof type==="string" && type!=="style" && type!=="script"){
+  // V540: auch Texte direkt in <>…</> bzw. <React.Fragment> übersetzen (bisher blieben sie deutsch)
+  if(IST_EN && ((typeof type==="string" && type!=="style" && type!=="script") || type===React.Fragment)){
+    // V540: <option> ohne value übernimmt sonst den übersetzten Text als Wert – Original sichern
+    if(type==="option" && !(props && "value" in props) && children.length===1 && typeof children[0]==="string"){
+      const t=trText(children[0]); if(t!==children[0]){ props={...(props||{}), value:children[0]}; children[0]=t; }
+    }
     for(let i=0;i<children.length;i++){
       const c=children[i];
       if(typeof c==="string") children[i]=trText(c);
@@ -106,7 +130,7 @@ try{ if(typeof document!=="undefined") document.documentElement.lang=SPRACHE; }c
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "539";
+const APP_VERSION = "540";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1099,7 +1123,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
         </div>
       )}
       <div style={{textAlign:"center",fontSize:12,color:"var(--text4)",marginTop:16}}>{clubConfig.loginFooter||"Noch kein Konto? Wende dich an deinen Trainer."}</div>
-      <div style={{textAlign:"center",fontSize:11,color:"var(--text4)",marginTop:10,opacity:0.7}}>Version {APP_VERSION} · {APP_DATUM}</div>
+      <div style={{textAlign:"center",fontSize:11,color:"var(--text4)",marginTop:10,opacity:0.7}}>{T`Version ${APP_VERSION} · ${APP_DATUM}`}</div>
     </div>
   </div>;
 }
@@ -1287,14 +1311,14 @@ function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
       </div>
     </div>
 
-    <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} von {rows.length} Personen</div>
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{T`${sorted.length} von ${rows.length} Personen`}</div>
 
     {/* Tabelle mit fixiertem Kopf */}
     <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
       <table style={{borderCollapse:"collapse",width:"100%",minWidth:920,tableLayout:"auto"}}>
         <thead>
           <tr>
-            <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+            <th style={th} onClick={()=>toggleSort("status")}>{T`Status${arrow("status")}`}</th>
             <th style={th} onClick={()=>toggleSort("gruppe")}>Gruppe{arrow("gruppe")}</th>
             <th style={{...thSpieler,left:0,zIndex:3}} onClick={()=>toggleSort("spieler")}>Spieler{arrow("spieler")}</th>
             <th style={th} onClick={()=>toggleSort("mutter")}>Mutter{arrow("mutter")}</th>
@@ -1303,8 +1327,8 @@ function ElternTab({ players, isSuperAdmin=false, onSpielerKlick=null }) {
             <th style={th} onClick={()=>toggleSort("handyV")}>Handy Vater{arrow("handyV")}</th>
             <th style={th} onClick={()=>toggleSort("mailM")}>E-Mail Mutter{arrow("mailM")}</th>
             <th style={th} onClick={()=>toggleSort("mailV")}>E-Mail Vater{arrow("mailV")}</th>
-            <th style={th} onClick={()=>toggleSort("login")}>Login{arrow("login")}</th>
-            <th style={th} onClick={()=>toggleSort("push")}>Push{arrow("push")}</th>
+            <th style={th} onClick={()=>toggleSort("login")}>{T`Login${arrow("login")}`}</th>
+            <th style={th} onClick={()=>toggleSort("push")}>{T`Push${arrow("push")}`}</th>
           </tr>
         </thead>
         <tbody>
@@ -1702,10 +1726,10 @@ async function ladePdfJsLib(){
   await new Promise((res,rej)=>{
     const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden."));
+    s.onload=res; s.onerror=()=>rej(new Error(T("pdf.js konnte nicht geladen werden.")));
     document.head.appendChild(s);
   });
-  if(!window.pdfjsLib) throw new Error("pdf.js nicht verfügbar.");
+  if(!window.pdfjsLib) throw new Error(T("pdf.js nicht verfügbar."));
   window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   return window.pdfjsLib;
 }
@@ -2017,10 +2041,10 @@ async function ladeExcelJsLib(){
   await new Promise((res,rej)=>{
     const sc=document.createElement("script");
     sc.src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js";
-    sc.onload=res; sc.onerror=()=>rej(new Error("ExcelJS konnte nicht geladen werden."));
+    sc.onload=res; sc.onerror=()=>rej(new Error(T("ExcelJS konnte nicht geladen werden.")));
     document.head.appendChild(sc);
   });
-  if(!window.ExcelJS) throw new Error("ExcelJS nicht verfügbar.");
+  if(!window.ExcelJS) throw new Error(T("ExcelJS nicht verfügbar."));
   return window.ExcelJS;
 }
 
@@ -2194,10 +2218,10 @@ async function ladeXlsxLib(){
   await new Promise((res,rej)=>{
     const sc=document.createElement("script");
     sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    sc.onload=res; sc.onerror=()=>rej(new Error("SheetJS konnte nicht geladen werden."));
+    sc.onload=res; sc.onerror=()=>rej(new Error(T("SheetJS konnte nicht geladen werden.")));
     document.head.appendChild(sc);
   });
-  if(!window.XLSX) throw new Error("SheetJS nicht verfügbar.");
+  if(!window.XLSX) throw new Error(T("SheetJS nicht verfügbar."));
   return window.XLSX;
 }
 
@@ -4427,9 +4451,7 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
             background:"var(--bg)",border:"1px solid var(--border)",borderRadius:8,marginBottom:5}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{g.firstName} {g.lastName}</div>
-              <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>
-                {g.verein} · QTTR {g.qttr} · geb. {String(g.birthdate||"").split("-").reverse().join(".")}
-              </div>
+              <div style={{fontSize:10,color:"var(--text4)",marginTop:2}}>{T`${g.verein} · QTTR ${g.qttr} · geb. ${String(g.birthdate||"").split("-").reverse().join(".")}`}</div>
             </div>
             {isAdmin && <button onClick={()=>gastEntfernen(g.id)} title="Gast entfernen" style={{
               background:"#ef444422",border:"1px solid #ef444444",borderRadius:7,color:"#ef4444",
@@ -4485,13 +4507,9 @@ function SchweizerSystem({ konk, updKonk, players, qttrVon, isAdmin, darfAlle, m
         style={{padding:"9px 14px",borderRadius:9,border:"none",fontSize:12,fontWeight:800,
           background:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"var(--bg3)":"#8b5cf6",
           color:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"var(--text4)":"#fff",
-          cursor:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"default":"pointer"}}>
-        🎲 Runde {Math.min(gespielteRunden+1,runden)} auslosen
-      </button>
+          cursor:(teilnehmer.length<2||gespielteRunden>=runden||(gespielteRunden>0&&!laufendeFertig))?"default":"pointer"}}>{T`🎲 Runde ${Math.min(gespielteRunden+1,runden)} auslosen`}</button>
       {gespielteRunden>0 && <button onClick={letzteRundeVerwerfen} style={{padding:"9px 14px",borderRadius:9,
-        border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text3)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-        Runde {gespielteRunden} verwerfen
-      </button>}
+        border:"1px solid var(--border2)",background:"var(--bg2)",color:"var(--text3)",fontSize:12,fontWeight:700,cursor:"pointer"}}>{T`Runde ${gespielteRunden} verwerfen`}</button>}
     </div>}
     {isAdmin && gespielteRunden>0 && !laufendeFertig && gespielteRunden<runden &&
       <div style={{fontSize:11,color:"var(--text4)",marginBottom:12}}>
@@ -5751,10 +5769,10 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
       await new Promise((res,rej)=>{
         const s=document.createElement("script");
         s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-        s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden."));
+        s.onload=res; s.onerror=()=>rej(new Error(T("jsPDF konnte nicht geladen werden.")));
         document.head.appendChild(s);
       });
-      if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
+      if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error(T("jsPDF nicht verfügbar."));
       return window.jspdf.jsPDF;
     }
 
@@ -6734,7 +6752,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                 </div>
               ))}
             </div>
-            {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>… und {wartendRest} weitere</div>}
+            {wartendRest>0 && <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>{T`… und ${wartendRest} weitere`}</div>}
           </div>}
         </div>}
       </div>;
@@ -6927,9 +6945,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
             {/* Hinweis, wenn die eingestellte Gruppenzahl von der tatsächlichen abweicht */}
             {isAdmin && Number(konk.anzahlGruppen)!==konk.gruppen.length && <div style={{marginBottom:12,padding:"8px 10px",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:9,fontSize:11,color:"var(--text2)"}}>
               Eingestellt sind {konk.anzahlGruppen} Gruppen, aktuell gibt es {konk.gruppen.length}.
-              <button onClick={gruppenAnzahlAnpassen} style={{marginLeft:8,padding:"4px 10px",background:"#f59e0b",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                auf {konk.anzahlGruppen} anpassen
-              </button>
+              <button onClick={gruppenAnzahlAnpassen} style={{marginLeft:8,padding:"4px 10px",background:"#f59e0b",border:"none",borderRadius:7,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>{T`auf ${konk.anzahlGruppen} anpassen`}</button>
             </div>}
             {/* Pool nicht zugeteilter Teilnehmer */}
             {isAdmin && pool.length>0 && <div style={{marginBottom:12}}>
@@ -7046,9 +7062,7 @@ function TurnierDetail({ turnier, players, qttrVon, ttrStichtag, isAdmin, isTrai
                         {fixiert && <span style={{fontSize:10,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ gespeichert</span>}
                         {!fixiert && anzahlTische>0 && tischMapG[gk(konk.key,`g_${sp._idx}`)] && <span style={{fontSize:10,color:"#fff",fontWeight:800,flexShrink:0,background:"#10b981",borderRadius:6,padding:"2px 7px"}}>Tisch {tischMapG[gk(konk.key,`g_${sp._idx}`)]}</span>}
                       </div>
-                      {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>
-                        Vorgabe: {nameVon(vg.gibtVor)} gibt {vg.pts} Punkt(e)/Satz vor
-                      </div>}
+                      {vg && <div style={{fontSize:10,color:"#f59e0b",fontWeight:700,marginBottom:6}}>{T`Vorgabe: ${nameVon(vg.gibtVor)} gibt ${vg.pts} Punkt(e)/Satz vor`}</div>}
                       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                         {Array.from({length:anzahlSichtbareSaetze(sp.saetze, konk.gewinnsaetze??3)}).map((_,si)=>{
                           const satz=sp.saetze[si]||["",""];
@@ -8484,9 +8498,7 @@ function DoppelKoTableau({ konk, players, qttrVon, isAdmin, isTrainer, myPlayer,
   return <div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {isAdmin && <button onClick={tableauNeuSetzen} style={{padding:"6px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>↻ neu setzen nach QTTR</button>}
-      {isAdmin && fehlende.length>0 && <button onClick={fehlendeEinfuegen} style={{padding:"6px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-        + {fehlende.length} neue{fehlende.length===1?"n":""} Teilnehmer einfügen
-      </button>}
+      {isAdmin && fehlende.length>0 && <button onClick={fehlendeEinfuegen} style={{padding:"6px 11px",background:"#8b5cf6",border:"none",borderRadius:8,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>{fehlende.length===1?T`+ ${fehlende.length} neuen Teilnehmer einfügen`:T`+ ${fehlende.length} neue Teilnehmer einfügen`}</button>}
       {isAdmin && tippSlot!=null && <span style={{fontSize:11,color:"#8b5cf6",fontWeight:700,alignSelf:"center"}}>Zielposition antippen zum Tauschen…</span>}
     </div>
     {isAdmin && <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
@@ -8680,7 +8692,7 @@ function UrkundenTab({ players, isSuperAdmin, onSpielerKlick=null }){
         <thead>
           <tr>
             {kopf("group","Gruppe",{width:W_GROUP})}
-            <th onClick={()=>toggleSort("name")} style={{...nameStickHead,width:W_NAME}} title="Klicken zum Sortieren">Name{pfeil("name")}</th>
+            <th onClick={()=>toggleSort("name")} style={{...nameStickHead,width:W_NAME}} title="Klicken zum Sortieren">{T`Name${pfeil("name")}`}</th>
             {kopf("af","⭐AF",{width:W_STAR})}
             {kopf("fg","⭐FG",{width:W_STAR})}
             {kopf("sum","⭐Σ",{width:W_STAR})}
@@ -8905,9 +8917,9 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
     const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
     // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
     const wt=wochentagKurz(s.datum||"");
-    const d=m?`${wt?wt+". ":""}${m[3]}.${m[2]}.`:(s.datum||"");
+    const d=m?`${wt?T(wt+".")+" ":""}${m[3]}.${m[2]}.`:(s.datum||"");
     const heim=/heim/i.test(s.ort||"");
-    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+    return `${d}${s.uhrzeit?T` ${s.uhrzeit} Uhr`:""} · ${heim?T("Heim"):T("Auswärts")}`;
   };
   const teamZuSpielTR = (s)=>{
     if(!s) return null;
@@ -8936,9 +8948,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
       <div style={{fontSize:12,color:labelFarbe,marginBottom:3,fontWeight:600}}>
         {alleVereinsspiele?(rot?"Nächstes Spiel":"Spiel"):(rot?"Nächstes Nachwuchsspiel":"Nachwuchsspiel")} · {spielMetaTR(s)}
       </div>
-      <div style={{fontSize:16,color:titelFarbe,fontWeight:700,lineHeight:1.25}}>
-        {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}{s.art==="Pokal"?" (Pokalspiel)":""}
-      </div>
+      <div style={{fontSize:16,color:titelFarbe,fontWeight:700,lineHeight:1.25}}>{T`${s.mannschaft||T("Mannschaft")} gegen ${s.gegner||T("Gegner")}${s.art==="Pokal"?T(" (Pokalspiel)"):""}`}</div>
       {verlegStatusVon(s)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
         ⚠️ wird verlegt
       </div>}
@@ -8957,7 +8967,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
         {pin&&<span style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,
           padding:"7px 10px",borderRadius:9,fontVariantNumeric:"tabular-nums",
           ...(rot?{background:"#ffffff22",color:"#fff",border:"1px solid #ffffff55"}
-                 :{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"})}}>🔑 PIN {pin}</span>}
+                 :{background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border2)"})}}>{T`🔑 PIN ${pin}`}</span>}
       </div>
     </div>;
   };
@@ -9000,7 +9010,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
-            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>{T`NEU ${halleninfoNeu}`}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
@@ -9458,7 +9468,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               <div key={i} style={{fontSize:11,color:"var(--text2)",display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                 <span style={{fontSize:10,color:"var(--text4)"}}>{a.type==="beginner"?"Anfänger:":"Fortgeschr.:"}</span>
                 <AwardBadge award={a} small/>
-                <span>noch {a.needed} ★</span>
+                <span>{T`noch ${a.needed} ★`}</span>
               </div>
             ))}
           </div>}
@@ -9914,11 +9924,11 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
 
     {/* Stundensätze */}
     <div style={karte}>
-      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>💶 Stundensätze {isSuperAdmin?"(Vorgabe Admin)":""}</div>
+      <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>{T`💶 Stundensätze ${isSuperAdmin?T("(Vorgabe Admin)"):""}`}</div>
       {isSuperAdmin && satzForm ? <>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           {[["training","Training"],["punktspiel","Betreuung Punktspiel"],["turnier","Betreuung Turnier"]].map(([k,l])=>
-            <div key={k}><label style={lab}>{l} (€/Std.)</label>
+            <div key={k}><label style={lab}>{T`${l} (€/Std.)`}</label>
               <input type="text" inputMode="decimal" value={satzForm[k]} onChange={e=>setSatzForm(f=>({...f,[k]:e.target.value}))} placeholder="0,00" style={inp}/></div>)}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:8}}>
@@ -9979,7 +9989,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
         return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
           <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
           <div style={{fontSize:12}}>{formatDayDE(d)}, {formatDateDE(d)}
-            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[k])}</div>}</div>
+            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.training)}</div>
         </div>; })}
@@ -9992,7 +10002,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
           <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
             <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
             {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
-            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>abgerechnet am {formatDateDE(abgerechnet[k])}</div>}</div>
+            {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
         </div>; })}
@@ -10009,10 +10019,10 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
 
       <div style={{marginTop:14,padding:"10px 12px",background:"var(--bg)",borderRadius:10,fontSize:12}}>
         {[["training","Trainings"],["spiel","Punktspiele"],["turnier","Turniere"]].map(([a,l])=>{ const r=rows.filter(x=>x.art===a); if(!r.length) return null;
-          return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l}: {r.length} · {stundenDE(r.reduce((s,x)=>s+x.h,0))} Std.</span>
+          return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{T`${l}: ${r.length} · ${stundenDE(r.reduce((s,x)=>s+x.h,0))} Std.`}</span>
             <span>{euroDE(r.reduce((s,x)=>s+betragVon(x),0))}</span></div>; })}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
-          <span>Gesamt · {stundenDE(sStd)} Std.</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
+          <span>{T`Gesamt · ${stundenDE(sStd)} Std.`}</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
       </div>
       <button onClick={pdfErstellen} disabled={!!ausgabe?.laeuft} style={{marginTop:12,width:"100%",padding:12,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>📄 Abrechnung als PDF erstellen</button>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Danach: per E-Mail versenden, teilen/drucken oder speichern. Trainings und Spiele werden als abgerechnet vermerkt.</div>
@@ -10023,7 +10033,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
       <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🗂️ Bisherige Abrechnungen</div>
       {[...(daten.historie||[])].reverse().map(h=><div key={h.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
         <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Positionen · {stundenDE(h.stunden)} Std.
-          <div style={{fontSize:10,color:"var(--text3)"}}>erstellt am {formatDateDE(h.erstellt)}</div></div>
+          <div style={{fontSize:10,color:"var(--text3)"}}>{T`erstellt am ${formatDateDE(h.erstellt)}`}</div></div>
         <div style={{fontSize:12,fontWeight:800}}>{euroDE(h.betrag)}</div>
         <button onClick={()=>historieLoeschen(h.id)} style={{padding:"2px 7px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
       </div>)}
@@ -10115,7 +10125,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
           const dow=new Date(d).getDay();
           // V515: Hinweis, wenn an diesem Wochentag nur eine Gruppe trainiert
           const nurGr=["Profis","Fortgeschrittene","Anfänger"].filter(g=>gruppeTrainiertAn(g,d));
-          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${nurGr.length===1?` (nur ${gName(nurGr[0])})`:""}`;
+          const label=`${formatDayDE(d)}, ${formatDateDE(d)}${nurGr.length===1?T` (nur ${gName(nurGr[0])})`:""}`;
           return <option key={d} value={d}>{label}</option>;
         })}
       </select>
@@ -10405,7 +10415,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick,onUrkundeKlick=null}) {
         Zeitraum: {formatDateDE(trainingRange.start)} – {formatDateDE(trainingRange.end)}
       </div>
     )}
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Urkunden: {TB_LEGENDE}</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>{T`Urkunden: ${TB_LEGENDE}`}</div>
     {ranked.map((player,idx)=>{
       const medal = tbMedaille(player.present, player.total);   // V530: fünf Stufen
       const tbF = tbFarbe(player.present, player.total);
@@ -10424,9 +10434,9 @@ function TeilnahmeTab({players,attendance,onPlayerClick,onUrkundeKlick=null}) {
             <div style={{width:`${player.pct}%`,height:"100%",background:tbF,borderRadius:6,transition:"width .5s"}}/>
           </div>
           <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)",flexWrap:"wrap"}}>
-            <span>✓ {player.present} anwesend</span>
-            <span>{player.excused} entsch.</span>
-            <span>{player.unexcused} unentsch.</span>
+            <span>{T`✓ ${player.present} anwesend`}</span>
+            <span>{T`${player.excused} entsch.`}</span>
+            <span>{T`${player.unexcused} unentsch.`}</span>
             <span>Gesamt: {player.total}</span>
           </div>
         </div>
@@ -10701,7 +10711,7 @@ function komprimiereBild(file, opts={}){
       img.onload=()=>{
         try{
           let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
-          if(!w||!h){ reject(new Error("Das Bild konnte nicht gelesen werden.")); return; }
+          if(!w||!h){ reject(new Error(T("Das Bild konnte nicht gelesen werden."))); return; }
           const skala=Math.min(1, maxBreite/w, maxHoehe/h);
           w=Math.round(w*skala); h=Math.round(h*skala);
           const canvas=document.createElement("canvas");
@@ -10713,16 +10723,16 @@ function komprimiereBild(file, opts={}){
           // Qualität schrittweise senken, bis die Data-URL klein genug ist.
           while(out.length>maxLen && q>0.4){ q-=0.1; out=canvas.toDataURL("image/jpeg", q); }
           if(out.length>maxLen){
-            reject(new Error("Die Vorlage ist auch nach Komprimierung zu groß. Bitte ein kleineres oder einfacheres Bild wählen."));
+            reject(new Error(T("Die Vorlage ist auch nach Komprimierung zu groß. Bitte ein kleineres oder einfacheres Bild wählen.")));
             return;
           }
           resolve(out);
-        }catch(e){ reject(new Error("Das Bild konnte nicht verarbeitet werden.")); }
+        }catch(e){ reject(new Error(T("Das Bild konnte nicht verarbeitet werden."))); }
       };
-      img.onerror=()=>reject(new Error("Das Bild konnte nicht geladen werden."));
+      img.onerror=()=>reject(new Error(T("Das Bild konnte nicht geladen werden.")));
       img.src=reader.result;
     };
-    reader.onerror=()=>reject(new Error("Die Datei konnte nicht gelesen werden."));
+    reader.onerror=()=>reject(new Error(T("Die Datei konnte nicht gelesen werden.")));
     reader.readAsDataURL(file);
   });
 }
@@ -11007,7 +11017,7 @@ function TrainingsUrkundenEditor({showToast}) {
       const blob=await trainingsUrkundePdfErzeugen({ stufeKey:probeStufe, vor:"Maximilian", nach:"Mustermann",
         datumIso:new Date().toLocaleDateString("sv"),
         stats:{present, total, exakt:present*100/total, start:"2025-09-01", ende:"2026-06-30"} });
-      if(!blob) throw new Error("Muster fehlt.");
+      if(!blob) throw new Error(T("Muster fehlt."));
       setProbe({ blob, url:URL.createObjectURL(blob), dateiname:"Probe-Trainingsurkunde.pdf", titel:"Probe-Urkunde" });
     }catch(e){ setProbe(null); window.alert(T("Probe-Urkunde fehlgeschlagen:\n")+(e&&e.message||e)); }
   }
@@ -11850,7 +11860,7 @@ async function alteAblageLoeschen(meldung){
 }
 
 async function ausSicherungWiederherstellen(daten, zielWurzel, meldung){
-  if(!daten || daten.format!=="ttc-app-sicherung") throw new Error("Keine gültige Sicherungsdatei.");
+  if(!daten || daten.format!=="ttc-app-sicherung") throw new Error(T("Keine gültige Sicherungsdatei."));
   const ref=(...seg)=>fsDoc(db, ...zielWurzel, ...seg);
   const schreiben=[];
   for(const [name,docs] of Object.entries(daten.sammlungen||{}))
@@ -12102,11 +12112,7 @@ function TrainingskalenderEditor({showToast}){
   const jahre=kalenderJahre();
   const feiertageAnzeige=jahre.map(j=>({j, liste:gesetzlicheFeiertage(j,!!k.fronleichnam)}));
   return <div>
-    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.55}}>
-      An diesen Tagen findet kein reguläres Training statt; Sondertrainings gelten zusätzlich (auch in
-      den Ferien). Bereits erfasste Anwesenheiten bleiben erhalten. Trainingstage werden ab 2026 bis
-      Ende {jahre[jahre.length-1]} gebildet.
-    </div>
+    <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.55}}>{T`An diesen Tagen findet kein reguläres Training statt; Sondertrainings gelten zusätzlich (auch in den Ferien). Bereits erfasste Anwesenheiten bleiben erhalten. Trainingstage werden ab 2026 bis Ende ${jahre[jahre.length-1]} gebildet.`}</div>
     {nieGespeichert && <div style={{fontSize:11,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:8,padding:"8px 10px",marginTop:10,lineHeight:1.55}}>
       Noch nicht gespeichert – angezeigt wird die bisherige Vorbelegung. Bitte die Ferien der kommenden Zeit ergänzen und speichern.
     </div>}
@@ -12149,7 +12155,7 @@ function TrainingskalenderEditor({showToast}){
       <input type="checkbox" checked={!!k.fronleichnam} onChange={e=>setK(x=>({...x,fronleichnam:e.target.checked}))}/> Fronleichnam ist Feiertag (z. B. Hessen, Bayern, NRW)
     </label>
     <div style={{fontSize:10,color:"var(--text3)",lineHeight:1.6}}>
-      {feiertageAnzeige.map(({j,liste})=><div key={j}><b>{j}:</b> {liste.map(f=>`${deD(f.datum).slice(0,6)} ${f.name}`).join(" · ")}</div>)}
+      {feiertageAnzeige.map(({j,liste})=><div key={j}><b>{j}:</b> {liste.map(f=>`${deD(f.datum).slice(0,6)} ${T(f.name)}`).join(" · ")}</div>)}
     </div>
 
     <div style={titel}>➕ Sondertrainings (zusätzlich, auch in den Ferien)</div>
@@ -12625,7 +12631,7 @@ function EhrungenImport({players, showToast}) {
       const text=await new Promise((res,rej)=>{
         const r=new FileReader();
         r.onload=()=>res(r.result);
-        r.onerror=()=>rej(new Error("Datei konnte nicht gelesen werden"));
+        r.onerror=()=>rej(new Error(T("Datei konnte nicht gelesen werden")));
         r.readAsText(file,"ISO-8859-1");
       });
       const rows=parseEhrungenCSV(text);
@@ -12934,7 +12940,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
         <FilterChips title="Datenschutz" options={[["ja","zugestimmt"],["nein","offen"]]} sel={dsFilter} setSel={setDsFilter}/>
         <FilterChips title="Push-Nachrichten" options={[["erteilt","✅ erteilt"],["abgelehnt","🚫 abgelehnt"],["offen","⏳ offen"]]} sel={pushFilter} setSel={setPushFilter}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4,paddingBottom:6}}>
-          <span style={{fontSize:10,color:"var(--text4)"}}>{sorted.length} von {rows.length} · Spalten anklicken zum Sortieren</span>
+          <span style={{fontSize:10,color:"var(--text4)"}}>{T`${sorted.length} von ${rows.length} · Spalten anklicken zum Sortieren`}</span>
           {anzFilterAktiv>0&&<button onClick={()=>{setNameFilter("");setFunktFilter([]);setGruppeFilter([]);setStatusFilter([]);setDsFilter([]);setPushFilter([]);}}
             style={{padding:"3px 9px",fontSize:10,fontWeight:700,background:"transparent",border:"1px solid var(--border2)",borderRadius:12,color:"var(--text3)",cursor:"pointer"}}>Filter zurücksetzen</button>}
         </div>
@@ -12943,12 +12949,12 @@ function PersonenUebersicht({players, eingebettet=false}) {
         <table style={{borderCollapse:"collapse",width:"auto"}}>
           <thead>
             <tr>
-              <th style={th} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
+              <th style={th} onClick={()=>toggleSort("name")}>{T`Name${arrow("name")}`}</th>
               <th style={th} onClick={()=>toggleSort("funktionen")}>Funkt.{arrow("funktionen")}</th>
               <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
-              <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
-              <th style={th} onClick={()=>toggleSort("datenschutz")}>DS{arrow("datenschutz")}</th>
-              <th style={th} onClick={()=>toggleSort("push")}>Push{arrow("push")}</th>
+              <th style={th} onClick={()=>toggleSort("status")}>{T`Status${arrow("status")}`}</th>
+              <th style={th} onClick={()=>toggleSort("datenschutz")}>{T`DS${arrow("datenschutz")}`}</th>
+              <th style={th} onClick={()=>toggleSort("push")}>{T`Push${arrow("push")}`}</th>
               <th style={th} onClick={()=>toggleSort("betreuung")}># Betreuung{arrow("betreuung")}</th>
             </tr>
           </thead>
@@ -13483,16 +13489,16 @@ function TtrView({ players }) {
           </div>
         </div>
 
-        <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{sorted.length} von {rows.length} Personen</div>
+        <div style={{fontSize:10,color:"var(--text4)",marginBottom:6}}>{T`${sorted.length} von ${rows.length} Personen`}</div>
 
         {/* Tabelle mit fixiertem Kopf */}
         <div style={{overflow:"auto",maxHeight:"70vh",border:"1px solid var(--border)",borderRadius:10}}>
           <table style={{borderCollapse:"collapse",width:"100%",minWidth:720}}>
             <thead>
               <tr>
-                <th style={{...th,left:0,zIndex:3}} onClick={()=>toggleSort("name")}>Name{arrow("name")}</th>
+                <th style={{...th,left:0,zIndex:3}} onClick={()=>toggleSort("name")}>{T`Name${arrow("name")}`}</th>
                 <th style={th} onClick={()=>toggleSort("gruppe")}>Erw./NW{arrow("gruppe")}</th>
-                <th style={th} onClick={()=>toggleSort("status")}>Status{arrow("status")}</th>
+                <th style={th} onClick={()=>toggleSort("status")}>{T`Status${arrow("status")}`}</th>
                 <th style={th} onClick={()=>toggleSort("dQ")}>Δ Quartal{arrow("dQ")}</th>
                 <th style={th} onClick={()=>toggleSort("dJ")}>Δ Jahr{arrow("dJ")}</th>
                 {zeigeLeereSpalte && <th style={th}>{stLabel(naechsterStichtag)}</th>}
@@ -13550,7 +13556,7 @@ function TtrUpload({ showToast }){
     await new Promise((res,rej)=>{
       const s=document.createElement("script");
       s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+      s.onload=res; s.onerror=()=>rej(new Error(T("pdf.js konnte nicht geladen werden")));
       document.head.appendChild(s);
     });
     if(window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -13558,7 +13564,7 @@ function TtrUpload({ showToast }){
   }
   async function pdfZuZeilen(file){
     const pdfjs=await loadPdfJs();
-    if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+    if(!pdfjs) throw new Error(T("pdf.js nicht verfügbar"));
     const buf=await file.arrayBuffer();
     const pdf=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;
     const zeilen=[];
@@ -13738,12 +13744,12 @@ async function ladeJsPDF_V(){
   if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
   await new Promise((res,rej)=>{ const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden.")); document.head.appendChild(s); });
-  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfügbar.");
+    s.onload=res; s.onerror=()=>rej(new Error(T("jsPDF konnte nicht geladen werden."))); document.head.appendChild(s); });
+  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error(T("jsPDF nicht verfügbar."));
   return window.jspdf.jsPDF;
 }
 async function fontBase64(url){
-  const r=await fetch(url); if(!r.ok) throw new Error("Font-Download fehlgeschlagen");
+  const r=await fetch(url); if(!r.ok) throw new Error(T("Font-Download fehlgeschlagen"));
   const buf=await r.arrayBuffer(); let bin=""; const bytes=new Uint8Array(buf);
   for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
   return btoa(bin);
@@ -13755,7 +13761,7 @@ async function kalamVorladen(){
   try{
     URK_CACHE.kalam = await Promise.race([
       fontBase64("https://cdn.jsdelivr.net/gh/google/fonts/ofl/kalam/Kalam-Regular.ttf"),
-      new Promise((_,rej)=>setTimeout(()=>rej(new Error("Zeitüberschreitung")),4000)),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error(T("Zeitüberschreitung"))),4000)),
     ]);
   }catch(e){ URK_CACHE.kalam = null; }
 }
@@ -13772,7 +13778,7 @@ async function registriereFonts(pdf){
     // V496: Kalam nur einmal laden (max. 4 s); ein Fehlschlag wird gemerkt, damit nicht
     // jede weitere Urkunde erneut auf das Netz wartet.
     if(URK_CACHE.kalam===undefined) await kalamVorladen();
-    if(!URK_CACHE.kalam) throw new Error("Kalam nicht verfügbar");
+    if(!URK_CACHE.kalam) throw new Error(T("Kalam nicht verfügbar"));
     VerwaltungTab._fontDate = URK_CACHE.kalam;
     pdf.addFileToVFS("Kalam.ttf", VerwaltungTab._fontDate);
     pdf.addFont("Kalam.ttf","Kalam","normal");
@@ -14333,7 +14339,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         if(window.XLSX){res(window.XLSX);return;}
         const sc=document.createElement("script");
         sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-        sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+        sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error(T("SheetJS nicht geladen")));
         document.head.appendChild(sc);
       });
       const ab=await file.arrayBuffer();
@@ -14389,7 +14395,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
     return new Promise((res,rej)=>{
       const sc=document.createElement("script");
       sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-      sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+      sc.onload=()=>res(window.XLSX); sc.onerror=()=>rej(new Error(T("SheetJS nicht geladen")));
       document.head.appendChild(sc);
     });
   }
@@ -15152,13 +15158,11 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
       return <div style={{background:"#f59e0b14",border:"1px solid #f59e0b55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}
           onClick={()=>setZeigeLoginProbleme(v=>!v)}>
-          <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>
-            🔑 Login-Status ({kritisch} von {alleAktiv.length} ohne echtes Login)
-          </div>
+          <div style={{fontSize:13,fontWeight:800,color:"#b45309"}}>{T`🔑 Login-Status (${kritisch} von ${alleAktiv.length} ohne echtes Login)`}</div>
           <span style={{fontSize:13,color:"#b45309"}}>{zeigeLoginProbleme?"▲":"▼"}</span>
         </div>
         {zeigeLoginProbleme && <><div style={{fontSize:11,color:"var(--text2)",marginTop:6,lineHeight:1.5}}>
-          Hier sind <b>alle {alleAktiv.length} aktiven Personen</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
+          Hier sind <b>{T`alle ${alleAktiv.length} aktiven Personen`}</b> mit ihrem Login-Status. Bei „Platzhalter-Adresse" oder
           „kein Login" kommt keine Passwort-Mail an. Über „Login einrichten" kannst du bei <b>jeder</b> Person eine echte
           E-Mail setzen (bzw. das Login auf die echte Adresse umstellen) — alle Daten bleiben erhalten.
         </div>
@@ -15220,7 +15224,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         </button>
         {sammelLog && <div style={{marginTop:10,padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:9,fontSize:11}}>
           <div style={{fontWeight:700,marginBottom:4}}>Ergebnis</div>
-          <div style={{color:"#10b981"}}>✅ {sammelLog.ok.length} erledigt{sammelLog.mail.length>0?T`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}</div>
+          <div style={{color:"#10b981"}}>{T`✅ ${sammelLog.ok.length} erledigt${sammelLog.mail.length>0?T`, davon ${sammelLog.mail.length} Passwort-Mail verschickt`:""}`}</div>
           {sammelLog.fehler.length>0 && <div style={{color:"#ef4444",marginTop:4}}>
             ⚠️ {sammelLog.fehler.length} Fehler:
             {sammelLog.fehler.map((f,i)=><div key={i} style={{color:"#fca5a5",marginLeft:8}}>• {f.p.firstName} {f.p.lastName}: {f.grund}</div>)}
@@ -15388,7 +15392,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
           {personenSuche&&<button onClick={()=>setPersonenSuche("")} style={{padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text2)",fontSize:12,cursor:"pointer"}}>✕</button>}
         </div>
         <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
-          <button onClick={()=>setPersonenGruppe("alle")} style={chip(gruppeAktiv==="alle",TTC_ROT)}>Alle ({basis.filter(p=>personenPassiv||p.status!=="passiv").length})</button>
+          <button onClick={()=>setPersonenGruppe("alle")} style={chip(gruppeAktiv==="alle",TTC_ROT)}>{T`Alle (${basis.filter(p=>personenPassiv||p.status!=="passiv").length})`}</button>
           {gruppen.map(g=>{ const n=basis.filter(p=>(p.group||"Anfänger")===g && (personenPassiv||p.status!=="passiv")).length;
             return <button key={g} onClick={()=>setPersonenGruppe(g)} style={chip(gruppeAktiv===g,PERS_GRP_COL[g]||"#6b7280")}>{gName(g)} ({n})</button>; })}
           <button onClick={()=>setPersonenPassiv(v=>!v)} style={{...chip(false,"#6b7280"),marginLeft:"auto",color:personenPassiv?"var(--text2)":"var(--text4)"}}>
@@ -15440,7 +15444,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   <Avatar avatar={editPlayer.avatar} color={p.color} size={44}/>
                   <span style={{position:"absolute",bottom:-2,right:-2,fontSize:12,background:"var(--bg3)",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
                 </div>
-                <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{editPlayer.firstName} {editPlayer.lastName} bearbeiten</div>
+                <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{T`${editPlayer.firstName} ${editPlayer.lastName} bearbeiten`}</div>
               </div>
               {/* V527: Daten der Person in zugeklappten Abschnitten */}
               {abschnitt("funktionen","🎭 Funktionen", funktionenInfo, ()=><>
@@ -15542,7 +15546,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
               </div>
               </>)}
 
-              {editPlayer.roles?.player===true && abschnitt("eltern","👪 Eltern-Login", [editPlayer.elternEmail1,editPlayer.elternEmail2].filter(Boolean).length+" Login(s)", ()=><>
+              {editPlayer.roles?.player===true && abschnitt("eltern","👪 Eltern-Login", T`${[editPlayer.elternEmail1,editPlayer.elternEmail2].filter(Boolean).length} Login(s)`, ()=><>
               {/* Hinweis: Das frühere separate Eltern-Login-Feld ist entfallen. Die beiden
                   E-Mail-Felder bei „Eltern" (unten) dienen jetzt als eigenständige Logins –
                   so können sich z.B. getrennt lebende Eltern unabhängig anmelden. */}
@@ -15680,7 +15684,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
 
               </>)}
 
-              {abschnitt("training","📅 Training und Vereinsbeitritt", editPlayer.joinDate?("Beitritt "+editPlayer.joinDate.split("-").reverse().join(".")):"", ()=><>
+              {abschnitt("training","📅 Training und Vereinsbeitritt", editPlayer.joinDate?T`Beitritt ${editPlayer.joinDate.split("-").reverse().join(".")}`:"", ()=><>
               {/* Individueller Trainingszeitraum */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
@@ -15861,14 +15865,10 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   <div style={{fontSize:11,color:"var(--text2)",marginBottom:8,lineHeight:1.5,background:"var(--bg2)",borderRadius:8,padding:"7px 9px"}}>
                     {stats.total
                       ? <>Aktuell <b>{stats.present}</b> von {stats.total} Trainings · <b>{prozentDE(stats.exakt)} %</b>
-                          {stats.start?<> · Zeitraum {formatDateDE(stats.start)} bis {formatDateDE(stats.ende)}</>:null}</>
+                          {stats.start?<>{T` · Zeitraum ${formatDateDE(stats.start)} bis ${formatDateDE(stats.ende)}`}</>:null}</>
                       : "Im Trainingszeitraum sind noch keine Trainings erfasst."}
                   </div>
-                  <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.4}}>
-                    Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung.
-                    Jeder Spieler erhält genau eine Urkunde: die höchste erreichte Stufe ({TB_LEGENDE}).
-                    Hier das Datum der Vergabe eintragen; „📄 PDF“ erzeugt die Urkunde.
-                  </div>
+                  <div style={{fontSize:10,color:"var(--text4)",marginBottom:8,lineHeight:1.4}}>{T`Die Beteiligung ergibt sich automatisch aus dem Trainingszeitraum in der Teilnahme-Auswertung. Jeder Spieler erhält genau eine Urkunde: die höchste erreichte Stufe (${TB_LEGENDE}). Hier das Datum der Vergabe eintragen; „📄 PDF“ erzeugt die Urkunde.`}</div>
                   {(()=>{
                     // V530: genau eine Urkunde – die höchste erreichte Stufe
                     const st=trainingsUrkundeStufe(stats.present, stats.total);
@@ -15876,7 +15876,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                     return <>
                       {st ? <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
                           <span style={{fontSize:18}}>{st.emoji}</span>
-                          <div style={{flex:1,fontSize:12,color:"var(--text)",fontWeight:700}}>Urkunde {tbStufeLabel(st)}</div>
+                          <div style={{flex:1,fontSize:12,color:"var(--text)",fontWeight:700}}>{T`Urkunde ${tbStufeLabel(st)}`}</div>
                           <input type="date" id={urkundeDatumFeldId(editPlayer.id, st.datumKey)} value={editPlayer[st.datumKey]||""}
                             onChange={e=>setEditPlayer(prev=>({...prev,[st.datumKey]:e.target.value}))}
                             style={{padding:"5px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:11,outline:"none"}}/>
@@ -15885,13 +15885,11 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                             onClick={()=>trainingsUrkundePdf(editPlayer, st, editPlayer[st.datumKey], stats)}
                             style={{padding:"4px 9px",background:"var(--club, #c8102e)",border:"none",borderRadius:6,color:"#fff",fontSize:11,fontWeight:800,cursor:urkAusgabe?.laeuft?"wait":"pointer",whiteSpace:"nowrap"}}>📄 PDF</button>
                         </div>
-                        : <div style={{fontSize:11,color:"var(--text3)",marginBottom:7}}>
-                            Keine Urkunde – Anwesenheitsquote unter 70 %{stats.total?` (aktuell ${prozentDE(stats.exakt)} %)`:""}.
-                          </div>}
+                        : <div style={{fontSize:11,color:"var(--text3)",marginBottom:7}}>{T`Keine Urkunde – Anwesenheitsquote unter 70 %${stats.total?T` (aktuell ${prozentDE(stats.exakt)} %)`:""}.`}</div>}
                       {andere.length>0 && <div style={{fontSize:10,color:"#b45309",background:"#f59e0b11",border:"1px solid #f59e0b44",borderRadius:7,padding:"6px 8px",marginTop:4}}>
                         Früher eingetragen (andere Stufe):
                         {andere.map(x=><div key={x.datumKey} style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-                          <span>{x.emoji} {x.stufe} am {formatDateDE(editPlayer[x.datumKey])}</span>
+                          <span>{T`${x.emoji} ${x.stufe} am ${formatDateDE(editPlayer[x.datumKey])}`}</span>
                           <button onClick={()=>setEditPlayer(p=>({...p,[x.datumKey]:""}))} style={{padding:"1px 6px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:5,color:"var(--text3)",fontSize:10,cursor:"pointer"}}>✕ entfernen</button>
                         </div>)}
                       </div>}
@@ -16591,9 +16589,7 @@ function SchlaegerTab({rackets,players,showToast}) {
       <div style={{fontSize:17,fontWeight:800}}>🏓 Schlägerverwaltung</div>
       <div style={{display:"flex",gap:6}}>
         {hasFilters&&<button onClick={clearFilters} style={{padding:"5px 10px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:7,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕ Filter löschen</button>}
-        <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"var(--border)",border:`1px solid ${showFilters?"#3b82f6":"var(--border2)"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>
-          🔍 Filter {showFilters?"ausblenden":"anzeigen"}
-        </button>
+        <button onClick={()=>setShowFilters(f=>!f)} style={{padding:"5px 10px",background:showFilters?"#3b82f622":"var(--border)",border:`1px solid ${showFilters?"#3b82f6":"var(--border2)"}`,borderRadius:7,color:showFilters?"#3b82f6":"#9ca3af",fontSize:11,cursor:"pointer"}}>{T`🔍 Filter ${showFilters?T("ausblenden"):T("anzeigen")}`}</button>
       </div>
     </div>
 
@@ -16939,8 +16935,8 @@ function BestellungenView({me, isAdmin=false, showToast}) {
         Bitte überweise den Gesamtbetrag von <b>{eur(summe)}</b> auf das Vereinskonto:
         <div style={{marginTop:8,padding:"10px 12px",background:"var(--bg3)",borderRadius:8,fontSize:12}}>
           <div><b>Kontoinhaber:</b> {VEREIN_KONTO.inhaber}</div>
-          <div><b>IBAN ({VEREIN_KONTO.bank}):</b> {VEREIN_KONTO.iban}</div>
-          <div><b>BIC ({VEREIN_KONTO.bank}):</b> {VEREIN_KONTO.bic}</div>
+          <div><b>{T`IBAN (${VEREIN_KONTO.bank}):`}</b> {VEREIN_KONTO.iban}</div>
+          <div><b>{T`BIC (${VEREIN_KONTO.bank}):`}</b> {VEREIN_KONTO.bic}</div>
           <div><b>Betreff:</b> Bestellung Textilien für {me.firstName} {me.lastName}</div>
         </div>
       </div>
@@ -17139,7 +17135,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
           if(window.XLSX){ res(window.XLSX); return; }
           const sc2=document.createElement("script");
           sc2.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          sc2.onload=()=>res(window.XLSX); sc2.onerror=()=>rej(new Error("SheetJS nicht geladen"));
+          sc2.onload=()=>res(window.XLSX); sc2.onerror=()=>rej(new Error(T("SheetJS nicht geladen")));
           document.head.appendChild(sc2);
         };
         document.head.appendChild(sc);
@@ -17395,7 +17391,7 @@ function BestellungenUebersicht({me, players, isAdmin=false, isMF=false, showToa
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
       <span>{isAdmin?"Alle Spieler und Erwachsenen des Vereins.":T`Spieler deiner Mannschaft${meineMannschaft?" ("+meineMannschaft+")":""}.`}</span>
       {filterAktiv && <>
-        <span style={{color:"#10b981",fontWeight:700}}>{sortierteZeilen.length} von {personenZeilen.length} Personen</span>
+        <span style={{color:"#10b981",fontWeight:700}}>{T`${sortierteZeilen.length} von ${personenZeilen.length} Personen`}</span>
         <button onClick={()=>setFilter({})} style={{padding:"3px 9px",background:"#ef444422",border:"1px solid #ef444444",borderRadius:6,color:"#ef4444",fontSize:10,fontWeight:700,cursor:"pointer"}}>Filter zurücksetzen</button>
       </>}
     </div>
@@ -17581,16 +17577,16 @@ function istAppleGeraet(){
 // Push für diese Person aktivieren: Erlaubnis holen, Abo anlegen, in Firestore
 // speichern. Gibt eine verständliche Meldung zurück, wenn etwas nicht klappt.
 async function pushAktivieren(playerId){
-  if(!pushMoeglich()) throw new Error("Dieses Gerät unterstützt keine Benachrichtigungen.");
+  if(!pushMoeglich()) throw new Error(T("Dieses Gerät unterstützt keine Benachrichtigungen."));
   if(istAppleGeraet() && !alsAppInstalliert()){
-    throw new Error("Auf iPhone/iPad musst du die App zuerst über „Teilen → Zum Home-Bildschirm“ hinzufügen. Danach kannst du die Benachrichtigungen dort aktivieren.");
+    throw new Error(T("Auf iPhone/iPad musst du die App zuerst über „Teilen → Zum Home-Bildschirm“ hinzufügen. Danach kannst du die Benachrichtigungen dort aktivieren."));
   }
   if(!VAPID_PUBLIC_KEY){
-    throw new Error("Benachrichtigungen sind noch nicht eingerichtet (Schlüssel fehlt). Bitte an den Administrator wenden.");
+    throw new Error(T("Benachrichtigungen sind noch nicht eingerichtet (Schlüssel fehlt). Bitte an den Administrator wenden."));
   }
   const erlaubnis = await Notification.requestPermission();
   if(erlaubnis!=="granted"){
-    throw new Error("Du hast Benachrichtigungen nicht erlaubt. Du kannst das in den Einstellungen deines Browsers ändern.");
+    throw new Error(T("Du hast Benachrichtigungen nicht erlaubt. Du kannst das in den Einstellungen deines Browsers ändern."));
   }
   const reg = await navigator.serviceWorker.ready;
   const gewuenschterKey = base64UrlZuUint8Array(VAPID_PUBLIC_KEY);
@@ -18102,7 +18098,7 @@ function GeburtstageTab({players,showToast}) {
         const s=document.createElement("script");
         s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
         s.onload=()=>resolve(window.XLSX);
-        s.onerror=()=>reject(new Error("SheetJS konnte nicht geladen werden"));
+        s.onerror=()=>reject(new Error(T("SheetJS konnte nicht geladen werden")));
         document.head.appendChild(s);
       });
       const ab=await file.arrayBuffer();
@@ -18309,9 +18305,9 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
     // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
     const wt = wochentagKurz(s.datum||"");
-    const d = m ? `${wt?wt+". ":""}${m[3]}.${m[2]}.` : (s.datum||"");
+    const d = m ? `${wt?T(wt+".")+" ":""}${m[3]}.${m[2]}.` : (s.datum||"");
     const heim = /heim/i.test(s.ort||"");
-    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+    return `${d}${s.uhrzeit?T` ${s.uhrzeit} Uhr`:""} · ${heim?T("Heim"):T("Auswärts")}`;
   };
 
   const oeffne = (key) => {
@@ -18340,9 +18336,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
       <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>
         {titel} · {spielMeta(sp)}{sp._nominiertFremd?" · ⭐ nominiert":""}
       </div>
-      <div style={{fontSize:rot?17:16, color:rot?"#fff":"var(--text)", fontWeight:700, lineHeight:1.25}}>
-        {sp.mannschaft||"Mannschaft"} gegen {sp.gegner||"Gegner"}{sp.art==="Pokal"?" (Pokalspiel)":""}
-      </div>
+      <div style={{fontSize:rot?17:16, color:rot?"#fff":"var(--text)", fontWeight:700, lineHeight:1.25}}>{T`${sp.mannschaft||T("Mannschaft")} gegen ${sp.gegner||T("Gegner")}${sp.art==="Pokal"?T(" (Pokalspiel)"):""}`}</div>
       {verlegStatusVon(sp)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
         ⚠️ wird verlegt
       </div>}
@@ -18357,7 +18351,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
             ...(rot?{background:"#fff", color:"#1a2b4a"}:{background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"})}}>
           <img src={MYTT_LOGO} alt="myTischtennis.de" style={{height:18, display:"block"}}/> Spielplan</a>}
         {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700, padding:"7px 10px", borderRadius:9, fontVariantNumeric:"tabular-nums",
-          ...(rot?{background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55"}:{background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"})}}>🔑 PIN {pin}</span>}
+          ...(rot?{background:"#ffffff22", color:"#fff", border:"1px solid #ffffff55"}:{background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"})}}>{T`🔑 PIN ${pin}`}</span>}
       </div>
     </div>;
   };
@@ -18388,7 +18382,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
-            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>{T`NEU ${halleninfoNeu}`}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
@@ -18739,7 +18733,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       return <div style={{padding:14}}>
         <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>📊 Trainingsbeteiligung</div>
         <div style={{fontSize:12,color:"var(--text3)",marginBottom:4}}>Gruppe: {myGroup}</div>
-        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Urkunden: {TB_LEGENDE}</div>
+        <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>{T`Urkunden: ${TB_LEGENDE}`}</div>
         {rankedPeers.map((player,idx)=>{
           const {pct,pres,tot,exc,unex}=player;
           const isMe=player.id===myPlayer.id;
@@ -18757,9 +18751,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
                 <div style={{width:`${pct}%`,height:"100%",background:tbF,borderRadius:6}}/>
               </div>
               <div style={{display:"flex",gap:10,fontSize:10,color:"var(--text3)"}}>
-                <span>✓ {pres} anwesend</span>
-                <span>{exc} entsch.</span>
-                <span>{unex} unentsch.</span>
+                <span>{T`✓ ${pres} anwesend`}</span>
+                <span>{T`${exc} entsch.`}</span>
+                <span>{T`${unex} unentsch.`}</span>
               </div>
             </div>
             <div style={{flexShrink:0,textAlign:"center",background:"var(--bg)",borderRadius:10,padding:"6px 10px",border:`1px solid ${player.color}44`,minWidth:50}}>
@@ -18974,7 +18968,7 @@ function ErfolgeTab({player, hideTraining=false}) {
       {/* Trainingsbeteiligung */}
       {/* V529: fünf Stufen, höchste zuerst */}
       {[...TRAININGS_URKUNDEN_STUFEN].reverse().filter(st=>player[st.datumKey]).slice(0,1).map(st=>
-        <RibbonBadge key={st.datumKey} emoji={st.emoji} label={`Trainingsbeteiligung ${tbStufeLabel(st)}`} color={st.farbe} date={player[st.datumKey]} earned/>)}
+        <RibbonBadge key={st.datumKey} emoji={st.emoji} label={T`Trainingsbeteiligung ${tbStufeLabel(st)}`} color={st.farbe} date={player[st.datumKey]} earned/>)}
     </div>}
 
     {/* Vereinsturniere */}
@@ -19633,7 +19627,7 @@ function EinheitenTab({user, players}) {
           🤝 Alle Kinder kommen zusammen<br/>
           📋 Trainer begrüßt alle, macht die Anwesenheitsliste<br/>
           {VEREINS_WOCHENTAGE.map(w=>{ const gr=["Profis","Fortgeschrittene","Anfänger"].filter(g=>wochentageDerGruppe(g).includes(w));
-            return <React.Fragment key={w}>👥 {WT_LANG[w]}s: {gr.length>1?"Aufteilung in ":gr.length===1?"Nur ":""}{gr.map(gName).join(", ")||"—"}<br/></React.Fragment>; })}
+            return <React.Fragment key={w}>👥 {T(WT_LANG[w]+"s")}: {gr.length>1?T("Aufteilung in "):gr.length===1?T("Nur "):""}{gr.map(gName).join(", ")||"—"}<br/></React.Fragment>; })}
           📌 Festlegung wer welche Gruppe übernimmt
         </div>
         <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:4}}>Notizen zur Begrüßung</label>
@@ -20136,7 +20130,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
                 <span style={{fontSize:12,color:"var(--text3)",transition:"transform .15s",transform:auf?"rotate(90deg)":"none"}}>▶</span>
                 <span style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>{label}</span>
                 <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#3b82f6",borderRadius:10,padding:"1px 8px"}}>{items.length}</span>
-                {neuInGruppe>0 && <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#f59e0b",borderRadius:6,padding:"1px 6px",letterSpacing:0.4}}>{neuInGruppe} NEU</span>}
+                {neuInGruppe>0 && <span style={{fontSize:10,fontWeight:800,color:"#fff",background:"#f59e0b",borderRadius:6,padding:"1px 6px",letterSpacing:0.4}}>{T`${neuInGruppe} NEU`}</span>}
               </div>
               {/* Ganze Gruppe ausblenden (eigener Nutzer) */}
               <button onClick={()=>nachrichtenWegklicken(ids)} title="Ganze Gruppe ausblenden" style={{
@@ -20247,7 +20241,7 @@ function AufstellungUpload({showToast}) {
     await new Promise((res,rej)=>{
       const s=document.createElement("script");
       s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+      s.onload=res; s.onerror=()=>rej(new Error(T("pdf.js konnte nicht geladen werden")));
       document.head.appendChild(s);
     });
     if(window.pdfjsLib){
@@ -20260,7 +20254,7 @@ function AufstellungUpload({showToast}) {
   // withRaw=true → {rows, rawText} für Saison/Runde-Erkennung
   async function parseAufstellungPdf(file, withRaw){
     const pdfjs=await loadPdfJs();
-    if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+    if(!pdfjs) throw new Error(T("pdf.js nicht verfügbar"));
     const buf=await file.arrayBuffer();
     const pdf=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;
     const pages=[];
@@ -20474,7 +20468,7 @@ async function ladePdfJs(){
   await new Promise((res,rej)=>{
     const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    s.onload=res; s.onerror=()=>rej(new Error("pdf.js konnte nicht geladen werden"));
+    s.onload=res; s.onerror=()=>rej(new Error(T("pdf.js konnte nicht geladen werden")));
     document.head.appendChild(s);
   });
   if(window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -20482,7 +20476,7 @@ async function ladePdfJs(){
 }
 async function pdfDataUrlZuZeilen(dataUrl){
   const pdfjs=await ladePdfJs();
-  if(!pdfjs) throw new Error("pdf.js nicht verfügbar");
+  if(!pdfjs) throw new Error(T("pdf.js nicht verfügbar"));
   const b64=(dataUrl.split(",")[1])||"";
   const bin=atob(b64); const bytes=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
@@ -20801,10 +20795,7 @@ function SpielerfotosUpload({ players=[], showToast }){
 
   const mitFoto=Object.keys(fotos).length;
   return <div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-      Je Person ein Foto (automatisch verkleinert auf max. {FOTO_MAX_KANTE} px).
-      Aktuell hinterlegt: {mitFoto}.
-    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>{T`Je Person ein Foto (automatisch verkleinert auf max. ${FOTO_MAX_KANTE} px). Aktuell hinterlegt: ${mitFoto}.`}</div>
     <input value={suche} onChange={e=>setSuche(e.target.value)} placeholder="Person suchen …"
       style={{width:"100%",boxSizing:"border-box",padding:"7px 9px",borderRadius:8,
         border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:12,marginBottom:8}}/>
@@ -23172,12 +23163,7 @@ function HalleninfoVerwaltung({showToast}) {
 
   return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
     <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📣 Halleninfos</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-      Infos für die Aktiven (z. B. Hinweise in der Halle). Titel und Detailtext verfassen und
-      optional Fotos hochladen. Fotos werden automatisch verkleinert (max. {FOTO_MAX_KANTE} px).
-      Das Datum ist mit dem heutigen Tag vorbelegt und kann geändert werden. Mit 📌 lassen sich
-      Infos oben fixieren; alle übrigen erscheinen nach Datum sortiert (neueste zuerst).
-    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>{T`Infos für die Aktiven (z. B. Hinweise in der Halle). Titel und Detailtext verfassen und optional Fotos hochladen. Fotos werden automatisch verkleinert (max. ${FOTO_MAX_KANTE} px). Das Datum ist mit dem heutigen Tag vorbelegt und kann geändert werden. Mit 📌 lassen sich Infos oben fixieren; alle übrigen erscheinen nach Datum sortiert (neueste zuerst).`}</div>
 
     {editId===null
       ? <button onClick={starteNeu} style={{padding:"9px 12px",background:"#10b98122",border:"1px solid #10b98155",borderRadius:9,color:"#10b981",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:12}}>+ Neue Halleninfo</button>
@@ -23394,11 +23380,7 @@ function TrainingszeitenVerwaltung({ players=[], showToast }){
 
   return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
     <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>🕒 Trainingszeiten</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>
-      Trainingszeiten je Gruppe erfassen. Pro Zeit können bis zu drei Trainer zugeordnet werden
-      (auch keiner – dann bleibt der Trainerbereich leer). Die Gruppe kann aus der Liste gewählt
-      oder frei eingegeben werden. Trainerfotos werden automatisch verkleinert (max. {FOTO_MAX_KANTE} px).
-    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.6}}>{T`Trainingszeiten je Gruppe erfassen. Pro Zeit können bis zu drei Trainer zugeordnet werden (auch keiner – dann bleibt der Trainerbereich leer). Die Gruppe kann aus der Liste gewählt oder frei eingegeben werden. Trainerfotos werden automatisch verkleinert (max. ${FOTO_MAX_KANTE} px).`}</div>
 
     {/* Neuer/Bearbeiteter Eintrag */}
     <div style={{background:"var(--bg)",border:`1px solid ${editIdx!==null?"#3b82f6":"var(--border2)"}`,borderRadius:10,padding:10,marginBottom:12}}>
@@ -23541,10 +23523,7 @@ function MannschaftsfotosUpload({showToast}) {  const [teamPhotos,setTeamPhotos]
 
   return <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:14}}>
     <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>📸 Mannschaftsfotos</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>
-      Fotos werden je Saison gespeichert und im Spielbetrieb angezeigt. Große Bilder werden
-      automatisch auf max. {FOTO_MAX_KANTE} px verkleinert und komprimiert.
-    </div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.6}}>{T`Fotos werden je Saison gespeichert und im Spielbetrieb angezeigt. Große Bilder werden automatisch auf max. ${FOTO_MAX_KANTE} px verkleinert und komprimiert.`}</div>
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
       <span style={{fontSize:11,color:"var(--text3)"}}>Saison:</span>
       <select value={selSeasonKey} onChange={e=>setSelSeasonKey(e.target.value)}
@@ -24742,7 +24721,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
                 </div>
                 <div style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
                   {spiel.art==="Pokal" && <span title="Pokalspiel" style={{flexShrink:0}}>🏆</span>}
-                  <span>{spiel.ort} vs. {spiel.gegner}</span>
+                  <span>{T`${spiel.ort} vs. ${spiel.gegner}`}</span>
                 </div>
                 {/* Betreuer/Fahrer kompakt – auch im eingeklappten Zustand sichtbar (Admin/MF) */}
                 {viewerCanEditAll&&selTeamIstNachwuchs&&(betreuerKopf.length>0||fahrerKopf)&&
@@ -25916,7 +25895,9 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
             </div>
             <div style={{fontSize:10,color:"var(--text4)",marginTop:4}}>
               {betreutPersonen.length>0
-                ? T`Aufgenommen werden die Spiele, für die ${betreutPersonen.map(p=>personAnzeigeName(p)).join(" oder ")} als Betreuer bestimmt ${betreutPersonen.length>1?"sind":"ist"}.`
+                ? (betreutPersonen.length>1
+                  ? T`Aufgenommen werden die Spiele, für die ${betreutPersonen.map(p=>personAnzeigeName(p)).join(T(" oder "))} als Betreuer bestimmt sind.`
+                  : T`Aufgenommen werden die Spiele, für die ${personAnzeigeName(betreutPersonen[0])} als Betreuer bestimmt ist.`)
                 : "Bitte mindestens eine Person auswählen, deren betreute Spiele aufgenommen werden sollen."}
             </div>
           </div>}
@@ -25947,7 +25928,7 @@ function KalenderExport({players=[], vorauswahlPlayer=null, istErwachseneView=fa
       </div>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:8}}>
         {selRubriken.length===0?"Keine Termine — es werden nur Spiele aufgenommen.":T`${gefilterteTermine.length} Termin(e) passen zur Auswahl.`}
-        {selRubriken.length>0 && nichtGewaehlteRubriken.length>0 && <span> {vereinstermine.length-gefilterteTermine.length} weitere nicht gewählt ({nichtGewaehlteRubriken.join(", ")}).</span>}
+        {selRubriken.length>0 && nichtGewaehlteRubriken.length>0 && <span>{T` ${vereinstermine.length-gefilterteTermine.length} weitere nicht gewählt (${nichtGewaehlteRubriken.join(", ")}).`}</span>}
       </div>
     </div>
 
@@ -26903,7 +26884,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
     })()}
     {/* V537: Hinweis, wenn Vereinstermine durch den Termin-Filter ausgeblendet sind */}
     {termineRubrikAusgeblendet.length>0 && <div style={{fontSize:11,color:"var(--text3)",background:"var(--bg2)",border:"1px dashed var(--border2)",borderRadius:8,padding:"5px 9px",marginBottom:6,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-      <span>📌 {termineRubrikAusgeblendet.length} Vereinstermin{termineRubrikAusgeblendet.length===1?"":"e"} ausgeblendet (Termine-Filter: {[...new Set(termineRubrikAusgeblendet.map(terminRubrikVon))].join(", ")})</span>
+      <span>{termineRubrikAusgeblendet.length===1?T`📌 ${termineRubrikAusgeblendet.length} Vereinstermin ausgeblendet (Termine-Filter: ${[...new Set(termineRubrikAusgeblendet.map(terminRubrikVon))].join(", ")})`:T`📌 ${termineRubrikAusgeblendet.length} Vereinstermine ausgeblendet (Termine-Filter: ${[...new Set(termineRubrikAusgeblendet.map(terminRubrikVon))].join(", ")})`}</span>
       <button onClick={()=>setFilters(p=>({...p,_userSet:true,rubriken:[]}))} style={{padding:"2px 8px",background:"var(--club-12, #c8102e1f)",border:"1px solid var(--club-55, #c8102e55)",borderRadius:6,color:"var(--club, #c8102e)",fontSize:11,fontWeight:700,cursor:"pointer"}}>alle Termine zeigen</button>
     </div>}
     {/* Ausgewählte Mannschaften als Chips */}
@@ -27112,9 +27093,7 @@ function UebungsvideoUpload({showToast}) {
   const videoCount=Object.keys(videos).length;
 
   return <div>
-    <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>
-      Pro Übung ein kurzes Video (5-10 Sek., max. 50 MB). {videoCount} von {ALL_EXERCISES.length} Übungen haben ein Video.
-    </div>
+    <div style={{fontSize:10,color:"var(--text4)",marginBottom:10}}>{T`Pro Übung ein kurzes Video (5-10 Sek., max. 50 MB). ${videoCount} von ${ALL_EXERCISES.length} Übungen haben ein Video.`}</div>
     <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:340,overflowY:"auto"}}>
       {ALL_EXERCISES.map(ex=>{
         const hasVid=!!videos[ex.id];
@@ -28176,9 +28155,9 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s.datum||"");
     // Wochentag in Kurzform vor das Datum: "Sa. 12.09. 18:00 Uhr · Heim".
     const wt = wochentagKurz(s.datum||"");
-    const d = m ? `${wt?wt+". ":""}${m[3]}.${m[2]}.` : (s.datum||"");
+    const d = m ? `${wt?T(wt+".")+" ":""}${m[3]}.${m[2]}.` : (s.datum||"");
     const heim = /heim/i.test(s.ort||"");
-    return `${d}${s.uhrzeit?` ${s.uhrzeit} Uhr`:""} · ${heim?"Heim":"Auswärts"}`;
+    return `${d}${s.uhrzeit?T` ${s.uhrzeit} Uhr`:""} · ${heim?T("Heim"):T("Auswärts")}`;
   };
 
   // Team-Objekt (myTischtennis-Link) zu einem beliebigen Spiel über den Spielplan-Namen.
@@ -28215,9 +28194,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
 
     return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>
       <div style={{fontSize:12, color:labelFarbe, marginBottom:3, fontWeight:600}}>{titelText} · {spielMeta(s)}{s._nominiertFremd?" · ⭐ nominiert":""}</div>
-      <div style={{fontSize:17, color:titelFarbe, fontWeight:700, lineHeight:1.25}}>
-        {s.mannschaft||"Mannschaft"} gegen {s.gegner||"Gegner"}{s.art==="Pokal"?" (Pokalspiel)":""}
-      </div>
+      <div style={{fontSize:17, color:titelFarbe, fontWeight:700, lineHeight:1.25}}>{T`${s.mannschaft||T("Mannschaft")} gegen ${s.gegner||T("Gegner")}${s.art==="Pokal"?T(" (Pokalspiel)"):""}`}</div>
       {verlegStatusVon(s)==="geplant" && <div style={{display:"inline-block",marginTop:8,background:rot?"#fff":"#f59e0b22",color:"#b45309",fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:8,border:"1px solid #fde68a"}}>
         ⚠️ wird verlegt
       </div>}
@@ -28244,9 +28221,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         </a>}
         {/* Spiel-PIN – hinter dem myTischtennis-Link */}
         {pin && <span style={{display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:700,
-          padding:"7px 10px", borderRadius:9, fontVariantNumeric:"tabular-nums", ...pinChipStyle}}>
-          🔑 PIN {pin}
-        </span>}
+          padding:"7px 10px", borderRadius:9, fontVariantNumeric:"tabular-nums", ...pinChipStyle}}>{T`🔑 PIN ${pin}`}</span>}
       </div>
     </div>;
   };
@@ -28285,7 +28260,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
           <div style={{display:"flex", alignItems:"center", gap:8}}>
             <span style={{fontSize:20, width:24, textAlign:"center"}}>{it.icon}</span>
             <span style={{fontSize:14, fontWeight:700, color:"var(--text)", minWidth:0, overflowWrap:"anywhere", hyphens:"manual"}}>{kachelLabel(it.label)}</span>
-            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>NEU {halleninfoNeu}</span>}
+            {it.key==="halleninfo" && halleninfoNeu>0 && <span style={{marginLeft:"auto", fontSize:9, fontWeight:800, color:"#fff", background:TTC_ROT, borderRadius:8, padding:"2px 7px", letterSpacing:".03em"}}>{T`NEU ${halleninfoNeu}`}</span>}
           </div>
           <span style={{fontSize:11, color:"var(--text3)"}}>{it.sub}</span>
         </button>)}
@@ -28849,10 +28824,10 @@ async function ladeJsPDFLib(){
   await new Promise((res,rej)=>{
     const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s.onload=res; s.onerror=()=>rej(new Error("jsPDF konnte nicht geladen werden."));
+    s.onload=res; s.onerror=()=>rej(new Error(T("jsPDF konnte nicht geladen werden.")));
     document.head.appendChild(s);
   });
-  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error("jsPDF nicht verfuegbar.");
+  if(!(window.jspdf && window.jspdf.jsPDF)) throw new Error(T("jsPDF nicht verfuegbar."));
   return window.jspdf.jsPDF;
 }
 
