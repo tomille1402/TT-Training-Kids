@@ -1,4 +1,4 @@
-// === TTC-App · Version 543 · erstellt 16.10.2026 ===
+// === TTC-App · Version 544 · erstellt 17.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -29,6 +29,7 @@ import { RO_TEXTE } from "./i18n_ro";   // V541
 import { ES_TEXTE } from "./i18n_es";   // V542
 import { PT_TEXTE } from "./i18n_pt";   // V542
 import { AR_TEXTE } from "./i18n_ar";   // V543
+import { LA_TEXTE } from "./i18n_la";   // V544
 
 // ─── V521: Zweisprachigkeit (Deutsch / Englisch) ─────────────────────────────
 // Die Sprache gilt je Nutzer und Gerät (localStorage „ttc_sprache“, Standard Deutsch).
@@ -42,11 +43,22 @@ import { AR_TEXTE } from "./i18n_ar";   // V543
 // (jede Sprache außer Deutsch) – der Name bleibt, damit bestehende Stellen unverändert gelten.
 // V541: zusätzlich Rumänisch. V542: Spanisch und Portugiesisch (Portugal).
 // V543: zusätzlich Arabisch (Schreibrichtung rechts→links).
-const SPRACHEN = ["de","en","fr","pl","ro","es","pt","ar"];
+// V544: zusätzlich Latein.
+const SPRACHEN = ["de","en","fr","pl","ro","es","pt","ar","la"];
 const SPRACHE = (()=>{ try{ const x=localStorage.getItem("ttc_sprache"); return SPRACHEN.includes(x) ? x : "de"; }catch(e){ return "de"; } })();
 const IST_EN = SPRACHE!=="de";
-const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL", ro:"ro-RO", es:"es-ES", pt:"pt-PT", ar:"ar-u-nu-latn"})[SPRACHE] || "de-DE";
-const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE, ro:RO_TEXTE, es:ES_TEXTE, pt:PT_TEXTE, ar:AR_TEXTE})[SPRACHE] || {};
+const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL", ro:"ro-RO", es:"es-ES", pt:"pt-PT", ar:"ar-u-nu-latn", la:"de-DE"})[SPRACHE] || "de-DE";
+// V544: Intl kennt kein Latein – Monats-/Wochentagsnamen dafür selbst bilden.
+const LA_MONATE=["Ianuarii","Februarii","Martii","Aprilis","Maii","Iunii","Iulii","Augusti","Septembris","Octobris","Novembris","Decembris"];
+const LA_WOTAGE=["Sol.","Lun.","Mar.","Mer.","Iov.","Ven.","Sat."];
+function datumText(d,opt){
+  if(SPRACHE!=="la") return d.toLocaleDateString(SPR_LOC,opt);
+  const z=n=>String(n).padStart(2,"0");
+  if(opt&&opt.month==="long") return `${d.getDate()} ${LA_MONATE[d.getMonth()]}${opt.year?" "+d.getFullYear():""}`;
+  const t=`${z(d.getDate())}.${z(d.getMonth()+1)}.${d.getFullYear()}`;
+  return opt&&opt.weekday ? `${LA_WOTAGE[d.getDay()]} ${t}` : t;
+}
+const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE, ro:RO_TEXTE, es:ES_TEXTE, pt:PT_TEXTE, ar:AR_TEXTE, la:LA_TEXTE})[SPRACHE] || {};
 // „~" in einer Übersetzung = weiche Trennstelle (nur in Kacheln sichtbar, sonst entfernt)
 function ohneTrennMarker(v){ return typeof v==="string" ? v.replace(/(\S)~(?=\S)/g,"$1") : v; }
 let _trExakt=null, _trNorm=null;
@@ -140,7 +152,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "543";
+const APP_VERSION = "544";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1139,11 +1151,12 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
 }
 
 // V542: alle verfügbaren Sprachen (Flagge + Name in der jeweiligen Sprache)
+// V544: alphabetisch nach dem Namen der Sprache sortiert (lateinische Schrift zuerst, dann Arabisch).
 const SPRACH_OPTIONEN=[
   {sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"},
-  {sp:"fr",flag:"🇫🇷",label:"Français"},{sp:"pl",flag:"🇵🇱",label:"Polski"},
-  {sp:"ro",flag:"🇷🇴",label:"Română"},{sp:"es",flag:"🇪🇸",label:"Español"},
-  {sp:"pt",flag:"🇵🇹",label:"Português"},
+  {sp:"es",flag:"🇪🇸",label:"Español"},{sp:"fr",flag:"🇫🇷",label:"Français"},
+  {sp:"la",flag:"🇻🇦",label:"Latina"},{sp:"pl",flag:"🇵🇱",label:"Polski"},
+  {sp:"pt",flag:"🇵🇹",label:"Português"},{sp:"ro",flag:"🇷🇴",label:"Română"},
   {sp:"ar",flag:"🇸🇦",label:"العربية"}];
 // V542: Sprachmenü in der Kopfzeile (zwischen Lupe und Ausschalter): zeigt die Flagge der
 // aktuellen Sprache; ein Klick öffnet eine Liste der übrigen Sprachen (links Flagge, rechts Name).
@@ -1190,9 +1203,9 @@ function SprachMenue(){
 function SprachEinstellung(){
   const opt=SPRACH_OPTIONEN;   // V542: zentrale Liste (auch für das Sprachmenü oben)
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
-    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă / Idioma / اللغة</div>
+    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă / Idioma / Lingua / اللغة</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv · Ajuste personal para este dispositivo · Definição pessoal para este dispositivo · إعداد شخصي لهذا الجهاز
+      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv · Ajuste personal para este dispositivo · Definição pessoal para este dispositivo · Optio personalis huius instrumenti · إعداد شخصي لهذا الجهاز
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:8}}>
       {opt.map(o=>{ const aktiv=SPRACHE===o.sp;
@@ -19905,7 +19918,7 @@ function EinheitenTab({user, players}) {
       {sorted.map(e=>{
         const isExp=expandedId===e.id;
         const gc=GRUPPEN_COLORS[e.gruppe]||"#6b7280";
-        const datum=e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC,{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}):"";
+        const datum=e.datum?datumText(new Date(e.datum),{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"}):"";
         const awSelNames=e.aufwaermen?.map(id=>AUFWAERM_SPIELE.find(s=>s.id===id)).filter(Boolean)||[];
         const bgSelNames=e.ballgewoehnung?.map(id=>BALLGEWOEHNUNG.find(x=>x.id===id)).filter(Boolean)||[];
         const tkSelNames=e.technik?.map(id=>TECHNIK_EX.find(x=>x.id===id)).filter(Boolean)||[];
@@ -25384,7 +25397,7 @@ function GeburtstageTabErwachsene({players}) {
     {erwachsene.map(({p,info})=>{
       const {ageAtNext:age, days, isToday}=info;
       const isSoon=days<=7;
-      const bdLabel=new Date(2000,info.m-1,info.d).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"long"});
+      const bdLabel=datumText(new Date(2000,info.m-1,info.d),{day:"2-digit",month:"long"});
       return <div key={p.id} style={{
         display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:6,
         background:isToday?"#f59e0b22":isSoon?"#10b98111":"var(--bg2)",
@@ -27988,7 +28001,7 @@ function EhrungenView({player}) {
         <div style={{flex:1}}>
           <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{art.label}</div>
           <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
-            {e.datum?new Date(e.datum).toLocaleDateString(SPR_LOC,{day:"2-digit",month:"long",year:"numeric"}):"—"}
+            {e.datum?datumText(new Date(e.datum),{day:"2-digit",month:"long",year:"numeric"}):"—"}
           </div>
         </div>
       </div>;
