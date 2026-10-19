@@ -2864,4 +2864,22 @@ export const ES_TEXTE = {
 "Aufsteiger/Gruppe": "Clasificados por grupo",
 "1. Weihnachtstag": "Navidad",
 "2. Weihnachtstag": "San Esteban",
+"🗓️ Nächste Trainings": "🗓️ Próximos entrenamientos",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Puedes cancelar hasta el final del día de entrenamiento. Después, y en cuanto el entrenador haya registrado la asistencia, vale su registro.",  // V547
+"Keine weiteren Trainingstage geplant.": "No hay más días de entrenamiento previstos.",  // V547
+"Teilnahme geplant": "Asistencia prevista",  // V547
+"Kein Training": "Sin entrenamiento",  // V547
+"❌ Abgesagt": "❌ Cancelado",  // V547
+"Heute": "Hoy",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Registrado por el entrenador – cambios solo por el entrenador o el admin.",  // V547
+"Absage zurücknehmen": "Retirar cancelación",  // V547
+"Absagen": "Cancelar",  // V547
+"Grund (optional)": "Motivo (opcional)",  // V547
+"Absage senden": "Enviar cancelación",  // V547
+"Abgesagt (noch nicht erfasst)": "Cancelado (aún no registrado)",  // V547
+"Absage nicht möglich: ": "Cancelación no posible: ",  // V547
+"📩 abgesagt": "📩 cancelado",  // V547
+"Krank": "Enfermo",  // V547
+"Schule / Termin": "Colegio / cita",  // V547
+"Urlaub": "Vacaciones",  // V547
 };

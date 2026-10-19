@@ -2866,4 +2866,22 @@ export const ZH_TEXTE = {
 "Aufsteiger/Gruppe": "晋级/组",
 "1. Weihnachtstag": "圣诞节第一天",
 "2. Weihnachtstag": "圣诞节第二天",
+"🗓️ Nächste Trainings": "🗓️ 接下来的训练",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "可在训练当天结束前请假。之后，以及教练记录出勤后，以教练的记录为准。",  // V547
+"Keine weiteren Trainingstage geplant.": "没有更多已安排的训练日。",  // V547
+"Teilnahme geplant": "计划参加",  // V547
+"Kein Training": "无训练",  // V547
+"❌ Abgesagt": "❌ 已请假",  // V547
+"Heute": "今天",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "已由教练记录——只能由教练或管理员修改。",  // V547
+"Absage zurücknehmen": "撤销请假",  // V547
+"Absagen": "请假",  // V547
+"Grund (optional)": "原因（可选）",  // V547
+"Absage senden": "提交请假",  // V547
+"Abgesagt (noch nicht erfasst)": "已请假（尚未记录）",  // V547
+"Absage nicht möglich: ": "无法请假：",  // V547
+"📩 abgesagt": "📩 已请假",  // V547
+"Krank": "生病",  // V547
+"Schule / Termin": "上学 / 有事",  // V547
+"Urlaub": "度假",  // V547
 };

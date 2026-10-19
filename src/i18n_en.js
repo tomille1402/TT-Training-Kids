@@ -2865,4 +2865,22 @@ export const EN_TEXTE = {
 "Aufsteiger/Gruppe": "Promoted per group",
 "1. Weihnachtstag": "Christmas Day",
 "2. Weihnachtstag": "Boxing Day",
+"🗓️ Nächste Trainings": "🗓️ Upcoming sessions",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "You can cancel until the end of the training day. After that, and as soon as the coach has recorded attendance, the coach's entry applies.",  // V547
+"Keine weiteren Trainingstage geplant.": "No further training days scheduled.",  // V547
+"Teilnahme geplant": "Attending",  // V547
+"Kein Training": "No training",  // V547
+"❌ Abgesagt": "❌ Cancelled",  // V547
+"Heute": "Today",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Recorded by the coach – changes only by coach or admin.",  // V547
+"Absage zurücknehmen": "Withdraw cancellation",  // V547
+"Absagen": "Cancel attendance",  // V547
+"Grund (optional)": "Reason (optional)",  // V547
+"Absage senden": "Send cancellation",  // V547
+"Abgesagt (noch nicht erfasst)": "Cancelled (not yet recorded)",  // V547
+"Absage nicht möglich: ": "Cancellation not possible: ",  // V547
+"📩 abgesagt": "📩 cancelled",  // V547
+"Krank": "Ill",  // V547
+"Schule / Termin": "School / appointment",  // V547
+"Urlaub": "Holiday",  // V547
 };

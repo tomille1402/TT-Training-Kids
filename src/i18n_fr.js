@@ -2866,4 +2866,22 @@ export const FR_TEXTE = {
 "Aufsteiger/Gruppe": "Qualifiés par groupe",
 "1. Weihnachtstag": "Noël",
 "2. Weihnachtstag": "Lendemain de Noël",
+"🗓️ Nächste Trainings": "🗓️ Prochains entraînements",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Tu peux annuler jusqu'à la fin du jour d'entraînement. Ensuite, et dès que l'entraîneur a saisi les présences, c'est sa saisie qui compte.",  // V547
+"Keine weiteren Trainingstage geplant.": "Aucun autre jour d'entraînement prévu.",  // V547
+"Teilnahme geplant": "Participation prévue",  // V547
+"Kein Training": "Pas d'entraînement",  // V547
+"❌ Abgesagt": "❌ Annulé",  // V547
+"Heute": "Aujourd'hui",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Saisi par l'entraîneur – modifications uniquement par l'entraîneur ou l'admin.",  // V547
+"Absage zurücknehmen": "Retirer l'annulation",  // V547
+"Absagen": "Annuler",  // V547
+"Grund (optional)": "Motif (facultatif)",  // V547
+"Absage senden": "Envoyer l'annulation",  // V547
+"Abgesagt (noch nicht erfasst)": "Annulé (pas encore saisi)",  // V547
+"Absage nicht möglich: ": "Annulation impossible : ",  // V547
+"📩 abgesagt": "📩 annulé",  // V547
+"Krank": "Malade",  // V547
+"Schule / Termin": "École / rendez-vous",  // V547
+"Urlaub": "Vacances",  // V547
 };

@@ -1,4 +1,4 @@
-// === TTC-App · Version 545 · erstellt 18.10.2026 ===
+// === TTC-App · Version 547 · erstellt 19.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -31,6 +31,7 @@ import { PT_TEXTE } from "./i18n_pt";   // V542
 import { AR_TEXTE } from "./i18n_ar";   // V543
 import { LA_TEXTE } from "./i18n_la";   // V544
 import { ZH_TEXTE } from "./i18n_zh";   // V545
+import { IT_TEXTE } from "./i18n_it";   // V546
 
 // ─── V521: Zweisprachigkeit (Deutsch / Englisch) ─────────────────────────────
 // Die Sprache gilt je Nutzer und Gerät (localStorage „ttc_sprache“, Standard Deutsch).
@@ -44,11 +45,11 @@ import { ZH_TEXTE } from "./i18n_zh";   // V545
 // (jede Sprache außer Deutsch) – der Name bleibt, damit bestehende Stellen unverändert gelten.
 // V541: zusätzlich Rumänisch. V542: Spanisch und Portugiesisch (Portugal).
 // V543: zusätzlich Arabisch (Schreibrichtung rechts→links).
-// V544: zusätzlich Latein. V545: Chinesisch (vereinfacht).
-const SPRACHEN = ["de","en","fr","pl","ro","es","pt","ar","la","zh"];
+// V544: zusätzlich Latein. V545: Chinesisch (vereinfacht). V546: Italienisch.
+const SPRACHEN = ["de","en","fr","pl","ro","es","pt","ar","la","zh","it"];
 const SPRACHE = (()=>{ try{ const x=localStorage.getItem("ttc_sprache"); return SPRACHEN.includes(x) ? x : "de"; }catch(e){ return "de"; } })();
 const IST_EN = SPRACHE!=="de";
-const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL", ro:"ro-RO", es:"es-ES", pt:"pt-PT", ar:"ar-u-nu-latn", la:"de-DE", zh:"zh-CN"})[SPRACHE] || "de-DE";
+const SPR_LOC = ({en:"en-GB", fr:"fr-FR", pl:"pl-PL", ro:"ro-RO", es:"es-ES", pt:"pt-PT", ar:"ar-u-nu-latn", la:"de-DE", zh:"zh-CN", it:"it-IT"})[SPRACHE] || "de-DE";
 // V544: Intl kennt kein Latein – Monats-/Wochentagsnamen dafür selbst bilden.
 const LA_MONATE=["Ianuarii","Februarii","Martii","Aprilis","Maii","Iunii","Iulii","Augusti","Septembris","Octobris","Novembris","Decembris"];
 const LA_WOTAGE=["Sol.","Lun.","Mar.","Mer.","Iov.","Ven.","Sat."];
@@ -59,7 +60,7 @@ function datumText(d,opt){
   const t=`${z(d.getDate())}.${z(d.getMonth()+1)}.${d.getFullYear()}`;
   return opt&&opt.weekday ? `${LA_WOTAGE[d.getDay()]} ${t}` : t;
 }
-const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE, ro:RO_TEXTE, es:ES_TEXTE, pt:PT_TEXTE, ar:AR_TEXTE, la:LA_TEXTE, zh:ZH_TEXTE})[SPRACHE] || {};
+const SPR_TEXTE = ({en:EN_TEXTE, fr:FR_TEXTE, pl:PL_TEXTE, ro:RO_TEXTE, es:ES_TEXTE, pt:PT_TEXTE, ar:AR_TEXTE, la:LA_TEXTE, zh:ZH_TEXTE, it:IT_TEXTE})[SPRACHE] || {};
 // „~" in einer Übersetzung = weiche Trennstelle (nur in Kacheln sichtbar, sonst entfernt)
 function ohneTrennMarker(v){ return typeof v==="string" ? v.replace(/(\S)~(?=\S)/g,"$1") : v; }
 let _trExakt=null, _trNorm=null;
@@ -153,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "545";
+const APP_VERSION = "547";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1156,7 +1157,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
 const SPRACH_OPTIONEN=[
   {sp:"de",flag:"🇩🇪",label:"Deutsch"},{sp:"en",flag:"🇬🇧",label:"English"},
   {sp:"es",flag:"🇪🇸",label:"Español"},{sp:"fr",flag:"🇫🇷",label:"Français"},
-  {sp:"la",flag:"🇻🇦",label:"Latina"},{sp:"pl",flag:"🇵🇱",label:"Polski"},
+  {sp:"it",flag:"🇮🇹",label:"Italiano"},{sp:"la",flag:"🇻🇦",label:"Latina"},{sp:"pl",flag:"🇵🇱",label:"Polski"},
   {sp:"pt",flag:"🇵🇹",label:"Português"},{sp:"ro",flag:"🇷🇴",label:"Română"},
   {sp:"ar",flag:"🇸🇦",label:"العربية"},{sp:"zh",flag:"🇨🇳",label:"中文"}];
 // V542: Sprachmenü in der Kopfzeile (zwischen Lupe und Ausschalter): zeigt die Flagge der
@@ -1206,7 +1207,7 @@ function SprachEinstellung(){
   return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
     <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă / Idioma / Lingua / اللغة / 语言</div>
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
-      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv · Ajuste personal para este dispositivo · Definição pessoal para este dispositivo · Optio personalis huius instrumenti · إعداد شخصي لهذا الجهاز · 此设备的个人设置
+      Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv · Ajuste personal para este dispositivo · Definição pessoal para este dispositivo · Impostazione personale per questo dispositivo · Optio personalis huius instrumenti · إعداد شخصي لهذا الجهاز · 此设备的个人设置
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))",gap:8}}>
       {opt.map(o=>{ const aktiv=SPRACHE===o.sp;
@@ -10122,6 +10123,9 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
   const [selDate,setSelDate]=useState(nearest);
   const [sessionData,setSessionData]=useState(null);
   const [loading,setLoading]=useState(false);
+  const absagen=useAbsagen();   // V547
+  const absTag=(selDate&&absagen[selDate])||{};
+  const absKey=Object.keys(absTag).sort().join(",");
 
   useEffect(()=>{
     if (!selDate) return;
@@ -10129,11 +10133,12 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     if (existing) {
       setSessionData(existing);
     } else {
+      // V547: Von Eltern abgesagte Kinder sind als „entschuldigt" vorbelegt (überschreibbar)
       const defaults = {};
-      players.forEach(p=>{ defaults[p.id]="a"; });
+      players.forEach(p=>{ defaults[p.id]=absTag[p.id]?"e":"a"; });
       setSessionData({took_place:true,reason:"",attendances:defaults});
     }
-  },[selDate,attendance,players]);
+  },[selDate,attendance,players,absKey]);
 
   async function save() {
     setLoading(true);
@@ -10309,6 +10314,7 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
                   <span style={{fontSize:15,flexShrink:0}}>{p.avatar||"🏓"}</span>
                   <span style={{fontSize:12,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.firstName} {p.lastName}</span>
                   {alsTrainer&&<span style={{fontSize:9,color:"var(--text4)",flexShrink:0}}>als Trainer</span>}
+                  {!alsTrainer&&absTag[p.id]&&<span title={absTag[p.id].grund||""} style={{fontSize:9,fontWeight:700,color:"#f59e0b",background:"#f59e0b18",border:"1px solid #f59e0b55",borderRadius:6,padding:"1px 5px",flexShrink:0,whiteSpace:"nowrap"}}>📩 abgesagt{absTag[p.id].grund?` · ${T(absTag[p.id].grund)}`:""}</span>}
                 </div>
                 {COL_HEADERS.map(opt=>(
                   <div key={opt.key} style={{display:"flex",justifyContent:"center"}}>
@@ -10351,6 +10357,28 @@ function trainingsZeitraumEffektiv(player, range){
   return { start:start||null, ende:ende||null, zaehlEnde:zaehlEnde||null };
 }
 // V533: allgemeiner Trainingszeitraum (config/trainingRange), live
+// V547: Absagen für Trainings durch Eltern (und Spieler selbst). Eigene Sammlung
+// absagen/<JJJJ-MM-TT>_<spielerId> = {playerId,date,grund,von,zeit}. Eine Absage ist nur
+// eine Ankündigung: Gezählt wird weiterhin allein die vom Trainer/Admin erfasste
+// Anwesenheit (attendance/<datum>); beim Erfassen ist „E“ (entschuldigt) für abgesagte
+// Kinder vorbelegt und kann überschrieben werden. Eltern können bis zum Ende des
+// Trainingstags absagen oder die Absage zurücknehmen – danach (und sobald der Trainer
+// den Tag erfasst hat) nicht mehr.
+const ABSAGE_GRUENDE = ["Krank","Schule / Termin","Urlaub","Sonstiges"];
+function useAbsagen(){
+  const [m,setM]=useState({});
+  useEffect(()=>{
+    const u=onSnapshot(collection(db,"absagen"),snap=>{
+      const r={};
+      snap.forEach(d=>{ const x=d.data(); if(!x||!x.date||!x.playerId) return; (r[x.date]=r[x.date]||{})[x.playerId]={...x,id:d.id}; });
+      setM(r);
+    },()=>{});
+    return u;
+  },[]);
+  return m;
+}
+function absageId(datum, playerId){ return `${datum}_${playerId}`; }
+
 function useTrainingRange(){
   const [r,setR]=useState({start:"",end:""});
   useEffect(()=>{
@@ -11530,7 +11558,7 @@ function RollenEditor({players=[], showToast, user, isSuperAdmin=false}){
 // damit eine spätere Wiederherstellung sie exakt zurückschreiben kann.
 const SICHERUNG_SAMMLUNGEN = ["players","attendance","rackets","bestellungen","einsaetze","config",
   "pushAbos","appNachrichten","einsatzalarmLog","halleninfos","turniere","trainerFotos","teamPhotos",
-  "spielerFotos","observations","einheiten","trainers"];
+  "spielerFotos","observations","einheiten","trainers","absagen"];
 function fuerSicherung(v){
   if(v===null || typeof v!=="object") return v;
   if(Array.isArray(v)) return v.map(fuerSicherung);
@@ -18475,6 +18503,9 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const activePlayers=players.filter(p=>p.status!=="passiv"&&p.group!=="Trainer");
   const [activeTab,setActiveTab]=useState("home");
   const tbRange=useTrainingRange();   // V533: allgemeiner Trainingszeitraum
+  const absagen=useAbsagen();         // V547: Trainings-Absagen der Eltern
+  const [absageForm,setAbsageForm]=useState(null);   // {d, grund, text}
+  const [absageBusy,setAbsageBusy]=useState(false);
   const [aufstellungTeam,setAufstellungTeam]=useState(""); // Zielmannschaft für Aufstellung-Sprung
   const [lokalZiel,setLokalZiel]=useState(null); // {verein,nr} für Sprung in die Spiellokale
   const [expandedEx,setExpandedEx]=useState(null);
@@ -18596,6 +18627,32 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     if(val==="e"||val==="u"){/* nicht anwesend */}else present++;
   }
   const pct=total>0?Math.round((present/total)*100):0;
+
+  // V547: Wer darf für dieses Kind absagen? Eltern (Eltern-Login), die Login-Adresse des
+  // Profils selbst sowie Admins/Trainer. Künftige Tage zählen NICHT in die Beteiligung.
+  const viewerMail=(user?.email||"").toLowerCase();
+  const viewerProfil=players.find(p=>p.id===user?.uid);
+  const darfAbsagen = !!viewerMail && (istElternLogin(myPlayer, viewerMail) ||
+    (myPlayer.email||"").toLowerCase()===viewerMail || isAdminEmail(viewerMail) ||
+    viewerProfil?.roles?.trainer===true);
+  const kommendeTage=myDays.filter(d=>d>=todayStr).slice(0,6);
+  async function absageSpeichern(d, grund){
+    if(absageBusy) return;
+    setAbsageBusy(true);
+    try{
+      await setDoc(doc(db,"absagen",absageId(d,myPlayer.id)),{playerId:myPlayer.id,date:d,grund:grund||"",von:viewerMail,zeit:Date.now()});
+      setAbsageForm(null);
+    }catch(e){ alert(T("Absage nicht möglich: ")+(e?.message||e)); }
+    setAbsageBusy(false);
+  }
+  async function absageZuruecknehmen(d){
+    if(absageBusy) return;
+    setAbsageBusy(true);
+    try{
+      await deleteDoc(doc(db,"absagen",absageId(d,myPlayer.id)));
+    }catch(e){ alert(T("Absage nicht möglich: ")+(e?.message||e)); }
+    setAbsageBusy(false);
+  }
 
   return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80}}>
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
@@ -18742,6 +18799,52 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
         </div>
       </div>
 
+      {/* V547: Nächste Trainings mit Absage-Möglichkeit (zählen nicht in die Beteiligung) */}
+      {myTrainingStart&&<div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,padding:12,marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:800,marginBottom:4}}>🗓️ Nächste Trainings</div>
+        {darfAbsagen&&<div style={{fontSize:10.5,color:"var(--text3)",marginBottom:8,lineHeight:1.45}}>Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.</div>}
+        {kommendeTage.length===0&&<div style={{fontSize:12,color:"var(--text3)"}}>Keine weiteren Trainingstage geplant.</div>}
+        {kommendeTage.map(d=>{
+          const s=attendance[d];
+          const ab=absagen[d]?.[myPlayer.id];
+          const istHeute=d===todayStr;
+          let label="Teilnahme geplant", farbe="#10b981";
+          if(s){
+            const val=s.attendances?.[myPlayer.id];
+            if(s.took_place===false){ label="Kein Training"; farbe="#6b7280"; }
+            else if(val==="e"){ label="Entschuldigt"; farbe="#f59e0b"; }
+            else if(val==="u"){ label="Unentschuldigt"; farbe="#ef4444"; }
+            else { label="✓ Anwesend"; farbe="#10b981"; }
+          } else if(ab){ label="❌ Abgesagt"; farbe="#f59e0b"; }
+          const formOffen=absageForm&&absageForm.d===d;
+          return <div key={d} style={{borderTop:"1px solid var(--border)",padding:"8px 0"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <div style={{minWidth:96}}>
+                <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{formatDayDE(d)}, {formatDateDE(d)}</div>
+                {istHeute&&<div style={{fontSize:10,fontWeight:700,color:"var(--club, #c8102e)"}}>Heute</div>}
+              </div>
+              <div style={{flex:1,minWidth:110}}>
+                <div style={{fontSize:12,fontWeight:700,color:farbe}}>{label}</div>
+                {!s&&ab&&ab.grund&&<div style={{fontSize:10.5,color:"var(--text3)"}}>{T(ab.grund)}</div>}
+                {s&&<div style={{fontSize:10,color:"var(--text4)"}}>Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.</div>}
+              </div>
+              {darfAbsagen&&!s&&!formOffen&&(ab
+                ? <button disabled={absageBusy} onClick={()=>absageZuruecknehmen(d)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #10b98166",background:"#10b98118",color:"#10b981",fontSize:12,fontWeight:700,cursor:"pointer"}}>Absage zurücknehmen</button>
+                : <button disabled={absageBusy} onClick={()=>setAbsageForm({d,grund:"Krank"})} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ef444466",background:"#ef444418",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>Absagen</button>)}
+            </div>
+            {formOffen&&<div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              <label style={{fontSize:11,color:"var(--text3)"}}>Grund (optional)</label>
+              <select value={absageForm.grund} onChange={e=>setAbsageForm(f=>({...f,grund:e.target.value}))} style={{flex:"1 1 140px",padding:"6px 8px",fontSize:12}}>
+                <option value="">—</option>
+                {ABSAGE_GRUENDE.map(g=><option key={g} value={g}>{g}</option>)}
+              </select>
+              <button disabled={absageBusy} onClick={()=>absageSpeichern(d, absageForm.grund)} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"#ef4444",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{absageBusy?"⏳":"Absage senden"}</button>
+              <button disabled={absageBusy} onClick={()=>setAbsageForm(null)} style={{padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",fontSize:12,cursor:"pointer"}}>Abbrechen</button>
+            </div>}
+          </div>;
+        })}
+      </div>}
+
       {/* Training days table — nur Vergangenheit, neuestes oben */}
       <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:14,overflow:"hidden"}}>
         <div style={{display:"grid",gridTemplateColumns:"90px 36px 1fr",background:"var(--bg3)",padding:"8px 12px",gap:8}}>
@@ -18756,6 +18859,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
           const val=s?.attendances?.[myPlayer.id];
           let statusLabel="Nicht erfasst";
           let statusColor="#4b5563";
+          if (!s && absagen[d]?.[myPlayer.id]) {statusLabel="Abgesagt (noch nicht erfasst)"; statusColor="#f59e0b";}   // V547
           if (didNotTakePlace) {statusLabel=T`Kein Training${s.reason?` (${s.reason})`:""}`; statusColor="#6b7280";}
           else if (s) {
             if (val===undefined||val===null||val==="a"){statusLabel="✓ Anwesend";statusColor="#10b981";}

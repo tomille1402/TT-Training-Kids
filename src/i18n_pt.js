@@ -2864,4 +2864,22 @@ export const PT_TEXTE = {
 "Aufsteiger/Gruppe": "Apurados por grupo",
 "1. Weihnachtstag": "Natal",
 "2. Weihnachtstag": "Segundo dia de Natal",
+"🗓️ Nächste Trainings": "🗓️ Próximos treinos",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Podes cancelar até ao fim do dia de treino. Depois disso, e assim que o treinador registar as presenças, vale o registo dele.",  // V547
+"Keine weiteren Trainingstage geplant.": "Não há mais dias de treino previstos.",  // V547
+"Teilnahme geplant": "Presença prevista",  // V547
+"Kein Training": "Sem treino",  // V547
+"❌ Abgesagt": "❌ Cancelado",  // V547
+"Heute": "Hoje",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Registado pelo treinador – alterações só pelo treinador ou admin.",  // V547
+"Absage zurücknehmen": "Retirar cancelamento",  // V547
+"Absagen": "Cancelar",  // V547
+"Grund (optional)": "Motivo (opcional)",  // V547
+"Absage senden": "Enviar cancelamento",  // V547
+"Abgesagt (noch nicht erfasst)": "Cancelado (ainda não registado)",  // V547
+"Absage nicht möglich: ": "Cancelamento não possível: ",  // V547
+"📩 abgesagt": "📩 cancelado",  // V547
+"Krank": "Doente",  // V547
+"Schule / Termin": "Escola / compromisso",  // V547
+"Urlaub": "Férias",  // V547
 };

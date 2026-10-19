@@ -2864,4 +2864,22 @@ export const AR_TEXTE = {
 "Aufsteiger/Gruppe": "المتأهلون/المجموعة",
 "1. Weihnachtstag": "عيد الميلاد (اليوم الأول)",
 "2. Weihnachtstag": "عيد الميلاد (اليوم الثاني)",
+"🗓️ Nächste Trainings": "🗓️ التدريبات القادمة",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "يمكن الاعتذار حتى نهاية يوم التدريب. بعد ذلك، وبمجرد أن يسجل المدرب الحضور، يُعتمد تسجيله.",  // V547
+"Keine weiteren Trainingstage geplant.": "لا توجد أيام تدريب أخرى مخططة.",  // V547
+"Teilnahme geplant": "المشاركة مخططة",  // V547
+"Kein Training": "لا تدريب",  // V547
+"❌ Abgesagt": "❌ معتذر",  // V547
+"Heute": "اليوم",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "سجّله المدرب – التغيير للمدرب أو المشرف فقط.",  // V547
+"Absage zurücknehmen": "سحب الاعتذار",  // V547
+"Absagen": "اعتذار",  // V547
+"Grund (optional)": "السبب (اختياري)",  // V547
+"Absage senden": "إرسال الاعتذار",  // V547
+"Abgesagt (noch nicht erfasst)": "معتذر (لم يُسجَّل بعد)",  // V547
+"Absage nicht möglich: ": "تعذّر الاعتذار: ",  // V547
+"📩 abgesagt": "📩 معتذر",  // V547
+"Krank": "مريض",  // V547
+"Schule / Termin": "مدرسة / موعد",  // V547
+"Urlaub": "عطلة",  // V547
 };

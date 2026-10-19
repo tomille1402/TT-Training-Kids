@@ -2866,4 +2866,22 @@ export const PL_TEXTE = {
 "Aufsteiger/Gruppe": "Awansujący z grupy",
 "1. Weihnachtstag": "Boże Narodzenie (1. dzień)",
 "2. Weihnachtstag": "Boże Narodzenie (2. dzień)",
+"🗓️ Nächste Trainings": "🗓️ Najbliższe treningi",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Odwołać można do końca dnia treningu. Potem, a także gdy trener zapisze obecność, obowiązuje wpis trenera.",  // V547
+"Keine weiteren Trainingstage geplant.": "Brak kolejnych zaplanowanych treningów.",  // V547
+"Teilnahme geplant": "Udział planowany",  // V547
+"Kein Training": "Brak treningu",  // V547
+"❌ Abgesagt": "❌ Odwołano",  // V547
+"Heute": "Dziś",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Zapisane przez trenera – zmiany tylko przez trenera lub admina.",  // V547
+"Absage zurücknehmen": "Cofnij odwołanie",  // V547
+"Absagen": "Odwołaj",  // V547
+"Grund (optional)": "Powód (opcjonalnie)",  // V547
+"Absage senden": "Wyślij odwołanie",  // V547
+"Abgesagt (noch nicht erfasst)": "Odwołano (jeszcze nie zapisane)",  // V547
+"Absage nicht möglich: ": "Odwołanie niemożliwe: ",  // V547
+"📩 abgesagt": "📩 odwołano",  // V547
+"Krank": "Choroba",  // V547
+"Schule / Termin": "Szkoła / termin",  // V547
+"Urlaub": "Urlop",  // V547
 };

@@ -2864,4 +2864,22 @@ export const RO_TEXTE = {
 "Aufsteiger/Gruppe": "Calificați pe grupă",
 "1. Weihnachtstag": "Crăciunul (ziua 1)",
 "2. Weihnachtstag": "Crăciunul (ziua 2)",
+"🗓️ Nächste Trainings": "🗓️ Antrenamentele următoare",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Poți anula până la sfârșitul zilei de antrenament. După aceea și imediat ce antrenorul a înregistrat prezența, este valabilă înregistrarea lui.",  // V547
+"Keine weiteren Trainingstage geplant.": "Nu mai sunt zile de antrenament planificate.",  // V547
+"Teilnahme geplant": "Participare planificată",  // V547
+"Kein Training": "Fără antrenament",  // V547
+"❌ Abgesagt": "❌ Anulat",  // V547
+"Heute": "Azi",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Înregistrat de antrenor – modificări doar de antrenor sau admin.",  // V547
+"Absage zurücknehmen": "Retrage anularea",  // V547
+"Absagen": "Anulează",  // V547
+"Grund (optional)": "Motiv (opțional)",  // V547
+"Absage senden": "Trimite anularea",  // V547
+"Abgesagt (noch nicht erfasst)": "Anulat (încă neînregistrat)",  // V547
+"Absage nicht möglich: ": "Anulare imposibilă: ",  // V547
+"📩 abgesagt": "📩 anulat",  // V547
+"Krank": "Bolnav",  // V547
+"Schule / Termin": "Școală / programare",  // V547
+"Urlaub": "Concediu",  // V547
 };

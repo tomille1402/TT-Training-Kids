@@ -2866,4 +2866,22 @@ export const LA_TEXTE = {
 "Aufsteiger/Gruppe": "Ascendentes/grex",
 "1. Weihnachtstag": "Dies Nativitatis I",
 "2. Weihnachtstag": "Dies Nativitatis II",
+"🗓️ Nächste Trainings": "🗓️ Exercitationes proximae",  // V547
+"Absagen ist bis zum Ende des Trainingstags möglich. Danach und sobald der Trainer die Anwesenheit erfasst hat, gilt dessen Eintrag.": "Usque ad finem diei exercitationis excusare licet. Postea, et simul ac exercitator praesentiam notavit, eius inscriptio valet.",  // V547
+"Keine weiteren Trainingstage geplant.": "Nulli alii dies exercitationis constituti.",  // V547
+"Teilnahme geplant": "Participatio constituta",  // V547
+"Kein Training": "Nulla exercitatio",  // V547
+"❌ Abgesagt": "❌ Excusatus",  // V547
+"Heute": "Hodie",  // V547
+"Vom Trainer erfasst – Änderungen nur durch Trainer oder Admin.": "Ab exercitatore notatum – mutationes tantum ab exercitatore vel administratore.",  // V547
+"Absage zurücknehmen": "Excusationem revoca",  // V547
+"Absagen": "Excusa",  // V547
+"Grund (optional)": "Causa (ad libitum)",  // V547
+"Absage senden": "Excusationem mitte",  // V547
+"Abgesagt (noch nicht erfasst)": "Excusatus (nondum notatum)",  // V547
+"Absage nicht möglich: ": "Excusatio fieri non potest: ",  // V547
+"📩 abgesagt": "📩 excusatus",  // V547
+"Krank": "Aeger",  // V547
+"Schule / Termin": "Schola / constitutum",  // V547
+"Urlaub": "Feriae",  // V547
 };
