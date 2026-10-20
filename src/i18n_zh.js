@@ -2884,4 +2884,5 @@ export const ZH_TEXTE = {
 "Krank": "生病",  // V547
 "Schule / Termin": "上学 / 有事",  // V547
 "Urlaub": "度假",  // V547
+"📩 Trainings-Absagen": "📩 训练请假",  // V548
 };

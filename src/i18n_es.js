@@ -2882,4 +2882,5 @@ export const ES_TEXTE = {
 "Krank": "Enfermo",  // V547
 "Schule / Termin": "Colegio / cita",  // V547
 "Urlaub": "Vacaciones",  // V547
+"📩 Trainings-Absagen": "📩 Cancelaciones de entrenamiento",  // V548
 };

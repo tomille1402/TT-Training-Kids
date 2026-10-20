@@ -2882,4 +2882,5 @@ export const AR_TEXTE = {
 "Krank": "مريض",  // V547
 "Schule / Termin": "مدرسة / موعد",  // V547
 "Urlaub": "عطلة",  // V547
+"📩 Trainings-Absagen": "📩 الاعتذار عن التدريب",  // V548
 };

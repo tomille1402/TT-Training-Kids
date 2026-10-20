@@ -2882,4 +2882,5 @@ export const RO_TEXTE = {
 "Krank": "Bolnav",  // V547
 "Schule / Termin": "Școală / programare",  // V547
 "Urlaub": "Concediu",  // V547
+"📩 Trainings-Absagen": "📩 Anulări antrenamente",  // V548
 };

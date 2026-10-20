@@ -1,4 +1,4 @@
-// === TTC-App · Version 547 · erstellt 19.10.2026 ===
+// === TTC-App · Version 548 · erstellt 20.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "547";
+const APP_VERSION = "548";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -18642,6 +18642,11 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     try{
       await setDoc(doc(db,"absagen",absageId(d,myPlayer.id)),{playerId:myPlayer.id,date:d,grund:grund||"",von:viewerMail,zeit:Date.now()});
       setAbsageForm(null);
+      // V548: Trainer und Admins per Push informieren (Fehler blockieren die Absage nicht)
+      try{
+        fetch("/.netlify/functions/absagealarm",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),playerId:myPlayer.id,datum:d})}).catch(()=>{});
+      }catch(e){}
     }catch(e){ alert(T("Absage nicht möglich: ")+(e?.message||e)); }
     setAbsageBusy(false);
   }
@@ -20228,7 +20233,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     if(n?.kategorie) {
       // Serverseitig gesetzte Kategorie hat Vorrang.
       const k=String(n.kategorie);
-      if(["turniere","mannschaft","verein","geburtstag","nachwuchs_spiele","nachwuchs_einsaetze","einsaetze"].includes(k)) return k;
+      if(["turniere","mannschaft","verein","geburtstag","nachwuchs_spiele","nachwuchs_einsaetze","einsaetze","trainingsabsagen"].includes(k)) return k;
     }
     // Rückwirkende Erkennung für bestehende Nachrichten ohne Kategorie-Feld:
     // Nachwuchs-Mannschaftsnamen (Mädchen/Jungen/Jugend + Zahl) in Titel oder Text.
@@ -20250,6 +20255,7 @@ function BirthdayBtn({players, attendance, meId, istAdmin=false}) {
     ["turniere","🏓 Turniere"],
     ["mannschaft","🏓 Mannschafts-Spiele"],
     ["einsaetze","⚠️ Einsätze"],
+    ["trainingsabsagen","📩 Trainings-Absagen"],   // V548
     ["verein","📌 Vereins-Termine"],
     ["geburtstag","🎂 Geburtstage"],
     ["sonstiges","🔔 Sonstiges"],

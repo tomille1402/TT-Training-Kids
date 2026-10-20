@@ -2884,4 +2884,5 @@ export const LA_TEXTE = {
 "Krank": "Aeger",  // V547
 "Schule / Termin": "Schola / constitutum",  // V547
 "Urlaub": "Feriae",  // V547
+"📩 Trainings-Absagen": "📩 Excusationes exercitationum",  // V548
 };
