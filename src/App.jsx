@@ -1,4 +1,4 @@
-// === TTC-App · Version 548 · erstellt 20.10.2026 ===
+// === TTC-App · Version 549 · erstellt 20.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "548";
+const APP_VERSION = "549";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
