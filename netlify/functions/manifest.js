@@ -1,4 +1,4 @@
-// === TTC-App · Version 519 · netlify/functions/manifest.js · erstellt 07.10.2026 (V519: Manifest und Symbol je Verein) ===
+// === TTC-App · Version 549 · netlify/functions/manifest.js · erstellt 20.10.2026 (V549: Querformat erlaubt – orientation "any"; V519: Manifest und Symbol je Verein) ===
 // Liefert /manifest.webmanifest und die Startbildschirm-Symbole passend zur aufgerufenen
 // Adresse (eigene Domain bzw. Subdomain je Verein, siehe system/datenbereich.domains /
 // basisDomain). Name, Farben und Logo kommen aus vereine/<id>/config/clubConfig.
@@ -59,7 +59,7 @@ exports.handler = async (event) => {
     const manifest = {
       name: lang, short_name: kurz,
       description: `Trainings-, Spielplan- und Vereinsverwaltung – ${v.kurzname||cfg.name||""}`.trim(),
-      start_url:"/", scope:"/", display:"standalone", orientation:"portrait",
+      start_url:"/", scope:"/", display:"standalone", orientation:"any",
       background_color:"#0d1117", theme_color:"#0d1117", lang:"de",
       icons:[
         { src:"/vereins-icon-192.png", sizes:"192x192", type:"image/png", purpose:"any" },
