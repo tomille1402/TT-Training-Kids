@@ -1,4 +1,4 @@
-// === TTC-App · Version 550 · erstellt 21.10.2026 ===
+// === TTC-App · Version 551 · erstellt 21.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "550";
+const APP_VERSION = "551";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9667,14 +9667,14 @@ function ibanFormat(x){ return String(x||"").replace(/\s+/g,"").toUpperCase().re
 
 // V536: PDF der Trainer-Abrechnung – Trainings, betreute Punktspiele und Turniere
 // rows: [{d, art:"training"|"spiel"|"turnier", text, h, satz}]
-async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, von, bis }){
+async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, von, bis, erstelltAm }){   // V551: erstelltAm für Historie
   const jsPDF=await ladeJsPDF_V();
   const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   let logo="", farbe=[200,16,46];
   try{ const snap=await getDoc(doc(db,"config","clubConfig"));
     if(snap.exists()){ const d=snap.data(); logo=d.logo||""; farbe=vereinsFarbeRgb(d.farbschema); } }catch(e){}
   const L=18, R=192, dDE=(iso)=>{ const t=String(iso||"").split("-"); return t.length===3?`${t[2]}.${t[1]}.${t[0]}`:""; };
-  const heute=new Date().toLocaleDateString("sv");
+  const heute=erstelltAm||new Date().toLocaleDateString("sv");
   if(logo){ try{
     const pr=pdf.getImageProperties(logo); const box=30; const r=Math.min(box/pr.width, box/pr.height);
     const w=pr.width*r, h=pr.height*r;
@@ -9826,7 +9826,7 @@ function AbrechnungAusgabeDialog({ ausgabe, empfaenger, onClose }){
   const btn={flex:"1 1 120px",padding:"11px 12px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",border:"none"};
   return <div onClick={onClose} style={{position:"fixed",inset:0,background:"#0008",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
     <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:14,padding:16,width:"100%",maxWidth:440}}>
-      <div style={{fontSize:15,fontWeight:800,color:"var(--text)",marginBottom:4}}>📄 Abrechnung erstellt</div>
+      <div style={{fontSize:15,fontWeight:800,color:"var(--text)",marginBottom:4}}>{ausgabe.ueberschrift||"📄 Abrechnung erstellt"}</div>
       <div style={{fontSize:12,color:"var(--text3)",marginBottom:12,wordBreak:"break-word"}}>{dateiname}</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
         <button onClick={email} style={{...btn,background:"var(--club, #c8102e)",color:"#fff"}}>✉️ Per E-Mail</button>
@@ -9959,13 +9959,44 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
       const blob=await trainerAbrechnungPdfErzeugen({ name, rows, iban:form.iban, kontoinhaber:form.kontoinhaber, von, bis });
       const eintrag={ id:String(Date.now()), von, bis, erstellt:new Date().toLocaleDateString("sv"),
         tage:rows.map(r=>({d:r.d, art:r.art, key:r.key, text:r.text, h:r.h, satz:r.satz, pauschale:r.pauschale||0})),
-        stunden:sStd, betrag:Math.round(sEur*100)/100 };
+        stunden:sStd, betrag:Math.round(sEur*100)/100,
+        iban:ibanFormat(form.iban), kontoinhaber:form.kontoinhaber.trim(), name };   // V551: für erneute PDF-Anzeige
       await setDoc(doc(db,"abrechnung",pid),{ kontoinhaber:form.kontoinhaber.trim(), iban:ibanFormat(form.iban),
         stundenStandard:stdTraining, empfaenger:form.empfaenger.trim(),
         historie:[...(daten?.historie||[]), eintrag], geaendert:Date.now() },{merge:true}).catch(()=>{});
       const safe=(x)=>String(x||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
       setAusgabe({ blob, url:URL.createObjectURL(blob), dateiname:`Abrechnung_${safe(name)}_${von}_bis_${bis}.pdf`,
         titel:`Abrechnung ${name} (${formatDateDE(von)} – ${formatDateDE(bis)})` });
+    }catch(e){ setAusgabe(null); window.alert(T("Die Abrechnung konnte nicht erstellt werden.\n")+(e&&e.message||"")); }
+    finally{ laeuft.current=false; }
+  }
+  // V551: Bisherige Abrechnung erneut als PDF anzeigen – aus den gespeicherten Positionen.
+  // Ältere Einträge (vor V551) enthalten keine Bankdaten → aktuelle Bankdaten verwenden.
+  async function historiePdf(h){
+    if(!person || laeuft.current) return;
+    laeuft.current=true;
+    setAusgabe({laeuft:true});
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      const name=h.name || `${person.firstName||""} ${person.lastName||""}`.trim();
+      const WT=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+      const rowsH=(h.tage||[]).map(t=>{
+        const d=t.d||(typeof t==="string"?t:"");
+        const art=t.art||"training";
+        return { d, art, text: t.text || (art==="training" && d ? `Training (${WT[new Date(d).getDay()]})` : ""),
+          h:Number(t.h)||0, satz:Number(t.satz)||0, pauschale:Number(t.pauschale)||0 };
+      }).filter(r=>r.d).sort((a,b)=>a.d.localeCompare(b.d));
+      // Sehr frühe Einträge (V535) ohne Stunden/Satz je Position: gleichmäßig aus den Summen verteilen
+      if(rowsH.length && rowsH.every(r=>!r.h && !r.satz && !r.pauschale) && Number(h.stunden)>0){
+        const je=Number(h.stunden)/rowsH.length, sz=(Number(h.betrag)||0)/Number(h.stunden);
+        rowsH.forEach(r=>{ r.h=Math.round(je*100)/100; r.satz=Math.round(sz*100)/100; });
+      }
+      const blob=await trainerAbrechnungPdfErzeugen({ name, rows:rowsH,
+        iban: h.iban ?? form.iban, kontoinhaber: h.kontoinhaber ?? form.kontoinhaber,
+        von:h.von, bis:h.bis, erstelltAm:h.erstellt });
+      const safe=(x)=>String(x||"").replace(/[^\wäöüÄÖÜß .\-]/g,"").replace(/\s+/g,"_").slice(0,60);
+      setAusgabe({ blob, url:URL.createObjectURL(blob), dateiname:`Abrechnung_${safe(name)}_${h.von}_bis_${h.bis}.pdf`,
+        titel:`Abrechnung ${name} (${formatDateDE(h.von)} – ${formatDateDE(h.bis)})`, ueberschrift:"📄 Bisherige Abrechnung" });
     }catch(e){ setAusgabe(null); window.alert(T("Die Abrechnung konnte nicht erstellt werden.\n")+(e&&e.message||"")); }
     finally{ laeuft.current=false; }
   }
@@ -10108,6 +10139,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
         <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Positionen · {stundenDE(h.stunden)} Std.
           <div style={{fontSize:10,color:"var(--text3)"}}>{T`erstellt am ${formatDateDE(h.erstellt)}`}</div></div>
         <div style={{fontSize:12,fontWeight:800}}>{euroDE(h.betrag)}</div>
+        <button onClick={()=>historiePdf(h)} disabled={!!ausgabe?.laeuft} title="Als PDF anzeigen" style={{padding:"3px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>
         <button onClick={()=>historieLoeschen(h.id)} style={{padding:"2px 7px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
       </div>)}
     </div>}

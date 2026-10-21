@@ -2888,4 +2888,6 @@ export const LA_TEXTE = {
 "🏠 Straße": "🏠 Via",  // V550
 "Straße": "Via",  // V550
 "Hausnummer": "Numerus domus",  // V550
+"📄 Bisherige Abrechnung": "📄 Ratio prior",  // V551
+"Als PDF anzeigen": "Ut PDF ostende",  // V551
 };

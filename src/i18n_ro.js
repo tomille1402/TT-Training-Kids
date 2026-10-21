@@ -2886,4 +2886,6 @@ export const RO_TEXTE = {
 "🏠 Straße": "🏠 Stradă",  // V550
 "Straße": "Stradă",  // V550
 "Hausnummer": "Număr",  // V550
+"📄 Bisherige Abrechnung": "📄 Decont anterior",  // V551
+"Als PDF anzeigen": "Afișează ca PDF",  // V551
 };

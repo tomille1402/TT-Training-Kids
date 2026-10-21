@@ -2888,4 +2888,6 @@ export const PL_TEXTE = {
 "🏠 Straße": "🏠 Ulica",  // V550
 "Straße": "Ulica",  // V550
 "Hausnummer": "Numer domu",  // V550
+"📄 Bisherige Abrechnung": "📄 Poprzednie rozliczenie",  // V551
+"Als PDF anzeigen": "Pokaż jako PDF",  // V551
 };

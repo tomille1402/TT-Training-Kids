@@ -2886,4 +2886,6 @@ export const AR_TEXTE = {
 "🏠 Straße": "🏠 الشارع",  // V550
 "Straße": "الشارع",  // V550
 "Hausnummer": "رقم المبنى",  // V550
+"📄 Bisherige Abrechnung": "📄 محاسبة سابقة",  // V551
+"Als PDF anzeigen": "عرض كملف PDF",  // V551
 };

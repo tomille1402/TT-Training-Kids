@@ -2886,4 +2886,6 @@ export const ES_TEXTE = {
 "🏠 Straße": "🏠 Calle",  // V550
 "Straße": "Calle",  // V550
 "Hausnummer": "Número",  // V550
+"📄 Bisherige Abrechnung": "📄 Liquidación anterior",  // V551
+"Als PDF anzeigen": "Mostrar como PDF",  // V551
 };

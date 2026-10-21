@@ -2888,4 +2888,6 @@ export const ZH_TEXTE = {
 "🏠 Straße": "🏠 街道",  // V550
 "Straße": "街道",  // V550
 "Hausnummer": "门牌号",  // V550
+"📄 Bisherige Abrechnung": "📄 以往结算",  // V551
+"Als PDF anzeigen": "以 PDF 显示",  // V551
 };

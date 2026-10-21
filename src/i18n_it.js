@@ -2888,4 +2888,6 @@ export const IT_TEXTE = {
 "🏠 Straße": "🏠 Via",  // V550
 "Straße": "Via",  // V550
 "Hausnummer": "Numero civico",  // V550
+"📄 Bisherige Abrechnung": "📄 Rendiconto precedente",  // V551
+"Als PDF anzeigen": "Mostra come PDF",  // V551
 };
