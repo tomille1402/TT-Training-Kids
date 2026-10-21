@@ -2885,4 +2885,7 @@ export const FR_TEXTE = {
 "Schule / Termin": "École / rendez-vous",  // V547
 "Urlaub": "Vacances",  // V547
 "📩 Trainings-Absagen": "📩 Absences à l'entraînement",  // V548
+"🏠 Straße": "🏠 Rue",  // V550
+"Straße": "Rue",  // V550
+"Hausnummer": "Numéro",  // V550
 };

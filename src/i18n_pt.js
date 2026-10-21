@@ -2883,4 +2883,7 @@ export const PT_TEXTE = {
 "Schule / Termin": "Escola / compromisso",  // V547
 "Urlaub": "Férias",  // V547
 "📩 Trainings-Absagen": "📩 Cancelamentos de treino",  // V548
+"🏠 Straße": "🏠 Rua",  // V550
+"Straße": "Rua",  // V550
+"Hausnummer": "Número da porta",  // V550
 };

@@ -1,4 +1,4 @@
-// === TTC-App · Version 549 · erstellt 20.10.2026 ===
+// === TTC-App · Version 550 · erstellt 21.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "549";
+const APP_VERSION = "550";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -14471,7 +14471,9 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
   // ── Personen-Datenfelder: deutsche Spalte ↔ Firestore-Key ──
   const PERSON_FIELDS=[
     ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
-    ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],["Gruppe","group"],["Status","status"],
+    ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],
+    ["Straße","strasse"],["Hausnummer","hausnummer"],["PLZ","plz"],["Ort","ort"],   // V550: Adresse
+    ["Gruppe","group"],["Status","status"],
     ["Elternteil 1","elternteil1"],["Vorname 1","elternVorname1"],["Nachname 1","elternNachname1"],
     ["E-Mail 1","elternEmail1"],["Handy 1","elternHandy1"],
     ["Elternteil 2","elternteil2"],["Vorname 2","elternVorname2"],["Nachname 2","elternNachname2"],
@@ -14555,6 +14557,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
           if(["birthdate","joinDate","leaveDate","trainingStart","trainingEnd","racketStart","racketEnd","datenschutzAccepted"].includes(key))
             val=parseDateStr(val)||val;
           if(key==="group") val=gruppeAusText(val);   // V515: Anzeigename → Gruppe
+          if(key==="plz" && /^\d{4}$/.test(val)) val="0"+val;   // V550: als Zahl gelesene PLZ mit führender 0
           data[key]=val;
         });
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
@@ -14634,6 +14637,10 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         lastName:      editPlayer.lastName||"",
         gender:        editPlayer.gender||"m",
         email:         editPlayer.email||"",
+        strasse:       (editPlayer.strasse||"").trim(),      // V550: Adresse
+        hausnummer:    (editPlayer.hausnummer||"").trim(),
+        plz:           String(editPlayer.plz||"").trim(),
+        ort:           (editPlayer.ort||"").trim(),
         elternEmail:   (editPlayer.elternEmail||"").trim().toLowerCase(),
         elternteil1:      editPlayer.elternteil1||"Mutter",
         elternVorname1:   editPlayer.elternVorname1||"",
@@ -15585,18 +15592,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   {editPlayer.birthdate&&<button onClick={()=>setEditPlayer(p=>({...p,birthdate:""}))} style={{padding:"4px 7px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text3)",fontSize:11,cursor:"pointer"}}>✕</button>}
                 </div>
               </div>
-              {/* 2e Handy vor E-Mail */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
-                <input type="tel" value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} placeholder="+49 151 ..."
-                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-              </div>
-              {/* E-Mail */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
-                <input type="text" value={editPlayer.email||""} onChange={e=>setEditPlayer(prev=>({...prev,email:e.target.value}))}
-                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-              </div>
+              {/* V550: Geschlecht, Gruppe, Status direkt unter dem Geburtstag */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Geschlecht</label>
@@ -15611,7 +15607,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   </select>
                 </div>
               </div>
-              <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
                 <div style={{flex:1,minWidth:120}}>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Status</label>
                   <select value={editPlayer.status||"aktiv"} onChange={e=>setEditPlayer(prev=>({...prev,status:e.target.value}))} style={{width:"100%"}}>
@@ -15632,6 +15628,43 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                       style={{width:"100%",boxSizing:"border-box"}}/>;
                   })()}
                   {qttrAusTtr(editPlayer)!=null && <div style={{fontSize:9,color:"var(--text4)",marginTop:2}}>aus TTR-Liste ({ttrStichtagV})</div>}
+                </div>
+              </div>
+              {/* 2e Handy vor E-Mail */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
+                <input type="tel" value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} placeholder="+49 151 ..."
+                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              {/* E-Mail */}
+              <div style={{marginBottom:10}}>
+                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>E-Mail</label>
+                <input type="text" value={editPlayer.email||""} onChange={e=>setEditPlayer(prev=>({...prev,email:e.target.value}))}
+                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+              {/* V550: Adresse */}
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <div style={{flex:"1 1 auto",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🏠 Straße</label>
+                  <input type="text" autoComplete="address-line1" value={editPlayer.strasse||""} onChange={e=>setEditPlayer(prev=>({...prev,strasse:e.target.value}))}
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{flex:"0 0 84px",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Nr.</label>
+                  <input type="text" value={editPlayer.hausnummer||""} onChange={e=>setEditPlayer(prev=>({...prev,hausnummer:e.target.value}))}
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <div style={{flex:"0 0 96px",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>PLZ</label>
+                  <input type="text" inputMode="numeric" autoComplete="postal-code" value={editPlayer.plz||""} onChange={e=>setEditPlayer(prev=>({...prev,plz:e.target.value}))}
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{flex:"1 1 auto",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>Ort</label>
+                  <input type="text" autoComplete="address-level2" value={editPlayer.ort||""} onChange={e=>setEditPlayer(prev=>({...prev,ort:e.target.value}))}
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
                 </div>
               </div>
               {/* Datum Datenschutz-Erklärung (automatisch gesetzt, nicht editierbar) */}

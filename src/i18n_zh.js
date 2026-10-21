@@ -2885,4 +2885,7 @@ export const ZH_TEXTE = {
 "Schule / Termin": "上学 / 有事",  // V547
 "Urlaub": "度假",  // V547
 "📩 Trainings-Absagen": "📩 训练请假",  // V548
+"🏠 Straße": "🏠 街道",  // V550
+"Straße": "街道",  // V550
+"Hausnummer": "门牌号",  // V550
 };

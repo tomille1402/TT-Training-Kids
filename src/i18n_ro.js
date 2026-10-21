@@ -2883,4 +2883,7 @@ export const RO_TEXTE = {
 "Schule / Termin": "Școală / programare",  // V547
 "Urlaub": "Concediu",  // V547
 "📩 Trainings-Absagen": "📩 Anulări antrenamente",  // V548
+"🏠 Straße": "🏠 Stradă",  // V550
+"Straße": "Stradă",  // V550
+"Hausnummer": "Număr",  // V550
 };

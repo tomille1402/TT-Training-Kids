@@ -2883,4 +2883,7 @@ export const AR_TEXTE = {
 "Schule / Termin": "مدرسة / موعد",  // V547
 "Urlaub": "عطلة",  // V547
 "📩 Trainings-Absagen": "📩 الاعتذار عن التدريب",  // V548
+"🏠 Straße": "🏠 الشارع",  // V550
+"Straße": "الشارع",  // V550
+"Hausnummer": "رقم المبنى",  // V550
 };

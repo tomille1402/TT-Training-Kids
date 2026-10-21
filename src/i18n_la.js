@@ -2885,4 +2885,7 @@ export const LA_TEXTE = {
 "Schule / Termin": "Schola / constitutum",  // V547
 "Urlaub": "Feriae",  // V547
 "📩 Trainings-Absagen": "📩 Excusationes exercitationum",  // V548
+"🏠 Straße": "🏠 Via",  // V550
+"Straße": "Via",  // V550
+"Hausnummer": "Numerus domus",  // V550
 };
