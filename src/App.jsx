@@ -1,4 +1,4 @@
-// === TTC-App · Version 551 · erstellt 21.10.2026 ===
+// === TTC-App · Version 552 · erstellt 22.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "551";
+const APP_VERSION = "552";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -24706,6 +24706,12 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     const updated = {...einsaetze, [sk]:{...cur, _nominiert:neu}};
     setEinsaetze(updated);
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
+    // V552: Aufstellung steht im Text der Nachwuchs-Erinnerung → bereits abgelegte
+    // Glocken-Nachrichten nachziehen (kein erneuter Push).
+    try{
+      fetch("/.netlify/functions/nachrichtaktualisieren",{method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({spielKey:sk, ...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),})}).catch(()=>{});
+    }catch(e){}
   }
 
   // Wer darf Betreuer/Fahrer setzen? Admin/Trainer/MF (viewerCanEditAll) sowie
