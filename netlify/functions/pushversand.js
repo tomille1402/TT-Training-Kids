@@ -1,4 +1,4 @@
-// === TTC-App · Version 519 · netlify/functions/pushversand.js · erstellt 07.10.2026 (V519: Versand für alle Vereine) ===
+// === TTC-App · Version 552 · netlify/functions/pushversand.js · erstellt 22.10.2026 (V552: Aufstellung im Nachwuchs-Text, keine doppelten Leerzeichen; V519: Versand für alle Vereine) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -439,7 +439,27 @@ function tageBis(terminISO, heute){
 // Beginn), Betreuern und – auswärts – bis zu zwei Fahrern (_fahrer, _fahrer2).
 // Wird vom täglichen Versand und vom Nachziehen bestehender Glocken-Nachrichten
 // (nachrichtaktualisieren.js) gemeinsam genutzt, damit beide denselben Text liefern.
-function nachwuchsSpielNachricht(s, ei, diff){
+// V552: Text bereinigen – mehrfache Leerzeichen zu einem, Leerzeilen entfernen (eine
+// Leerzeile erschien in der eingeklappten Push-Anzeige als doppeltes Leerzeichen).
+function pushTextSauber(t){
+  return String(t||"").split("\n").map(z=>z.replace(/[ \t\u00a0]{2,}/g," ").trim()).filter(Boolean).join("\n");
+}
+// V552: Namen der vom Mannschaftsführer final aufgestellten Spieler (einsaetze[sk]._nominiert),
+// sortiert nach der Reihenfolge in der Mannschaftsmeldung; ohne Nominierung leer.
+function aufstellungsNamen(s, ei, ctx){
+  const ids = Array.isArray(ei && ei._nominiert) ? ei._nominiert.filter(Boolean) : [];
+  if(!ids.length || !ctx || !Array.isArray(ctx.players)) return [];
+  const players = ctx.players;
+  const reihe = Array.isArray(ctx.aufSpieler) ? stammspielerIds(s.mannschaft, ctx.aufSpieler, players) : [];
+  const rang = (id)=>{ const i=reihe.indexOf(id); return i<0 ? 999 : i; };
+  return [...new Set(ids)]
+    .map((id,i)=>({ id, i, p: players.find(x=>x.id===id) }))
+    .filter(x=>x.p)
+    .sort((a,b)=>rang(a.id)-rang(b.id) || a.i-b.i)
+    .map(x=>`${x.p.firstName||""} ${x.p.lastName||""}`.replace(/\s+/g," ").trim())
+    .filter(Boolean);
+}
+function nachwuchsSpielNachricht(s, ei, diff, ctx){
   const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
   const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean);
   const fahrer = [ei._fahrer, ei._fahrer2].filter(Boolean)
@@ -455,6 +475,9 @@ function nachwuchsSpielNachricht(s, ei, diff){
     : betreuer.length===1
       ? `Betreuer ist ${betreuer[0]}.`
       : "Ein Betreuer wird noch gesucht.";
+  // V552: Satz mit der Mannschaftsaufstellung (nur, wenn der MF sie festgelegt hat)
+  const namen = aufstellungsNamen(s, ei, ctx);
+  const aufstellungSatz = namen.length ? `Gespielt wird in folgender Aufstellung: ${namen.join(", ")}.` : "";
   let text;
   if(istHeim){
     text =
@@ -462,6 +485,7 @@ function nachwuchsSpielNachricht(s, ei, diff){
 
 am ${wtag}, den ${dat} habt ihr euer nächstes Heimspiel gegen ${gegner}. Das Spiel ist in ${VEREIN.ort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam aufzubauen und euch einzuspielen.
 ${betreuerSatz}
+${aufstellungSatz}
 
 Viel Erfolg 🏓`;
   } else {
@@ -477,10 +501,11 @@ Viel Erfolg 🏓`;
 am ${wtag}, den ${dat} habt ihr euer nächstes Spiel gegen ${gegner}. Das Spiel ist in ${spielort} und Spielbeginn ist ${beginn} Uhr. Ihr trefft euch am besten um ${treff} Uhr an der Halle, um gemeinsam nach ${spielort} zu fahren.
 ${fahrerSatz}
 ${betreuerSatz}
+${aufstellungSatz}
 
 Viel Erfolg 🏓`;
   }
-  return { titel:`🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`, text };
+  return { titel:pushTextSauber(`🏓 ${s.mannschaft} – ${istHeim?"Heimspiel":"Auswärtsspiel"} ${wann}`), text:pushTextSauber(text) };
 }
 
 // ── Bestehende Glocken-Nachrichten zu Nachwuchsspielen nachziehen (V485) ──
@@ -510,7 +535,7 @@ async function nachwuchsNachrichtenNachziehen({ spiele, regeln, einsaetzeData, a
       const sendeId = `spiel_${sk}_d${t}`;
       const bisher = await getDocData("appNachrichten/"+sendeId);
       if(!bisher) continue;                                // nur vorhandene Nachrichten aktualisieren
-      const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, t);
+      const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, t, { players, aufSpieler });
       const empf = [...new Set([
         ...spielEmpfaenger(regel.empfaenger, s.mannschaft, sk, aufSpieler, einsaetzeData, players),
         ...admins])];
@@ -637,7 +662,7 @@ async function versandFuerVerein(event){
       // Für Nachwuchsspiele: ausführliche, nach Heim/Auswärts differenzierte Nachricht
       // inkl. Treffpunkt (1 Std. vor Beginn), Betreuer und – auswärts – Fahrer.
       if(nachwuchs){
-        const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, diff);
+        const {titel,text} = nachwuchsSpielNachricht(s, einsaetzeData[sk]||{}, diff, { players, aufSpieler });
         zuSenden.push({
           sendeId: `spiel_${sk}_d${diff}`,
           empfaengerIds: ids,
@@ -793,6 +818,8 @@ async function versandFuerVerein(event){
     const alleAdminIds = adminIds(players);
     for(const job of zuSenden){
       job.empfaengerIds = [...new Set([...(job.empfaengerIds||[]), ...alleAdminIds])];
+      job.titel = pushTextSauber(job.titel);   // V552: keine doppelten Leerzeichen/Leerzeilen
+      job.text  = pushTextSauber(job.text);
     }
 
     // Versand ausführen
