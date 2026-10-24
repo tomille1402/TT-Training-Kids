@@ -2896,4 +2896,5 @@ export const PL_TEXTE = {
 "Dieses Gerät ist gerade offline.": "To urządzenie jest obecnie offline.",  // V555
 "Fehlercode:": "Kod błędu:",  // V555
 "🔄 Erneut versuchen": "🔄 Spróbuj ponownie",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "W tym okresie osoba nie jest wpisana jako opiekun przy żadnym meczu Mädchen 11 ani Jungen 11.",  // V556
 };

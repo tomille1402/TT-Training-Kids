@@ -2896,4 +2896,5 @@ export const LA_TEXTE = {
 "Dieses Gerät ist gerade offline.": "Hoc instrumentum nunc sine nexu est.",  // V555
 "Fehlercode:": "Codex erroris:",  // V555
 "🔄 Erneut versuchen": "🔄 Iterum conari",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "Hoc spatio persona nulli certamini Mädchen 11 vel Jungen 11 ut curator inscripta est.",  // V556
 };

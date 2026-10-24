@@ -2896,4 +2896,5 @@ export const ZH_TEXTE = {
 "Dieses Gerät ist gerade offline.": "此设备当前处于离线状态。",  // V555
 "Fehlercode:": "错误代码：",  // V555
 "🔄 Erneut versuchen": "🔄 重试",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "在此期间，该人员未被登记为 Mädchen 11 或 Jungen 11 任何比赛的领队。",  // V556
 };

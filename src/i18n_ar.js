@@ -2894,4 +2894,5 @@ export const AR_TEXTE = {
 "Dieses Gerät ist gerade offline.": "هذا الجهاز غير متصل بالإنترنت حاليًا.",  // V555
 "Fehlercode:": "رمز الخطأ:",  // V555
 "🔄 Erneut versuchen": "🔄 إعادة المحاولة",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "في هذه الفترة لم يُسجَّل هذا الشخص مرافقًا في أي مباراة لفرق Mädchen 11 أو Jungen 11.",  // V556
 };

@@ -2895,4 +2895,5 @@ export const EN_TEXTE = {
 "Dieses Gerät ist gerade offline.": "This device is currently offline.",  // V555
 "Fehlercode:": "Error code:",  // V555
 "🔄 Erneut versuchen": "🔄 Try again",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "In this period the person is not entered as coach for any Mädchen 11 or Jungen 11 match.",  // V556
 };

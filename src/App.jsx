@@ -1,4 +1,4 @@
-// === TTC-App · Version 555 · erstellt 24.10.2026 ===
+// === TTC-App · Version 558 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "555";
+const APP_VERSION = "558";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9929,11 +9929,12 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
   // Trainings
   const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
   const zeileT=(d)=>{ const k="t:"+d; return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? kommaStr(stdTraining) }; };
-  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum
-  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis)
+  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum – V556: nur Spiele, bei denen die
+  // Person in den Einsätzen als Betreuer 1 oder 2 eingetragen ist (vorher alle Spiele).
+  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis && !!person && personIstBetreuer(person, sp, einsaetze))
     .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-  const zeileS=(sp)=>{ const k="s:"+sp._key; const betreut=person?personIstBetreuer(person, sp, einsaetze):false;
-    return { an: st[k]?.an ?? (betreut && !abgerechnet[k]), h: st[k]?.h ?? "2", betreut }; };
+  const zeileS=(sp)=>{ const k="s:"+sp._key;
+    return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? "2", betreut:true }; };
   const setZeile=(k,basis,patch)=>setSt(x=>({...x,[k]:{an:basis.an,h:basis.h,...patch}}));
 
   const rows=[
@@ -10099,13 +10100,12 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
         </div>; })}
 
       {titel("👥 Betreute Punktspiele (Mädchen 11 / Jungen 11)", spiele.length)}
-      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum stehen keine Spiele von Mädchen 11 oder Jungen 11 im Spielplan.</div>}
+      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.</div>}
       {spiele.map(sp=>{ const z=zeileS(sp), k="s:"+sp._key;
         return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
           <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
           <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
             <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
-            {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
             {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
@@ -18561,6 +18561,20 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // case-insensitiv über findLoginPlayer – ein früherer case-sensitiver Vergleich
   // (p.email===user.email) konnte zur falschen Person führen.
   const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, false);
+  // V558: Tatsächliche Höhe des eigenen Kopfbereichs messen. Bis V557 lag die Reiterleiste
+  // fest 70 px unter dem oberen Rand – bricht der Kopf auf schmalen Handys um (langer Name,
+  // Glocke, große Systemschrift), lag die Leiste komplett unter dem Kopf verdeckt.
+  const kopfRef=useRef(null);
+  const [kopfH,setKopfH]=useState(null);
+  useLayoutEffect(()=>{
+    const n=kopfRef.current;
+    if(!n) return;
+    const messen=()=>{ const h=Math.round(n.getBoundingClientRect().height); setKopfH(x=>x===h?x:h); };
+    messen();
+    if(typeof ResizeObserver==="undefined"){ window.addEventListener("resize",messen); return ()=>window.removeEventListener("resize",messen); }
+    const ro=new ResizeObserver(messen); ro.observe(n);
+    return ()=>ro.disconnect();
+  },[hideHeader, !!myPlayer]);
   // Hinweis: Der Bestellungen-Reiter nutzt bewusst myPlayer (die ANGEZEIGTE Person),
   // damit die Artikelauswahl immer zur Gruppe dieser Person passt — z.B. sieht ein
   // Anfänger/Fortgeschrittener nur den Nachwuchs-Artikel, auch wenn ein Trainer
@@ -18728,7 +18742,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
-    {!hideHeader&&<div style={{background:`${MENU_TOENUNG}, linear-gradient(135deg,var(--bg2),var(--bg))`,borderBottom:"1px solid var(--club-22)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
+    {!hideHeader&&<div ref={kopfRef} style={{background:`${MENU_TOENUNG}, linear-gradient(135deg,var(--bg2),var(--bg))`,borderBottom:"1px solid var(--club-22)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
@@ -18753,7 +18767,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     {/* Tabs */}
     <div style={{display:"flex",borderBottom:"1px solid var(--club-33, #c8102e33)",background:REITER_GRUND(),
       position:"fixed",
-      top:hideHeader?"var(--rsw-height)":"calc(70px + var(--sat, 0px))",
+      top:hideHeader?"var(--rsw-height)":(kopfH?`${kopfH}px`:"calc(70px + var(--sat, 0px))"),   // V558: gemessene Kopfhöhe
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {tabsNachKacheln(TABS,SP_HOME_GRUPPEN).map(t=>{
@@ -24749,17 +24763,20 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     </div>;
   }
 
-  // Zwei Spiele kollidieren zeitlich, wenn sie am selben Tag stattfinden und die
-  // Anstosszeiten weniger als vier Stunden auseinanderliegen — ein Punktspiel dauert
-  // gut drei Stunden. Fehlt bei einem der beiden die Uhrzeit, wird vorsichtshalber
-  // von einer Kollision ausgegangen. So bleibt z.B. ein Nachwuchsspiel um 10:00 Uhr
-  // neben einem Erwachsenenspiel um 18:00 Uhr am selben Samstag moeglich.
+  // Zwei Spiele kollidieren zeitlich, wenn sie am selben Tag stattfinden und das
+  // spätere beginnt, bevor das frühere voraussichtlich vorbei ist. V557: Mindestabstand
+  // der Anfangszeiten richtet sich nach dem zuerst beginnenden Spiel – Nachwuchs
+  // 2 Stunden, Erwachsene 4 Stunden. Gleiche Anfangszeit = immer Kollision. Fehlt bei
+  // einem der beiden die Uhrzeit, wird vorsichtshalber von einer Kollision ausgegangen.
   function zeitlichKollidiert(a, b){
     if(!a || !b || a.datum!==b.datum) return false;
     const min=(u)=>{ const m=/^(\d{1,2}):(\d{2})/.exec(String(u||"")); return m ? (+m[1]*60 + +m[2]) : null; };
     const ma=min(a.uhrzeit), mb=min(b.uhrzeit);
     if(ma==null || mb==null) return true;
-    return Math.abs(ma-mb) < 240;
+    const nw=(sp)=>{ const m=String(sp?.mannschaft||""); return istNachwuchsTeamName(m) || /^jugend/i.test(m.trim()); };
+    const frueher = ma<=mb ? a : b;
+    const abstand = nw(frueher) ? 120 : 240;
+    return Math.abs(ma-mb) < abstand;
   }
 
   // Abschnitt „Verfügbare Spieler": alle, die für dieses Spiel den gruenen Haken

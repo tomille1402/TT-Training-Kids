@@ -2896,4 +2896,5 @@ export const FR_TEXTE = {
 "Dieses Gerät ist gerade offline.": "Cet appareil est actuellement hors ligne.",  // V555
 "Fehlercode:": "Code d'erreur :",  // V555
 "🔄 Erneut versuchen": "🔄 Réessayer",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "Sur cette période, la personne n'est inscrite comme accompagnateur pour aucun match des Mädchen 11 ou Jungen 11.",  // V556
 };

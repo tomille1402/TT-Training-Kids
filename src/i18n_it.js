@@ -2896,4 +2896,5 @@ export const IT_TEXTE = {
 "Dieses Gerät ist gerade offline.": "Questo dispositivo è attualmente offline.",  // V555
 "Fehlercode:": "Codice errore:",  // V555
 "🔄 Erneut versuchen": "🔄 Riprova",  // V555
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "In questo periodo la persona non risulta accompagnatore in nessuna partita di Mädchen 11 o Jungen 11.",  // V556
 };
