@@ -2908,4 +2908,6 @@ export const FR_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ Conversion …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Uniformiser les numéros de portable ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Numéros de portable uniformes ✓",  // V565
+"Pauschale": "Forfait",  // V566
+"{0}: {1} · Pauschale": "{0} : {1} · forfait",  // V566
 };

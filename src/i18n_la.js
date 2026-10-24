@@ -2908,4 +2908,6 @@ export const LA_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ Convertitur …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Numeros telephonii mobilis aequare ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Numeri telephonii mobilis aequati ✓",  // V565
+"Pauschale": "Summa certa",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · summa certa",  // V566
 };

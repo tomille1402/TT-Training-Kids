@@ -2908,4 +2908,6 @@ export const PL_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ Trwa zmiana …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Ujednolić numery komórkowe ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Numery komórkowe jednolite ✓",  // V565
+"Pauschale": "Ryczałt",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · ryczałt",  // V566
 };

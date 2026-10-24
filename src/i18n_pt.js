@@ -2906,4 +2906,6 @@ export const PT_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ A converter …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Uniformizar números de telemóvel ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Números de telemóvel uniformes ✓",  // V565
+"Pauschale": "Valor fixo",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · valor fixo",  // V566
 };

@@ -2908,4 +2908,6 @@ export const ZH_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ 正在转换……",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 统一手机号码（{0}）",  // V565
 "📱 Handynummern einheitlich ✓": "📱 手机号码已统一 ✓",  // V565
+"Pauschale": "固定费用",  // V566
+"{0}: {1} · Pauschale": "{0}：{1} · 固定费用",  // V566
 };

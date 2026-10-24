@@ -2906,4 +2906,6 @@ export const RO_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ Se convertește …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Uniformizează numerele de mobil ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Numere de mobil uniforme ✓",  // V565
+"Pauschale": "Forfetar",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · forfetar",  // V566
 };

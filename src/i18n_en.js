@@ -2907,4 +2907,6 @@ export const EN_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ Converting …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 Standardise mobile numbers ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 Mobile numbers standardised ✓",  // V565
+"Pauschale": "Flat rate",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · flat rate",  // V566
 };

@@ -2906,4 +2906,6 @@ export const AR_TEXTE = {
 "⏳ Wird umgestellt …": "⏳ جارٍ التحويل …",  // V565
 "📱 Handynummern vereinheitlichen ({0})": "📱 توحيد أرقام الجوال ({0})",  // V565
 "📱 Handynummern einheitlich ✓": "📱 أرقام الجوال موحدة ✓",  // V565
+"Pauschale": "مبلغ مقطوع",  // V566
+"{0}: {1} · Pauschale": "{0}: {1} · مبلغ مقطوع",  // V566
 };

@@ -1,4 +1,4 @@
-// === TTC-App · Version 565 · erstellt 24.10.2026 ===
+// === TTC-App · Version 566 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "565";
+const APP_VERSION = "566";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9768,7 +9768,9 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, vo
     const sm=summe[r.art]||summe.training; sm.n++; sm.h+=h; sm.e+=betrag; gH+=h; gE+=betrag;
     pdf.text(String(i+1),X.nr,y); pdf.text(dDE(r.d),X.datum,y);
     zeilen.forEach((z,k)=>pdf.text(z, X.leist, y+k*4.4));
-    pdf.text(stundenDE(h),X.std,y,{align:"right"}); pdf.text(euroDE(st),X.satz,y,{align:"right"});
+    // V566: Abrechnung nach Pauschale (keine Stunden) → Std. und Satz als „–“
+    const nurPausch = pa>0 && !h;
+    pdf.text(nurPausch?"–":stundenDE(h),X.std,y,{align:"right"}); pdf.text(nurPausch?"–":euroDE(st),X.satz,y,{align:"right"});
     pdf.text(pa?euroDE(pa):"–",X.pausch,y,{align:"right"}); pdf.text(euroDE(betrag),X.betrag,y,{align:"right"});
     y+=hoehe;
   });
@@ -9778,10 +9780,10 @@ async function trainerAbrechnungPdfErzeugen({ name, rows, iban, kontoinhaber, vo
   pdf.setFont("helvetica","normal"); pdf.setFontSize(10);
   [["training","Trainings"],["spiel","Betreute Punktspiele"],["turnier","Betreute Turniere"]].forEach(([k,lab])=>{
     const sm=summe[k]; if(!sm.n) return;
-    pdf.text(`${lab} (${sm.n})`, X.leist, y); pdf.text(stundenDE(sm.h),X.std,y,{align:"right"}); pdf.text(euroDE(sm.e),X.betrag,y,{align:"right"}); y+=5.5;
+    pdf.text(`${lab} (${sm.n})`, X.leist, y); pdf.text(sm.h?stundenDE(sm.h):"–",X.std,y,{align:"right"}); pdf.text(euroDE(sm.e),X.betrag,y,{align:"right"}); y+=5.5;
   });
   pdf.setFont("helvetica","bold"); pdf.setFontSize(10.5);
-  pdf.text("Gesamt", X.leist, y+1); pdf.text(stundenDE(gH),X.std,y+1,{align:"right"}); pdf.text(euroDE(gE),X.betrag,y+1,{align:"right"});
+  pdf.text("Gesamt", X.leist, y+1); pdf.text(gH?stundenDE(gH):"–",X.std,y+1,{align:"right"}); pdf.text(euroDE(gE),X.betrag,y+1,{align:"right"});
   y+=15;
   if(y>238){ pdf.addPage(); y=24; }
   pdf.setFont("helvetica","bold"); pdf.setFontSize(11); pdf.setTextColor(farbe[0],farbe[1],farbe[2]);
@@ -10013,10 +10015,15 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
     return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? "2", betreut:true }; };
   const setZeile=(k,basis,patch)=>setSt(x=>({...x,[k]:{an:basis.an,h:basis.h,...patch}}));
 
+  // V566: Ist für Spiele bzw. Turniere eine Pauschale festgelegt, wird nur die Pauschale
+  // abgerechnet – ohne Stunden (Stunden 0, Satz 0), auch nicht in der Anzeige und im PDF.
+  const nachPauschale={ spiel:pauschale.spiel>0, turnier:pauschale.turnier>0 };
   const rows=[
     ...tage.filter(d=>zeileT(d).an).map(d=>({ key:"t:"+d, d, art:"training", text:`Training (${["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"][new Date(d).getDay()]})`, h:zahl(zeileT(d).h), satz:satz.training })),
-    ...spiele.filter(sp=>zeileS(sp).an).map(sp=>({ key:"s:"+sp._key, d:sp.datum, art:"spiel", text:spielLeistungText(sp), h:zahl(zeileS(sp).h), satz:satz.spiel, pauschale:pauschale.spiel })),
-    ...turniere.filter(t=>t.d && (zahl(t.h)>0 || pauschale.turnier>0)).map(t=>({ key:"u:"+t.id, d:t.d, art:"turnier", text:`Betreuung Turnier: ${t.text||"—"}`, h:zahl(t.h), satz:satz.turnier, pauschale:pauschale.turnier })),
+    ...spiele.filter(sp=>zeileS(sp).an).map(sp=>({ key:"s:"+sp._key, d:sp.datum, art:"spiel", text:spielLeistungText(sp),
+      h:nachPauschale.spiel?0:zahl(zeileS(sp).h), satz:nachPauschale.spiel?0:satz.spiel, pauschale:pauschale.spiel })),
+    ...turniere.filter(t=>t.d && (zahl(t.h)>0 || nachPauschale.turnier)).map(t=>({ key:"u:"+t.id, d:t.d, art:"turnier", text:`Betreuung Turnier: ${t.text||"—"}`,
+      h:nachPauschale.turnier?0:zahl(t.h), satz:nachPauschale.turnier?0:satz.turnier, pauschale:pauschale.turnier })),
   ].sort((a,b)=>a.d.localeCompare(b.d));
   const sStd=rows.reduce((a,r)=>a+r.h,0), sEur=rows.reduce((a,r)=>a+betragVon(r),0);
 
@@ -10183,15 +10190,19 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
           <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
             <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
             {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
-          <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
-          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
+          {nachPauschale.spiel
+            ? <div style={{fontSize:10,color:"var(--text3)",textAlign:"center"}}>Pauschale</div>
+            : <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>}
+          <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(nachPauschale.spiel ? pauschale.spiel : zahl(z.h)*satz.spiel)}</div>
         </div>; })}
 
       {titel("🏆 Betreute Turniere", turniere.length)}
       {turniere.map(t=><div key={t.id} style={{display:"grid",gridTemplateColumns:"118px 1fr 56px 26px",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid var(--border)"}}>
         <input type="date" value={t.d} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,d:e.target.value}:x))} style={{...inp,padding:"6px 6px",fontSize:12}}/>
         <input type="text" value={t.text} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,text:e.target.value}:x))} placeholder="Turnier" style={{...inp,padding:"6px 8px",fontSize:12}}/>
-        <input type="text" inputMode="decimal" value={t.h} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,h:e.target.value}:x))} style={inpKlein} title="Stunden"/>
+        {nachPauschale.turnier
+          ? <div style={{fontSize:10,color:"var(--text3)",textAlign:"center"}}>Pauschale</div>
+          : <input type="text" inputMode="decimal" value={t.h} onChange={e=>setTurniere(l=>l.map(x=>x.id===t.id?{...x,h:e.target.value}:x))} style={inpKlein} title="Stunden"/>}
         <button onClick={()=>setTurniere(l=>l.filter(x=>x.id!==t.id))} style={{padding:"2px 6px",background:"#ef444422",border:"none",borderRadius:5,color:"#ef4444",fontSize:11,cursor:"pointer"}}>✕</button>
       </div>)}
       <button onClick={()=>setTurniere(l=>[...l,{id:String(Date.now()),d:von,text:"",h:"4"}])}
@@ -10199,10 +10210,11 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
 
       <div style={{marginTop:14,padding:"10px 12px",background:"var(--bg)",borderRadius:10,fontSize:12}}>
         {[["training","Trainings"],["spiel","Punktspiele"],["turnier","Turniere"]].map(([a,l])=>{ const r=rows.filter(x=>x.art===a); if(!r.length) return null;
-          return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{T`${l}: ${r.length} · ${stundenDE(r.reduce((s,x)=>s+x.h,0))} Std.`}</span>
+          const std=r.reduce((s,x)=>s+x.h,0);
+          return <div key={a} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{(a!=="training" && nachPauschale[a]) ? T`${l}: ${r.length} · Pauschale` : T`${l}: ${r.length} · ${stundenDE(std)} Std.`}</span>
             <span>{euroDE(r.reduce((s,x)=>s+betragVon(x),0))}</span></div>; })}
         <div style={{display:"flex",justifyContent:"space-between",fontSize:14,fontWeight:800,marginTop:4,borderTop:"1px solid var(--border2)",paddingTop:5}}>
-          <span>{T`Gesamt · ${stundenDE(sStd)} Std.`}</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
+          <span>{sStd ? T`Gesamt · ${stundenDE(sStd)} Std.` : T("Gesamt")}</span><span style={{color:"var(--club, #c8102e)"}}>{euroDE(sEur)}</span></div>
       </div>
       <button onClick={pdfErstellen} disabled={!!ausgabe?.laeuft} style={{marginTop:12,width:"100%",padding:12,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>📄 Abrechnung als PDF erstellen</button>
       <div style={{fontSize:10,color:"var(--text4)",marginTop:6}}>Danach: per E-Mail versenden, teilen/drucken oder speichern. Trainings und Spiele werden als abgerechnet vermerkt.</div>
@@ -10212,7 +10224,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
     {(daten?.historie||[]).length>0 && <div style={karte}>
       <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🗂️ Bisherige Abrechnungen</div>
       {[...(daten.historie||[])].reverse().map(h=><div key={h.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-        <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Positionen · {stundenDE(h.stunden)} Std.
+        <div style={{flex:1,fontSize:12}}>{formatDateDE(h.von)} – {formatDateDE(h.bis)} · {(h.tage||[]).length} Positionen{h.stunden?<> · {stundenDE(h.stunden)} Std.</>:null}
           <div style={{fontSize:10,color:"var(--text3)"}}>{T`erstellt am ${formatDateDE(h.erstellt)}`}</div></div>
         <div style={{fontSize:12,fontWeight:800}}>{euroDE(h.betrag)}</div>
         <button onClick={()=>historiePdf(h)} disabled={!!ausgabe?.laeuft} title="Als PDF anzeigen" style={{padding:"3px 8px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6,color:"var(--text)",fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>
