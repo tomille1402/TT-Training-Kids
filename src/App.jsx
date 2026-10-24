@@ -1,4 +1,4 @@
-// === TTC-App · Version 567 · erstellt 24.10.2026 ===
+// === TTC-App · Version 568 · erstellt 25.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "567";
+const APP_VERSION = "568";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1169,7 +1169,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
               <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5}}>{f.l}</label>
               <input type={f.t} value={f.v} onChange={e=>f.s(e.target.value)} placeholder={f.p}
                 onKeyDown={e=>e.key==="Enter"&&onLogin(email,pass)}
-                style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:15,outline:"none",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:16,outline:"none",boxSizing:"border-box"}}/>{/* V568: 16 px – sonst zoomt iOS beim Antippen hinein */}
             </div>
           ))}
           <button onClick={()=>onLogin(email,pass)} disabled={loading||!email||!pass} style={{
@@ -1185,7 +1185,7 @@ function LoginScreen({onLogin,error,loading,successMessage,clubConfig={}}) {
             <div style={{fontSize:13,color:"var(--text3)",marginBottom:16,lineHeight:1.5}}>Gib deine E-Mail ein. Du bekommst einen Reset-Link.</div>
             {resetErr&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fca5a5",marginBottom:12}}>{resetErr}</div>}
             <input type="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="deine@email.de"
-              style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:15,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
+              style={{width:"100%",padding:"11px 13px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:16,outline:"none",boxSizing:"border-box",marginBottom:12}}/>
             <button onClick={doReset} disabled={resetLoad||!resetEmail.trim()} style={{width:"100%",padding:12,background:(resetLoad||!resetEmail.trim())?"var(--border)":"linear-gradient(135deg,#3b82f6,#2563eb)",border:"none",borderRadius:9,color:(resetLoad||!resetEmail.trim())?"#6b7280":"#fff",fontSize:15,fontWeight:700,cursor:(resetLoad||!resetEmail.trim())?"not-allowed":"pointer",marginBottom:10}}>{resetLoad?"Wird gesendet…":"Reset-E-Mail senden"}</button>
             <button onClick={()=>{setResetMode(false);setResetErr("");}} style={{width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>← Zurück</button>
           </> : (
@@ -18643,7 +18643,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
     .filter(g => g.items.length>0);
 
-  return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
+  return <div style={{padding:"12px 12px 12px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>{/* V568: unten 12 statt 40 px (wie TrainerHome) */}
     {/* Hero: nächstes eigenes Spiel. Steht keines an, beginnt die Seite direkt mit den Kacheln. */}
     {naechstes && spielerKarte(naechstes, true)}
 
@@ -18855,7 +18855,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     setAbsageBusy(false);
   }
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80,overflowX:"clip"}}>{/* V567: kein seitliches Scrollen */}
+  return <div style={{minHeight:activeTab==="home"?"auto":"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:activeTab==="home"?0:80,overflowX:"clip"}}>{/* V567: kein seitliches Scrollen; V568: Startseite ohne Leerraum unten (wie Admin) */}
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
     {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv. V567: eine Menüzeile wie in der
@@ -29686,6 +29686,24 @@ function AppInhalt() {
     const t=setTimeout(()=>{ zugangAbgleichen(AKTIVER_VEREIN_ID, players, ROLLEN).catch(()=>{}); }, 4000);
     return ()=>clearTimeout(t);
   },[players, isAdmin, playersReady]);
+
+  // V568: Nach der Anmeldung bzw. beim Start mit angemeldeter Person Zoom zurücksetzen und
+  // ganz nach oben scrollen. Ein beim Tippen im Anmeldeformular entstandener iOS-Zoom
+  // blieb sonst erhalten (leicht hineingezoomt, Seite nicht ganz oben).
+  useEffect(()=>{
+    if(!authUser) return;
+    try{
+      const vp=document.getElementById("ttc-viewport");
+      if(vp){
+        const frei="width=device-width, initial-scale=1, viewport-fit=cover";
+        vp.setAttribute("content", frei+", maximum-scale=1");
+        setTimeout(()=>{ try{ vp.setAttribute("content", frei); }catch(e){} }, 400);
+      }
+      if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      window.scrollTo(0,0);
+      setTimeout(()=>{ try{ window.scrollTo(0,0); }catch(e){} }, 450);
+    }catch(e){}
+  },[authUser?.uid]);
 
   // ── Echtzeit-Listener für Spieler, Anwesenheit & Schläger ──
   useEffect(()=>{
