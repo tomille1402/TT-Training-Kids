@@ -2897,4 +2897,8 @@ export const IT_TEXTE = {
 "Fehlercode:": "Codice errore:",  // V555
 "🔄 Erneut versuchen": "🔄 Riprova",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "In questo periodo la persona non risulta accompagnatore in nessuna partita di Mädchen 11 o Jungen 11.",  // V556
+"Betreuer 3 …": "Accompagnatore 3 …",  // V560
+"Betreuer 3: {0}": "Accompagnatore 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Partite di campionato accompagnate (Mädchen 11, Mädchen 13, Jugend 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "In questo periodo la persona non risulta accompagnatore in nessuna partita di Mädchen 11, Mädchen 13 o Jugend 11.",  // V561
 };

@@ -2896,4 +2896,8 @@ export const EN_TEXTE = {
 "Fehlercode:": "Error code:",  // V555
 "🔄 Erneut versuchen": "🔄 Try again",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "In this period the person is not entered as coach for any Mädchen 11 or Jungen 11 match.",  // V556
+"Betreuer 3 …": "Team manager 3 …",  // V560
+"Betreuer 3: {0}": "Team manager 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Supervised league matches (Girls 11, Girls 13, Youth 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "In this period the person is not entered as coach for any Girls 11, Girls 13 or Youth 11 match.",  // V561
 };

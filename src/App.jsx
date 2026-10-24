@@ -1,4 +1,4 @@
-// === TTC-App · Version 559 · erstellt 24.10.2026 ===
+// === TTC-App · Version 561 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "559";
+const APP_VERSION = "561";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9008,7 +9008,7 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
     const team=teamZuSpielTR(s);
     const spielplanUrl = team?teamLinks(team,(SEASONS.find(x=>x.current)||SEASONS[0]).code).spielplan:"";
     const e=einsaetze[spielKeyFromSpiel(s)]||{};
-    const betreuerText=[e._betreuer1,e._betreuer2].filter(Boolean).join(", ");
+    const betreuerText=[e._betreuer1,e._betreuer2,e._betreuer3].filter(Boolean).join(", ");
     const fahrerText=(!heim?fahrerTextVon(e):"");
     const labelFarbe = rot?"var(--club-hell, #ffd7dd)":"var(--text3)";
     const titelFarbe = rot?"#fff":"var(--text)";
@@ -9757,7 +9757,11 @@ function useAbrechnungSaetze(){
 }
 // V536: abrechenbare Nachwuchsspiele (Mädchen 11 / Jungen 11) aus den Spielplänen der
 // aktuellen und der vorigen Saison, dazu die Betreuer-Einträge (Einsätze).
-function istAbrechnungsSpiel(sp){ return /^(jungen|mädchen|maedchen)\s*11\b/i.test(String(sp?.mannschaft||"").trim()); }
+// V561: Mädchen 11, Mädchen 13 und Jugend 11 (Jungen 11 bleibt für ältere Spielpläne erfasst)
+function istAbrechnungsSpiel(sp){
+  const m=String(sp?.mannschaft||"").trim();
+  return /^(mädchen|maedchen)\s*(11|13)\b/i.test(m) || /^(jugend|jungen)\s*11\b/i.test(m);
+}
 function useAbrechnungsSpiele(){
   const [erg,setErg]=useState({spiele:[], einsaetze:{}});
   useEffect(()=>{
@@ -9786,8 +9790,8 @@ function useAbrechnungsSpiele(){
   },[]);
   return erg;
 }
-// V559: Betreuung für die Abrechnung genau so bestimmen, wie der Reiter Einsätze sie
-// anzeigt: Betreuer 1 immer, Betreuer 2 nur bei Heimspielen (ort === "Heim"). Bei
+// V559/V560: Betreuung für die Abrechnung genau so bestimmen, wie der Reiter Einsätze sie
+// anzeigt: Betreuer 1 immer, Betreuer 2 und 3 nur bei Heimspielen (ort === "Heim"). Bei
 // Auswärtsspielen blendet Einsätze das zweite Feld aus – ein dort noch gespeicherter
 // Name (z. B. aus der Zeit, als das Spiel als Heimspiel geführt war) zählte bisher
 // trotzdem als Betreuung.
@@ -9796,7 +9800,7 @@ function abrechnungBetreut(player, spiel, einsaetzeData){
   const eigen=normName(personAnzeigeName(player));
   if(!eigen) return false;
   const ei=einsaetzeData[spielKeyFromSpiel(spiel)]||{};
-  const namen=[ei._betreuer1, spiel.ort==="Heim" ? ei._betreuer2 : ""];
+  const namen=[ei._betreuer1, ...(spiel.ort==="Heim" ? [ei._betreuer2, ei._betreuer3] : [])];
   return namen.some(n=>n && normName(n)===eigen);
 }
 function spielLeistungText(sp){
@@ -9948,13 +9952,12 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
   // Trainings
   const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
   const zeileT=(d)=>{ const k="t:"+d; return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? kommaStr(stdTraining) }; };
-  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum (V559: wieder alle Spiele zur Auswahl;
-  // vorausgewählt und als betreut markiert nur die, bei denen die Person laut Einsätzen
-  // die Betreuung hat – siehe abrechnungBetreut)
-  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis)
+  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum – V560: nur Spiele, bei denen die
+  // Person laut Reiter Einsätze die Betreuung hat (siehe abrechnungBetreut).
+  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis && !!person && abrechnungBetreut(person, sp, einsaetze))
     .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-  const zeileS=(sp)=>{ const k="s:"+sp._key; const betreut=person?abrechnungBetreut(person, sp, einsaetze):false;
-    return { an: st[k]?.an ?? (betreut && !abgerechnet[k]), h: st[k]?.h ?? "2", betreut }; };
+  const zeileS=(sp)=>{ const k="s:"+sp._key;
+    return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? "2", betreut:true }; };
   const setZeile=(k,basis,patch)=>setSt(x=>({...x,[k]:{an:basis.an,h:basis.h,...patch}}));
 
   const rows=[
@@ -10119,14 +10122,13 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.training)}</div>
         </div>; })}
 
-      {titel("👥 Betreute Punktspiele (Mädchen 11 / Jungen 11)", spiele.length)}
-      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum stehen keine Spiele von Mädchen 11 oder Jungen 11 im Spielplan.</div>}
+      {titel("👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)", spiele.length)}
+      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.</div>}
       {spiele.map(sp=>{ const z=zeileS(sp), k="s:"+sp._key;
         return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
           <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
           <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
             <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
-            {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
             {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
@@ -12929,7 +12931,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
 
   // Betreuungs-Zählung: Anzahl der Nachwuchsspiele der AKTUELLEN Saison, bei denen die
   // Person als Betreuer (1 oder 2) eingetragen ist. Quelle ist das öffentliche
-  // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,f,f2}}}),
+  // Spiegeldokument config/betreuerFahrer_<saison> ({data:{spielKey:{b1,b2,b3?,f,f2}}}),
   // das nur für Nachwuchsspiele Einträge enthält.
   const AKTUELLE_SAISON = aktSpielplanKey();   // V501
   const [betreuerDaten,setBetreuerDaten]=useState(null);
@@ -12950,7 +12952,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     const bf=betreuerDaten||{};
     for(const k in bf){
       const e=bf[k]||{};
-      for(const nm of [e.b1,e.b2]){
+      for(const nm of [e.b1,e.b2,e.b3]){
         const n=norm(nm);
         if(n) cnt[n]=(cnt[n]||0)+1;
       }
@@ -18510,7 +18512,7 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
     const pin  = feldVonSpiel(sp, spielpins, "pin");
     // Betreuer/Fahrer aus den Einsätzen (Fahrer nur bei Auswärtsspielen).
     const einsatz = einsaetze[spielKeyFromSpiel(sp)]||{};
-    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
+    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2, einsatz._betreuer3].filter(Boolean).join(", ");
     const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
     const berichtUrl = code ? `https://ttde-apps.liga.nu/nuliga/nuscore-tt/meetings-list?gamecode=${encodeURIComponent(code)}` : "";
     const team = teamZuSpiel(sp);
@@ -24303,14 +24305,14 @@ function personAnzeigeName(player){
 function fahrerListeVon(ei){ return [ei?._fahrer, ei?._fahrer2].filter(Boolean); }
 function fahrerTextVon(ei){ return fahrerListeVon(ei).join(", "); }
 
-// einsaetzeData: {spielKey:{_betreuer1,_betreuer2,_fahrer,_fahrer2}}. Vergleich normalisiert,
+// einsaetzeData: {spielKey:{_betreuer1,_betreuer2,_betreuer3,_fahrer,_fahrer2}}. Vergleich normalisiert,
 // damit Leerzeichen-/Punkt-Unterschiede nicht stören.
 function personIstBetreuer(player, spiel, einsaetzeData){
   if(!player||!spiel||!einsaetzeData) return false;
   const eigen=normName(personAnzeigeName(player));
   if(!eigen) return false;
   const ei=einsaetzeData[spielKeyFromSpiel(spiel)]||{};
-  return normName(ei._betreuer1||"")===eigen || normName(ei._betreuer2||"")===eigen;
+  return normName(ei._betreuer1||"")===eigen || normName(ei._betreuer2||"")===eigen || normName(ei._betreuer3||"")===eigen;   // V560: Betreuer 3
 }
 
 // Wochentag-Kurzform (2 Buchstaben) aus ISO-Datum
@@ -24494,8 +24496,9 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     const bf={};
     for(const k in quelle){
       const e=quelle[k]||{};
-      const b1=e._betreuer1||"", b2=e._betreuer2||"", f=e._fahrer||"", f2=e._fahrer2||"";
-      if(b1||b2||f||f2) bf[k]={b1,b2,f,f2};
+      const b1=e._betreuer1||"", b2=e._betreuer2||"", b3=e._betreuer3||"", f=e._fahrer||"", f2=e._fahrer2||"";
+      // V560: b3 nur mitschreiben, wenn belegt (bestehende Spiegel bleiben unverändert)
+      if(b1||b2||b3||f||f2) bf[k]={b1,b2,...(b3?{b3}:{}),f,f2};
     }
     return bf;
   }
@@ -24681,7 +24684,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
     try { await setDoc(doc(db,"einsaetze",selSeasonId),{data:updated,lastUpdated:Date.now()},{merge:true}); } catch(e){}
   }
   // Betreuer/Fahrer sind spiel-global (nicht pro Spieler). Gespeichert unter
-  // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_fahrer/_fahrer2. Sofort speichern.
+  // einsaetze[sk] mit den Schlüsseln _betreuer1/_betreuer2/_betreuer3 (V560, nur Heim)/_fahrer/_fahrer2. Sofort speichern.
   async function setEinsatzFeld(spiel, feld, wert){
     if(nurLesen) return;
     const sk=spielKey(spiel);
@@ -24879,6 +24882,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {feld("_betreuer1",cur._betreuer1,betreuerListe,istHeim?"Betreuer 1 …":"Betreuer …")}
             {istHeim&&feld("_betreuer2",cur._betreuer2,betreuerListe,"Betreuer 2 …")}
+            {istHeim&&feld("_betreuer3",cur._betreuer3,betreuerListe,"Betreuer 3 …")}
           </div>
         </div>
         {/* Fahrer nur bei Auswärtsspielen – seit V475 bis zu zwei */}
@@ -24963,7 +24967,7 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
       const nominierteAnzahl=(entries._nominiert||[]).filter(id=>spielberechtigt.some(p=>p.id===id)).length;
       // Eingetragene Betreuer/Fahrer (für die kompakte Kopfanzeige, auch eingeklappt).
       const eiKopf=einsaetze[sk]||{};
-      const betreuerKopf=[eiKopf._betreuer1,eiKopf._betreuer2].filter(Boolean);
+      const betreuerKopf=[eiKopf._betreuer1,eiKopf._betreuer2,eiKopf._betreuer3].filter(Boolean);
       const fahrerKopf=(spiel.ort!=="Heim")?fahrerTextVon(eiKopf):"";
       const tag=wochentagKurz(spiel.datum);
       // Welche Spieler-Zeilen werden gezeigt?
@@ -25813,6 +25817,7 @@ function buildICS(options){
     if(heim){
       if(ei._betreuer1) bfZeilen.push(`Betreuer 1: ${ei._betreuer1}`);
       if(ei._betreuer2) bfZeilen.push(`Betreuer 2: ${ei._betreuer2}`);
+      if(ei._betreuer3) bfZeilen.push(`Betreuer 3: ${ei._betreuer3}`);   // V560
     } else {
       if(fahrerTextVon(ei)) bfZeilen.push(`Fahrer: ${fahrerTextVon(ei)}`);
       if(ei._betreuer1) bfZeilen.push(`Betreuer: ${ei._betreuer1}`);
@@ -26892,7 +26897,7 @@ function VereinsSpielplan({nurNachwuchs=false, vorauswahlPlayer=null, istAdmin=f
   const betreuerVon=(s)=>{
     if(!istNachwuchsTeam(s.mannschaft)) return "";
     const ei=einsaetzeData[spielKeyVon(s)]||{};
-    return [ei._betreuer1,ei._betreuer2].filter(Boolean).join(", ");
+    return [ei._betreuer1,ei._betreuer2,ei._betreuer3].filter(Boolean).join(", ");
   };
   // Fahrer-Text eines Spiels (nur Nachwuchs-Auswärtsspiele sinnvoll); leerer String, wenn keiner.
   const fahrerVon=(s)=>{
@@ -28481,7 +28486,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
       : {background:"var(--bg2)", color:"var(--text)", border:"1px solid var(--border2)"};
     // Betreuer/Fahrer (bei Nachwuchsspielen) und die final nominierte Aufstellung.
     const einsatz = s ? (einsaetze[spielKeyFromSpiel(s)]||{}) : {};
-    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2].filter(Boolean).join(", ");
+    const betreuerText = [einsatz._betreuer1, einsatz._betreuer2, einsatz._betreuer3].filter(Boolean).join(", ");
     const fahrerText = (!heim ? fahrerTextVon(einsatz) : "");
 
     return <div style={{background:bg, border:rahmen, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:schatten}}>

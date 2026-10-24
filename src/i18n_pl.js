@@ -2897,4 +2897,8 @@ export const PL_TEXTE = {
 "Fehlercode:": "Kod błędu:",  // V555
 "🔄 Erneut versuchen": "🔄 Spróbuj ponownie",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "W tym okresie osoba nie jest wpisana jako opiekun przy żadnym meczu Mädchen 11 ani Jungen 11.",  // V556
+"Betreuer 3 …": "Opiekun 3 …",  // V560
+"Betreuer 3: {0}": "Opiekun 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Mecze ligowe pod opieką (Dziewczęta 11, Dziewczęta 13, Młodzież 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "W tym okresie osoba nie jest wpisana jako opiekun przy żadnym meczu Dziewczęta 11, Dziewczęta 13 ani Młodzież 11.",  // V561
 };

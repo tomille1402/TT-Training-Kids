@@ -2895,4 +2895,8 @@ export const PT_TEXTE = {
 "Fehlercode:": "Código de erro:",  // V555
 "🔄 Erneut versuchen": "🔄 Tentar novamente",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "Neste período a pessoa não está registada como acompanhante em nenhum jogo de Mädchen 11 ou Jungen 11.",  // V556
+"Betreuer 3 …": "Acompanhante 3 …",  // V560
+"Betreuer 3: {0}": "Acompanhante 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Jogos de campeonato acompanhados (Raparigas 11, Raparigas 13, Juvenis 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "Neste período a pessoa não está registada como acompanhante em nenhum jogo de Raparigas 11, Raparigas 13 ou Juvenis 11.",  // V561
 };

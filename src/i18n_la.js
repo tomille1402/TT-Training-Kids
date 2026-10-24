@@ -2897,4 +2897,8 @@ export const LA_TEXTE = {
 "Fehlercode:": "Codex erroris:",  // V555
 "🔄 Erneut versuchen": "🔄 Iterum conari",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "Hoc spatio persona nulli certamini Mädchen 11 vel Jungen 11 ut curator inscripta est.",  // V556
+"Betreuer 3 …": "Curator 3 …",  // V560
+"Betreuer 3: {0}": "Curator 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Certamina foederis curata (Mädchen 11, Mädchen 13, Jugend 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "Hoc spatio persona nulli certamini Mädchen 11, Mädchen 13 vel Jugend 11 ut curator inscripta est.",  // V561
 };

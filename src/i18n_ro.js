@@ -2895,4 +2895,8 @@ export const RO_TEXTE = {
 "Fehlercode:": "Cod de eroare:",  // V555
 "🔄 Erneut versuchen": "🔄 Încearcă din nou",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "În această perioadă persoana nu este înscrisă ca însoțitor la niciun meci Mädchen 11 sau Jungen 11.",  // V556
+"Betreuer 3 …": "Însoțitor 3 …",  // V560
+"Betreuer 3: {0}": "Însoțitor 3: {0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Meciuri de campionat însoțite (Fete 11, Fete 13, Juniori 11)",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "În această perioadă persoana nu este înscrisă ca însoțitor la niciun meci Fete 11, Fete 13 sau Juniori 11.",  // V561
 };

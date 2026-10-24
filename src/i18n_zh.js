@@ -2897,4 +2897,8 @@ export const ZH_TEXTE = {
 "Fehlercode:": "错误代码：",  // V555
 "🔄 Erneut versuchen": "🔄 重试",  // V555
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.": "在此期间，该人员未被登记为 Mädchen 11 或 Jungen 11 任何比赛的领队。",  // V556
+"Betreuer 3 …": "带队 3……",  // V560
+"Betreuer 3: {0}": "带队 3：{0}",  // V560
+"👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 带队的联赛（Mädchen 11、Mädchen 13、Jugend 11）",  // V561
+"Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "在此期间，该人员未被登记为 Mädchen 11、Mädchen 13 或 Jugend 11 任何比赛的领队。",  // V561
 };
