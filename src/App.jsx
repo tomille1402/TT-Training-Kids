@@ -1,4 +1,4 @@
-// === TTC-App · Version 561 · erstellt 24.10.2026 ===
+// === TTC-App · Version 562 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "561";
+const APP_VERSION = "562";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -10728,8 +10728,14 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
       // Immer Vor- UND Nachname prüfen um Verwechslungen zu vermeiden
       return pLast===lastName.toLowerCase()&&pFirst===firstName.toLowerCase();
     });
-    return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match};
+    return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match,
+      handy:String(match?.phone||"").trim()};   // V562: Handynummer aus den persönlichen Daten
   });
+  // V562: Handynummern in Erwachsenen-Mannschaften nur für Personen mit der Funktion
+  // Mannschaftsführer oder Admin (eigenes Profil mit der Login-Adresse).
+  const loginMail=String(auth.currentUser?.email||"").toLowerCase();
+  const darfHandy=!!loginMail && players.some(p=>String(p.email||"").toLowerCase()===loginMail &&
+    (p.roles?.mannschaftsfuehrer===true || p.roles?.admin===true));
 
   const NACHWUCHS_MANN=["Mädchen 17","Mädchen 15","Mädchen 13","Mädchen 11","Jugend 15","Jugend 13","Jugend 11"];
   // Anzeige-Name der Mannschaft: durchgängig "Erwachsene" (erste Mannschaft = "Erwachsene I").
@@ -10832,7 +10838,10 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
               <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
                 <td style={{padding:"4px 5px",color:"var(--text2)",width:36,fontSize:11}}>{s.rang||"—"}</td>
                 <td style={{padding:"4px 5px",width:52,fontSize:11}}>{s.qTtr||"—"}</td>
-                <td style={{padding:"4px 5px",fontWeight:500,width:118,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}</td>
+                <td style={{padding:"4px 5px",fontWeight:500,width:118,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}
+                  {darfHandy && s.handy && istErwachsenenMannschaft(mann) &&
+                    <a href={`tel:${s.handy.replace(/[^\d+]/g,"")}`} style={{display:"block",marginTop:2,fontSize:11,fontWeight:600,color:"#3b82f6",textDecoration:"none",whiteSpace:"nowrap"}}>📱 {s.handy}</a>}
+                </td>
                 <td style={{padding:"4px 5px",width:52,fontSize:10}}>
                   {s.bem?<span style={{padding:"1px 5px",borderRadius:8,fontSize:10,fontWeight:600,
                     background:"#64748b22",color:"var(--text2)",whiteSpace:"nowrap"}}>{s.bem}</span>
