@@ -1,4 +1,4 @@
-// === TTC-App · Version 562 · erstellt 24.10.2026 ===
+// === TTC-App · Version 563 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "562";
+const APP_VERSION = "563";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9594,7 +9594,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
       isAdmin={isSuperAdmin}
       roles={ttcModus?{ttc:true}:(isSuperAdmin?{admin:true}:{trainer:true})}
       viewerCanEditAll={true} nurLesen={ttcModus}/>}
-    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin && !ttcModus}/>}
+    {activeTab==="aufstellung"&&<AufstellungView players={players} nurNachwuchs={!isSuperAdmin && !ttcModus}
+      onSpielerKlick={(isSuperAdmin&&!ttcModus) ? (id)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("handy"); setVerwaltungJumpKey(null); setActiveTab("verwaltung"); } : null}/>}
     {activeTab==="ttr"&&<TtrView players={players}/>}
     {activeTab==="historieadmin"&&<HistorieAdminView players={players}
       onEhrungKlick={(isSuperAdmin&&!ttcModus) ? (id,ehrId)=>{ setVerwaltungJumpId(id); setVerwaltungJumpSection("ehrungen"); setVerwaltungJumpKey(ehrId||null); setActiveTab("verwaltung"); } : null}/>}
@@ -10629,7 +10630,7 @@ function fixedHeaderOffset(){
   }catch(e){ return 120; }
 }
 
-function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, scrollToTeam=""}) {
+function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, scrollToTeam="", onSpielerKlick=null}) {   // V563: onSpielerKlick (Admin → Verwaltung)
   const [aufstellungen,setAufstellungen]=useState([]);
   const [selId,setSelId]=useState("");
   const [loading,setLoading]=useState(true);
@@ -10729,7 +10730,7 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
       return pLast===lastName.toLowerCase()&&pFirst===firstName.toLowerCase();
     });
     return {...s,stammErsatz:match?.stammErsatz||"Stammspieler",status:match?.status||"aktiv",matched:!!match,
-      handy:String(match?.phone||"").trim()};   // V562: Handynummer aus den persönlichen Daten
+      handy:String(match?.phone||"").trim(), pid:match?.id||""};   // V562: Handynummer; V563: Profil-ID für den Sprung in die Verwaltung
   });
   // V562: Handynummern in Erwachsenen-Mannschaften nur für Personen mit der Funktion
   // Mannschaftsführer oder Admin (eigenes Profil mit der Login-Adresse).
@@ -10838,7 +10839,12 @@ function AufstellungView({players=[], nurNachwuchs=false, nurErwachsene=false, s
               <tr key={i} style={{borderBottom:"1px solid var(--border)",background:i%2===0?"transparent":"var(--bg3)"}}>
                 <td style={{padding:"4px 5px",color:"var(--text2)",width:36,fontSize:11}}>{s.rang||"—"}</td>
                 <td style={{padding:"4px 5px",width:52,fontSize:11}}>{s.qTtr||"—"}</td>
-                <td style={{padding:"4px 5px",fontWeight:500,width:118,wordBreak:"break-word",whiteSpace:"normal"}}>{s.name||"—"}
+                <td style={{padding:"4px 5px",fontWeight:500,width:118,wordBreak:"break-word",whiteSpace:"normal"}}>
+                  {onSpielerKlick && s.pid
+                    ? <span role="link" tabIndex={0} title={T("In der Verwaltung zur Handynummer")}
+                        onClick={()=>onSpielerKlick(s.pid)} onKeyDown={e=>{ if(e.key==="Enter") onSpielerKlick(s.pid); }}
+                        style={{color:"var(--club, #c8102e)",textDecoration:"underline",textUnderlineOffset:2,cursor:"pointer"}}>{s.name||"—"}</span>
+                    : (s.name||"—")}
                   {darfHandy && s.handy && istErwachsenenMannschaft(mann) &&
                     <a href={`tel:${s.handy.replace(/[^\d+]/g,"")}`} style={{display:"block",marginTop:2,fontSize:11,fontWeight:600,color:"#3b82f6",textDecoration:"none",whiteSpace:"nowrap"}}>📱 {s.handy}</a>}
                 </td>
@@ -14337,6 +14343,8 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
       if(typeof window!=="undefined"){
         const key=jumpToKey, urk=jumpToSection==="urkunden", ehr=jumpToSection==="ehrungen";
         const tbu=jumpToSection==="trainingsurkunde";   // V534: aus dem Reiter „Teilnahme"
+        const hdy=jumpToSection==="handy";              // V563: aus dem Reiter „Aufstellung"
+        if(hdy) setPersonAbschn({id:p.id, offen:{persoenlich:true}});
         if(ehr) setPersonAbschn({id:p.id, offen:{ehrungen:true}});                 // V527
         if(tbu) setPersonAbschn({id:p.id, offen:{urkTraining:true}});
         if(urk) setPersonAbschn({id:p.id, offen:{urkUebungen:true, urkTraining:true}});
@@ -14344,6 +14352,15 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         const tick=()=>{
           versuche++;
           if(urk && key && zumUrkundenDatum(p.id, key)) return;
+          if(hdy){   // V563: Handyfeld in „Persönliche Daten" anzeigen und markieren
+            const hEl=document.getElementById("handy-"+p.id);
+            if(hEl){
+              try{ hEl.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){}
+              hEl.style.boxShadow="0 0 0 3px var(--club-55, #c8102e55)"; setTimeout(()=>{ hEl.style.boxShadow=""; }, 2500);
+              return;
+            }
+            if(versuche<15){ setTimeout(tick, 200); return; }
+          }
           if(tbu){   // V534: zum Datumsfeld der Trainingsteilnahme-Urkunde, sonst zum Abschnitt
             if(key && zumUrkundenDatum(p.id, key)) return;
             const sEl=document.getElementById("tburkunde-"+p.id);
@@ -15697,7 +15714,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
               {/* 2e Handy vor E-Mail */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
-                <input type="tel" value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} placeholder="+49 151 ..."
+                <input type="tel" id={"handy-"+editPlayer.id} value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} placeholder="+49 151 ..."
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
               </div>
               {/* E-Mail */}
