@@ -1,4 +1,4 @@
-// === TTC-App · Version 566 · erstellt 24.10.2026 ===
+// === TTC-App · Version 567 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "566";
+const APP_VERSION = "567";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -18678,15 +18678,15 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // case-insensitiv über findLoginPlayer – ein früherer case-sensitiver Vergleich
   // (p.email===user.email) konnte zur falschen Person führen.
   const myPlayer=forcePlayer||findLoginPlayer(players, user?.email, false);
-  // V558: Tatsächliche Höhe des eigenen Kopfbereichs messen. Bis V557 lag die Reiterleiste
-  // fest 70 px unter dem oberen Rand – bricht der Kopf auf schmalen Handys um (langer Name,
-  // Glocke, große Systemschrift), lag die Leiste komplett unter dem Kopf verdeckt.
-  const kopfRef=useRef(null);
-  const [kopfH,setKopfH]=useState(null);
+  // V567: Eigene Spieler-Ansicht mit derselben Kopfzeile wie die Admin-Sicht (RSWHeader:
+  // fixiert, Höhe gemessen → --rsw-height). Die Höhe der Reiterleiste wird gemessen, damit
+  // die erste Kachel direkt darunter beginnt.
+  const reiterRef=useRef(null);
+  const [reiterH,setReiterH]=useState(null);
   useLayoutEffect(()=>{
-    const n=kopfRef.current;
+    const n=reiterRef.current;
     if(!n) return;
-    const messen=()=>{ const h=Math.round(n.getBoundingClientRect().height); setKopfH(x=>x===h?x:h); };
+    const messen=()=>{ const h=Math.round(n.getBoundingClientRect().height); setReiterH(x=>x===h?x:h); };
     messen();
     if(typeof ResizeObserver==="undefined"){ window.addEventListener("resize",messen); return ()=>window.removeEventListener("resize",messen); }
     const ro=new ResizeObserver(messen); ro.observe(n);
@@ -18855,36 +18855,27 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     setAbsageBusy(false);
   }
 
-  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80}}>
+  return <div style={{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"'Segoe UI',system-ui,sans-serif",maxWidth:APP_MAX_BREITE,margin:"0 auto",paddingBottom:80,overflowX:"clip"}}>{/* V567: kein seitliches Scrollen */}
     {showAvatarPicker&&<AvatarPicker current={myPlayer.avatar} onSelect={changeMyAvatar} onClose={()=>setShowAvatarPicker(false)}/>}
 
-    {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv */}
-    {!hideHeader&&<div ref={kopfRef} style={{background:`${MENU_TOENUNG}, linear-gradient(135deg,var(--bg2),var(--bg))`,borderBottom:"1px solid var(--club-22)",padding:"14px 14px 12px",paddingTop:"calc(14px + var(--sat, 0px))",position:"sticky",top:0,zIndex:100}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setShowAvatarPicker(true)}>
-            <Avatar avatar={myPlayer.avatar} color={myPlayer.color} size={42}/>
-            <span style={{position:"absolute",bottom:-1,right:-1,fontSize:10,background:"var(--bg3)",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)"}}>✏️</span>
-          </div>
-          <div>
-            <div style={{fontSize:15,fontWeight:800,color:myPlayer.color}}>{myPlayer.firstName} {myPlayer.lastName}</div>
-            <div style={{fontSize:11,color:"var(--text3)"}}>{clubConfig.name||VEREIN.kurzname}{sortedRanking.length>0?T` · Rang #${myRank}`:""} · {pct}% Beteiligung</div>
-          </div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>
-          <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
-          <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
-          <SprachMenue/>
-          <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text3)",fontSize:16,cursor:"pointer",lineHeight:1}}>⏻</button>
-        </div>
-      </div>
-    </div>}
+    {/* Header — ausgeblendet wenn RoleSwitchWrapper aktiv. V567: eine Menüzeile wie in der
+        Admin-Sicht (Glocke, Hell/Dunkel, Suche, Sprache, Abmelden, Version), ohne Name/Stats. */}
+    {!hideHeader&&<RSWHeader switchBarContent={
+      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap",flex:"0 0 auto",marginInlineStart:"auto"}}>
+        <BirthdayBtn players={players} attendance={attendance} meId={myPlayer?.id} istAdmin={myPlayer?.roles?.admin===true}/>
+        <VereinsWechsler/>
+        <ThemeToggle isDark={isDark} onSetUserTheme={onSetUserTheme}/>
+        <GlobalSucheButton players={players} onNavigate={(k,id)=>{ try{ window.dispatchEvent(new CustomEvent("ttc-navigate",{detail:{ziel:k,id}})); }catch(e){} }}/>
+        <SprachMenue/>
+        <button onClick={onSignOut} title="Abmelden" style={{padding:"6px 9px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text2)",fontSize:16,cursor:"pointer",lineHeight:1,flexShrink:0}}>⏻</button>
+        <span title={T`Version ${APP_VERSION}`} style={{flexShrink:0,padding:"5px 7px",borderRadius:20,border:"1px solid var(--border2)",
+          background:"var(--bg3)",color:"var(--text3)",fontSize:11,fontWeight:700,whiteSpace:"nowrap",lineHeight:1}}>V{APP_VERSION}</span>
+      </div>}/>}
 
     {/* Tabs */}
-    <div style={{display:"flex",borderBottom:"1px solid var(--club-33, #c8102e33)",background:REITER_GRUND(),
+    <div ref={reiterRef} style={{display:"flex",borderBottom:"1px solid var(--club-33, #c8102e33)",background:REITER_GRUND(),
       position:"fixed",
-      top:hideHeader?"var(--rsw-height)":(kopfH?`${kopfH}px`:"calc(70px + var(--sat, 0px))"),   // V558: gemessene Kopfhöhe
+      top:"var(--rsw-height)",   // V567: auch in der eigenen Spieler-Ansicht unter der gemessenen Kopfzeile
       left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:APP_MAX_BREITE,zIndex:99,
       overflowX:"auto",overflowY:"hidden"}}>
       {tabsNachKacheln(TABS,SP_HOME_GRUPPEN).map(t=>{
@@ -18899,7 +18890,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
     </div>
 
     {/* ── STATS ── */}
-    <div style={{height:hideHeader?40:114}}/>
+    <div style={{height:hideHeader?40:(reiterH||50)}}/>{/* V567: eigene Ansicht – genau die Höhe der Reiterleiste */}
     {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
