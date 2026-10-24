@@ -2890,4 +2890,10 @@ export const FR_TEXTE = {
 "Hausnummer": "Numéro",  // V550
 "📄 Bisherige Abrechnung": "📄 Décompte précédent",  // V551
 "Als PDF anzeigen": "Afficher en PDF",  // V551
+"Keine Verbindung zur Datenbank": "Pas de connexion à la base de données",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "La connexion a réussi, mais les données du club n'ont pas pu être chargées sur cet appareil. C'est généralement dû à la connexion Internet ou à un filtre sur l'appareil (VPN, bloqueur de publicités ou de contenu, Temps d'écran, Relais privé iCloud).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "L'app continue d'essayer en arrière-plan – dès que la connexion est établie, elle continue automatiquement.",  // V555
+"Dieses Gerät ist gerade offline.": "Cet appareil est actuellement hors ligne.",  // V555
+"Fehlercode:": "Code d'erreur :",  // V555
+"🔄 Erneut versuchen": "🔄 Réessayer",  // V555
 };

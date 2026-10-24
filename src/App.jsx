@@ -1,4 +1,4 @@
-// === TTC-App · Version 552 · erstellt 22.10.2026 ===
+// === TTC-App · Version 555 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "552";
+const APP_VERSION = "555";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -29397,6 +29397,14 @@ function AppInhalt() {
   const [isAdmin,      setIsAdmin]      = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [adminReady,   setAdminReady]   = useState(false);
+  // V555: Läuft die Rechte-Prüfung nach der Anmeldung noch (Abfrage config/rollen)?
+  // Hängt die Datenbank-Verbindung, bleibt sie offen – dann darf nicht „Noch kein
+  // Profil verknüpft" erscheinen, sondern ein Verbindungshinweis.
+  const [rollenPruefung, setRollenPruefung] = useState(false);
+  // V555: Herkunft der Personenliste: null (noch nichts) · "cache" (nur Gerätespeicher)
+  // · "server" (vom Server bestätigt) · "fehler" (mit playersFehler = Fehlercode)
+  const [playersQuelle, setPlayersQuelle] = useState(null);
+  const [playersFehler, setPlayersFehler] = useState("");
   const [loginSuccess, setLoginSuccess] = useState("");
   const [datenschutzOk, setDatenschutzOk] = useState(false);
   // Punkt 4: Theme (dark/light)
@@ -29507,7 +29515,8 @@ function AppInhalt() {
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async u => {
       setAuthUser(u || null);
-      if (!u) { setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); return; }
+      if (!u) { setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); setRollenPruefung(false); return; }
+      setRollenPruefung(true);   // V555
 
       // V504: Admin-Liste aus der Datenbank (config/rollen); ohne Eintrag gilt die Vorbelegung.
       try {
@@ -29519,7 +29528,7 @@ function AppInhalt() {
       if (isAdminEmail(u.email)) {
         setIsAdmin(true);
         setIsSuperAdmin(isSuperAdminEmail(u.email));
-        setAdminReady(true); return;
+        setAdminReady(true); setRollenPruefung(false); return;
       }
 
       // 2) (bis V503) trainers-Collection: Jeder Angemeldete konnte sich dort selbst als
@@ -29527,7 +29536,7 @@ function AppInhalt() {
 
       // 3) Rollen werden jetzt über players-Collection gesteuert (roles.trainer/admin)
       // Wird in Root render ausgewertet sobald players geladen sind
-      setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true);
+      setIsAdmin(false); setIsSuperAdmin(false); setAdminReady(true); setRollenPruefung(false);
     });
     return unsub;
   },[]);
@@ -29536,10 +29545,10 @@ function AppInhalt() {
   // danach die App trotzdem starten (verhindert langen Weißbildschirm bei langsamer Verbindung).
   useEffect(()=>{
     if(!authUser) { setStartFallback(false); return; }
-    if(playersReady) return;
+    if(playersReady && adminReady && !rollenPruefung) return;   // V555: auch auf hängende Rechte-Prüfung achten
     const t = setTimeout(()=> setStartFallback(true), 6000);
     return ()=> clearTimeout(t);
-  },[authUser, playersReady]);
+  },[authUser, playersReady, adminReady, rollenPruefung]);
 
   // V508: Zugangsliste des Vereins automatisch nachführen, wenn ein Admin die App nutzt
   // und sich Personen ändern (neue Person, geänderte Login-/Eltern-Adresse).
@@ -29553,9 +29562,19 @@ function AppInhalt() {
   // ── Echtzeit-Listener für Spieler, Anwesenheit & Schläger ──
   useEffect(()=>{
     if (!authUser) return;
-    const u1 = onSnapshot(collection(db,"players"),
-      snap => { playersVomServer.current = !snap.metadata.fromCache; setPlayers(snap.docs.map(d=>d.data())); setPlayersReady(true); },
-      () => { setPlayersReady(true); }
+    // V555: includeMetadataChanges, damit auch der Wechsel „nur Gerätespeicher" →
+    // „vom Server bestätigt" ankommt (Verbindungshinweis verschwindet dann von selbst).
+    // Die Personenliste wird nur bei echten Änderungen neu gesetzt.
+    let ersterStand = true;
+    const u1 = onSnapshot(collection(db,"players"), { includeMetadataChanges:true },
+      snap => {
+        playersVomServer.current = !snap.metadata.fromCache;
+        setPlayersQuelle(snap.metadata.fromCache ? "cache" : "server"); setPlayersFehler("");
+        if(ersterStand || snap.docChanges().length>0) setPlayers(snap.docs.map(d=>d.data()));
+        ersterStand = false;
+        setPlayersReady(true);
+      },
+      (e) => { setPlayersQuelle("fehler"); setPlayersFehler((e && (e.code||e.message)) || "?"); setPlayersReady(true); }
     );
     const u2 = onSnapshot(collection(db,"attendance"),
       snap => {
@@ -29589,7 +29608,7 @@ function AppInhalt() {
   async function handleSignOut() {
     // Erst state löschen, dann ausloggen
     // adminReady NICHT auf false setzen — onAuthStateChanged(null) setzt es korrekt auf true
-    setPlayers([]); setPlayersReady(false); setAttendance({}); setRackets([]); setIsAdmin(false); setLoginSuccess("");
+    setPlayers([]); setPlayersReady(false); setPlayersQuelle(null); setPlayersFehler(""); setAttendance({}); setRackets([]); setIsAdmin(false); setLoginSuccess("");
     try { await signOut(auth); } catch(e) {}
   }
 
@@ -29628,7 +29647,7 @@ function AppInhalt() {
   // App direkt nach dem Login kurz mit isAdmin=false rendern (→ Trainer-Ansicht) und erst
   // nach dem asynchronen Admin-Check auf die Admin-Ansicht springen. Das Gate verhindert
   // dieses „Aufblitzen" des Trainerbereichs.
-  if (authUser && (!adminReady || (!playersReady && !startFallback))) {
+  if (authUser && (!adminReady || !playersReady || rollenPruefung) && !startFallback) {
     return (
       <div style={{minHeight:"100vh",background:"var(--bg,#0d1117)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <div style={{textAlign:"center",color:"#6b7280"}}>
@@ -29852,6 +29871,38 @@ function AppInhalt() {
   // (adminEmailFallback = isAdmin && !myPlayer). Verhindert, dass ein geteiltes Konto
   // einem fremden Profil ungewollt Admin-/Trainer-Ansichten gibt.
   if (availableViews.length === 0 && (isSuperAdmin || adminEmailFallback)) availableViews.push(isSuperAdmin?"admin":"trainer");
+
+  // V555: Kein Profil gefunden, aber die Daten sind gar nicht vom Server angekommen
+  // (Verbindung hängt, nur Gerätespeicher, Rechte-Prüfung offen) → statt „Noch kein Profil
+  // verknüpft" einen Verbindungshinweis zeigen. Fehlende Berechtigung (permission-denied)
+  // ist kein Verbindungsproblem – dann bleibt es beim bisherigen Hinweis.
+  const datenNichtGeladen = rollenPruefung || playersQuelle===null || playersQuelle==="cache" ||
+    (playersQuelle==="fehler" && playersFehler!=="permission-denied");
+  if (!myPlayer && !isAdmin && datenNichtGeladen) return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{maxWidth:420,width:"100%"}}>
+        <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:16,padding:24,textAlign:"center"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📡</div>
+          <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:8}}>Keine Verbindung zur Datenbank</div>
+          <div style={{fontSize:13,color:"var(--text3)",marginBottom:12,lineHeight:1.6}}>
+            <span>Angemeldet als:</span> <b style={{color:"#10b981"}}>{authUser.email}</b>
+          </div>
+          <div style={{fontSize:13,color:"var(--text3)",marginBottom:12,lineHeight:1.6}}>
+            Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).
+          </div>
+          <div style={{fontSize:12,color:"var(--text3)",marginBottom:12,lineHeight:1.6}}>
+            Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.
+          </div>
+          {typeof navigator!=="undefined" && navigator.onLine===false &&
+            <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:12}}>Dieses Gerät ist gerade offline.</div>}
+          {playersQuelle==="fehler" &&
+            <div style={{fontSize:11,color:"var(--text4)",marginBottom:12}}><span>Fehlercode:</span> {playersFehler}</div>}
+          <button onClick={()=>window.location.reload()} style={{width:"100%",padding:11,marginBottom:8,background:"var(--club)",border:"none",borderRadius:9,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>🔄 Erneut versuchen</button>
+          <button onClick={handleSignOut} style={{width:"100%",padding:10,background:"transparent",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text3)",fontSize:13,cursor:"pointer"}}>Abmelden</button>
+        </div>
+      </div>
+    </div>
+  );
 
   // Angemeldet als reiner Trainer (keine Spieler-Rolle, kein Profil) → Trainer-View
   if (!myPlayer && !isAdmin) return (

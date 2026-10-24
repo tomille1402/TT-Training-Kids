@@ -2889,4 +2889,10 @@ export const EN_TEXTE = {
 "Hausnummer": "House number",  // V550
 "📄 Bisherige Abrechnung": "📄 Previous billing",  // V551
 "Als PDF anzeigen": "Show as PDF",  // V551
+"Keine Verbindung zur Datenbank": "No connection to the database",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "Sign-in worked, but the club's data could not be loaded on this device. This is usually caused by the internet connection or a filter on the device (VPN, ad or content blocker, Screen Time, iCloud Private Relay).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "The app keeps trying in the background – as soon as the connection is up, it continues automatically.",  // V555
+"Dieses Gerät ist gerade offline.": "This device is currently offline.",  // V555
+"Fehlercode:": "Error code:",  // V555
+"🔄 Erneut versuchen": "🔄 Try again",  // V555
 };

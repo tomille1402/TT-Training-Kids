@@ -2890,4 +2890,10 @@ export const IT_TEXTE = {
 "Hausnummer": "Numero civico",  // V550
 "📄 Bisherige Abrechnung": "📄 Rendiconto precedente",  // V551
 "Als PDF anzeigen": "Mostra come PDF",  // V551
+"Keine Verbindung zur Datenbank": "Nessuna connessione al database",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "L'accesso è riuscito, ma i dati della società non possono essere caricati su questo dispositivo. Di solito dipende dalla connessione a internet o da un filtro sul dispositivo (VPN, blocco pubblicità o contenuti, Tempo di utilizzo, Relay privato iCloud).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "L'app continua a provare in background – appena la connessione è attiva, prosegue automaticamente.",  // V555
+"Dieses Gerät ist gerade offline.": "Questo dispositivo è attualmente offline.",  // V555
+"Fehlercode:": "Codice errore:",  // V555
+"🔄 Erneut versuchen": "🔄 Riprova",  // V555
 };

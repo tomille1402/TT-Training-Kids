@@ -2890,4 +2890,10 @@ export const LA_TEXTE = {
 "Hausnummer": "Numerus domus",  // V550
 "📄 Bisherige Abrechnung": "📄 Ratio prior",  // V551
 "Als PDF anzeigen": "Ut PDF ostende",  // V551
+"Keine Verbindung zur Datenbank": "Nullus nexus cum repositorio datorum",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "Inscriptio successit, sed data societatis in hoc instrumento onerari non potuerunt. Plerumque causa est nexus interretialis aut filtrum in instrumento (VPN, impeditor praeconiorum vel contentorum, Tempus Visorii, iCloud Private Relay).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "Applicatio in occulto conari pergit – simul ac nexus constat, sponte pergit.",  // V555
+"Dieses Gerät ist gerade offline.": "Hoc instrumentum nunc sine nexu est.",  // V555
+"Fehlercode:": "Codex erroris:",  // V555
+"🔄 Erneut versuchen": "🔄 Iterum conari",  // V555
 };

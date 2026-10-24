@@ -2888,4 +2888,10 @@ export const AR_TEXTE = {
 "Hausnummer": "رقم المبنى",  // V550
 "📄 Bisherige Abrechnung": "📄 محاسبة سابقة",  // V551
 "Als PDF anzeigen": "عرض كملف PDF",  // V551
+"Keine Verbindung zur Datenbank": "لا يوجد اتصال بقاعدة البيانات",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "تم تسجيل الدخول بنجاح، لكن تعذّر تحميل بيانات النادي على هذا الجهاز. السبب غالبًا هو الاتصال بالإنترنت أو مرشِّح على الجهاز (VPN، مانع الإعلانات أو المحتوى، مدة استخدام الجهاز، الترحيل الخاص في iCloud).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "يواصل التطبيق المحاولة في الخلفية – وبمجرد توفر الاتصال يتابع تلقائيًا.",  // V555
+"Dieses Gerät ist gerade offline.": "هذا الجهاز غير متصل بالإنترنت حاليًا.",  // V555
+"Fehlercode:": "رمز الخطأ:",  // V555
+"🔄 Erneut versuchen": "🔄 إعادة المحاولة",  // V555
 };

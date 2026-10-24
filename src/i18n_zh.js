@@ -2890,4 +2890,10 @@ export const ZH_TEXTE = {
 "Hausnummer": "门牌号",  // V550
 "📄 Bisherige Abrechnung": "📄 以往结算",  // V551
 "Als PDF anzeigen": "以 PDF 显示",  // V551
+"Keine Verbindung zur Datenbank": "无法连接数据库",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "登录成功，但无法在此设备上加载俱乐部数据。通常原因是网络连接或设备上的过滤功能（VPN、广告或内容拦截、屏幕使用时间、iCloud 专用代理）。",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "应用会在后台继续尝试——连接一旦建立，将自动继续。",  // V555
+"Dieses Gerät ist gerade offline.": "此设备当前处于离线状态。",  // V555
+"Fehlercode:": "错误代码：",  // V555
+"🔄 Erneut versuchen": "🔄 重试",  // V555
 };

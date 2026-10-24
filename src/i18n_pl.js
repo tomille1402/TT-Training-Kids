@@ -2890,4 +2890,10 @@ export const PL_TEXTE = {
 "Hausnummer": "Numer domu",  // V550
 "📄 Bisherige Abrechnung": "📄 Poprzednie rozliczenie",  // V551
 "Als PDF anzeigen": "Pokaż jako PDF",  // V551
+"Keine Verbindung zur Datenbank": "Brak połączenia z bazą danych",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "Logowanie się powiodło, ale danych klubu nie udało się wczytać na tym urządzeniu. Zwykle przyczyną jest połączenie z internetem lub filtr na urządzeniu (VPN, bloker reklam lub treści, Czas przed ekranem, Przekaźnik prywatny iCloud).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "Aplikacja próbuje dalej w tle – gdy tylko połączenie zostanie nawiązane, przejdzie dalej automatycznie.",  // V555
+"Dieses Gerät ist gerade offline.": "To urządzenie jest obecnie offline.",  // V555
+"Fehlercode:": "Kod błędu:",  // V555
+"🔄 Erneut versuchen": "🔄 Spróbuj ponownie",  // V555
 };

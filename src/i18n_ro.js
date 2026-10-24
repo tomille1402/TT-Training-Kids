@@ -2888,4 +2888,10 @@ export const RO_TEXTE = {
 "Hausnummer": "Număr",  // V550
 "📄 Bisherige Abrechnung": "📄 Decont anterior",  // V551
 "Als PDF anzeigen": "Afișează ca PDF",  // V551
+"Keine Verbindung zur Datenbank": "Nicio conexiune la baza de date",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "Autentificarea a reușit, dar datele clubului nu au putut fi încărcate pe acest dispozitiv. De obicei cauza este conexiunea la internet sau un filtru pe dispozitiv (VPN, blocare reclame sau conținut, Timp de utilizare, iCloud Private Relay).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "Aplicația încearcă în continuare în fundal – imediat ce conexiunea funcționează, continuă automat.",  // V555
+"Dieses Gerät ist gerade offline.": "Acest dispozitiv este momentan offline.",  // V555
+"Fehlercode:": "Cod de eroare:",  // V555
+"🔄 Erneut versuchen": "🔄 Încearcă din nou",  // V555
 };

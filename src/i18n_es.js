@@ -2888,4 +2888,10 @@ export const ES_TEXTE = {
 "Hausnummer": "Número",  // V550
 "📄 Bisherige Abrechnung": "📄 Liquidación anterior",  // V551
 "Als PDF anzeigen": "Mostrar como PDF",  // V551
+"Keine Verbindung zur Datenbank": "Sin conexión con la base de datos",  // V555
+"Die Anmeldung hat geklappt, aber die Daten des Vereins konnten auf diesem Gerät nicht geladen werden. Meist liegt das an der Internetverbindung oder an einem Filter auf dem Gerät (VPN, Werbe- oder Inhaltsfilter, Bildschirmzeit, iCloud Privat-Relay).": "El inicio de sesión ha funcionado, pero los datos del club no se han podido cargar en este dispositivo. Normalmente se debe a la conexión a internet o a un filtro en el dispositivo (VPN, bloqueador de anuncios o contenidos, Tiempo de uso, Relay privado de iCloud).",  // V555
+"Die App versucht es im Hintergrund weiter – sobald die Verbindung steht, geht es automatisch weiter.": "La app sigue intentándolo en segundo plano: en cuanto haya conexión, continuará automáticamente.",  // V555
+"Dieses Gerät ist gerade offline.": "Este dispositivo está sin conexión.",  // V555
+"Fehlercode:": "Código de error:",  // V555
+"🔄 Erneut versuchen": "🔄 Reintentar",  // V555
 };
