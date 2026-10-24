@@ -2901,4 +2901,11 @@ export const LA_TEXTE = {
 "Betreuer 3: {0}": "Curator 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Certamina foederis curata (Mädchen 11, Mädchen 13, Jugend 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "Hoc spatio persona nulli certamini Mädchen 11, Mädchen 13 vel Jugend 11 ut curator inscripta est.",  // V561
+"In der Verwaltung zur Handynummer": "Ad numerum telephonii mobilis in administratione",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "{0} numerum/numeros telephonii mobilis {1} personarum in formam „+49 151 12345678“ convertere?",  // V565
+"{0} Handynummer(n) vereinheitlicht": "{0} numeri telephonii mobilis aequati",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "Omnes numeri telephonii mobilis iam formam communem habent.",  // V565
+"⏳ Wird umgestellt …": "⏳ Convertitur …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 Numeros telephonii mobilis aequare ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 Numeri telephonii mobilis aequati ✓",  // V565
 };

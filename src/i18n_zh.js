@@ -2901,4 +2901,11 @@ export const ZH_TEXTE = {
 "Betreuer 3: {0}": "带队 3：{0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 带队的联赛（Mädchen 11、Mädchen 13、Jugend 11）",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "在此期间，该人员未被登记为 Mädchen 11、Mädchen 13 或 Jugend 11 任何比赛的领队。",  // V561
+"In der Verwaltung zur Handynummer": "在管理中查看手机号码",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "将 {1} 人的 {0} 个手机号码转换为“+49 151 12345678”格式？",  // V565
+"{0} Handynummer(n) vereinheitlicht": "已统一 {0} 个手机号码",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "所有手机号码均已为统一格式。",  // V565
+"⏳ Wird umgestellt …": "⏳ 正在转换……",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 统一手机号码（{0}）",  // V565
+"📱 Handynummern einheitlich ✓": "📱 手机号码已统一 ✓",  // V565
 };

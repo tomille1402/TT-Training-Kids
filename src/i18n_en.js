@@ -2900,4 +2900,11 @@ export const EN_TEXTE = {
 "Betreuer 3: {0}": "Team manager 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Supervised league matches (Girls 11, Girls 13, Youth 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "In this period the person is not entered as coach for any Girls 11, Girls 13 or Youth 11 match.",  // V561
+"In der Verwaltung zur Handynummer": "Go to the mobile number in Administration",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "Convert {0} mobile number(s) of {1} person(s) to the format “+49 151 12345678”?",  // V565
+"{0} Handynummer(n) vereinheitlicht": "{0} mobile number(s) standardised",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "All mobile numbers already have the standard format.",  // V565
+"⏳ Wird umgestellt …": "⏳ Converting …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 Standardise mobile numbers ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 Mobile numbers standardised ✓",  // V565
 };

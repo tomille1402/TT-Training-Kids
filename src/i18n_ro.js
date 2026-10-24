@@ -2899,4 +2899,11 @@ export const RO_TEXTE = {
 "Betreuer 3: {0}": "Însoțitor 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Meciuri de campionat însoțite (Fete 11, Fete 13, Juniori 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "În această perioadă persoana nu este înscrisă ca însoțitor la niciun meci Fete 11, Fete 13 sau Juniori 11.",  // V561
+"In der Verwaltung zur Handynummer": "Mergi la numărul de mobil în administrare",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "Convertești {0} număr(e) de mobil de la {1} persoană(e) în formatul „+49 151 12345678”?",  // V565
+"{0} Handynummer(n) vereinheitlicht": "{0} număr(e) de mobil uniformizat(e)",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "Toate numerele de mobil au deja formatul unitar.",  // V565
+"⏳ Wird umgestellt …": "⏳ Se convertește …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 Uniformizează numerele de mobil ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 Numere de mobil uniforme ✓",  // V565
 };

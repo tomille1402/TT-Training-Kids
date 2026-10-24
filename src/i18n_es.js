@@ -2899,4 +2899,11 @@ export const ES_TEXTE = {
 "Betreuer 3: {0}": "Acompañante 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Partidos de liga acompañados (Chicas 11, Chicas 13, Juvenil 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "En este periodo la persona no figura como acompañante en ningún partido de Chicas 11, Chicas 13 o Juvenil 11.",  // V561
+"In der Verwaltung zur Handynummer": "Ir al número de móvil en la administración",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "¿Convertir {0} número(s) de móvil de {1} persona(s) al formato «+49 151 12345678»?",  // V565
+"{0} Handynummer(n) vereinheitlicht": "{0} número(s) de móvil unificado(s)",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "Todos los números de móvil ya tienen el formato unificado.",  // V565
+"⏳ Wird umgestellt …": "⏳ Convirtiendo …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 Unificar números de móvil ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 Números de móvil unificados ✓",  // V565
 };

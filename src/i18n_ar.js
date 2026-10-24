@@ -2899,4 +2899,11 @@ export const AR_TEXTE = {
 "Betreuer 3: {0}": "المرافق 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 مباريات الدوري المرافَقة (Mädchen 11، Mädchen 13، Jugend 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "في هذه الفترة لم يُسجَّل هذا الشخص مرافقًا في أي مباراة لفرق Mädchen 11 أو Mädchen 13 أو Jugend 11.",  // V561
+"In der Verwaltung zur Handynummer": "الانتقال إلى رقم الجوال في الإدارة",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "هل تريد تحويل {0} رقم جوال لدى {1} شخص إلى الصيغة «+49 151 12345678»؟",  // V565
+"{0} Handynummer(n) vereinheitlicht": "تم توحيد {0} رقم جوال",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "جميع أرقام الجوال بالصيغة الموحدة بالفعل.",  // V565
+"⏳ Wird umgestellt …": "⏳ جارٍ التحويل …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 توحيد أرقام الجوال ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 أرقام الجوال موحدة ✓",  // V565
 };

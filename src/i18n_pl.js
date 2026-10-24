@@ -2901,4 +2901,11 @@ export const PL_TEXTE = {
 "Betreuer 3: {0}": "Opiekun 3: {0}",  // V560
 "👥 Betreute Punktspiele (Mädchen 11, Mädchen 13, Jugend 11)": "👥 Mecze ligowe pod opieką (Dziewczęta 11, Dziewczęta 13, Młodzież 11)",  // V561
 "Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11, Mädchen 13 oder Jugend 11 als Betreuer eingetragen.": "W tym okresie osoba nie jest wpisana jako opiekun przy żadnym meczu Dziewczęta 11, Dziewczęta 13 ani Młodzież 11.",  // V561
+"In der Verwaltung zur Handynummer": "Przejdź do numeru komórki w administracji",  // V563
+"{0} Handynummer(n) bei {1} Person(en) in das Format „+49 151 12345678“ umstellen?": "Zmienić {0} numer(y) komórkowe {1} osób na format „+49 151 12345678”?",  // V565
+"{0} Handynummer(n) vereinheitlicht": "Ujednolicono {0} numer(y) komórkowe",  // V565
+"Alle Handynummern haben bereits das einheitliche Format.": "Wszystkie numery komórkowe mają już jednolity format.",  // V565
+"⏳ Wird umgestellt …": "⏳ Trwa zmiana …",  // V565
+"📱 Handynummern vereinheitlichen ({0})": "📱 Ujednolić numery komórkowe ({0})",  // V565
+"📱 Handynummern einheitlich ✓": "📱 Numery komórkowe jednolite ✓",  // V565
 };

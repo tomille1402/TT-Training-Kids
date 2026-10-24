@@ -1,4 +1,4 @@
-// === TTC-App · Version 563 · erstellt 24.10.2026 ===
+// === TTC-App · Version 565 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "563";
+const APP_VERSION = "565";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -924,6 +924,58 @@ function setzeVereinsdaten(cfg){
   if(cfg && cfg.name && !(v.kurzname||"").trim()) neu.kurzname = cfg.name;
   VEREIN = neu;
   GRUPPEN_NAMEN = (cfg && cfg.gruppenNamen && typeof cfg.gruppenNamen==="object") ? {...cfg.gruppenNamen} : {};   // V514
+}
+// V564/V565: Telefonnummern einheitlich im internationalen Format nach DIN 5008 / E.123:
+// „+49 Vorwahl Rufnummer“ – Vorwahl ohne führende 0. Handynummern (Vorwahl 15x/16x/17x)
+// haben immer eine dreistellige Vorwahl: „0151 12345678“ → „+49 151 12345678“.
+// Festnetz-Vorwahlen sind 2- bis 5-stellig; deren Länge wird aus der Eingabe übernommen
+// („06436 1234“ → „+49 6436 1234“), ist sie nicht erkennbar, folgt die Nummer ohne Trennung.
+// Ausländische Nummern (+43…, 0043…) und Eingaben mit zu wenigen Ziffern bleiben unverändert.
+function handyFormat(nr){
+  const t=String(nr??"").trim();
+  if(!t) return "";
+  const c=t.replace(/[^\d+]/g,"");
+  let rest;
+  if(c.startsWith("+49")) rest=c.slice(3);
+  else if(c.startsWith("0049")) rest=c.slice(4);
+  else if(c.startsWith("+") || c.startsWith("00")) return t;   // ausländische Nummer
+  else rest=c;
+  rest=rest.replace(/\+/g,"").replace(/^0+/,"");
+  if(rest.length<6) return t;
+  if(/^1[5-7]/.test(rest)) return `+49 ${rest.slice(0,3)} ${rest.slice(3)}`;   // Mobilfunk
+  // Festnetz: Vorwahl-Länge aus der eingegebenen Gliederung
+  const u=t.replace(/\(0\)/g," ").replace(/^\s*(\+49|0049)[\s\-\/]*/,"").replace(/^\s*0/,"");
+  const m=/^(\d{2,5})[\s\/\-.)]+\d/.exec(u);
+  if(m && rest.startsWith(m[1]) && rest.length>m[1].length) return `+49 ${m[1]} ${rest.slice(m[1].length)}`;
+  return `+49 ${rest}`;
+}
+// V565: Alle gespeicherten Handynummern (Person, Eltern 1/2) einmalig vereinheitlichen.
+function HandyVereinheitlichen({players, showToast}){
+  const [laeuft,setLaeuft]=useState(false);
+  const FELDER=["phone","elternHandy1","elternHandy2"];
+  const aenderungen=(players||[]).map(p=>{
+    const neu={}; FELDER.forEach(f=>{ const alt=p[f]; if(alt==null||String(alt).trim()==="") return; const n=handyFormat(alt); if(n!==alt) neu[f]=n; });
+    return Object.keys(neu).length ? {id:p.id, neu} : null;
+  }).filter(Boolean);
+  const anzahl=aenderungen.reduce((a,x)=>a+Object.keys(x.neu).length,0);
+  async function los(){
+    if(laeuft || !anzahl) return;
+    if(!window.confirm(T`${anzahl} Handynummer(n) bei ${aenderungen.length} Person(en) in das Format „+49 151 12345678“ umstellen?`)) return;
+    setLaeuft(true);
+    try{
+      for(let i=0;i<aenderungen.length;i+=400){
+        const batch=writeBatch(db);
+        aenderungen.slice(i,i+400).forEach(x=>batch.update(doc(db,"players",x.id), x.neu));
+        await batch.commit();
+      }
+      showToast&&showToast(T`${anzahl} Handynummer(n) vereinheitlicht`,"📱");
+    }catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); }
+    setLaeuft(false);
+  }
+  return <button onClick={los} disabled={laeuft||!anzahl} title={anzahl?undefined:T("Alle Handynummern haben bereits das einheitliche Format.")}
+    style={{padding:"7px 14px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:9,color:anzahl?"var(--text)":"var(--text4)",fontSize:13,fontWeight:700,cursor:(laeuft||!anzahl)?"default":"pointer",whiteSpace:"nowrap"}}>
+    {laeuft ? T("⏳ Wird umgestellt …") : (anzahl ? T`📱 Handynummern vereinheitlichen (${anzahl})` : T("📱 Handynummern einheitlich ✓"))}
+  </button>;
 }
 function escRegExp(t){ return String(t||"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 // Pfad des Vereins bei myTischtennis, z. B. "verein/33053/TTC_Niederzeuzheim".
@@ -14639,6 +14691,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
             val=parseDateStr(val)||val;
           if(key==="group") val=gruppeAusText(val);   // V515: Anzeigename → Gruppe
           if(key==="plz" && /^\d{4}$/.test(val)) val="0"+val;   // V550: als Zahl gelesene PLZ mit führender 0
+          if(["phone","elternHandy1","elternHandy2"].includes(key)) val=handyFormat(val);   // V564
           data[key]=val;
         });
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
@@ -14730,12 +14783,12 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         // Vorbelegung mehr mit der Kind-Anmelde-E-Mail (sonst ließe sich keine eigene
         // Adresse für die Mutter hinterlegen, wenn das Kind eine eigene E-Mail hat).
         elternEmail1:     ((editPlayer.elternEmail1||"").trim().toLowerCase()),
-        elternHandy1:     editPlayer.elternHandy1||"",
+        elternHandy1:     handyFormat(editPlayer.elternHandy1),   // V564
         elternteil2:      editPlayer.elternteil2||"Vater",
         elternVorname2:   editPlayer.elternVorname2||"",
         elternNachname2:  editPlayer.elternNachname2||"",
         elternEmail2:     ((editPlayer.elternEmail2||"").trim().toLowerCase()),
-        elternHandy2:     editPlayer.elternHandy2||"",
+        elternHandy2:     handyFormat(editPlayer.elternHandy2),   // V564
         avatar:        editPlayer.avatar||"🏓",
         group:         editPlayer.group||"Anfänger",
         status:        editPlayer.status||"aktiv",
@@ -14756,7 +14809,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         trainingDays:  editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di",
         trainerTage:   trainerTageVon(editPlayer),                 // V535
         abrechnung:    editPlayer.abrechnung==="ja"?"ja":"nein",    // V535
-        phone:         editPlayer.phone||"",
+        phone:         handyFormat(editPlayer.phone),   // V564: +49 XXXX Rest
         tshirtSize:    editPlayer.tshirtSize||"",
         anzugSize:     editPlayer.anzugSize||"",
         tshirtDTTB:    editPlayer.tshirtDTTB||"nein",
@@ -15438,6 +15491,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
       <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 14px",background:"linear-gradient(135deg,#10b981,#059669)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
         {showAdd?"✕ Abbrechen":"+ Person neu anlegen"}
       </button>
+      <HandyVereinheitlichen players={players} showToast={showToast}/>{/* V565 */}
     </div>
     {/* Add form */}
     {showAdd&&<div style={{background:"var(--bg2)",border:"1px solid #10b98144",borderRadius:14,padding:16,marginBottom:16}}>
@@ -15714,7 +15768,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
               {/* 2e Handy vor E-Mail */}
               <div style={{marginBottom:10}}>
                 <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
-                <input type="tel" id={"handy-"+editPlayer.id} value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} placeholder="+49 151 ..."
+                <input type="tel" id={"handy-"+editPlayer.id} value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,phone:f})); }} placeholder="+49 170 1234567"
                   style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
               </div>
               {/* E-Mail */}
@@ -15801,8 +15855,9 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   </div>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📱 Handy 1</label>
-                    <input type="text" value={editPlayer.elternHandy1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy1:e.target.value}))}
-                      placeholder="0170 1234567"
+                    <input type="tel" value={editPlayer.elternHandy1||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy1:e.target.value}))}
+                      onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,elternHandy1:f})); }}
+                      placeholder="+49 170 1234567"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
                 </div>
@@ -15835,8 +15890,9 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   </div>
                   <div>
                     <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:3}}>📱 Handy 2</label>
-                    <input type="text" value={editPlayer.elternHandy2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy2:e.target.value}))}
-                      placeholder="0170 1234567"
+                    <input type="tel" value={editPlayer.elternHandy2||""} onChange={e=>setEditPlayer(prev=>({...prev,elternHandy2:e.target.value}))}
+                      onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,elternHandy2:f})); }}
+                      placeholder="+49 170 1234567"
                       style={{width:"100%",padding:"8px 8px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,boxSizing:"border-box"}}/>
                   </div>
                 </div>
@@ -18041,7 +18097,7 @@ function MeineVerwaltung({me, showToast, group}) {
     setSaving(true);
     try{
       await updateDoc(doc(db,"players",me.id),{
-        phone:phone.trim(), tshirtSize:tshirt.trim(), anzugSize:anzug.trim(),
+        phone:handyFormat(phone), tshirtSize:tshirt.trim(), anzugSize:anzug.trim(),   // V564
       });
       notify("Gespeichert ✅","✅");
       setDirty(false);
@@ -18089,7 +18145,7 @@ function MeineVerwaltung({me, showToast, group}) {
       <div style={{fontSize:12,fontWeight:700,color:"#10b981",marginBottom:10}}>✏️ Selbst änderbar</div>
       <div style={{marginBottom:12}}>
         <label style={editLab}>Handynummer</label>
-        <input value={phone} onChange={e=>{setPhone(e.target.value);setDirty(true);}} placeholder="z. B. 0170 1234567"
+        <input type="tel" value={phone} onChange={e=>{setPhone(e.target.value);setDirty(true);}} onBlur={e=>setPhone(handyFormat(e.target.value))} placeholder="z. B. +49 170 1234567"
           inputMode="tel" style={inpStyle}/>
       </div>
       {(()=>{
