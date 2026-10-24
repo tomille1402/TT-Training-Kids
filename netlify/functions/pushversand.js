@@ -1,4 +1,4 @@
-// === TTC-App · Version 552 · netlify/functions/pushversand.js · erstellt 22.10.2026 (V552: Aufstellung im Nachwuchs-Text, keine doppelten Leerzeichen; V519: Versand für alle Vereine) ===
+// === TTC-App · Version 560 · netlify/functions/pushversand.js · erstellt 24.10.2026 (V560: Betreuer 3) ===
 // Netlify Scheduled Function: täglicher Versand der Termin-Erinnerungen.
 // Liest die Push-Regeln (config/pushRegeln) und ermittelt, welche Spiele und
 // Vereinstermine heute eine Erinnerung auslösen, bestimmt die Empfänger und
@@ -347,11 +347,11 @@ function personIdVonName(name, players){
     normName((pl.lastName||"")+(pl.firstName||""))===ziel);
   return p ? p.id : null;
 }
-// Betreuer-IDs: die unter _betreuer1/_betreuer2 eingetragenen Personen.
+// Betreuer-IDs: die unter _betreuer1/_betreuer2/_betreuer3 (V560) eingetragenen Personen.
 function betreuerIds(spielKey, einsaetzeData, players){
   const e = einsaetzeData[spielKey] || {};
   const ids = [];
-  for(const feld of ["_betreuer1","_betreuer2"]){
+  for(const feld of ["_betreuer1","_betreuer2","_betreuer3"]){
     const nm = e[feld];
     if(!nm) continue;
     const id = personIdVonName(nm, players);
@@ -461,7 +461,7 @@ function aufstellungsNamen(s, ei, ctx){
 }
 function nachwuchsSpielNachricht(s, ei, diff, ctx){
   const wann = diff===0 ? "heute" : `in ${diff} Tag${diff===1?"":"en"}`;
-  const betreuer = [ei._betreuer1, ei._betreuer2].filter(Boolean);
+  const betreuer = [ei._betreuer1, ei._betreuer2, ei._betreuer3].filter(Boolean);
   const fahrer = [ei._fahrer, ei._fahrer2].filter(Boolean)
     .map(f=>String(f).trim().replace(/\.+$/,"")).filter(Boolean);
   const wtag = deWochentag(s.datum);
@@ -471,7 +471,7 @@ function nachwuchsSpielNachricht(s, ei, diff, ctx){
   const istHeim = /heim/i.test(s.ort||"");
   const gegner = s.gegner || "unseren Gegner";
   const betreuerSatz = betreuer.length>=2
-    ? `Betreuer sind ${betreuer[0]} und ${betreuer[1]}.`
+    ? `Betreuer sind ${betreuer.slice(0,-1).join(", ")} und ${betreuer[betreuer.length-1]}.`   // V560: bis zu drei
     : betreuer.length===1
       ? `Betreuer ist ${betreuer[0]}.`
       : "Ein Betreuer wird noch gesucht.";

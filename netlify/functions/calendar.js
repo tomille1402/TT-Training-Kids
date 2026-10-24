@@ -1,4 +1,4 @@
-// === TTC-App · Version 537 · netlify/functions/calendar.js · erstellt 15.10.2026 (V537: Rubriken vereinheitlicht, eindeutige Termin-UID) ===
+// === TTC-App · Version 560 · netlify/functions/calendar.js · erstellt 24.10.2026 (V560: Betreuer 3) ===
 // Netlify Function: /.netlify/functions/calendar.ics
 // Liefert einen personalisierten iCalendar-Feed zum Abonnieren.
 // Query-Parameter:
@@ -93,14 +93,14 @@ function buildICS(opts){
   const betreutAktiv=teams.includes(SENTINEL_BETREUT);
   const teamSet=echteTeams.length>0?new Set(echteTeams):(betreutAktiv?new Set():null);
   // Mehrere Betreuer-Namen möglich (komma-getrennt). Ein Spiel zählt als betreut,
-  // wenn b1 oder b2 mit IRGENDEINEM der gewählten Namen übereinstimmt.
+  // wenn b1, b2 oder b3 (V560) mit IRGENDEINEM der gewählten Namen übereinstimmt.
   const betreuerNamen=String(betreuerName||"").split(",").map(n=>normName(n)).filter(Boolean);
   function istBetreutesSpiel(s){
     if(!betreutAktiv||betreuerNamen.length===0) return false;
     const sk=`${s.datum}_${s.mannschaft}_${normName(s.gegner)}`.replace(/[.#$/\[\]]/g,"_");
     const ei=einsaetzeData[sk]||{};
-    const b1=normName(ei.b1||""), b2=normName(ei.b2||"");
-    return betreuerNamen.some(n=> n===b1 || n===b2);
+    const b1=normName(ei.b1||""), b2=normName(ei.b2||""), b3=normName(ei.b3||"");
+    return betreuerNamen.some(n=> n===b1 || n===b2 || (!!b3 && n===b3));
   }
   const teamPasst=s=>(teamSet===null)?true:(teamSet.has(s.mannschaft)||istBetreutesSpiel(s));
   const L=[];
@@ -132,6 +132,7 @@ function buildICS(opts){
     if(heim){
       if(ei.b1) bfZeilen.push(`Betreuer 1: ${ei.b1}`);
       if(ei.b2) bfZeilen.push(`Betreuer 2: ${ei.b2}`);
+      if(ei.b3) bfZeilen.push(`Betreuer 3: ${ei.b3}`);   // V560
     } else {
       // V485: bis zu zwei Fahrer (f, f2) – wie in der App.
       const fahrer=[ei.f,ei.f2].filter(Boolean).join(", ");
