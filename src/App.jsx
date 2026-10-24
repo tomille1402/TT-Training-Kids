@@ -1,4 +1,4 @@
-// === TTC-App · Version 558 · erstellt 24.10.2026 ===
+// === TTC-App · Version 559 · erstellt 24.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "558";
+const APP_VERSION = "559";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9762,9 +9762,9 @@ function useAbrechnungsSpiele(){
   const [erg,setErg]=useState({spiele:[], einsaetze:{}});
   useEffect(()=>{
     let ab=false;
+    const keys=bekannteSpielplanKeys().filter(k=>k!=="spielplan").slice(0,2);
     (async()=>{
-      const keys=bekannteSpielplanKeys().filter(k=>k!=="spielplan").slice(0,2);
-      const spiele=[], einsaetze={}, gesehen=new Set();
+      const spiele=[], gesehen=new Set();
       for(const k of keys){
         try{ const sn=await getDoc(doc(db,"config",k));
           for(const sp of ((sn.exists()&&sn.data().spiele)||[])){
@@ -9772,13 +9772,32 @@ function useAbrechnungsSpiele(){
             const key=spielKeyFromSpiel(sp); if(gesehen.has(key)) continue;
             gesehen.add(key); spiele.push({...sp, _key:key});
           } }catch(e){}
-        try{ const en=await getDoc(doc(db,"einsaetze",k)); Object.assign(einsaetze, (en.exists()&&en.data().data)||{}); }catch(e){}
       }
-      if(!ab) setErg({spiele, einsaetze});
+      if(!ab) setErg(x=>({...x, spiele}));
     })();
-    return ()=>{ ab=true; };
+    // V559: Einsätze (Betreuer) live lesen – eine Änderung im Reiter Einsätze wirkt sofort.
+    const teile={};
+    const unsubs=keys.map(k=>onSnapshot(doc(db,"einsaetze",k), sn=>{
+      teile[k]=(sn.exists()&&sn.data().data)||{};
+      const einsaetze={}; for(const kk of [...keys].reverse()) Object.assign(einsaetze, teile[kk]||{});
+      if(!ab) setErg(x=>({...x, einsaetze}));
+    }, ()=>{}));
+    return ()=>{ ab=true; unsubs.forEach(u=>u()); };
   },[]);
   return erg;
+}
+// V559: Betreuung für die Abrechnung genau so bestimmen, wie der Reiter Einsätze sie
+// anzeigt: Betreuer 1 immer, Betreuer 2 nur bei Heimspielen (ort === "Heim"). Bei
+// Auswärtsspielen blendet Einsätze das zweite Feld aus – ein dort noch gespeicherter
+// Name (z. B. aus der Zeit, als das Spiel als Heimspiel geführt war) zählte bisher
+// trotzdem als Betreuung.
+function abrechnungBetreut(player, spiel, einsaetzeData){
+  if(!player||!spiel||!einsaetzeData) return false;
+  const eigen=normName(personAnzeigeName(player));
+  if(!eigen) return false;
+  const ei=einsaetzeData[spielKeyFromSpiel(spiel)]||{};
+  const namen=[ei._betreuer1, spiel.ort==="Heim" ? ei._betreuer2 : ""];
+  return namen.some(n=>n && normName(n)===eigen);
 }
 function spielLeistungText(sp){
   const heim=/^heim/i.test(String(sp?.ort||""));
@@ -9929,12 +9948,13 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
   // Trainings
   const tage=person ? gehalteneTrainings(person, attendance, von, bis) : [];
   const zeileT=(d)=>{ const k="t:"+d; return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? kommaStr(stdTraining) }; };
-  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum – V556: nur Spiele, bei denen die
-  // Person in den Einsätzen als Betreuer 1 oder 2 eingetragen ist (vorher alle Spiele).
-  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis && !!person && personIstBetreuer(person, sp, einsaetze))
+  // Punktspiele Mädchen 11 / Jungen 11 im Zeitraum (V559: wieder alle Spiele zur Auswahl;
+  // vorausgewählt und als betreut markiert nur die, bei denen die Person laut Einsätzen
+  // die Betreuung hat – siehe abrechnungBetreut)
+  const spiele=alleSpiele.filter(sp=>sp.datum>=von && sp.datum<=bis)
     .sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-  const zeileS=(sp)=>{ const k="s:"+sp._key;
-    return { an: st[k]?.an ?? !abgerechnet[k], h: st[k]?.h ?? "2", betreut:true }; };
+  const zeileS=(sp)=>{ const k="s:"+sp._key; const betreut=person?abrechnungBetreut(person, sp, einsaetze):false;
+    return { an: st[k]?.an ?? (betreut && !abgerechnet[k]), h: st[k]?.h ?? "2", betreut }; };
   const setZeile=(k,basis,patch)=>setSt(x=>({...x,[k]:{an:basis.an,h:basis.h,...patch}}));
 
   const rows=[
@@ -10100,12 +10120,13 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
         </div>; })}
 
       {titel("👥 Betreute Punktspiele (Mädchen 11 / Jungen 11)", spiele.length)}
-      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum ist die Person bei keinem Spiel von Mädchen 11 oder Jungen 11 als Betreuer eingetragen.</div>}
+      {spiele.length===0 && <div style={{fontSize:12,color:"var(--text3)"}}>Im Zeitraum stehen keine Spiele von Mädchen 11 oder Jungen 11 im Spielplan.</div>}
       {spiele.map(sp=>{ const z=zeileS(sp), k="s:"+sp._key;
         return <div key={k} style={{...zeilenGrid,opacity:z.an?1:0.55}}>
           <input type="checkbox" checked={z.an} onChange={()=>setZeile(k,z,{an:!z.an})} style={{width:18,height:18}}/>
           <div style={{fontSize:12,minWidth:0}}>{formatDayDE(sp.datum)}, {formatDateDE(sp.datum)}{sp.uhrzeit?` · ${sp.uhrzeit}`:""}
             <div style={{fontSize:11,color:"var(--text2)"}}>{sp.mannschaft} – {/^heim/i.test(sp.ort||"")?"gegen":"bei"} {sp.gegner}</div>
+            {z.betreut&&<div style={{fontSize:10,color:"#10b981"}}>als Betreuer eingetragen</div>}
             {abgerechnet[k]&&<div style={{fontSize:10,color:"#b45309"}}>{T`abgerechnet am ${formatDateDE(abgerechnet[k])}`}</div>}</div>
           <input type="text" inputMode="decimal" value={z.h} onChange={e=>setZeile(k,z,{h:e.target.value})} style={inpKlein} title="Stunden"/>
           <div style={{fontSize:12,textAlign:"right",color:"var(--text2)"}}>{euroDE(zahl(z.h)*satz.spiel+pauschale.spiel)}</div>
