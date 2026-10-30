@@ -2908,4 +2908,20 @@ export const RO_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Numere de mobil uniforme ✓",  // V565
 "Pauschale": "Forfetar",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · forfetar",  // V566
+"Startseite oben": "Partea de sus a paginii de start",  // V569
+"Deine nächsten Spiele": "Următoarele tale meciuri",  // V569
+"immer sichtbar": "mereu vizibil",  // V569
+"Alle wieder einblenden": "Afișează din nou tot",  // V569
+"Kein Profil vorhanden.": "Niciun profil disponibil.",  // V569
+"Kachelansicht": "Afișare plăci",  // V569
+"🧩 Kachelansicht": "🧩 Afișare plăci",  // V569
+"{0} ausgeblendet": "{0} ascunse",  // V569
+"Benachrichtigungen": "Notificări",  // V569
+"Kontakt und Größen": "Contact și mărimi",  // V569
+"selbst änderbar": "modificabil de tine",  // V569
+"Persönliche Daten": "Date personale",  // V569
+"nur durch Admin änderbar": "modificabil doar de admin",  // V569
+"aus": "oprit",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Bifat = afișat. Alegerea se aplică plăcilor de pe pagina de start și meniului de sus și se salvează imediat. „Start” și „Administrare” rămân mereu vizibile.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Datele tale înregistrate la club și setările personale. Pentru modificarea datelor personale adresează-te adminului.",  // V569
 };

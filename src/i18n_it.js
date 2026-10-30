@@ -2910,4 +2910,20 @@ export const IT_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Numeri di cellulare uniformi ✓",  // V565
 "Pauschale": "Forfait",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · forfait",  // V566
+"Startseite oben": "Parte alta della home",  // V569
+"Deine nächsten Spiele": "Le tue prossime partite",  // V569
+"immer sichtbar": "sempre visibile",  // V569
+"Alle wieder einblenden": "Mostra di nuovo tutto",  // V569
+"Kein Profil vorhanden.": "Nessun profilo disponibile.",  // V569
+"Kachelansicht": "Vista riquadri",  // V569
+"🧩 Kachelansicht": "🧩 Vista riquadri",  // V569
+"{0} ausgeblendet": "{0} nascosti",  // V569
+"Benachrichtigungen": "Notifiche",  // V569
+"Kontakt und Größen": "Contatto e taglie",  // V569
+"selbst änderbar": "modificabile da te",  // V569
+"Persönliche Daten": "Dati personali",  // V569
+"nur durch Admin änderbar": "modificabile solo dall'amministratore",  // V569
+"aus": "spento",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Spuntato = visibile. La scelta vale per i riquadri della home e per il menu in alto e viene salvata subito. «Home» e «Amministrazione» restano sempre visibili.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "I tuoi dati registrati presso la società e le impostazioni personali. Per modificare i dati personali rivolgiti all'amministratore.",  // V569
 };

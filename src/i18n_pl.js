@@ -2910,4 +2910,20 @@ export const PL_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Numery komórkowe jednolite ✓",  // V565
 "Pauschale": "Ryczałt",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · ryczałt",  // V566
+"Startseite oben": "Góra strony startowej",  // V569
+"Deine nächsten Spiele": "Twoje następne mecze",  // V569
+"immer sichtbar": "zawsze widoczne",  // V569
+"Alle wieder einblenden": "Pokaż wszystko ponownie",  // V569
+"Kein Profil vorhanden.": "Brak profilu.",  // V569
+"Kachelansicht": "Widok kafelków",  // V569
+"🧩 Kachelansicht": "🧩 Widok kafelków",  // V569
+"{0} ausgeblendet": "Ukryte: {0}",  // V569
+"Benachrichtigungen": "Powiadomienia",  // V569
+"Kontakt und Größen": "Kontakt i rozmiary",  // V569
+"selbst änderbar": "możesz zmienić sam",  // V569
+"Persönliche Daten": "Dane osobowe",  // V569
+"nur durch Admin änderbar": "zmienia tylko admin",  // V569
+"aus": "wył.",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Zaznaczone = widoczne. Wybór dotyczy kafelków strony startowej i menu na samej górze; zapisuje się od razu. „Start” i „Administracja” są zawsze widoczne.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Twoje dane zapisane w klubie i ustawienia osobiste. W sprawie zmian danych osobowych zwróć się do admina.",  // V569
 };

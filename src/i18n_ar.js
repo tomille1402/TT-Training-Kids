@@ -2908,4 +2908,20 @@ export const AR_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 أرقام الجوال موحدة ✓",  // V565
 "Pauschale": "مبلغ مقطوع",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · مبلغ مقطوع",  // V566
+"Startseite oben": "أعلى الصفحة الرئيسية",  // V569
+"Deine nächsten Spiele": "مبارياتك القادمة",  // V569
+"immer sichtbar": "ظاهر دائمًا",  // V569
+"Alle wieder einblenden": "إظهار الكل مجددًا",  // V569
+"Kein Profil vorhanden.": "لا يوجد ملف شخصي.",  // V569
+"Kachelansicht": "عرض البطاقات",  // V569
+"🧩 Kachelansicht": "🧩 عرض البطاقات",  // V569
+"{0} ausgeblendet": "{0} مخفية",  // V569
+"Benachrichtigungen": "الإشعارات",  // V569
+"Kontakt und Größen": "التواصل والمقاسات",  // V569
+"selbst änderbar": "يمكنك تعديله",  // V569
+"Persönliche Daten": "البيانات الشخصية",  // V569
+"nur durch Admin änderbar": "يعدّله المسؤول فقط",  // V569
+"aus": "متوقف",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "علامة = ظاهر. ينطبق الاختيار على بطاقات الصفحة الرئيسية وعلى القائمة في الأعلى ويُحفظ فورًا. تبقى «البداية» و«الإدارة» ظاهرتين دائمًا.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "بياناتك المسجلة لدى النادي وإعداداتك الشخصية. لتغيير بياناتك الشخصية تواصل مع المسؤول.",  // V569
 };

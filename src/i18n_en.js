@@ -2909,4 +2909,20 @@ export const EN_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Mobile numbers standardised ✓",  // V565
 "Pauschale": "Flat rate",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · flat rate",  // V566
+"Startseite oben": "Top of home page",  // V569
+"Deine nächsten Spiele": "Your next matches",  // V569
+"immer sichtbar": "always visible",  // V569
+"Alle wieder einblenden": "Show all again",  // V569
+"Kein Profil vorhanden.": "No profile available.",  // V569
+"Kachelansicht": "Tile view",  // V569
+"🧩 Kachelansicht": "🧩 Tile view",  // V569
+"{0} ausgeblendet": "{0} hidden",  // V569
+"Benachrichtigungen": "Notifications",  // V569
+"Kontakt und Größen": "Contact and sizes",  // V569
+"selbst änderbar": "editable by you",  // V569
+"Persönliche Daten": "Personal data",  // V569
+"nur durch Admin änderbar": "editable by admin only",  // V569
+"aus": "off",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Tick = shown. The selection applies to the tiles on the home page and to the menu at the very top and is saved immediately. “Start” and “Administration” always remain visible.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Your data stored with the club and your personal settings. For changes to your personal data, please contact the admin.",  // V569
 };

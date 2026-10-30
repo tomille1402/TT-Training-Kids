@@ -2910,4 +2910,20 @@ export const LA_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Numeri telephonii mobilis aequati ✓",  // V565
 "Pauschale": "Summa certa",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · summa certa",  // V566
+"Startseite oben": "Summa paginae initialis",  // V569
+"Deine nächsten Spiele": "Certamina tua proxima",  // V569
+"immer sichtbar": "semper visibile",  // V569
+"Alle wieder einblenden": "Omnia rursus ostendere",  // V569
+"Kein Profil vorhanden.": "Nullum profilium.",  // V569
+"Kachelansicht": "Conspectus tessellarum",  // V569
+"🧩 Kachelansicht": "🧩 Conspectus tessellarum",  // V569
+"{0} ausgeblendet": "{0} occulta",  // V569
+"Benachrichtigungen": "Nuntii",  // V569
+"Kontakt und Größen": "Contactus et mensurae",  // V569
+"selbst änderbar": "a te mutabile",  // V569
+"Persönliche Daten": "Data personalia",  // V569
+"nur durch Admin änderbar": "solum ab administratore mutabile",  // V569
+"aus": "non",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Signatum = ostenditur. Electio valet tessellis paginae initialis et indici summo statimque servatur. „Initium“ et „Administratio“ semper visibilia manent.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Data tua apud societatem servata et optiones personales. Ad data personalia mutanda administratorem adi.",  // V569
 };

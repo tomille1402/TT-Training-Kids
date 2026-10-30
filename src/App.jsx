@@ -1,4 +1,4 @@
-// === TTC-App · Version 568 · erstellt 25.10.2026 ===
+// === TTC-App · Version 569 · erstellt 30.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "568";
+const APP_VERSION = "569";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -1254,10 +1254,10 @@ function SprachMenue(){
 }
 
 // V521: Spracheinstellung in der Verwaltung (V522: auch in „Meine Verwaltung“ aller Nutzer)
-function SprachEinstellung(){
+function SprachEinstellung({eingebettet=false}={}){
   const opt=SPRACH_OPTIONEN;   // V542: zentrale Liste (auch für das Sprachmenü oben)
-  return <div style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
-    <div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă / Idioma / Lingua / اللغة / 语言</div>
+  return <div style={eingebettet?{}:{background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12,padding:14}}>
+    {!eingebettet&&<div style={{fontSize:14,fontWeight:800,color:"var(--text)",marginBottom:4}}>🌐 Sprache / Language / Langue / Język / Limbă / Idioma / Lingua / اللغة / 语言</div>}
     <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
       Persönliche Einstellung für dieses Gerät · Personal setting for this device · Réglage personnel pour cet appareil · Ustawienie osobiste dla tego urządzenia · Setare personală pentru acest dispozitiv · Ajuste personal para este dispositivo · Definição pessoal para este dispositivo · Impostazione personale per questo dispositivo · Optio personalis huius instrumenti · إعداد شخصي لهذا الجهاز · 此设备的个人设置
     </div>
@@ -8926,6 +8926,73 @@ function tabsNachKacheln(tabs, gruppen){
   const restMarkiert=rest.map((t,i)=>({...t, _abschnittStart:i===0&&markiert.length>0, _abschnitt:"Weitere"}));
   return [...home, ...markiert, ...restMarkiert];
 }
+// V569: Persönliche Kachelansicht. Im Profil (players/<id>.kachelAus) stehen die Schlüssel
+// der abgewählten Kacheln/Reiter und der oberen Karten (_naechstesSpiel, _naechsteSpiele,
+// _naechsteBetreuung). Start und Verwaltung lassen sich nie abwählen (sonst Aussperrung).
+const KACHEL_PFLICHT = new Set(["home","verwaltung","meineverwaltung"]);
+const OBEN_KARTEN = [
+  { key:"_naechstesSpiel",   label:"Dein nächstes Spiel",     icon:"🏓" },
+  { key:"_naechsteSpiele",   label:"Deine nächsten Spiele",   icon:"📅" },
+  { key:"_naechsteBetreuung",label:"Deine nächste Betreuung", icon:"🧑‍🏫" },
+];
+const KACHEL_BEREICHE = ["Wettkampf","Training","Mein Bereich und Statistiken","Verein"];
+function kachelAusSet(profil){ return new Set(Array.isArray(profil?.kachelAus) ? profil.kachelAus : []); }
+function kachelnFiltern(tabs, profil){
+  const aus=kachelAusSet(profil);
+  return (tabs||[]).filter(t=>KACHEL_PFLICHT.has(t.key) || !aus.has(t.key));
+}
+// Alle Kachelgruppen der Ansichten zusammengeführt (für die Einstellung durch Admins)
+function kachelGruppenAlle(){
+  const quellen=[TR_HOME_GRUPPEN, SP_HOME_GRUPPEN, EW_HOME_GRUPPEN];
+  return KACHEL_BEREICHE.map((titel,i)=>{
+    const items=[], gesehen=new Set();
+    quellen.forEach(q=>((q[i]&&q[i].items)||[]).forEach(it=>{ if(!gesehen.has(it.key)){ gesehen.add(it.key); items.push(it); } }));
+    return { titel, items };
+  });
+}
+// Auswahlliste „Kachelansicht“: Häkchen = sichtbar. Speichert sofort im Profil.
+function KachelAuswahl({ profil, gruppen, verfuegbar=null, oben=["_naechstesSpiel","_naechsteSpiele"], notify }){
+  const [aus,setAus]=useState(()=>[...kachelAusSet(profil)]);
+  const ausRef=useRef(aus);   // aktueller Stand auch bei schnellem Antippen mehrerer Häkchen
+  const laeuft=false;
+  useEffect(()=>{ const n=[...kachelAusSet(profil)]; ausRef.current=n; setAus(n); },[profil?.id, JSON.stringify(profil?.kachelAus||[])]);
+  if(!profil?.id) return <div style={{fontSize:12,color:"var(--text3)"}}>Kein Profil vorhanden.</div>;
+  async function speichern(neu){
+    ausRef.current=neu; setAus(neu);
+    try{ await updateDoc(doc(db,"players",profil.id),{ kachelAus:neu }); }
+    catch(e){ window.alert(T("Speichern fehlgeschlagen:\n")+(e.message||e)); const n=[...kachelAusSet(profil)]; ausRef.current=n; setAus(n); }
+  }
+  const umschalten=(key)=>{ if(KACHEL_PFLICHT.has(key)) return; const a=ausRef.current; speichern(a.includes(key)?a.filter(k=>k!==key):[...a,key]); };
+  const ohneTrenn=(l)=>String(l||"").replace(/([a-zäöüß])-([a-zäöüß])/g,"$1$2");
+  const bereiche=[
+    { titel:"Startseite oben", items:OBEN_KARTEN.filter(o=>oben.includes(o.key)) },
+    ...KACHEL_BEREICHE.map((titel,i)=>({ titel, items:((gruppen||[])[i]?.items||[]).filter(it=>!verfuegbar || verfuegbar.has(it.key)) })),
+  ].filter(b=>b.items.length>0);
+  const zeile={display:"flex",alignItems:"center",gap:10,padding:"8px 4px",minHeight:40,borderBottom:"1px solid var(--border)"};
+  return <div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:10,lineHeight:1.5}}>
+      Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.
+    </div>
+    {bereiche.map(b=><div key={b.titel} style={{marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,margin:"4px 2px 4px"}}>
+        <span style={{width:8,height:8,borderRadius:2,background:TTC_ROT,display:"inline-block"}}/>
+        <span style={{fontSize:12,fontWeight:800,color:"var(--text2)"}}>{b.titel}</span>
+      </div>
+      {b.items.map(it=>{ const pflicht=KACHEL_PFLICHT.has(it.key), an=pflicht||!aus.includes(it.key);
+        return <label key={it.key} style={{...zeile,cursor:pflicht?"default":"pointer",opacity:an?1:0.6}}>
+          <input type="checkbox" checked={an} disabled={pflicht||laeuft} onChange={()=>umschalten(it.key)} style={{width:18,height:18,flexShrink:0}}/>
+          <span style={{fontSize:17,width:22,textAlign:"center"}}>{it.icon}</span>
+          <span style={{flex:1,minWidth:0}}>
+            <span style={{display:"block",fontSize:13,fontWeight:700,color:"var(--text)"}}>{ohneTrenn(it.label)}</span>
+            {it.sub&&<span style={{display:"block",fontSize:11,color:"var(--text3)"}}>{it.sub}</span>}
+          </span>
+          {pflicht&&<span style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>immer sichtbar</span>}
+        </label>; })}
+    </div>)}
+    {aus.length>0 && <button onClick={()=>speichern([])} disabled={laeuft} style={{marginTop:4,padding:"8px 12px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer"}}>Alle wieder einblenden</button>}
+  </div>;
+}
+
 // Hintergrund eines Reiters: aktiv kräftiger getönt, sonst Abschnittsschleier.
 function reiterHintergrund(t, aktiv){
   if(aktiv) return "var(--club-22)";
@@ -8997,7 +9064,7 @@ const TR_HOME_GRUPPEN = [
 
 // Kachel-Startseite der Trainer-Ansicht — stark am Spieler-Design orientiert.
 // verfuegbar = Set der für die Person sichtbaren Tab-Keys; onOpen(key) wechselt den Reiter.
-function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=false }) {
+function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=false, aus=new Set() }) {
   const halleninfoNeu = useHalleninfoNeuCount();
   const aufSpieler = useAufstellungSpieler();
 
@@ -9103,10 +9170,10 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
   // V483: Seite endet direkt unter der letzten Kachelgruppe – kein Leerraum darunter.
   return <div style={{padding:"12px 12px 12px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Nächstes Nachwuchsspiel – für Trainer/Admins wie für Betreuer angezeigt */}
-    {nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
+    {!aus.has("_naechstesSpiel") && nachwuchsSpiele.length>0 && nachwuchsKarte(nachwuchsSpiele[0], true)}
 
     {/* Aufklappbar: die nächsten fünf Nachwuchsspiele (standardmäßig zu) */}
-    {nachwuchsSpiele.length>1 && <div style={{marginBottom:16}}>
+    {!aus.has("_naechsteSpiele") && nachwuchsSpiele.length>1 && <div style={{marginBottom:16}}>
       <button onClick={()=>setMehrOffen(o=>!o)} style={{width:"100%",textAlign:"start",
         background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,
         borderRadius:12,padding:"11px 12px",cursor:"pointer",display:"flex",
@@ -9184,13 +9251,16 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"
-  const TABS = ALL_TABS.filter(t=>{
+  const TABS_ALLE = ALL_TABS.filter(t=>{
     if(ttcModus) return TTC_REITER.includes(t.key);   // V505: Funktion „TTC"
     if(t.superAdminOnly && !isSuperAdmin) return false;
     if(t.nonSuperAdminOnly && isSuperAdmin) return false;
     if(t.nurAbrechnung && !(isSuperAdmin || ichAbrechnung)) return false;   // V535
     return true;
   });
+  // V569: persönliche Kachelansicht der angemeldeten Person
+  const ichProfil = (players||[]).find(p=>(p.email||"").toLowerCase()===(user?.email||"").toLowerCase()) || null;
+  const TABS = kachelnFiltern(TABS_ALLE, ichProfil);
   const [activeTab,setActiveTab]=useState(()=>{
     // Aktiven Reiter über einen Reload hinweg merken. Auf Mobilgeräten kann der Browser
     // die Seite beim Wechsel zu einem heruntergeladenen PDF entladen und danach neu
@@ -9459,7 +9529,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
         gemessene Tab-Höhe (die fixierte Leiste sitzt bereits bei var(--rsw-height)). */}
     <div style={{height:hideHeader?tabBarH:`calc(${62+tabBarH}px + var(--sat, 0px))`}}/>
 
-    {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key)=>setActiveTab(key)} alleVereinsspiele={ttcModus}/>}
+    {activeTab==="home"&&<TrainerHome user={user} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} aus={kachelAusSet(ichProfil)} onOpen={(key)=>setActiveTab(key)} alleVereinsspiele={ttcModus}/>}
     {activeTab==="einheiten"&&<EinheitenTab user={user} players={players}/>}
     {activeTab==="uebungen"&&curPlayer&&(()=>{
       const {currentAward,beginnerStars,advancedStars,totalStars}=getAward(curPlayer);
@@ -9623,7 +9693,8 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
 
     {/* ── GEBURTSTAGE TAB ── */}
     {activeTab==="geburtstage"&&<GeburtstageTab players={players} showToast={showToast}/>}
-    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={players.find(p=>p.email?.toLowerCase()===user?.email?.toLowerCase())||null} showToast={showToast}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={ichProfil} showToast={showToast}
+      kachel={{gruppen:TR_HOME_GRUPPEN, verfuegbar:new Set(TABS_ALLE.map(t=>t.key)), oben:["_naechstesSpiel","_naechsteSpiele"]}}/>}
     {activeTab==="abrechnung"&&<ErrorBoundary><TrainerAbrechnungView players={players} attendance={attendance} user={user} isSuperAdmin={isSuperAdmin} showToast={showToast}/></ErrorBoundary>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
@@ -15718,6 +15789,8 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                 </div>
               </>)}
 
+              {abschnitt("kachelansicht","🧩 Kachelansicht", (editPlayer.kachelAus||[]).length?T`${(editPlayer.kachelAus||[]).length} ausgeblendet`:"", ()=>
+                <KachelAuswahl profil={players.find(x=>x.id===editPlayer.id)||editPlayer} gruppen={kachelGruppenAlle()} oben={["_naechstesSpiel","_naechsteSpiele","_naechsteBetreuung"]}/>)}
               {abschnitt("persoenlich","👤 Persönliche Daten", `${gName(editPlayer.group||"Anfänger")} · ${editPlayer.status==="passiv"?"passiv":"aktiv"}`, ()=><>
               {/* Vorname */}
               <div style={{marginBottom:10}}>
@@ -18017,8 +18090,9 @@ function PushBanner({ meId }) {
   );
 }
 
-function MeineVerwaltung({me, showToast, group}) {
+function MeineVerwaltung({me, showToast, group, kachel=null}) {
   const notify = typeof showToast==="function" ? showToast : (()=>{});
+  const [offen,setOffen] = useState({});   // V569: aufklappbare Abschnitte, Standard zu
   const [phone,setPhone]     = useState(me?.phone||"");
   const [tshirt,setTshirt]   = useState(me?.tshirtSize||"");
   const [anzug,setAnzug]     = useState(me?.anzugSize||"");
@@ -18142,19 +18216,61 @@ function MeineVerwaltung({me, showToast, group}) {
   // Read-only-Zeile
   const RO=({label,value})=><div><div style={roLabel}>{label}</div><div style={roVal}>{value||"—"}</div></div>;
 
-  return <div style={{padding:13,paddingBottom:40}}>
-    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🗂️ Meine Verwaltung</div>
-    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
-      Deine beim Verein hinterlegten Daten. Ändern kannst du selbst nur Handynummer, T-Shirt- und Anzugs-Größe.
-      Für alle anderen Änderungen wende dich bitte an den Admin.
-    </div>
-
-    {/* V522: Sprache je Nutzer (Deutsch/Englisch) */}
-    <SprachEinstellung/>
-
-    {/* Editierbarer Bereich */}
-    <div style={{...box,borderColor:"#10b98155"}}>
-      <div style={{fontSize:12,fontWeight:700,color:"#10b981",marginBottom:10}}>✏️ Selbst änderbar</div>
+  // V569: Abschnitte einheitlich auf- und zuklappbar (Standard zu), alphabetisch sortiert
+  const abschnitte=[
+    { k:"benachrichtigungen", icon:"🔔", label:"Benachrichtigungen", info: pushAn?"aktiv":"aus", inhalt:()=>(!pushMoeglich()
+        ? <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>
+            Dieser Browser unterstützt keine Benachrichtigungen. Tipp: Die Termine lassen sich
+            über den Reiter „Kalender“ abonnieren – dann erinnert dich dein Kalender automatisch.
+          </div>
+        : <>
+          <label style={{display:"flex",alignItems:"center",gap:10,cursor:pushLaeuft?"wait":"pointer"}}>
+            <input type="checkbox" checked={pushAn} disabled={pushLaeuft}
+              onChange={e=>pushUmschalten(e.target.checked)}
+              style={{width:18,height:18,cursor:pushLaeuft?"wait":"pointer"}}/>
+            <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>
+              {pushLaeuft ? "Einen Moment…" : "Vor bevorstehenden Terminen erinnern"}
+            </span>
+          </label>
+          <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.6}}>
+            Du bekommst eine kurze Meldung auf dein Gerät, bevor ein Spiel, Training oder
+            Vereinstermin ansteht. Du kannst das hier jederzeit wieder abschalten.
+            {istAppleGeraet() && !alsAppInstalliert() &&
+              " Auf iPhone und iPad funktioniert das nur, wenn die App über „Teilen → Zum Home-Bildschirm“ hinzugefügt wurde."}
+          </div>
+          {pushHinweis && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
+            background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
+            {pushHinweis}
+          </div>}
+        </>) },
+    { k:"datenschutz", icon:"🔒", label:"Datenschutz", info: me.datenschutzAccepted ? fmtDate(me.datenschutzAccepted) : "", inhalt:()=><>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={roLabel}>Bestätigt am</div>
+          <div style={{...roVal,marginBottom:0,
+            color:me.datenschutzAccepted?"var(--text)":"var(--text3)"}}>
+            {me.datenschutzAccepted ? fmtDate(me.datenschutzAccepted) : "noch nicht bestätigt"}
+          </div>
+        </div>
+        <button onClick={datenschutzPdf} disabled={dsLaeuft} style={{
+          padding:"9px 13px",borderRadius:9,border:"1px solid var(--border2)",
+          background:"var(--bg3)",color:"var(--text2)",fontSize:12,fontWeight:700,
+          cursor:dsLaeuft?"wait":"pointer"}}>
+          {dsLaeuft?"⏳ Wird erstellt…":"📄 Datenschutzerklärung (PDF)"}
+        </button>
+      </div>
+      <div style={{fontSize:10,color:"var(--text4)",marginTop:10,lineHeight:1.6}}>
+        Das ist die Erklärung, der bei der ersten Anmeldung zugestimmt wurde. Du kannst sie
+        hier jederzeit als PDF-Datei öffnen, speichern oder ausdrucken.
+      </div>
+      {dsFehler && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
+        background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
+        {dsFehler}
+      </div>}
+    </> },
+    ...(kachel ? [{ k:"kachelansicht", icon:"🧩", label:"Kachelansicht", info:(me.kachelAus||[]).length?T`${(me.kachelAus||[]).length} ausgeblendet`:"",
+      inhalt:()=><KachelAuswahl profil={me} gruppen={kachel.gruppen} verfuegbar={kachel.verfuegbar} oben={kachel.oben} notify={notify}/> }] : []),
+    { k:"kontakt", icon:"✏️", label:"Kontakt und Größen", info:"selbst änderbar", inhalt:()=><>
       <div style={{marginBottom:12}}>
         <label style={editLab}>Handynummer</label>
         <input type="tel" value={phone} onChange={e=>{setPhone(e.target.value);setDirty(true);}} onBlur={e=>setPhone(handyFormat(e.target.value))} placeholder="z. B. +49 170 1234567"
@@ -18186,69 +18302,8 @@ function MeineVerwaltung({me, showToast, group}) {
         cursor:(saving||!dirty)?"default":"pointer",border:"none",
         background:(saving||!dirty)?"var(--bg3)":"#10b981",color:(saving||!dirty)?"var(--text3)":"#fff",
       }}>{saving?"⏳ Speichern…":dirty?"💾 Änderungen speichern":"✓ Gespeichert"}</button>
-    </div>
-
-    {/* Benachrichtigungen */}
-    <div style={box}>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>🔔 Benachrichtigungen</div>
-      {!pushMoeglich()
-        ? <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6}}>
-            Dieser Browser unterstützt keine Benachrichtigungen. Tipp: Die Termine lassen sich
-            über den Reiter „Kalender“ abonnieren – dann erinnert dich dein Kalender automatisch.
-          </div>
-        : <>
-          <label style={{display:"flex",alignItems:"center",gap:10,cursor:pushLaeuft?"wait":"pointer"}}>
-            <input type="checkbox" checked={pushAn} disabled={pushLaeuft}
-              onChange={e=>pushUmschalten(e.target.checked)}
-              style={{width:18,height:18,cursor:pushLaeuft?"wait":"pointer"}}/>
-            <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>
-              {pushLaeuft ? "Einen Moment…" : "Vor bevorstehenden Terminen erinnern"}
-            </span>
-          </label>
-          <div style={{fontSize:10,color:"var(--text4)",marginTop:6,lineHeight:1.6}}>
-            Du bekommst eine kurze Meldung auf dein Gerät, bevor ein Spiel, Training oder
-            Vereinstermin ansteht. Du kannst das hier jederzeit wieder abschalten.
-            {istAppleGeraet() && !alsAppInstalliert() &&
-              " Auf iPhone und iPad funktioniert das nur, wenn die App über „Teilen → Zum Home-Bildschirm“ hinzugefügt wurde."}
-          </div>
-          {pushHinweis && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
-            background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
-            {pushHinweis}
-          </div>}
-        </>}
-    </div>
-
-    {/* Datenschutz */}
-    <div style={box}>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:10}}>🔒 Datenschutz</div>
-      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-        <div>
-          <div style={roLabel}>Bestätigt am</div>
-          <div style={{...roVal,marginBottom:0,
-            color:me.datenschutzAccepted?"var(--text)":"var(--text3)"}}>
-            {me.datenschutzAccepted ? fmtDate(me.datenschutzAccepted) : "noch nicht bestätigt"}
-          </div>
-        </div>
-        <button onClick={datenschutzPdf} disabled={dsLaeuft} style={{
-          padding:"9px 13px",borderRadius:9,border:"1px solid var(--border2)",
-          background:"var(--bg3)",color:"var(--text2)",fontSize:12,fontWeight:700,
-          cursor:dsLaeuft?"wait":"pointer"}}>
-          {dsLaeuft?"⏳ Wird erstellt…":"📄 Datenschutzerklärung (PDF)"}
-        </button>
-      </div>
-      <div style={{fontSize:10,color:"var(--text4)",marginTop:10,lineHeight:1.6}}>
-        Das ist die Erklärung, der bei der ersten Anmeldung zugestimmt wurde. Du kannst sie
-        hier jederzeit als PDF-Datei öffnen, speichern oder ausdrucken.
-      </div>
-      {dsFehler && <div style={{fontSize:10,color:"#f59e0b",marginTop:8,lineHeight:1.6,
-        background:"#f59e0b18",border:"1px solid #f59e0b44",borderRadius:6,padding:"6px 8px"}}>
-        {dsFehler}
-      </div>}
-    </div>
-
-    {/* Read-only-Bereich */}
-    <div style={box}>
-      <div style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:12}}>🔒 Nur durch Admin änderbar</div>
+    </> },
+    { k:"persoenlich", icon:"👤", label:"Persönliche Daten", info:"nur durch Admin änderbar", inhalt:()=>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <RO label="Funktionen" value={funktionen}/>
         <RO label="Gruppe" value={me.group?gName(me.group):"—"}/>
@@ -18261,8 +18316,23 @@ function MeineVerwaltung({me, showToast, group}) {
         <RO label="Vereinsbeitritt" value={fmtDate(me.joinDate)}/>
         {istErw && <RO label="Stammspieler/Ersatzspieler" value={me.stammErsatz||"—"}/>}
         {me.mannschaftsfuehrerTeam && <RO label="Mannschaftsführer" value={me.mannschaftsfuehrerTeam}/>}
-      </div>
+      </div> },
+    { k:"sprache", icon:"🌐", label:"Sprache", info:(SPRACH_OPTIONEN.find(o=>o.sp===SPRACHE)||{}).label||"", inhalt:()=><SprachEinstellung eingebettet/> },
+  ].sort((a,b)=>T(a.label).localeCompare(T(b.label), SPRACHE||"de"));
+
+  return <div style={{padding:13,paddingBottom:40}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🗂️ Meine Verwaltung</div>
+    <div style={{fontSize:11,color:"var(--text3)",marginBottom:14,lineHeight:1.5}}>
+      Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.
     </div>
+    {abschnitte.map(a=><div key={a.k} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderInlineStart:`3px solid ${TTC_ROT}`,borderRadius:14,marginBottom:12}}>
+      <button onClick={()=>setOffen(o=>({...o,[a.k]:!o[a.k]}))} aria-expanded={!!offen[a.k]} style={{width:"100%",padding:"13px 14px",display:"flex",alignItems:"center",gap:8,background:"transparent",border:"none",cursor:"pointer",textAlign:"start",color:"var(--text)"}}>
+        <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:800}}>{a.icon} {a.label}</span>
+        {a.info?<span style={{fontSize:11,color:"var(--text3)",maxWidth:"45%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.info}</span>:null}
+        <span style={{fontSize:12,color:TTC_ROT,fontWeight:800,flexShrink:0}}>{offen[a.k]?"▲":"▼"}</span>
+      </button>
+      {offen[a.k]&&<div style={{padding:"0 14px 14px"}}>{a.inhalt()}</div>}
+    </div>)}
   </div>;
 }
 
@@ -18521,7 +18591,7 @@ const SP_HOME_GRUPPEN = [
 
 // Kachel-Startseite der Spieler-Ansicht — analog zu ErwachseneHome, aber mit den
 // für Spieler relevanten Bereichen. verfuegbar = Set der für die Gruppe sichtbaren Tab-Keys.
-function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
+function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar, aus=new Set() }) {
   const halleninfoNeu = useHalleninfoNeuCount();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
@@ -18645,10 +18715,10 @@ function SpielerHome({ myPlayer, players=[], onOpen, verfuegbar }) {
 
   return <div style={{padding:"12px 12px 12px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>{/* V568: unten 12 statt 40 px (wie TrainerHome) */}
     {/* Hero: nächstes eigenes Spiel. Steht keines an, beginnt die Seite direkt mit den Kacheln. */}
-    {naechstes && spielerKarte(naechstes, true)}
+    {!aus.has("_naechstesSpiel") && naechstes && spielerKarte(naechstes, true)}
 
     {/* V491: die nächsten 5 Spiele danach – eigene Mannschaft und Nominierungen */}
-    <DeineNaechstenSpiele spiele={meineSpiele.slice(1,6)} karte={s=>spielerKarte(s,false)}/>
+    {!aus.has("_naechsteSpiele") && <DeineNaechstenSpiele spiele={meineSpiele.slice(1,6)} karte={s=>spielerKarte(s,false)}/>}
 
     {gruppen.map(g => <div key={g.titel} style={{marginBottom:18}}>
       <div style={{display:"flex", alignItems:"center", gap:8, margin:"0 2px 9px"}}>
@@ -18767,11 +18837,12 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const wettkampfReiter = ["spielbetrieb","aufstellung","spielplan","einsaetze","kalender"];
   const nurHoehereGruppe = (myGroup==="Anfänger" || myGroup==="Gast");
   const gastAusblenden = ["termine","bestellungen"];
-  const TABS = ALL_TABS.filter(t=>{
+  const TABS_ALLE = ALL_TABS.filter(t=>{
     if(nurHoehereGruppe && wettkampfReiter.includes(t.key)) return false;
     if(myGroup==="Gast" && gastAusblenden.includes(t.key)) return false;
     return true;
   });
+  const TABS = kachelnFiltern(TABS_ALLE, myPlayer);   // V569: persönliche Kachelansicht
   useSuchKachelnMelden(TABS, SP_HOME_GRUPPEN);   // V538
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
 
@@ -18781,7 +18852,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   // und NICHT bei jedem Spielerwechsel, wenn der Reiter weiterhin gültig ist.
   const tabKeys = TABS.map(t=>t.key).join(",");
   useEffect(()=>{
-    if(!TABS.some(t=>t.key===activeTab)) setActiveTab("stats");
+    if(!TABS.some(t=>t.key===activeTab)) setActiveTab("home");   // V569: Start ist immer vorhanden
   },[tabKeys, activeTab]);
 
   // Punkt 6: Avatar selbst ändern
@@ -18891,7 +18962,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
 
     {/* ── STATS ── */}
     <div style={{height:hideHeader?40:(reiterH||50)}}/>{/* V567: eigene Ansicht – genau die Höhe der Reiterleiste */}
-    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
+    {activeTab==="home"&&<SpielerHome myPlayer={myPlayer} players={players} verfuegbar={new Set(TABS.map(t=>t.key))} aus={kachelAusSet(myPlayer)} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="stats"&&<div style={{padding:14}}>
       <div style={{background:`linear-gradient(135deg,${myPlayer.color}11,var(--bg2))`,border:`1px solid ${myPlayer.color}44`,borderRadius:16,padding:18,marginBottom:16,textAlign:"center"}}>
         {/* Punkt 6: Avatar klickbar im großen Profil */}
@@ -19186,7 +19257,8 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       viewerCanEditAll={false}/>}
 
     {activeTab==="bestellungen"&&<BestellungenView me={myPlayer} isAdmin={false}/>}
-    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer}
+      kachel={{gruppen:SP_HOME_GRUPPEN, verfuegbar:new Set(TABS_ALLE.map(t=>t.key)), oben:["_naechstesSpiel","_naechsteSpiele"]}}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}
@@ -28426,7 +28498,7 @@ const EW_HOME_GRUPPEN = [
 // Kachel-Startseite der Erwachsene-Ansicht. Lädt schlanke Live-Infos (nächstes
 // Spiel des Vereins) und rendert die Bereiche als thematisch gruppierte Kacheln
 // in Vereinsfarben. onOpen(key) wechselt in den jeweiligen Reiter.
-function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
+function ErwachseneHome({ myPlayer, players, onOpen, isMF=false, aus=new Set() }) {
   const halleninfoNeu = useHalleninfoNeuCount();
   const spiellokaleListe = useSpiellokale();
   const { statusVon:verlegStatusVon } = useVerlegungen();
@@ -28504,8 +28576,8 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
 
   const gruppen = EW_HOME_GRUPPEN.map(g => ({
     ...g,
-    items: g.items.filter(it => it.key!=="bestelluebersicht" || isMF),
-  }));
+    items: g.items.filter(it => (it.key!=="bestelluebersicht" || isMF) && (KACHEL_PFLICHT.has(it.key) || !aus.has(it.key))),   // V569
+  })).filter(g => g.items.length>0);
 
   // Klick auf Kachel/Link: erst an den Seitenanfang scrollen, dann Reiter öffnen (Punkt 2).
   // Bei der Aufstellung-Kachel wird zusätzlich die Mannschaft der Person mitgegeben,
@@ -28610,7 +28682,7 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
 
   return <div style={{padding:"12px 12px 40px", maxWidth:APP_MAX_BREITE, margin:"0 auto"}}>
     {/* Kachel 1: eigenes nächstes Spiel (rot) */}
-    {naechstes
+    {aus.has("_naechstesSpiel") ? null : naechstes
       ? spielKarte(naechstes, { titelText: meinSpielplanName ? "Dein nächstes Spiel" : "Nächstes Spiel", variante:"rot" })
       : <div style={{background:TTC_ROT, borderRadius:14, padding:"16px 16px", marginBottom:12, boxShadow:"var(--club-shadow, 0 4px 14px #c8102e33)"}}>
           <div style={{fontSize:16, color:"#fff", fontWeight:700}}>🏓 Willkommen</div>
@@ -28618,12 +28690,12 @@ function ErwachseneHome({ myPlayer, players, onOpen, isMF=false }) {
         </div>}
 
     {/* V491: die nächsten 5 Spiele danach – eigene Mannschaft und Nominierungen */}
-    <DeineNaechstenSpiele
+    {!aus.has("_naechsteSpiele") && <DeineNaechstenSpiele
       spiele={(naechstes && meineSpiele[0]===naechstes ? meineSpiele.slice(1,6) : meineSpiele.slice(0,5))}
-      karte={sp=>spielKarte(sp, { titelText:"Spiel", variante:"grau" })}/>
+      karte={sp=>spielKarte(sp, { titelText:"Spiel", variante:"grau" })}/>}
 
     {/* Kachel 2: nächste Betreuung eines Nachwuchsspiels (grau/schwarz) */}
-    {naechsteBetreuung &&
+    {!aus.has("_naechsteBetreuung") && naechsteBetreuung &&
       spielKarte(naechsteBetreuung, { titelText:"Deine nächste Betreuung", variante:"grau" })}
 
     {/* Thematisch gruppierte Kacheln */}
@@ -28669,7 +28741,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
   const loginPlayer=findLoginPlayer(players, user?.email, true);
   const [toast,setToast]=useState(null);
   function showToast(msg,emoji="✅"){setToast({msg,emoji});setTimeout(()=>setToast(null),2500);}
-  const TABS=[
+  const TABS_ALLE=[
     {key:"home",label:"Start",icon:"🏠"},
     {key:"halleninfo",label:"Halleninfo",icon:"📣"},
     {key:"zeiten",label:"Zeiten",icon:"🕒"},
@@ -28692,6 +28764,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     ...(isMF?[{key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦"}]:[]),
     {key:"meineverwaltung",label:"Verwaltung",icon:"🗂️"},
   ];
+  const TABS = kachelnFiltern(TABS_ALLE, myPlayer);   // V569: persönliche Kachelansicht
+  useEffect(()=>{ if(!TABS.some(t=>t.key===activeTab)) setActiveTab("home"); },[TABS.map(t=>t.key).join(","), activeTab]);
   useSuchKachelnMelden(TABS, EW_HOME_GRUPPEN);   // V538
   useSuchNavigation(TABS.map(t=>t.key), setActiveTab);
   // top offset: if inside RoleSwitchWrapper (hideHeader) the switch bar is 44px + chip bar ~80px
@@ -28743,7 +28817,7 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     </div>
     {/* Spacer for fixed EW tab bar only (RSWHeader has its own spacer) */}
     <div style={{height:inRSW?44:"calc(44px + var(--sat, 0px))"}}/>
-    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
+    {activeTab==="home"&&<ErwachseneHome myPlayer={myPlayer} players={players} isMF={isMF} aus={kachelAusSet(myPlayer)} onOpen={(key,team)=>{ if(key==="aufstellung"||key==="spielbetrieb") setAufstellungTeam(team||""); setActiveTab(key); }}/>}
     {activeTab==="spielbetrieb"&&<SpielbetrieblTab isSuperAdmin={false} scrollToTeam={aufstellungTeam}/>}
     {activeTab==="turniere"&&<TurniereView players={players} isAdmin={false} isTrainer={false} myPlayer={myPlayer}/>}
     {activeTab==="erfolge"&&myPlayer&&<ErfolgeTab player={myPlayer} hideTraining={true}/>}
@@ -28766,7 +28840,8 @@ function ErwachseneView({user,players,isDark,onSetUserTheme,userTheme,onSignOut,
     {/* Übersicht: maßgeblich ist die betrachtete Person (der ausgewählte Mannschaftsführer),
         damit die Mannschaft dieses MF gilt — nicht die eingeloggte Person. */}
     {activeTab==="bestelluebersicht"&&<BestellungenUebersicht me={myPlayer} players={players} isAdmin={false} isMF={isMF} showToast={showToast}/>}
-    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}/>}
+    {activeTab==="meineverwaltung"&&<MeineVerwaltung me={myPlayer} showToast={showToast}
+      kachel={{gruppen:EW_HOME_GRUPPEN, verfuegbar:new Set(TABS_ALLE.map(t=>t.key)), oben:["_naechstesSpiel","_naechsteSpiele","_naechsteBetreuung"]}}/>}
     {activeTab==="halleninfo"&&<HalleninfoView/>}
     {activeTab==="spiellokale"&&<SpiellokaleView ziel={lokalZiel}/>}
     {activeTab==="zeiten"&&<TrainingszeitenView players={players}/>}

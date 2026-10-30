@@ -2910,4 +2910,20 @@ export const ZH_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 手机号码已统一 ✓",  // V565
 "Pauschale": "固定费用",  // V566
 "{0}: {1} · Pauschale": "{0}：{1} · 固定费用",  // V566
+"Startseite oben": "首页顶部",  // V569
+"Deine nächsten Spiele": "你接下来的比赛",  // V569
+"immer sichtbar": "始终显示",  // V569
+"Alle wieder einblenden": "全部重新显示",  // V569
+"Kein Profil vorhanden.": "没有个人资料。",  // V569
+"Kachelansicht": "磁贴视图",  // V569
+"🧩 Kachelansicht": "🧩 磁贴视图",  // V569
+"{0} ausgeblendet": "已隐藏 {0} 个",  // V569
+"Benachrichtigungen": "通知",  // V569
+"Kontakt und Größen": "联系方式和尺码",  // V569
+"selbst änderbar": "可自行修改",  // V569
+"Persönliche Daten": "个人资料",  // V569
+"nur durch Admin änderbar": "仅管理员可修改",  // V569
+"aus": "关",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "勾选 = 显示。所选内容适用于首页磁贴和最上方菜单，并立即保存。“开始”和“管理”始终显示。",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "你在俱乐部登记的资料和个人设置。如需修改个人资料，请联系管理员。",  // V569
 };

@@ -2908,4 +2908,20 @@ export const PT_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Números de telemóvel uniformes ✓",  // V565
 "Pauschale": "Valor fixo",  // V566
 "{0}: {1} · Pauschale": "{0}: {1} · valor fixo",  // V566
+"Startseite oben": "Topo da página inicial",  // V569
+"Deine nächsten Spiele": "Os teus próximos jogos",  // V569
+"immer sichtbar": "sempre visível",  // V569
+"Alle wieder einblenden": "Mostrar tudo novamente",  // V569
+"Kein Profil vorhanden.": "Nenhum perfil disponível.",  // V569
+"Kachelansicht": "Vista de mosaicos",  // V569
+"🧩 Kachelansicht": "🧩 Vista de mosaicos",  // V569
+"{0} ausgeblendet": "{0} ocultos",  // V569
+"Benachrichtigungen": "Notificações",  // V569
+"Kontakt und Größen": "Contacto e tamanhos",  // V569
+"selbst änderbar": "alterável por ti",  // V569
+"Persönliche Daten": "Dados pessoais",  // V569
+"nur durch Admin änderbar": "alterável só pelo admin",  // V569
+"aus": "desligado",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Marcado = visível. A seleção aplica-se aos mosaicos da página inicial e ao menu no topo e é guardada de imediato. «Início» e «Administração» ficam sempre visíveis.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Os teus dados registados no clube e as tuas definições pessoais. Para alterar os dados pessoais, contacta o admin.",  // V569
 };

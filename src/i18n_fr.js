@@ -2910,4 +2910,20 @@ export const FR_TEXTE = {
 "📱 Handynummern einheitlich ✓": "📱 Numéros de portable uniformes ✓",  // V565
 "Pauschale": "Forfait",  // V566
 "{0}: {1} · Pauschale": "{0} : {1} · forfait",  // V566
+"Startseite oben": "Haut de la page d'accueil",  // V569
+"Deine nächsten Spiele": "Tes prochains matchs",  // V569
+"immer sichtbar": "toujours visible",  // V569
+"Alle wieder einblenden": "Tout réafficher",  // V569
+"Kein Profil vorhanden.": "Aucun profil disponible.",  // V569
+"Kachelansicht": "Affichage des tuiles",  // V569
+"🧩 Kachelansicht": "🧩 Affichage des tuiles",  // V569
+"{0} ausgeblendet": "{0} masqué(s)",  // V569
+"Benachrichtigungen": "Notifications",  // V569
+"Kontakt und Größen": "Contact et tailles",  // V569
+"selbst änderbar": "modifiable par toi",  // V569
+"Persönliche Daten": "Données personnelles",  // V569
+"nur durch Admin änderbar": "modifiable uniquement par l'admin",  // V569
+"aus": "désactivé",  // V569
+"Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Coché = affiché. Le choix s'applique aux tuiles de la page d'accueil et au menu tout en haut ; il est enregistré immédiatement. « Accueil » et « Administration » restent toujours visibles.",  // V569
+"Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Tes données enregistrées au club et tes réglages personnels. Pour modifier tes données personnelles, adresse-toi à l'admin.",  // V569
 };
