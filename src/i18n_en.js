@@ -2925,4 +2925,5 @@ export const EN_TEXTE = {
 "aus": "off",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Tick = shown. The selection applies to the tiles on the home page and to the menu at the very top and is saved immediately. “Start” and “Administration” always remain visible.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Your data stored with the club and your personal settings. For changes to your personal data, please contact the admin.",  // V569
+"Meine Verwaltung": "My administration",  // V570
 };

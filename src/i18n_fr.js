@@ -2926,4 +2926,5 @@ export const FR_TEXTE = {
 "aus": "désactivé",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Coché = affiché. Le choix s'applique aux tuiles de la page d'accueil et au menu tout en haut ; il est enregistré immédiatement. « Accueil » et « Administration » restent toujours visibles.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Tes données enregistrées au club et tes réglages personnels. Pour modifier tes données personnelles, adresse-toi à l'admin.",  // V569
+"Meine Verwaltung": "Mes données",  // V570
 };

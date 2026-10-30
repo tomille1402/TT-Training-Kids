@@ -2926,4 +2926,5 @@ export const LA_TEXTE = {
 "aus": "non",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Signatum = ostenditur. Electio valet tessellis paginae initialis et indici summo statimque servatur. „Initium“ et „Administratio“ semper visibilia manent.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Data tua apud societatem servata et optiones personales. Ad data personalia mutanda administratorem adi.",  // V569
+"Meine Verwaltung": "Administratio mea",  // V570
 };

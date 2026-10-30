@@ -2926,4 +2926,5 @@ export const PL_TEXTE = {
 "aus": "wył.",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Zaznaczone = widoczne. Wybór dotyczy kafelków strony startowej i menu na samej górze; zapisuje się od razu. „Start” i „Administracja” są zawsze widoczne.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Twoje dane zapisane w klubie i ustawienia osobiste. W sprawie zmian danych osobowych zwróć się do admina.",  // V569
+"Meine Verwaltung": "Moje dane",  // V570
 };

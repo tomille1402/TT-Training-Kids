@@ -1,4 +1,4 @@
-// === TTC-App · Version 569 · erstellt 30.10.2026 ===
+// === TTC-App · Version 570 · erstellt 30.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "569";
+const APP_VERSION = "570";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9163,8 +9163,11 @@ function TrainerHome({ user, players, onOpen, verfuegbar, alleVereinsspiele=fals
     </div>;
   };
 
+  const beideVerwaltungen = !!verfuegbar && verfuegbar.has("verwaltung") && verfuegbar.has("meineverwaltung");
   const gruppen = TR_HOME_GRUPPEN
-    .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))}))
+    .map(g => ({...g, items: g.items.filter(it => !verfuegbar || verfuegbar.has(it.key))
+      // V570: Admins haben beide Verwaltungen – die persönliche heißt dann „Meine Verwaltung“
+      .map(it => (beideVerwaltungen && it.key==="meineverwaltung") ? {...it, label:"Meine Verwal-tung"} : it)}))
     .filter(g => g.items.length>0);
 
   // V483: Seite endet direkt unter der letzten Kachelgruppe – kein Leerraum darunter.
@@ -9247,7 +9250,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     {key:"geburtstage",  label:"Geburtstage",   icon:"🎂"},
     {key:"bestellungen", label:"Bestellung",    icon:"🛒"},
     {key:"bestelluebersicht",label:"Bestellung Übersicht",icon:"📦", superAdminOnly:true},
-    {key:"meineverwaltung",label:"Verwaltung",  icon:"🗂️", nonSuperAdminOnly:true},
+    {key:"meineverwaltung",label:isSuperAdmin?"Meine Verwaltung":"Verwaltung",  icon:"🗂️"},   // V570: auch für Admins (dort neben der App-Verwaltung)
     {key:"verwaltung",   label:"Verwaltung",    icon:"⚙️", superAdminOnly:true},
   ];
   // Super-Admins sehen die volle Verwaltung; alle anderen (z.B. Trainer) die persönliche "Meine Verwaltung"

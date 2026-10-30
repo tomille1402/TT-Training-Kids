@@ -2924,4 +2924,5 @@ export const ES_TEXTE = {
 "aus": "desactivado",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Marcado = visible. La selección se aplica a los mosaicos de la página de inicio y al menú superior y se guarda al instante. «Inicio» y «Administración» siempre quedan visibles.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Tus datos registrados en el club y tus ajustes personales. Para cambiar tus datos personales, dirígete al admin.",  // V569
+"Meine Verwaltung": "Mis datos",  // V570
 };

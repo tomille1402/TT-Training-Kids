@@ -2924,4 +2924,5 @@ export const AR_TEXTE = {
 "aus": "متوقف",  // V569
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "علامة = ظاهر. ينطبق الاختيار على بطاقات الصفحة الرئيسية وعلى القائمة في الأعلى ويُحفظ فورًا. تبقى «البداية» و«الإدارة» ظاهرتين دائمًا.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "بياناتك المسجلة لدى النادي وإعداداتك الشخصية. لتغيير بياناتك الشخصية تواصل مع المسؤول.",  // V569
+"Meine Verwaltung": "بياناتي",  // V570
 };
