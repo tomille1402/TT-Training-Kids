@@ -2927,4 +2927,9 @@ export const ZH_TEXTE = {
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "勾选 = 显示。所选内容适用于首页磁贴和最上方菜单，并立即保存。“开始”和“管理”始终显示。",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "你在俱乐部登记的资料和个人设置。如需修改个人资料，请联系管理员。",  // V569
 "Meine Verwaltung": "我的管理",  // V570
+"Vereinsbeitritt{0}": "入会{0}",  // V571
+"Vereinsaustritt{0}": "退会{0}",  // V571
+"In der Personenverwaltung öffnen": "在人员管理中打开",  // V571
+"☎️ Telefon Nr.": "☎️ 电话号码",  // V571
+"Passive": "非比赛会员",  // V572
 };

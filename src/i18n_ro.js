@@ -2925,4 +2925,9 @@ export const RO_TEXTE = {
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Bifat = afișat. Alegerea se aplică plăcilor de pe pagina de start și meniului de sus și se salvează imediat. „Start” și „Administrare” rămân mereu vizibile.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Datele tale înregistrate la club și setările personale. Pentru modificarea datelor personale adresează-te adminului.",  // V569
 "Meine Verwaltung": "Datele mele",  // V570
+"Vereinsbeitritt{0}": "Aderare{0}",  // V571
+"Vereinsaustritt{0}": "Ieșire{0}",  // V571
+"In der Personenverwaltung öffnen": "Deschide în administrarea persoanelor",  // V571
+"☎️ Telefon Nr.": "☎️ Nr. telefon",  // V571
+"Passive": "Membri pasivi",  // V572
 };

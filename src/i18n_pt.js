@@ -2925,4 +2925,9 @@ export const PT_TEXTE = {
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Marcado = visível. A seleção aplica-se aos mosaicos da página inicial e ao menu no topo e é guardada de imediato. «Início» e «Administração» ficam sempre visíveis.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "Os teus dados registados no clube e as tuas definições pessoais. Para alterar os dados pessoais, contacta o admin.",  // V569
 "Meine Verwaltung": "Os meus dados",  // V570
+"Vereinsbeitritt{0}": "Adesão{0}",  // V571
+"Vereinsaustritt{0}": "Saída{0}",  // V571
+"In der Personenverwaltung öffnen": "Abrir na gestão de pessoas",  // V571
+"☎️ Telefon Nr.": "☎️ N.º de telefone",  // V571
+"Passive": "Sócios passivos",  // V572
 };

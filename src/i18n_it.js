@@ -2927,4 +2927,9 @@ export const IT_TEXTE = {
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "Spuntato = visibile. La scelta vale per i riquadri della home e per il menu in alto e viene salvata subito. «Home» e «Amministrazione» restano sempre visibili.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "I tuoi dati registrati presso la società e le impostazioni personali. Per modificare i dati personali rivolgiti all'amministratore.",  // V569
 "Meine Verwaltung": "La mia amministrazione",  // V570
+"Vereinsbeitritt{0}": "Iscrizione{0}",  // V571
+"Vereinsaustritt{0}": "Uscita{0}",  // V571
+"In der Personenverwaltung öffnen": "Apri nella gestione persone",  // V571
+"☎️ Telefon Nr.": "☎️ N. di telefono",  // V571
+"Passive": "Soci passivi",  // V572
 };

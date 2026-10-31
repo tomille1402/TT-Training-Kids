@@ -2925,4 +2925,9 @@ export const AR_TEXTE = {
 "Häkchen = wird angezeigt. Die Auswahl gilt für die Kacheln der Startseite und das Menü ganz oben und wird sofort gespeichert. „Start“ und „Verwaltung“ bleiben immer sichtbar.": "علامة = ظاهر. ينطبق الاختيار على بطاقات الصفحة الرئيسية وعلى القائمة في الأعلى ويُحفظ فورًا. تبقى «البداية» و«الإدارة» ظاهرتين دائمًا.",  // V569
 "Deine beim Verein hinterlegten Daten und persönlichen Einstellungen. Für Änderungen an den persönlichen Daten wende dich bitte an den Admin.": "بياناتك المسجلة لدى النادي وإعداداتك الشخصية. لتغيير بياناتك الشخصية تواصل مع المسؤول.",  // V569
 "Meine Verwaltung": "بياناتي",  // V570
+"Vereinsbeitritt{0}": "الانضمام{0}",  // V571
+"Vereinsaustritt{0}": "المغادرة{0}",  // V571
+"In der Personenverwaltung öffnen": "فتح في إدارة الأشخاص",  // V571
+"☎️ Telefon Nr.": "☎️ رقم الهاتف",  // V571
+"Passive": "الأعضاء غير الممارسين",  // V572
 };

@@ -1,4 +1,4 @@
-// === TTC-App · Version 570 · erstellt 30.10.2026 ===
+// === TTC-App · Version 572 · erstellt 31.10.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "570";
+const APP_VERSION = "572";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -637,7 +637,7 @@ const AVATARS = [
   "🐘","🦒","🦓","🐆","🦁","🐃","🦬","🦏","🐪","🦘",
   "🦙","🐐","🐑","🐖","🐓","🦃","🦢","🦚","🦜","🐇",
 ];
-const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+const GROUPS = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene","Passive"];   // V572: Passive = Mitglied ohne Mannschaft (von Hand gesetzt)
 // Größen für T-Shirt/Anzug: Kindergrößen und Erwachsenengrößen
 const KINDER_SIZES = ["128","134","140","146","152","158","164"];
 const ERW_SIZES = ["XS","S","M","L","XL","XXL","3XL","4XL"];
@@ -646,7 +646,7 @@ const ERW_SIZES = ["XS","S","M","L","XL","XXL","3XL","4XL"];
 function sizesForGroup(group){
   const g = group||"Anfänger";
   if(g==="Erwachsene") return ERW_SIZES;
-  if(g==="Profis"||g==="Fortgeschrittene") return [...KINDER_SIZES, ...ERW_SIZES];
+  if(g==="Profis"||g==="Fortgeschrittene"||g==="Passive") return [...KINDER_SIZES, ...ERW_SIZES];   // V572: Passive – alle Größen
   return KINDER_SIZES; // Anfänger, Gast
 }
 // ─── BESTELLUNGEN: Katalog, Preise, Kontodaten ───────────────────────────────
@@ -904,7 +904,7 @@ function vereinsStandard(){ return (typeof AKTIVER_VEREIN_ID==="undefined" || AK
 let VEREIN = {...VEREIN_STANDARD};
 // V514: Anzeige-Bezeichnungen der Gruppen (interne Schlüssel bleiben „Profis", „Anfänger" …).
 // Gepflegt in Verwaltung → Training → „Gruppenbezeichnungen" (config/clubConfig.gruppenNamen).
-const GRUPPEN_SCHLUESSEL = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+const GRUPPEN_SCHLUESSEL = ["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene","Passive"];
 let GRUPPEN_NAMEN = {};
 function gName(g){ const n=GRUPPEN_NAMEN[g]; return (typeof n==="string" && n.trim()) ? n.trim() : (g||""); }
 // V515: Anzeigename → interner Schlüssel (für Importe; unbekannte Werte bleiben unverändert)
@@ -952,7 +952,7 @@ function handyFormat(nr){
 // V565: Alle gespeicherten Handynummern (Person, Eltern 1/2) einmalig vereinheitlichen.
 function HandyVereinheitlichen({players, showToast}){
   const [laeuft,setLaeuft]=useState(false);
-  const FELDER=["phone","elternHandy1","elternHandy2"];
+  const FELDER=["phone","telefon","elternHandy1","elternHandy2"];   // V571: inkl. Festnetz
   const aenderungen=(players||[]).map(p=>{
     const neu={}; FELDER.forEach(f=>{ const alt=p[f]; if(alt==null||String(alt).trim()==="") return; const n=handyFormat(alt); if(n!==alt) neu[f]=n; });
     return Object.keys(neu).length ? {id:p.id, neu} : null;
@@ -1670,7 +1670,7 @@ function istNachwuchsturnier(t){
 // über den Namen zusammengeführt, sodass jede Person nur einmal erscheint.
 function elternSchiriKandidaten(players){
   const out=[]; const gesehen=new Set();
-  const nichtNachwuchs=new Set(["Erwachsene","Gast","Trainer"]);
+  const nichtNachwuchs=new Set(["Erwachsene","Gast","Trainer","Passive"]);
   (players||[]).forEach(p=>{
     if(nichtNachwuchs.has(p.group)) return;
     if(p.roles?.erwachsene===true) return;
@@ -13046,7 +13046,7 @@ function EhrungenImport({players, showToast}) {
 // „Personenübersicht" in der Verwaltung übernimmt das Auf-/Zuklappen. Die Daten
 // (Push-Zustimmungen, Betreuer) werden weiterhin erst beim Aufklappen geladen,
 // weil die Komponente erst dann eingehängt wird.
-function PersonenUebersicht({players, eingebettet=false}) {
+function PersonenUebersicht({players, eingebettet=false, onPersonKlick=null}) {   // V571: Name verlinkt zur Person
   const [offenIntern,setOffen]=useState(false);
   const offen = eingebettet || offenIntern;
   const [sortKey,setSortKey]=useState("name");
@@ -13174,6 +13174,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
     funktionen:rollenKurz(p),
     group:p.group||"Anfänger",
     status:p.status||"aktiv",
+    beitritt:p.joinDate||"", austritt:p.leaveDate||"",   // V571
     datenschutz:dsText(p),
     dsSort:p.datenschutzAccepted||"",
     push:pushStatus(p.id),
@@ -13199,6 +13200,8 @@ function PersonenUebersicht({players, eingebettet=false}) {
   const sorted=[...filtered].sort((a,b)=>{
     let av,bv;
     if(sortKey==="datenschutz"){av=a.dsSort;bv=b.dsSort;}
+    else if(sortKey==="beitritt"||sortKey==="austritt"){av=a[sortKey]||"";bv=b[sortKey]||"";   // V571: leere Daten immer ans Ende
+      if(!av&&bv) return 1; if(av&&!bv) return -1;}
     else if(sortKey==="betreuung"){av=a.betreuung||0;bv=b.betreuung||0; return sortDir==="asc"?av-bv:bv-av;}
     else {av=String(a[sortKey]||"").toLowerCase();bv=String(b[sortKey]||"").toLowerCase();}
     if(av<bv) return sortDir==="asc"?-1:1;
@@ -13243,7 +13246,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
         <input value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="🔍 Name filtern…"
           style={{width:"100%",padding:"6px 8px",fontSize:11,background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",boxSizing:"border-box",marginBottom:8}}/>
         <FilterChips title="Funktionen (mehrere möglich)" options={ROLLEN} sel={funktFilter} setSel={setFunktFilter}/>
-        <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"].map(g=>[g,gName(g)])} sel={gruppeFilter} setSel={setGruppeFilter}/>
+        <FilterChips title="Gruppe" options={["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene","Passive"].map(g=>[g,gName(g)])} sel={gruppeFilter} setSel={setGruppeFilter}/>
         <FilterChips title="Status" options={[["aktiv","aktiv"],["passiv","passiv"]]} sel={statusFilter} setSel={setStatusFilter}/>
         <FilterChips title="Datenschutz" options={[["ja","zugestimmt"],["nein","offen"]]} sel={dsFilter} setSel={setDsFilter}/>
         <FilterChips title="Push-Nachrichten" options={[["erteilt","✅ erteilt"],["abgelehnt","🚫 abgelehnt"],["offen","⏳ offen"]]} sel={pushFilter} setSel={setPushFilter}/>
@@ -13261,6 +13264,8 @@ function PersonenUebersicht({players, eingebettet=false}) {
               <th style={th} onClick={()=>toggleSort("funktionen")}>Funkt.{arrow("funktionen")}</th>
               <th style={th} onClick={()=>toggleSort("group")}>Gruppe{arrow("group")}</th>
               <th style={th} onClick={()=>toggleSort("status")}>{T`Status${arrow("status")}`}</th>
+              <th style={th} onClick={()=>toggleSort("beitritt")}>{T`Vereinsbeitritt${arrow("beitritt")}`}</th>
+              <th style={th} onClick={()=>toggleSort("austritt")}>{T`Vereinsaustritt${arrow("austritt")}`}</th>
               <th style={th} onClick={()=>toggleSort("datenschutz")}>{T`DS${arrow("datenschutz")}`}</th>
               <th style={th} onClick={()=>toggleSort("push")}>{T`Push${arrow("push")}`}</th>
               <th style={th} onClick={()=>toggleSort("betreuung")}># Betreuung{arrow("betreuung")}</th>
@@ -13269,10 +13274,14 @@ function PersonenUebersicht({players, eingebettet=false}) {
           <tbody>
             {sorted.map(r=>(
               <tr key={r.id}>
-                <td style={{...td,fontWeight:700,color:"var(--text)"}}>{r.name}</td>
+                <td style={{...td,fontWeight:700,color:"var(--text)"}}>{onPersonKlick
+                  ? <button onClick={()=>onPersonKlick(r.id)} title={T("In der Personenverwaltung öffnen")} style={{padding:0,background:"none",border:"none",font:"inherit",fontWeight:700,color:"var(--club, #c8102e)",textDecoration:"underline",textUnderlineOffset:2,cursor:"pointer",textAlign:"start"}}>{r.name}</button>
+                  : r.name}</td>
                 <td style={td}>{r.funktionen}</td>
                 <td style={td}>{gName(r.group)}</td>
                 <td style={{...td,color:r.status==="passiv"?"#ef4444":"#10b981",fontWeight:700}}>{r.status}</td>
+                <td style={td}>{r.beitritt?r.beitritt.split("-").reverse().join("."):"—"}</td>
+                <td style={td}>{r.austritt?r.austritt.split("-").reverse().join("."):"—"}</td>
                 <td style={td}>{r.datenschutz}</td>
                 <td style={{...td,fontWeight:700,whiteSpace:"nowrap",
                   color:r.push==="erteilt"?"#10b981":r.push==="abgelehnt"?"#ef4444":"#f59e0b"}}>
@@ -13281,7 +13290,7 @@ function PersonenUebersicht({players, eingebettet=false}) {
                 <td style={{...td,textAlign:"center",fontWeight:700,color:r.betreuung>0?"var(--text)":"var(--text4)"}}>{r.betreuung}</td>
               </tr>
             ))}
-            {sorted.length===0&&<tr><td colSpan={7} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
+            {sorted.length===0&&<tr><td colSpan={9} style={{...td,textAlign:"center",color:"var(--text4)",padding:20,whiteSpace:"normal"}}>Keine Treffer</td></tr>}
           </tbody>
         </table>
       </div>
@@ -14302,7 +14311,7 @@ function UrkundenAusgabeDialog({ ausgabe, onClose }){
 }
 
 // V526: Gruppenfarben der Personenliste
-const PERS_GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+const PERS_GRP_COL = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899",Passive:"#94a3b8"};
 function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,isDark,onSetUserTheme,userTheme,globalTheme,user,clubConfig={},isSuperAdmin=false,jumpToId=null,jumpToSection=null,jumpToKey=null,onJumpHandled=null}) {
   const [editPlayer,setEditPlayer]=useState(null);
 
@@ -14690,7 +14699,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
   // ── Personen-Datenfelder: deutsche Spalte ↔ Firestore-Key ──
   const PERSON_FIELDS=[
     ["Vorname","firstName"],["Nachname","lastName"],["Geschlecht","gender"],
-    ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],
+    ["E-Mail","email"],["Eltern-E-Mail","elternEmail"],["Telefon","phone"],["Telefon Festnetz","telefon"],
     ["Straße","strasse"],["Hausnummer","hausnummer"],["PLZ","plz"],["Ort","ort"],   // V550: Adresse
     ["Gruppe","group"],["Status","status"],
     ["Elternteil 1","elternteil1"],["Vorname 1","elternVorname1"],["Nachname 1","elternNachname1"],
@@ -14777,7 +14786,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
             val=parseDateStr(val)||val;
           if(key==="group") val=gruppeAusText(val);   // V515: Anzeigename → Gruppe
           if(key==="plz" && /^\d{4}$/.test(val)) val="0"+val;   // V550: als Zahl gelesene PLZ mit führender 0
-          if(["phone","elternHandy1","elternHandy2"].includes(key)) val=handyFormat(val);   // V564
+          if(["phone","telefon","elternHandy1","elternHandy2"].includes(key)) val=handyFormat(val);   // V564/V571
           data[key]=val;
         });
         // Rollen zusammenbauen (nur wenn Spalte vorhanden)
@@ -14846,7 +14855,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
 
   const newData0={firstName:"",lastName:"",gender:"m",email:"",avatar:"🏓",group:"Anfänger",status:"aktiv",noLogin:false,pass:"",roles:{},stammErsatz:"Stammspieler"};
   const [newData,setNewData]=useState(newData0);
-  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene"];
+  const groupOrder=["Profis","Fortgeschrittene","Anfänger","Gast","Trainer","Erwachsene","Passive"];   // V572
 
   async function saveEdit() {
     if (!editPlayer) return;
@@ -14896,6 +14905,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         trainerTage:   trainerTageVon(editPlayer),                 // V535
         abrechnung:    editPlayer.abrechnung==="ja"?"ja":"nein",    // V535
         phone:         handyFormat(editPlayer.phone),   // V564: +49 XXXX Rest
+        telefon:       handyFormat(editPlayer.telefon),   // V571: Telefon (Festnetz)
         tshirtSize:    editPlayer.tshirtSize||"",
         anzugSize:     editPlayer.anzugSize||"",
         tshirtDTTB:    editPlayer.tshirtDTTB||"nein",
@@ -15853,11 +15863,18 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
                   {qttrAusTtr(editPlayer)!=null && <div style={{fontSize:9,color:"var(--text4)",marginTop:2}}>aus TTR-Liste ({ttrStichtagV})</div>}
                 </div>
               </div>
-              {/* 2e Handy vor E-Mail */}
-              <div style={{marginBottom:10}}>
-                <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
-                <input type="tel" id={"handy-"+editPlayer.id} value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,phone:f})); }} placeholder="+49 170 1234567"
-                  style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+              {/* 2e Handy vor E-Mail; V571: Telefon (Festnetz) links daneben */}
+              <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                <div style={{flex:"1 1 150px",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>☎️ Telefon Nr.</label>
+                  <input type="tel" value={editPlayer.telefon||""} onChange={e=>setEditPlayer(prev=>({...prev,telefon:e.target.value}))} onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,telefon:f})); }} placeholder="+49 6436 1234"
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{flex:"1 1 150px",minWidth:0}}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>📱 Handy Nr.</label>
+                  <input type="tel" id={"handy-"+editPlayer.id} value={editPlayer.phone||""} onChange={e=>setEditPlayer(prev=>({...prev,phone:e.target.value}))} onBlur={e=>{ const f=handyFormat(e.target.value); setEditPlayer(prev=>({...prev,phone:f})); }} placeholder="+49 170 1234567"
+                    style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,color:"var(--text)",fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+                </div>
               </div>
               {/* E-Mail */}
               <div style={{marginBottom:10}}>
@@ -16385,7 +16402,9 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
       {showP.uebersicht&&<div style={{padding:"0 14px 14px"}}>
     {/* Punkt 11: Übersichtstabelle aller Personen — nur für Admins.
         V492: direkt im Abschnitt, ohne eigenen Unterabschnitt „Personen-Übersicht". */}
-    {isSuperAdmin && <PersonenUebersicht players={players} eingebettet/>}
+    {isSuperAdmin && <PersonenUebersicht players={players} eingebettet
+      onPersonKlick={(id)=>{ const p=players.find(x=>x.id===id); if(!p) return;   // V571: Person zum Bearbeiten öffnen
+        setVwKapitel("personen"); setShowP(prev=>({...prev, liste:true})); setEditPlayer({...p, _originalRacketNr: p.racketType==="TTC"?String(p.racketNr||""):""}); }}/>}
 
 
     {joinNotFound.length>0&&<div style={{background:"#ef444422",border:"1px solid #ef444466",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
@@ -28974,7 +28993,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   };
 
   const sharedProps = {isDark,onSetUserTheme,userTheme,onSignOut,clubConfig};
-  const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899"};
+  const GROUP_COLORS = {Profis:"#f59e0b",Fortgeschrittene:"#3b82f6",Anfänger:"#10b981",Gast:"#64748b",Trainer:"#8b5cf6",Erwachsene:"#ec4899",Passive:"#94a3b8"};
 
   // All active players sorted alphabetically
   const allActive = [...players.filter(p=>p.status!=="passiv")]
