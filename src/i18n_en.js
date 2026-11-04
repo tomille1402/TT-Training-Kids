@@ -2931,4 +2931,13 @@ export const EN_TEXTE = {
 "In der Personenverwaltung öffnen": "Open in person management",  // V571
 "☎️ Telefon Nr.": "☎️ Phone no.",  // V571
 "Passive": "Passive members",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 Extra training sessions (per person)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "An additional training day for selected people, e.g. a school club. People keep their group; in person management (section “Training and club membership”) each extra session gets a Yes/No field (default: No). Everyone with “Yes” appears on these days in the “Training” tab. Holidays and public holidays apply here too.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "Remove extra training? The assignment of people stays saved but no longer has any effect.",  // V573
+"gültig von": "valid from",  // V573
+"bis": "to",  // V573
+"+ Zusatztraining": "+ Extra training",  // V573
+"Aus den Trainingszeiten übernehmen": "Take over from training times",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (from training times)",  // V573
+" · Zusatztraining: {0}": " · Extra training: {0}",  // V573
 };

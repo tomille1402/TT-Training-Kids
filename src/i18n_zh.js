@@ -2932,4 +2932,13 @@ export const ZH_TEXTE = {
 "In der Personenverwaltung öffnen": "在人员管理中打开",  // V571
 "☎️ Telefon Nr.": "☎️ 电话号码",  // V571
 "Passive": "非比赛会员",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 附加训练（按人员）",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "为部分人员增加的训练日，例如学校兴趣小组。人员保留原有分组；在人员管理（“训练与入会”部分）中每个附加训练都有“是/否”字段（默认：否）。选择“是”的人员会在这些日期出现在“训练”页签中。假期和节假日同样适用。",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "删除附加训练？人员的分配仍会保存，但不再生效。",  // V573
+"gültig von": "有效期自",  // V573
+"bis": "至",  // V573
+"+ Zusatztraining": "+ 附加训练",  // V573
+"Aus den Trainingszeiten übernehmen": "从训练时间导入",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0}（来自训练时间）",  // V573
+" · Zusatztraining: {0}": " · 附加训练：{0}",  // V573
 };

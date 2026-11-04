@@ -2932,4 +2932,13 @@ export const IT_TEXTE = {
 "In der Personenverwaltung öffnen": "Apri nella gestione persone",  // V571
 "☎️ Telefon Nr.": "☎️ N. di telefono",  // V571
 "Passive": "Soci passivi",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 Allenamenti aggiuntivi (per persona)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "Giorno di allenamento aggiuntivo per persone selezionate, p. es. un laboratorio scolastico. Le persone mantengono il loro gruppo; nella gestione persone (sezione «Allenamento e iscrizione») ogni allenamento aggiuntivo ha un campo Sì/No (predefinito: No). Chi ha «Sì» compare in questi giorni nella scheda «Allenamento». Valgono anche vacanze e festività.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "Rimuovere l'allenamento aggiuntivo? L'assegnazione delle persone resta salvata ma non ha più effetto.",  // V573
+"gültig von": "valido dal",  // V573
+"bis": "al",  // V573
+"+ Zusatztraining": "+ Allenamento aggiuntivo",  // V573
+"Aus den Trainingszeiten übernehmen": "Riprendi dagli orari di allenamento",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (dagli orari di allenamento)",  // V573
+" · Zusatztraining: {0}": " · Allenamento aggiuntivo: {0}",  // V573
 };

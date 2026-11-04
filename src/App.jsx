@@ -1,4 +1,4 @@
-// === TTC-App · Version 572 · erstellt 31.10.2026 ===
+// === TTC-App · Version 573 · erstellt 04.11.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "572";
+const APP_VERSION = "573";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -346,6 +346,11 @@ let FEIERTAGE = new Set();
 let SONDER_TRAINING = {};
 let ALLE_SONDER_TAGE = [];
 let ALL_TUESDAYS = [], ALL_FRIDAYS = [];
+// V573: Zusatztrainings (z. B. „Schul AG 2026/27“): eigener Trainingstag für einzelne Personen,
+// unabhängig von ihrer Gruppe. Gepflegt im Trainingskalender (zusatz:[{id,name,tage,von,bis}]);
+// je Person players/<id>.zusatzTraining = {<id>: true}.
+let ZUSATZ_TRAININGS = [];          // [{id,name,tage,von,bis,_tage:[ISO-Daten]}]
+let ALLE_ZUSATZ_TAGE = [];
 
 function pad(n) { return String(n).padStart(2,"0"); }
 function dateStr(y,m,d) { return `${y}-${pad(m)}-${pad(d)}`; }
@@ -412,6 +417,16 @@ function wochentageDerGruppe(group){
 // V516: regulärer Trainingstag einer Gruppe (Wochentag passt, keine Ferien/Feiertag)
 function regulaererTrainingstag(group, ds){ return !!ds && !inFerien(ds) && !FEIERTAGE.has(ds) && gruppeTrainiertAn(group, ds); }
 function gruppeTrainiertAn(group, ds){ return wochentageDerGruppe(group).includes(WT_KURZ[new Date(ds).getDay()]); }
+// V573: Zusatztrainings einer Person (nur die mit „ja“) und ihre Tage
+function zusatzTrainingsVon(p){ const z=(p&&p.zusatzTraining)||{}; return ZUSATZ_TRAININGS.filter(x=>z[x.id]===true); }
+function zusatzTageVon(p){ return [...new Set(zusatzTrainingsVon(p).flatMap(x=>x._tage))].sort(); }
+function zusatzAm(p, ds){ return zusatzTrainingsVon(p).filter(x=>x._tage.includes(ds)); }
+// Alle Trainingstage einer Person: Gruppe (bzw. Trainer-Tage) plus Zusatztrainings
+function trainingsTageVonPerson(p){
+  const basis=getTrainingDaysForGroup(p?.group||"Anfänger", p?.trainingDays);
+  const z=zusatzTageVon(p);
+  return z.length ? [...new Set([...basis,...z])].sort() : basis;
+}
 // Alle regulären Trainingstage des Vereins (alle Gruppen)
 function alleVereinsTrainingstage(){ return tageFuerWochentage(VEREINS_WOCHENTAGE); }
 function letzterTrainingstag(heuteIso){
@@ -442,6 +457,13 @@ function setzeTrainingskalender(cfg){
   if(!GRUPPEN_TAGE._standard) GRUPPEN_TAGE._standard=["Di"];
   const alle=new Set(Object.values(GRUPPEN_TAGE).flat());
   VEREINS_WOCHENTAGE = WT_REIHE.filter(x=>alle.has(x));
+  // V573: Zusatztrainings
+  ZUSATZ_TRAININGS = (Array.isArray(k.zusatz)?k.zusatz:[]).filter(z=>z && z.id && String(z.name||"").trim()).map(z=>{
+    const tage=(Array.isArray(z.tage)?z.tage:[]).filter(x=>WT_KURZ.includes(x));
+    const _tage=tageFuerWochentage(tage).filter(d=>(!z.von||d>=z.von) && (!z.bis||d<=z.bis));
+    return { id:String(z.id), name:String(z.name).trim(), tage, von:z.von||"", bis:z.bis||"", _tage };
+  });
+  ALLE_ZUSATZ_TAGE = [...new Set(ZUSATZ_TRAININGS.flatMap(z=>z._tage))].sort();
 }
 setzeTrainingskalender(null);
 
@@ -9451,7 +9473,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
             let absentCount=0;
             for(const p of visiblePlayers){
               const grp=p.group||"Anfänger";
-              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const pDays=trainingsTageVonPerson(p);   // V573
               const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
               if(!nearestDay) continue;
               const sess=attendance?.[nearestDay];
@@ -9472,7 +9494,7 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
               if(!showOnlyPresent) return true;
               const todayStr=new Date().toLocaleDateString("sv");
               const grp=p.group||"Anfänger";
-              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const pDays=trainingsTageVonPerson(p);   // V573
               const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
               if(!nearestDay) return true;
               const sess=attendance?.[nearestDay];
@@ -10312,7 +10334,7 @@ function TrainerAbrechnungView({ players, attendance, user, isSuperAdmin, showTo
 
 // ─── ADMIN TRAINING TAB ───────────────────────────────────────────────────────
 function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
-  const allDays = [...new Set([...alleVereinsTrainingstage(),...ALLE_SONDER_TAGE])].sort();
+  const allDays = [...new Set([...alleVereinsTrainingstage(),...ALLE_SONDER_TAGE,...ALLE_ZUSATZ_TAGE])].sort();   // V573: + Zusatztrainings
   const nearest = getNearestTrainingDay(allDays);
   const [selDate,setSelDate]=useState(nearest);
   const [sessionData,setSessionData]=useState(null);
@@ -10369,7 +10391,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     // ODER ein für sie eingetragenes Sondertraining. (Bis V515 blendete ein Sondertraining
     // an einem regulären Tag alle übrigen Gruppen aus.)
     const grp = p.group||"Anfänger";
-    if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))) return false;
+    if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))
+        && zusatzAm(p, selDate).length===0) return false;   // V573: Zusatztraining der Person
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
     return true;
@@ -10404,9 +10427,11 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
       {selDate && (()=>{
         const reg=["Profis","Fortgeschrittene","Anfänger"].filter(g=>regulaererTrainingstag(g,selDate));
         const extra=(sonderGruppen||[]).filter(g=>!reg.includes(g));
+        const zus=ZUSATZ_TRAININGS.filter(z=>z._tage.includes(selDate)).map(z=>z.name);   // V573
         return <div style={{fontSize:10,color:"var(--text3)",marginTop:6,lineHeight:1.5}}>
           An diesem Tag: {reg.length?reg.map(gName).join(", "):"keine Gruppe regulär"}
           {extra.length?T` · Sondertraining: ${extra.map(gName).join(", ")}`:""}
+          {zus.length?T` · Zusatztraining: ${zus.join(", ")}`:""}
           <span style={{color:"var(--text4)"}}> (Einstellung: Verwaltung → Training → Ferien, Feiertage & Sondertrainings)</span>
         </div>;
       })()}
@@ -10585,7 +10610,7 @@ function useTrainingRange(){
 // Trainingstage der Gruppe im individuellen bzw. globalen Trainingszeitraum bis heute,
 // ausgefallene/nicht erfasste Termine zählen nicht, „e"/„u" = nicht anwesend.
 function trainingsBeteiligungStats(player, attendance, trainingRange){
-  const days=getTrainingDaysForGroup(player?.group||"Anfänger", player?.trainingDays);
+  const days=trainingsTageVonPerson(player);   // V573: inkl. Zusatztrainings
   const todayStr=new Date().toLocaleDateString("sv");
   const zr=trainingsZeitraumEffektiv(player, trainingRange);   // V533
   const pStart=zr.start, pEnd=zr.zaehlEnde;
@@ -10662,7 +10687,7 @@ function TeilnahmeTab({players,attendance,onPlayerClick,onUrkundeKlick=null}) {
 
   function getStats(player) {
     const group = player.group||"Anfänger";
-    const days = getTrainingDaysForGroup(group, player?.trainingDays);
+    const days = trainingsTageVonPerson(player);   // V573: inkl. Zusatztrainings
     // Heute als String YYYY-MM-DD (kein Timezone-Problem)
     const todayStr = new Date().toLocaleDateString("sv"); // sv-locale gibt YYYY-MM-DD
 
@@ -12385,6 +12410,8 @@ function TrainingskalenderEditor({showToast}){
   const [nieGespeichert,setNieGespeichert]=useState(false);
   const [busy,setBusy]=useState(false);
   const [neuTag,setNeuTag]=useState({});   // je Gruppe Eingabefeld für Sondertraining
+  const [tzEintraege,setTzEintraege]=useState([]);   // V573: Trainingszeiten für Vorschläge
+  useEffect(()=>onSnapshot(doc(db,"config","trainingszeiten"),snap=>setTzEintraege(snap.exists()?(snap.data().eintraege||[]):[]),()=>{}),[]);
   useEffect(()=>{
     const u=onSnapshot(doc(db,"config","trainingskalender"),snap=>{
       setNieGespeichert(!snap.exists());
@@ -12403,6 +12430,8 @@ function TrainingskalenderEditor({showToast}){
         fronleichnam:!!k.fronleichnam,
         gruppenTage:Object.fromEntries(Object.entries(k.gruppenTage||{}).filter(([,l])=>Array.isArray(l)&&l.length)),
         sonder:Object.fromEntries(Object.entries(k.sonder||{}).map(([g,t])=>[g,[...new Set(t||[])].sort()]).filter(([,t])=>t.length)),
+        zusatz:(k.zusatz||[]).filter(z=>String(z.name||"").trim()).map(z=>({ id:z.id, name:String(z.name).trim(),
+          tage:WT_REIHE.filter(w=>(z.tage||[]).includes(w)), von:z.von||"", bis:(z.bis&&z.von&&z.bis<z.von)?z.von:(z.bis||"") })),   // V573
         stand:Date.now(),
       };
       await setDoc(doc(db,"config","trainingskalender"),sauber);
@@ -12440,6 +12469,41 @@ function TrainingskalenderEditor({showToast}){
             return {...x,gruppenTage:{...(x.gruppenTage||{}),[g]:WT_REIHE.filter(y=>neu.includes(y))}}; })}/>{w}</label>)}
       </div>;
     })}
+
+    {/* V573: Zusatztrainings – eigener Trainingstag für ausgewählte Personen, Gruppe bleibt */}
+    <div style={titel}>🎯 Zusatztrainings (Teilnahme je Person)</div>
+    <div style={{fontSize:10,color:"var(--text3)",marginBottom:6,lineHeight:1.5}}>
+      Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der
+      Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein).
+      Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.
+    </div>
+    {(k.zusatz||[]).map((z,i)=>{ const upd=f=>setK(x=>({...x,zusatz:x.zusatz.map((y,j)=>j===i?{...y,...f}:y)}));
+      return <div key={z.id||i} style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,padding:"8px 10px",marginBottom:6}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+          <input value={z.name||""} placeholder="Bezeichnung, z. B. Schul AG 2026/27" onChange={e=>upd({name:e.target.value})} style={{...inp,flex:"2 1 180px"}}/>
+          <button onClick={()=>{ if(window.confirm(T("Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr."))) setK(x=>({...x,zusatz:x.zusatz.filter((_,j)=>j!==i)})); }} style={weg}>✕</button>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+          {WT_REIHE.map(w=><label key={w} style={{display:"flex",alignItems:"center",gap:3,fontSize:11,color:"var(--text2)",cursor:"pointer"}}>
+            <input type="checkbox" checked={(z.tage||[]).includes(w)} onChange={e=>upd({tage:e.target.checked?[...(z.tage||[]),w]:(z.tage||[]).filter(y=>y!==w)})}/>{w}</label>)}
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>gültig von</span>
+          <input type="date" value={z.von||""} onChange={e=>upd({von:e.target.value})} style={{...inp,flex:"1 1 120px"}}/>
+          <span style={{fontSize:11,color:"var(--text3)"}}>bis</span>
+          <input type="date" value={z.bis||""} onChange={e=>upd({bis:e.target.value})} style={{...inp,flex:"1 1 120px"}}/>
+        </div>
+      </div>; })}
+    {(()=>{ // Vorschläge aus den Trainingszeiten: Gruppen, die keine Personengruppe sind
+      const vorhanden=new Set((k.zusatz||[]).map(z=>String(z.name||"").trim().toLowerCase()));
+      const vor={}; (tzEintraege||[]).forEach(e=>{ const g=String(e.gruppe||"").trim(); if(!g || GROUPS.includes(g) || vorhanden.has(g.toLowerCase())) return;
+        const wt={Montag:"Mo",Dienstag:"Di",Mittwoch:"Mi",Donnerstag:"Do",Freitag:"Fr",Samstag:"Sa",Sonntag:"So"}[e.tag]; (vor[g]=vor[g]||new Set()); if(wt) vor[g].add(wt); });
+      const liste=Object.entries(vor);
+      return <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:4}}>
+        <button onClick={()=>setK(x=>({...x,zusatz:[...(x.zusatz||[]),{id:"z"+Date.now().toString(36),name:"",tage:[],von:"",bis:""}]}))} style={klein}>+ Zusatztraining</button>
+        {liste.map(([g,t])=><button key={g} onClick={()=>setK(x=>({...x,zusatz:[...(x.zusatz||[]),{id:"z"+Date.now().toString(36),name:g,tage:WT_REIHE.filter(w=>t.has(w)),von:"",bis:""}]}))}
+          style={{...klein,borderStyle:"dashed"}} title={T("Aus den Trainingszeiten übernehmen")}>{T`+ ${g} (aus Trainingszeiten)`}</button>)}
+      </div>; })()}
 
     <div style={titel}>🏖️ Schulferien</div>
     {(k.ferien||[]).map((f,i)=><div key={i} style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
@@ -14899,6 +14963,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         trainingEnd:   editPlayer.trainingEnd||"",
         trainingsheft: editPlayer.trainingsheft||"ja",
         joinDate:      editPlayer.joinDate||"",
+        zusatzTraining: Object.fromEntries(Object.entries(editPlayer.zusatzTraining||{}).filter(([,v])=>v===true)),   // V573
         leaveDate:     editPlayer.leaveDate||"",
         roles:         editPlayer.roles||{},
         trainingDays:  editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di",
@@ -16060,6 +16125,18 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
               </>)}
 
               {abschnitt("training","📅 Training und Vereinsbeitritt", editPlayer.joinDate?T`Beitritt ${editPlayer.joinDate.split("-").reverse().join(".")}`:"", ()=><>
+              {/* V573: Zusatztrainings (Verwaltung → Training → Ferien, Feiertage & Sondertrainings) */}
+              {ZUSATZ_TRAININGS.length>0 && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:8,marginBottom:10}}>
+                {ZUSATZ_TRAININGS.map(z=><div key={z.id}>
+                  <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎯 {z.name} <span style={{fontSize:10,color:"var(--text4)"}}>({z.tage.join(", ")||"—"})</span></label>
+                  <select value={(editPlayer.zusatzTraining||{})[z.id]===true?"ja":"nein"}
+                    onChange={e=>setEditPlayer(prev=>({...prev,zusatzTraining:{...(prev.zusatzTraining||{}),[z.id]:e.target.value==="ja"}}))}
+                    style={{width:"100%",padding:"9px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"}}>
+                    <option value="nein">Nein</option>
+                    <option value="ja">Ja</option>
+                  </select>
+                </div>)}
+              </div>}
               {/* Individueller Trainingszeitraum */}
               <div style={{background:"var(--bg)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                 <div style={{fontSize:12,color:"var(--text2)",marginBottom:8,fontWeight:600}}>📅 Individueller Trainingszeitraum</div>
@@ -16795,7 +16872,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
 
 // ─── PLAYER TRAINING DETAIL (Punkt 7: editierbare Trainingsübersicht im Drilldown) ──
 function PlayerTrainingDetail({player,attendance,showToast}) {
-  const days = getTrainingDaysForGroup(player.group||"Anfänger", player.trainingDays);
+  const days = trainingsTageVonPerson(player);   // V573
   const today = new Date(); today.setHours(0,0,0,0);
   const pStart = player.trainingStart||null;
   // Punkt 2: Nur vergangene Trainings (inkl. heute), neuestes oben
@@ -18900,7 +18977,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
   const myTrainingStart = myPlayer.trainingStart || null;
   const myZr = trainingsZeitraumEffektiv(myPlayer, tbRange);   // V533
   const myDays = myTrainingStart
-    ? getTrainingDaysForGroup(myPlayer.group||"Anfänger", myPlayer.trainingDays)
+    ? trainingsTageVonPerson(myPlayer)   // V573: inkl. Zusatztrainings
         .filter(d=>(!myZr.start||d>=myZr.start) && (!myZr.zaehlEnde||d<=myZr.zaehlEnde))
     : [];
   const todayStr=new Date().toLocaleDateString("sv");
@@ -19165,7 +19242,7 @@ function PlayerView({user,players,attendance,isDark,onSetUserTheme,userTheme,onS
       // Stats vorab berechnen, dann absteigend nach % sortieren
       const today2=new Date();today2.setHours(0,0,0,0);
       const rankedPeers=[...groupPeers].map(player=>{
-        const days=getTrainingDaysForGroup(player.group||"Anfänger", player.trainingDays);
+        const days=trainingsTageVonPerson(player);   // V573
         const zr=trainingsZeitraumEffektiv(player, tbRange);   // V533
         const pStart=zr.start;
         const pEnd=zr.zaehlEnde;
@@ -29156,7 +29233,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
             let absentCount=0;
             for(const p of filtered){
               const grp=p.group||"Anfänger";
-              const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+              const pDays=trainingsTageVonPerson(p);   // V573
               const nearestDay=[...pDays].reverse().find(d=>d<=todayStr)||pDays[0];
               if(!nearestDay) continue;
               const sess=attendance?.[nearestDay];
@@ -29179,7 +29256,7 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
                   if(!showOnlyPresent) return true;
                   const todayStr2=new Date().toLocaleDateString("sv");
                   const grp=p.group||"Anfänger";
-                  const pDays=getTrainingDaysForGroup(grp,p.trainingDays);
+                  const pDays=trainingsTageVonPerson(p);   // V573
                   const nearestDay=[...pDays].reverse().find(d=>d<=todayStr2)||pDays[0];
                   if(!nearestDay) return true;
                   const sess=attendance?.[nearestDay];

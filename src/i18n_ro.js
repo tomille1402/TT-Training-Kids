@@ -2930,4 +2930,13 @@ export const RO_TEXTE = {
 "In der Personenverwaltung öffnen": "Deschide în administrarea persoanelor",  // V571
 "☎️ Telefon Nr.": "☎️ Nr. telefon",  // V571
 "Passive": "Membri pasivi",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 Antrenamente suplimentare (pe persoană)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "Zi de antrenament suplimentară pentru anumite persoane, de ex. un cerc școlar. Persoanele își păstrează grupa; în administrarea persoanelor (secțiunea „Antrenament și aderare”) fiecare antrenament suplimentar are un câmp Da/Nu (implicit: Nu). Cine are „Da” apare în aceste zile în fila „Antrenament”. Vacanțele și sărbătorile se aplică și aici.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "Elimini antrenamentul suplimentar? Alocarea persoanelor rămâne salvată, dar nu mai are efect.",  // V573
+"gültig von": "valabil de la",  // V573
+"bis": "până la",  // V573
+"+ Zusatztraining": "+ Antrenament suplimentar",  // V573
+"Aus den Trainingszeiten übernehmen": "Preia din orele de antrenament",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (din orele de antrenament)",  // V573
+" · Zusatztraining: {0}": " · Antrenament suplimentar: {0}",  // V573
 };

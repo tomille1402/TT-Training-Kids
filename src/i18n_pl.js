@@ -2932,4 +2932,13 @@ export const PL_TEXTE = {
 "In der Personenverwaltung öffnen": "Otwórz w zarządzaniu osobami",  // V571
 "☎️ Telefon Nr.": "☎️ Nr telefonu",  // V571
 "Passive": "Członkowie bierni",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 Treningi dodatkowe (dla wybranych osób)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "Dodatkowy dzień treningowy dla wybranych osób, np. zajęcia szkolne. Osoby zachowują swoją grupę; w zarządzaniu osobami (sekcja „Trening i przystąpienie do klubu”) każdy trening dodatkowy ma pole Tak/Nie (domyślnie: Nie). Osoby z „Tak” pojawiają się w te dni w zakładce „Trening”. Ferie i święta obowiązują również tutaj.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "Usunąć trening dodatkowy? Przypisanie osób pozostaje zapisane, ale nie działa.",  // V573
+"gültig von": "ważne od",  // V573
+"bis": "do",  // V573
+"+ Zusatztraining": "+ Trening dodatkowy",  // V573
+"Aus den Trainingszeiten übernehmen": "Przejmij z godzin treningów",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (z godzin treningów)",  // V573
+" · Zusatztraining: {0}": " · Trening dodatkowy: {0}",  // V573
 };

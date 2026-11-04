@@ -2930,4 +2930,13 @@ export const AR_TEXTE = {
 "In der Personenverwaltung öffnen": "فتح في إدارة الأشخاص",  // V571
 "☎️ Telefon Nr.": "☎️ رقم الهاتف",  // V571
 "Passive": "الأعضاء غير الممارسين",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 تدريبات إضافية (لكل شخص)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "يوم تدريب إضافي لأشخاص مختارين، مثل نشاط مدرسي. يحتفظ الأشخاص بمجموعتهم؛ وفي إدارة الأشخاص (قسم «التدريب والانضمام إلى النادي») يظهر لكل تدريب إضافي حقل نعم/لا (الافتراضي: لا). من اختير له «نعم» يظهر في هذه الأيام في تبويب «التدريب». تسري العطل والأعياد هنا أيضًا.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "حذف التدريب الإضافي؟ يبقى تخصيص الأشخاص محفوظًا لكنه لا يعود له أثر.",  // V573
+"gültig von": "صالح من",  // V573
+"bis": "إلى",  // V573
+"+ Zusatztraining": "+ تدريب إضافي",  // V573
+"Aus den Trainingszeiten übernehmen": "نقل من أوقات التدريب",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (من أوقات التدريب)",  // V573
+" · Zusatztraining: {0}": " · تدريب إضافي: {0}",  // V573
 };

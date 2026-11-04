@@ -2932,4 +2932,13 @@ export const LA_TEXTE = {
 "In der Personenverwaltung öffnen": "In administratione personarum aperire",  // V571
 "☎️ Telefon Nr.": "☎️ Numerus telephonicus",  // V571
 "Passive": "Socii otiosi",  // V572
+"🎯 Zusatztrainings (Teilnahme je Person)": "🎯 Exercitationes additae (singulis personis)",  // V573
+"Zusätzlicher Trainingstag für einzelne Personen, z. B. eine Schul-AG. Die Personen behalten ihre Gruppe; in der Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein). Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.": "Dies exercitationis additus electis personis, e. g. sodalitas scholastica. Personae suum gregem retinent; in administratione personarum (sectio „Exercitatio et ingressus“) singulis exercitationibus additis campus Ita/Non (praefinitum: Non). Qui „Ita“ habent, his diebus in tabula „Exercitatio“ apparent. Feriae et dies festi hic quoque valent.",  // V573
+"Zusatztraining entfernen? Die Zuordnung der Personen bleibt gespeichert, wirkt aber nicht mehr.": "Exercitationem additam removere? Attributio personarum servatur, sed iam non valet.",  // V573
+"gültig von": "valet ab",  // V573
+"bis": "usque ad",  // V573
+"+ Zusatztraining": "+ Exercitatio addita",  // V573
+"Aus den Trainingszeiten übernehmen": "E temporibus exercitationis sumere",  // V573
+"+ {0} (aus Trainingszeiten)": "+ {0} (e temporibus exercitationis)",  // V573
+" · Zusatztraining: {0}": " · Exercitatio addita: {0}",  // V573
 };
