@@ -2939,4 +2939,7 @@ export const AR_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "نقل من أوقات التدريب",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (من أوقات التدريب)",  // V573
 " · Zusatztraining: {0}": " · تدريب إضافي: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«نعم، فقط …»: يظهر الشخص في هذه الأيام فقط وليس في تدريب النادي لمجموعته؛ تُحتسب المشاركة لهذه الأيام فقط.",  // V574
+"Ja, zusätzlich": "نعم، إضافيًا",  // V574
+"Ja, nur {0}": "نعم، فقط {0}",  // V574
 };

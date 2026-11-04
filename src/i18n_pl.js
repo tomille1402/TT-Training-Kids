@@ -2941,4 +2941,7 @@ export const PL_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Przejmij z godzin treningów",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (z godzin treningów)",  // V573
 " · Zusatztraining: {0}": " · Trening dodatkowy: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Tak, tylko …”: osoba pojawia się wyłącznie w te dni, a nie na treningu klubowym swojej grupy; frekwencja liczy tylko te dni.",  // V574
+"Ja, zusätzlich": "Tak, dodatkowo",  // V574
+"Ja, nur {0}": "Tak, tylko {0}",  // V574
 };

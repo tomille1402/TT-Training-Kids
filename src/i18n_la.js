@@ -2941,4 +2941,7 @@ export const LA_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "E temporibus exercitationis sumere",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (e temporibus exercitationis)",  // V573
 " · Zusatztraining: {0}": " · Exercitatio addita: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Ita, solum …“: persona his diebus tantum apparet, non in exercitatione societatis sui gregis; participatio hos tantum dies numerat.",  // V574
+"Ja, zusätzlich": "Ita, praeterea",  // V574
+"Ja, nur {0}": "Ita, solum {0}",  // V574
 };

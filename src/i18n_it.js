@@ -2941,4 +2941,7 @@ export const IT_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Riprendi dagli orari di allenamento",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (dagli orari di allenamento)",  // V573
 " · Zusatztraining: {0}": " · Allenamento aggiuntivo: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«Sì, solo …»: la persona compare solo in questi giorni e non nell'allenamento della società del suo gruppo; la partecipazione conta solo questi giorni.",  // V574
+"Ja, zusätzlich": "Sì, in aggiunta",  // V574
+"Ja, nur {0}": "Sì, solo {0}",  // V574
 };

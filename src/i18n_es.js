@@ -2939,4 +2939,7 @@ export const ES_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Tomar de los horarios de entrenamiento",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (de los horarios de entrenamiento)",  // V573
 " · Zusatztraining: {0}": " · Entrenamiento adicional: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«Sí, solo …»: la persona aparece únicamente esos días y no en el entrenamiento del club de su grupo; la asistencia cuenta solo esos días.",  // V574
+"Ja, zusätzlich": "Sí, además",  // V574
+"Ja, nur {0}": "Sí, solo {0}",  // V574
 };

@@ -2940,4 +2940,7 @@ export const EN_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Take over from training times",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (from training times)",  // V573
 " · Zusatztraining: {0}": " · Extra training: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "“Yes, only …”: the person appears only on these days and not in their group's club training; attendance counts only these days.",  // V574
+"Ja, zusätzlich": "Yes, additionally",  // V574
+"Ja, nur {0}": "Yes, only {0}",  // V574
 };

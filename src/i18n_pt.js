@@ -2939,4 +2939,7 @@ export const PT_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Copiar dos horários de treino",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (dos horários de treino)",  // V573
 " · Zusatztraining: {0}": " · Treino adicional: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«Sim, só …»: a pessoa aparece apenas nesses dias e não no treino do clube do seu grupo; a participação conta só esses dias.",  // V574
+"Ja, zusätzlich": "Sim, adicionalmente",  // V574
+"Ja, nur {0}": "Sim, só {0}",  // V574
 };

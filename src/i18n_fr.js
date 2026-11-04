@@ -2941,4 +2941,7 @@ export const FR_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Reprendre des horaires d'entraînement",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (des horaires d'entraînement)",  // V573
 " · Zusatztraining: {0}": " · Entraînement supplémentaire : {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "« Oui, seulement … » : la personne n'apparaît que ces jours-là et pas à l'entraînement du club de son groupe ; la participation ne compte que ces jours.",  // V574
+"Ja, zusätzlich": "Oui, en plus",  // V574
+"Ja, nur {0}": "Oui, seulement {0}",  // V574
 };

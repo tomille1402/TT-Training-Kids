@@ -1,4 +1,4 @@
-// === TTC-App · Version 573 · erstellt 04.11.2026 ===
+// === TTC-App · Version 574 · erstellt 04.11.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "573";
+const APP_VERSION = "574";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -418,11 +418,15 @@ function wochentageDerGruppe(group){
 function regulaererTrainingstag(group, ds){ return !!ds && !inFerien(ds) && !FEIERTAGE.has(ds) && gruppeTrainiertAn(group, ds); }
 function gruppeTrainiertAn(group, ds){ return wochentageDerGruppe(group).includes(WT_KURZ[new Date(ds).getDay()]); }
 // V573: Zusatztrainings einer Person (nur die mit „ja“) und ihre Tage
-function zusatzTrainingsVon(p){ const z=(p&&p.zusatzTraining)||{}; return ZUSATZ_TRAININGS.filter(x=>z[x.id]===true); }
+// Wert je Zusatztraining: true = „Ja, zusätzlich“, "nur" = „Ja, nur dieses Training“ (V574)
+function zusatzTrainingsVon(p){ const z=(p&&p.zusatzTraining)||{}; return ZUSATZ_TRAININGS.filter(x=>z[x.id]===true || z[x.id]==="nur"); }
+// V574: Person nimmt nur an Zusatztraining(s) teil, nicht am Vereinstraining ihrer Gruppe
+function nurZusatztraining(p){ const z=(p&&p.zusatzTraining)||{}; return ZUSATZ_TRAININGS.some(x=>z[x.id]==="nur"); }
 function zusatzTageVon(p){ return [...new Set(zusatzTrainingsVon(p).flatMap(x=>x._tage))].sort(); }
 function zusatzAm(p, ds){ return zusatzTrainingsVon(p).filter(x=>x._tage.includes(ds)); }
 // Alle Trainingstage einer Person: Gruppe (bzw. Trainer-Tage) plus Zusatztrainings
 function trainingsTageVonPerson(p){
+  if(nurZusatztraining(p)) return zusatzTageVon(p);   // V574: nur Zusatztraining
   const basis=getTrainingDaysForGroup(p?.group||"Anfänger", p?.trainingDays);
   const z=zusatzTageVon(p);
   return z.length ? [...new Set([...basis,...z])].sort() : basis;
@@ -10391,7 +10395,8 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     // ODER ein für sie eingetragenes Sondertraining. (Bis V515 blendete ein Sondertraining
     // an einem regulären Tag alle übrigen Gruppen aus.)
     const grp = p.group||"Anfänger";
-    if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))
+    if (selDate && nurZusatztraining(p)) { if (zusatzAm(p, selDate).length===0) return false; }   // V574: nur an Zusatztrainingstagen
+    else if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))
         && zusatzAm(p, selDate).length===0) return false;   // V573: Zusatztraining der Person
     if (groupFilters && !groupFilters[p.group||"Anfänger"]) return false;
     if (p.trainingStart && selDate && p.trainingStart > selDate) return false;
@@ -12477,6 +12482,7 @@ function TrainingskalenderEditor({showToast}){
       Personenverwaltung (Abschnitt „Training und Vereinsbeitritt“) erscheint je Zusatztraining ein Feld Ja/Nein (Vorgabe: Nein).
       Wer „Ja“ hat, erscheint an diesen Tagen im Reiter „Training“. Ferien und Feiertage gelten auch hier.
     </div>
+    <div style={{fontSize:10,color:"var(--text3)",marginBottom:6,lineHeight:1.5}}>„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.</div>
     {(k.zusatz||[]).map((z,i)=>{ const upd=f=>setK(x=>({...x,zusatz:x.zusatz.map((y,j)=>j===i?{...y,...f}:y)}));
       return <div key={z.id||i} style={{background:"var(--bg)",border:"1px solid var(--border2)",borderRadius:9,padding:"8px 10px",marginBottom:6}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
@@ -14963,7 +14969,7 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
         trainingEnd:   editPlayer.trainingEnd||"",
         trainingsheft: editPlayer.trainingsheft||"ja",
         joinDate:      editPlayer.joinDate||"",
-        zusatzTraining: Object.fromEntries(Object.entries(editPlayer.zusatzTraining||{}).filter(([,v])=>v===true)),   // V573
+        zusatzTraining: Object.fromEntries(Object.entries(editPlayer.zusatzTraining||{}).filter(([,v])=>v===true||v==="nur")),   // V573/V574
         leaveDate:     editPlayer.leaveDate||"",
         roles:         editPlayer.roles||{},
         trainingDays:  editPlayer.trainingDays||VEREINS_WOCHENTAGE[0]||"Di",
@@ -16129,11 +16135,12 @@ function VerwaltungTab({players,attendance={},rackets,onPlayerAdded,showToast,is
               {ZUSATZ_TRAININGS.length>0 && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))",gap:8,marginBottom:10}}>
                 {ZUSATZ_TRAININGS.map(z=><div key={z.id}>
                   <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:4}}>🎯 {z.name} <span style={{fontSize:10,color:"var(--text4)"}}>({z.tage.join(", ")||"—"})</span></label>
-                  <select value={(editPlayer.zusatzTraining||{})[z.id]===true?"ja":"nein"}
-                    onChange={e=>setEditPlayer(prev=>({...prev,zusatzTraining:{...(prev.zusatzTraining||{}),[z.id]:e.target.value==="ja"}}))}
+                  <select value={(editPlayer.zusatzTraining||{})[z.id]==="nur"?"nur":(editPlayer.zusatzTraining||{})[z.id]===true?"ja":"nein"}
+                    onChange={e=>{ const v=e.target.value; setEditPlayer(prev=>({...prev,zusatzTraining:{...(prev.zusatzTraining||{}),[z.id]:v==="nur"?"nur":v==="ja"}})); }}
                     style={{width:"100%",padding:"9px 10px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:13,boxSizing:"border-box"}}>
                     <option value="nein">Nein</option>
-                    <option value="ja">Ja</option>
+                    <option value="ja">Ja, zusätzlich</option>
+                    <option value="nur">{T`Ja, nur ${z.name}`}</option>
                   </select>
                 </div>)}
               </div>}

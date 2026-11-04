@@ -2941,4 +2941,7 @@ export const ZH_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "从训练时间导入",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0}（来自训练时间）",  // V573
 " · Zusatztraining: {0}": " · 附加训练：{0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "“是，仅…”：该人员只在这些日期出现，不参加其分组的俱乐部训练；出勤只统计这些日期。",  // V574
+"Ja, zusätzlich": "是，另外参加",  // V574
+"Ja, nur {0}": "是，仅 {0}",  // V574
 };

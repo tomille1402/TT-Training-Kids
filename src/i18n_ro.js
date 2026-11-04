@@ -2939,4 +2939,7 @@ export const RO_TEXTE = {
 "Aus den Trainingszeiten übernehmen": "Preia din orele de antrenament",  // V573
 "+ {0} (aus Trainingszeiten)": "+ {0} (din orele de antrenament)",  // V573
 " · Zusatztraining: {0}": " · Antrenament suplimentar: {0}",  // V573
+"„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Da, doar …”: persoana apare doar în aceste zile, nu la antrenamentul clubului pentru grupa sa; prezența ia în calcul doar aceste zile.",  // V574
+"Ja, zusätzlich": "Da, în plus",  // V574
+"Ja, nur {0}": "Da, doar {0}",  // V574
 };
