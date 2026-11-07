@@ -2944,4 +2944,9 @@ export const FR_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "« Oui, seulement … » : la personne n'apparaît que ces jours-là et pas à l'entraînement du club de son groupe ; la participation ne compte que ces jours.",  // V574
 "Ja, zusätzlich": "Oui, en plus",  // V574
 "Ja, nur {0}": "Oui, seulement {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "non récupéré (pause due à HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Récupération de l'équipe {0} sur {1} …",  // V575
+"unbekannter Fehler": "erreur inconnue",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis n'autorise plus de requêtes pour le moment (HTTP 429). Réessaie dans environ {0} min. – les classements actuels restent affichés d'ici là.",  // V575
+"Fertig.": "Terminé.",  // V575
 };

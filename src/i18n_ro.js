@@ -2942,4 +2942,9 @@ export const RO_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Da, doar …”: persoana apare doar în aceste zile, nu la antrenamentul clubului pentru grupa sa; prezența ia în calcul doar aceste zile.",  // V574
 "Ja, zusätzlich": "Da, în plus",  // V574
 "Ja, nur {0}": "Da, doar {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "nepreluat (pauză din cauza HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Se preia echipa {0} din {1} …",  // V575
+"unbekannter Fehler": "eroare necunoscută",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis nu permite momentan alte cereri (HTTP 429). Încearcă din nou în aprox. {0} min. – clasamentele anterioare rămân până atunci.",  // V575
+"Fertig.": "Gata.",  // V575
 };

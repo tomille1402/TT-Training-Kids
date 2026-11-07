@@ -2944,4 +2944,9 @@ export const ZH_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "“是，仅…”：该人员只在这些日期出现，不参加其分组的俱乐部训练；出勤只统计这些日期。",  // V574
 "Ja, zusätzlich": "是，另外参加",  // V574
 "Ja, nur {0}": "是，仅 {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "未获取（因 HTTP 429 暂停）",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "正在获取第 {0} / {1} 支球队 …",  // V575
+"unbekannter Fehler": "未知错误",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis 目前不允许更多请求（HTTP 429）。请约 {0} 分钟后重试——在此之前保留原有积分表。",  // V575
+"Fertig.": "完成。",  // V575
 };

@@ -2943,4 +2943,9 @@ export const EN_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "“Yes, only …”: the person appears only on these days and not in their group's club training; attendance counts only these days.",  // V574
 "Ja, zusätzlich": "Yes, additionally",  // V574
 "Ja, nur {0}": "Yes, only {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "not retrieved (pause due to HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Retrieving team {0} of {1} …",  // V575
+"unbekannter Fehler": "unknown error",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis is not allowing further requests right now (HTTP 429). Please try again in about {0} min. – the previous tables remain until then.",  // V575
+"Fertig.": "Done.",  // V575
 };

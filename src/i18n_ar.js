@@ -2942,4 +2942,9 @@ export const AR_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«نعم، فقط …»: يظهر الشخص في هذه الأيام فقط وليس في تدريب النادي لمجموعته؛ تُحتسب المشاركة لهذه الأيام فقط.",  // V574
 "Ja, zusätzlich": "نعم، إضافيًا",  // V574
 "Ja, nur {0}": "نعم، فقط {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "لم يُجلب (توقف بسبب HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "جارٍ جلب الفريق {0} من {1} …",  // V575
+"unbekannter Fehler": "خطأ غير معروف",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "لا يسمح myTischtennis حاليًا بطلبات إضافية (HTTP 429). حاول مرة أخرى بعد نحو {0} دقيقة – تبقى الجداول السابقة حتى ذلك الحين.",  // V575
+"Fertig.": "تم.",  // V575
 };

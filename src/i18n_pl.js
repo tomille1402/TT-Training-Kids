@@ -2944,4 +2944,9 @@ export const PL_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Tak, tylko …”: osoba pojawia się wyłącznie w te dni, a nie na treningu klubowym swojej grupy; frekwencja liczy tylko te dni.",  // V574
 "Ja, zusätzlich": "Tak, dodatkowo",  // V574
 "Ja, nur {0}": "Tak, tylko {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "nie pobrano (przerwa z powodu HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Pobieranie drużyny {0} z {1} …",  // V575
+"unbekannter Fehler": "nieznany błąd",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis chwilowo nie pozwala na kolejne pobrania (HTTP 429). Spróbuj ponownie za ok. {0} min. – dotychczasowe tabele pozostają.",  // V575
+"Fertig.": "Gotowe.",  // V575
 };

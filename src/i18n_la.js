@@ -2944,4 +2944,9 @@ export const LA_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "„Ita, solum …“: persona his diebus tantum apparet, non in exercitatione societatis sui gregis; participatio hos tantum dies numerat.",  // V574
 "Ja, zusätzlich": "Ita, praeterea",  // V574
 "Ja, nur {0}": "Ita, solum {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "non arcessitum (intermissio ob HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Turma {0} ex {1} arcessitur …",  // V575
+"unbekannter Fehler": "error ignotus",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis nunc plures petitiones non admittit (HTTP 429). Post circiter {0} min. iterum conare – tabulae priores interea manent.",  // V575
+"Fertig.": "Factum.",  // V575
 };

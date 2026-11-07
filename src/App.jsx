@@ -1,4 +1,4 @@
-// === TTC-App · Version 574 · erstellt 04.11.2026 ===
+// === TTC-App · Version 575 · erstellt 07.11.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "574";
+const APP_VERSION = "575";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -25400,14 +25400,30 @@ function SpielbetrieblTab({isSuperAdmin, scrollToTeam=""}) {
     const u=onSnapshot(doc(db,"config","tabellen"),snap=>setTabellen(snap.exists()?snap.data():null),()=>{});
     return u;
   },[]);
+  // V575: Mannschaften einzeln nacheinander abrufen (je Mannschaft ein kurzer Server-Aufruf,
+  // Pause dazwischen). Meldet myTischtennis „HTTP 429“ (zu viele Abrufe), wird abgebrochen.
   async function tabellenAktualisieren(){
-    setTabLaeuft(true); setTabBericht(null);
-    try{
-      const r=await fetch("/.netlify/functions/tabellenjetzt",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}),})});   // V519: Verein
-      const j=await r.json().catch(()=>({ok:false,meldung:`HTTP ${r.status}`}));
-      setTabBericht(j);
-    }catch(e){ setTabBericht({ok:false,meldung:e?.message||"Netzwerkfehler"}); }
+    if(tabLaeuft) return;
+    setTabLaeuft(true);
+    const teams=((SEASONS.find(s=>s.current)||{}).teams||[]).filter(t=>t&&t.id);
+    const bericht=[]; let warteSek=0, gesperrt=false;
+    for(let i=0;i<teams.length;i++){
+      const t=teams[i];
+      if(gesperrt){ bericht.push({team:t.name, ok:false, info:T("nicht abgerufen (Pause wegen HTTP 429)")}); continue; }
+      setTabBericht({ok:true, bericht:[...bericht], hinweis:T`Mannschaft ${i+1} von ${teams.length} wird abgerufen …`});
+      try{
+        const r=await fetch("/.netlify/functions/tabellenjetzt",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({...(DATEN_MODUS==="verein"?{verein:AKTIVER_VEREIN_ID}:{}), team:t.id})});   // V519: Verein
+        const j=await r.json().catch(()=>({ok:false,meldung:`HTTP ${r.status}`}));
+        if(Array.isArray(j.bericht) && j.bericht.length) bericht.push(...j.bericht);
+        else bericht.push({team:t.name, ok:false, info:j.meldung||T("unbekannter Fehler")});
+        if(j.gesperrt){ gesperrt=true; warteSek=j.warteSek||0; }
+      }catch(e){ bericht.push({team:t.name, ok:false, info:e?.message||T("Netzwerkfehler")}); }
+      if(!gesperrt && i<teams.length-1) await new Promise(res=>setTimeout(res,1500));
+    }
+    setTabBericht({ok:true, bericht, hinweis: gesperrt
+      ? T`myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. ${Math.max(1,Math.ceil(warteSek/60))} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.`
+      : T("Fertig.")});
     setTabLaeuft(false);
   }
   const fmtStand=(ts)=>{ if(!ts) return ""; try{ return new Date(ts).toLocaleString(SPR_LOC,{timeZone:"Europe/Berlin",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+T(" Uhr"); }catch(e){ return ""; } };

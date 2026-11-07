@@ -2942,4 +2942,9 @@ export const ES_TEXTE = {
 "„Ja, nur …“: Die Person erscheint ausschließlich an diesen Tagen und nicht im Vereinstraining ihrer Gruppe; die Teilnahme zählt nur diese Tage.": "«Sí, solo …»: la persona aparece únicamente esos días y no en el entrenamiento del club de su grupo; la asistencia cuenta solo esos días.",  // V574
 "Ja, zusätzlich": "Sí, además",  // V574
 "Ja, nur {0}": "Sí, solo {0}",  // V574
+"nicht abgerufen (Pause wegen HTTP 429)": "no consultado (pausa por HTTP 429)",  // V575
+"Mannschaft {0} von {1} wird abgerufen …": "Consultando el equipo {0} de {1} …",  // V575
+"unbekannter Fehler": "error desconocido",  // V575
+"myTischtennis lässt gerade keine weiteren Abrufe zu (HTTP 429). Bitte in ca. {0} Min. erneut versuchen – bisherige Tabellen bleiben bis dahin stehen.": "myTischtennis no permite más consultas por ahora (HTTP 429). Inténtalo de nuevo en unos {0} min.; hasta entonces se mantienen las clasificaciones anteriores.",  // V575
+"Fertig.": "Listo.",  // V575
 };
