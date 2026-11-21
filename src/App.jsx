@@ -1,4 +1,4 @@
-// === TTC-App · Version 575 · erstellt 07.11.2026 ===
+// === TTC-App · Version 577 · erstellt 20.11.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "575";
+const APP_VERSION = "577";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -9370,7 +9370,10 @@ function AdminPanel({user,players,attendance,rackets,isSuperAdmin,isDark,onSetUs
     if(p.status==="passiv") return false;
     const g=p.group||"Anfänger";
     if(g==="Erwachsene") return false;
-    if(g==="Gast" && !isSuperAdmin) return false; // Gäste NUR für Admins, nie für Trainer
+    // Gäste NUR für Admins, nie für Trainer – V576: außer sie nehmen an einem Zusatztraining
+    // teil (z. B. Schul AG); dann braucht der Trainer sie im Reiter „Training“ (nur dort sichtbar,
+    // in Gruppenleisten/Ranglisten der Trainer erscheinen Gäste weiterhin nicht).
+    if(g==="Gast" && !isSuperAdmin && zusatzTrainingsVon(p).length===0) return false;
     return true;
   });
   const visiblePlayers = activePlayers
@@ -10395,6 +10398,9 @@ function AdminTrainingTab({players,groupFilters,attendance,showToast}) {
     // ODER ein für sie eingetragenes Sondertraining. (Bis V515 blendete ein Sondertraining
     // an einem regulären Tag alle übrigen Gruppen aus.)
     const grp = p.group||"Anfänger";
+    // V576: Teilnehmer eines Zusatztrainings erscheinen an dessen Tagen immer – unabhängig von
+    // den Gruppenfiltern oben (die z. B. „Gast“ für Trainer gar nicht anbieten).
+    if (selDate && zusatzAm(p, selDate).length>0) return !(p.trainingStart && p.trainingStart > selDate);
     if (selDate && nurZusatztraining(p)) { if (zusatzAm(p, selDate).length===0) return false; }   // V574: nur an Zusatztrainingstagen
     else if (selDate && !regulaererTrainingstag(grp, selDate) && !(sonderGruppen && sonderGruppen.includes(grp))
         && zusatzAm(p, selDate).length===0) return false;   // V573: Zusatztraining der Person
@@ -29146,10 +29152,18 @@ function RoleSwitchWrapper({user,players,attendance,rackets,myPlayer,availableVi
   // Person betrachten (viewAsPlayer). Für alle Nicht-Admins ist IMMER die eingeloggte
   // Person maßgeblich – niemals ein Fallback auf mfPlayers[0]/erwachsenePlayers[0], der
   // sonst (z.B. wenn viewAsPlayer noch null ist) den ersten fremden MF anzeigen würde.
+  // V577: In der Trainer-Ansicht wählt die Namensleiste den Spieler für die Trainer-Reiter
+  // (Übungen, Beobachtungen …) – auch bei Trainern ohne Admin-Funktion. Bisher blieb hier die
+  // eigene Person markiert (bei Trainern, die zugleich Spieler sind, sah die Auswahl dadurch
+  // wirkungslos aus). Die Spieler-Ansicht bleibt für Nicht-Admins fest auf der eigenen Person.
+  const trainerAuswahl = activeView==="trainer" && !lockedPlayer && !isErwachseneOnly
+    ? (players.find(p=>p.id===viewAsPlayer) || null) : null;
   const selectedPlayer = lockedPlayer
     ? myPlayer
     : isErwachseneOnly
     ? myPlayer
+    : trainerAuswahl
+    ? trainerAuswahl
     : !hasAdminRole
     ? myPlayer
     : players.find(p=>p.id===viewAsPlayer)
