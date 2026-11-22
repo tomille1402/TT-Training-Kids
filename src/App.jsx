@@ -1,4 +1,4 @@
-// === TTC-App · Version 577 · erstellt 20.11.2026 ===
+// === TTC-App · Version 578 · erstellt 22.11.2026 ===
 /** @jsxRuntime classic */
 /** @jsx ttcH */
 /** @jsxFrag React.Fragment */
@@ -154,7 +154,7 @@ try{ if(typeof document!=="undefined") document.documentElement.dir=(SPRACHE==="
 
 // Zentrale Versionskennung – auch im Browser sichtbar (siehe Anzeige im Footer/Login),
 // damit jederzeit erkennbar ist, welche Version tatsächlich live ist.
-const APP_VERSION = "577";
+const APP_VERSION = "578";
 const APP_DATUM = "26.09.2026";
 
 // Maximale Breite der App. Bis V467 fest 1024 Pixel – auf dem iPad im Querformat
@@ -25230,7 +25230,8 @@ function EinsaetzeView({ players, myPlayer, isAdmin, roles, viewerCanEditAll, nu
       const rueckmeldungen=counts.ja;
       // Mindestbedarf: Nachwuchs 3, Erwachsene 4. Bei zu wenigen Zusagen fehlt
       // mindestens ein Spieler → roter Rahmen um das (eingeklappte) Feld.
-      const minBedarf = selTeamIstNachwuchs ? 3 : 4;
+      // V578: Pokalspiele brauchen immer nur 3 Spieler – Nachwuchs wie Erwachsene.
+      const minBedarf = (spiel.art==="Pokal" || selTeamIstNachwuchs) ? 3 : 4;
       const unterbesetzt = !past && rueckmeldungen < minBedarf;
       // Anzahl fest aufgestellter (nominierter) Spieler für dieses Spiel.
       const nominierteAnzahl=(entries._nominiert||[]).filter(id=>spielberechtigt.some(p=>p.id===id)).length;
